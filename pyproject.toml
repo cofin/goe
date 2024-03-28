@@ -59,11 +59,8 @@ dependencies = [
     "google-cloud-kms",
 
     # GOE Listener packages
-    "fastapi==0.77.0",
-    "uvicorn==0.17.6",
-    "redis==4.3.1",
-    "gunicorn==20.1.0",
-    "brotli==1.0.9",
+    "litestar[cli,redis,brotli]",
+    "gunicorn==20.1.0", 
     "tenacity==8.0.1",
     "uvloop",
     "httptools",
