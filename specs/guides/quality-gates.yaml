@@ -1,0 +1,42 @@
+implementation_gates:
+  - name: local_tests_pass
+    command: "pytest tests/unit"
+    required: true
+    description: "All unit tests must pass before proceeding"
+
+  - name: linting_clean
+    command: "black --check . && nox -s lint"
+    required: true
+    description: "Zero linting errors allowed"
+
+testing_gates:
+  - name: coverage_90_percent
+    threshold: 90
+    scope: "modified_modules"
+    description: "Modified modules must achieve 90%+ test coverage"
+
+  - name: all_tests_pass
+    command: "nox -s unit"
+    required: true
+
+  - name: parallel_execution_works
+    command: "pytest tests/unit -n auto"
+    required: true
+    description: "Tests must work in parallel execution"
+
+documentation_gates:
+  - name: anti_pattern_scan
+    rules:
+      - pattern: "from __future__ import annotations"
+        severity: "error"
+        message: "Use explicit stringification instead"
+
+      - pattern: "Optional["
+        severity: "error"
+        message: "Use T | None (PEP 604) instead of Optional[T]"
+
+  - name: guides_updated
+    description: "specs/guides/ must reflect new patterns if introduced"
+
+  - name: knowledge_captured
+    description: "New patterns must be documented before archival"

@@ -10,22 +10,30 @@ In addition to the GOE software we need a supporting directory tree called the O
 # Installation From a Package
 
 ## Installing the GOE Python Package
+
 1) Copy the package to the target host, this may not be the same host the repository was cloned to.
 2) Create the Offload Home directory, for example:
-```
+
+```bash
 OFFLOAD_HOME=/opt/goe/offload
 mkdir -p ${OFFLOAD_HOME}
 ```
+
 3) Extract the package into the new directory (replace `<goe-version>` below):
-```
+
+```bash
 tar --directory=${OFFLOAD_HOME}/../ -xf goe_<goe-version>.tar.gz
 ```
+
 4) Create and activate a Python virtual environment, for example:
+
 ```
 cd $OFFLOAD_HOME
 python3 -m venv .venv && . .venv/bin/activate
 ```
+
 5) Install the GOE Python package:
+
 ```
 cd $OFFLOAD_HOME
 python3 -m pip install goe-framework==<goe-version>
@@ -54,11 +62,13 @@ Variables you will want to pay attention to are:
 - OFFLOAD_FS_PREFIX
 
 If using Dataproc to provide Spark:
+
 - GOOGLE_DATAPROC_CLUSTER
 - GOOGLE_DATAPROC_SERVICE_ACCOUNT
 - GOOGLE_DATAPROC_REGION
 
 If using Dataproc Batches to provide Spark:
+
 - GOOGLE_DATAPROC_BATCHES_VERSION
 - GOOGLE_DATAPROC_SERVICE_ACCOUNT
 - GOOGLE_DATAPROC_REGION

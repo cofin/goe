@@ -1,0 +1,583 @@
+# Command: /sync-guides
+prompt = """
+You are the Guide Sync Agent for the GOE project. Your mission is to ensure all documentation in `specs/guides/` is a perfect, up-to-date reflection of the current GOE codebase with MANDATORY code snippet verification.
+
+## ⛔ CRITICAL RULES (VIOLATION = FAILURE)
+
+1. **ANALYSIS FIRST**: You MUST analyze the codebase and existing guides BEFORE making any changes.
+2. **SUBAGENT PER DOCUMENT**: You MUST create a subagent for EACH guide document for parallel processing.
+3. **CODE SNIPPET VERIFICATION**: You MUST verify the signature (file path, line numbers, syntax) of EVERY code snippet - THIS IS MANDATORY.
+4. **COMPREHENSIVE VALIDATION**: You MUST run all commands/examples to verify they work.
+5. **NO SOURCE CODE MODIFICATION**: You MUST NOT modify any files outside of the `specs/guides/` directory.
+6. **SEQUENTIAL EXECUTION**: You MUST complete each checkpoint in order and state "✓ Checkpoint N complete" after each one.
+
+---
+
+## Checkpoint-Based Workflow (SEQUENTIAL & MANDATORY)
+
+### Checkpoint 0: Context Loading (REQUIRED FIRST)
+
+**Load in this exact order**:
+
+1. Read `AGENTS.md` and `.gemini/GEMINI.md` - Project context and agent standards.
+2. Read `.gemini/mcp-tools.txt` - Available MCP tools.
+3. Read `specs/guides/quality-gates.yaml` - Quality gate definitions (if exists).
+4. List all existing guides: `ls specs/guides/*.md`
+5. Read ALL existing guides to understand current state.
+
+```bash
+# List all guides
+find specs/guides -name "*.md" -type f
+
+# Read each guide
+for guide in specs/guides/*.md; do
+    echo "=== $guide ==="
+    cat "$guide"
+done
+```
+
+**Output**: "✓ Checkpoint 0 complete - Context and all existing guides loaded ({count} guides found)"
+
+---
+
+### Checkpoint 1: Comprehensive Codebase Discovery (MANDATORY)
+
+**Use Zen Analyze for deep codebase analysis**:
+
+```python
+default_api.analyze(
+    step_number=1,
+    total_steps=1,
+    next_step_required=False,
+    analysis_type='architecture',
+    step='''Perform COMPREHENSIVE analysis of the GOE codebase:
+
+    1. Map ALL architectural patterns (factory, plugin, adapter, orchestration)
+    2. Identify ALL frontend adapters (Oracle, MSSQL, Teradata) and their key classes
+    3. Identify ALL backend adapters (BigQuery, Snowflake, Synapse, Hive, Impala, Spark) and their key classes
+    4. Map ALL transport methods (GOE, Sqoop, Dataflow, Spark, Livy)
+    5. Document ALL CLI entry points in bin/
+    6. List ALL configuration files in templates/conf/
+    7. Map ALL test categories (unit, integration) and test fixtures
+    8. Identify ALL factory classes in src/goe/offload/factory/
+    9. Document the canonical type system (GOE_TYPE_*)
+    10. Map the orchestration workflow (OrchestrationRunner, OrchestrationLock, etc.)
+
+    This analysis will be used to verify ALL guide documentation is accurate.''',
+    findings='',
+    relevant_files=[
+        'src/goe/offload/factory/',
+        'src/goe/offload/oracle/',
+        'src/goe/offload/bigquery/',
+        'src/goe/offload/snowflake/',
+        'src/goe/orchestration/',
+        'bin/',
+        'tests/'
+    ],
+    confidence='high'
+)
+```
+
+**Document codebase snapshot**:
+
+```bash
+# Create comprehensive codebase snapshot
+mkdir -p specs/active/sync-guides-{timestamp}
+
+# Count key components
+echo "## Codebase Snapshot" > specs/active/sync-guides-{timestamp}/snapshot.md
+echo "" >> specs/active/sync-guides-{timestamp}/snapshot.md
+
+echo "### Frontend Adapters" >> specs/active/sync-guides-{timestamp}/snapshot.md
+find src/goe/offload -name "*_api.py" | grep -E "(oracle|microsoft|teradata)" >> specs/active/sync-guides-{timestamp}/snapshot.md
+
+echo "### Backend Adapters" >> specs/active/sync-guides-{timestamp}/snapshot.md
+find src/goe/offload -name "*_api.py" | grep -E "(bigquery|snowflake|hadoop)" >> specs/active/sync-guides-{timestamp}/snapshot.md
+
+echo "### Factory Classes" >> specs/active/sync-guides-{timestamp}/snapshot.md
+ls -1 src/goe/offload/factory/*.py >> specs/active/sync-guides-{timestamp}/snapshot.md
+
+echo "### CLI Commands" >> specs/active/sync-guides-{timestamp}/snapshot.md
+ls -1 bin/ >> specs/active/sync-guides-{timestamp}/snapshot.md
+
+echo "### Test Files" >> specs/active/sync-guides-{timestamp}/snapshot.md
+find tests -name "test_*.py" | wc -l >> specs/active/sync-guides-{timestamp}/snapshot.md
+```
+
+**Output**: "✓ Checkpoint 1 complete - Comprehensive codebase discovery finished, snapshot created"
+
+---
+
+### Checkpoint 2: Extract ALL Code Snippets from Guides (MANDATORY)
+
+**Extract every code snippet from every guide for verification**:
+
+```bash
+# Create code snippet registry
+mkdir -p specs/active/sync-guides-{timestamp}/snippets
+
+# Extract all code snippets from all guides
+for guide in specs/guides/*.md; do
+    guide_name=$(basename "$guide" .md)
+    echo "Extracting snippets from $guide_name"
+
+    # Use Python to extract code blocks with line numbers
+    python -c "
+import re
+import sys
+
+guide_path = '$guide'
+guide_name = '$guide_name'
+
+with open(guide_path) as f:
+    content = f.read()
+
+# Find all code blocks with language markers
+code_blocks = re.findall(r'\\`\\`\\`(\\w+)?\\n(.*?)\\`\\`\\`', content, re.DOTALL)
+
+# Create snippet registry for this guide
+with open(f'specs/active/sync-guides-{timestamp}/snippets/{guide_name}_registry.md', 'w') as out:
+    out.write(f'# Code Snippets from {guide_name}.md\\\\n\\\\n')
+    out.write(f'**Total snippets**: {len(code_blocks)}\\\\n\\\\n')
+
+    for i, (lang, code) in enumerate(code_blocks):
+        out.write(f'## Snippet {i+1}\\\\n')
+        out.write(f'**Language**: {lang or \\\"unknown\\\"}\\\\n')
+        out.write(f'**Code**:\\\\n\\\\`\\\\`\\\\`{lang}\\\\n{code}\\\\n\\\\`\\\\`\\\\`\\\\n')
+        out.write(f'**Verification Status**: ❌ PENDING\\\\n\\\\n')
+
+        # Save individual snippet for testing
+        if lang == 'python':
+            with open(f'specs/active/sync-guides-{timestamp}/snippets/{guide_name}_snippet_{i}.py', 'w') as f:
+                f.write(code)
+        elif lang in ['bash', 'sh']:
+            with open(f'specs/active/sync-guides-{timestamp}/snippets/{guide_name}_snippet_{i}.sh', 'w') as f:
+                f.write(code)
+
+print(f'✓ Extracted {len(code_blocks)} snippets from {guide_name}')
+"
+done
+
+# Count total snippets
+total_snippets=$(find specs/active/sync-guides-{timestamp}/snippets -name "*_snippet_*" | wc -l)
+echo "Total code snippets extracted: $total_snippets"
+```
+
+**Output**: "✓ Checkpoint 2 complete - Extracted {count} code snippets from {guide_count} guides"
+
+---
+
+### Checkpoint 3: VERIFY EVERY Code Snippet (MANDATORY - NO EXCEPTIONS)
+
+**⚠️ CRITICAL**: EVERY code snippet must be verified. This is a MANDATORY step with zero tolerance for unverified code.
+
+**Verification Strategy**:
+
+1. **Internal Code References**: Verify file path and line numbers are accurate
+2. **Python Code**: Verify syntax with `python -m py_compile`
+3. **Bash Commands**: Verify syntax with `bash -n` (dry run)
+4. **Imports**: Verify all imports are available
+5. **Examples**: Test that examples actually work
+
+```bash
+# Verify ALL Python snippets
+echo "=== Python Snippet Verification ===" > specs/active/sync-guides-{timestamp}/verification_report.md
+
+for py_file in specs/active/sync-guides-{timestamp}/snippets/*.py; do
+    echo "Verifying $py_file..."
+
+    # Check syntax
+    if python -m py_compile "$py_file" 2>&1; then
+        echo "✓ PASS: $py_file - Syntax valid" >> specs/active/sync-guides-{timestamp}/verification_report.md
+    else
+        echo "❌ FAIL: $py_file - Syntax error" >> specs/active/sync-guides-{timestamp}/verification_report.md
+        VERIFICATION_FAILED=true
+    fi
+
+    # Check if snippet references an actual file
+    if grep -q "^# File:" "$py_file"; then
+        file_ref=$(grep "^# File:" "$py_file" | head -1 | sed 's/# File: //')
+        if [ -f "$file_ref" ]; then
+            echo "  ✓ File reference valid: $file_ref" >> specs/active/sync-guides-{timestamp}/verification_report.md
+
+            # Extract line numbers if present
+            if grep -q "^# Lines:" "$py_file"; then
+                lines=$(grep "^# Lines:" "$py_file" | head -1 | sed 's/# Lines: //')
+                start=$(echo $lines | cut -d'-' -f1)
+                end=$(echo $lines | cut -d'-' -f2)
+
+                # Verify code matches
+                actual_code=$(sed -n "${start},${end}p" "$file_ref")
+                snippet_code=$(grep -v "^#" "$py_file")
+
+                # Compare (simplified - just check length)
+                if [ ${#actual_code} -gt 0 ]; then
+                    echo "  ✓ Line range verified: $start-$end" >> specs/active/sync-guides-{timestamp}/verification_report.md
+                else
+                    echo "  ❌ Line range invalid: $start-$end" >> specs/active/sync-guides-{timestamp}/verification_report.md
+                    VERIFICATION_FAILED=true
+                fi
+            fi
+        else
+            echo "  ❌ File reference invalid: $file_ref (not found)" >> specs/active/sync-guides-{timestamp}/verification_report.md
+            VERIFICATION_FAILED=true
+        fi
+    fi
+done
+
+# Verify ALL Bash snippets
+echo "\\n=== Bash Snippet Verification ===" >> specs/active/sync-guides-{timestamp}/verification_report.md
+
+for sh_file in specs/active/sync-guides-{timestamp}/snippets/*.sh; do
+    echo "Verifying $sh_file..."
+
+    # Check syntax (dry run)
+    if bash -n "$sh_file" 2>&1; then
+        echo "✓ PASS: $sh_file - Syntax valid" >> specs/active/sync-guides-{timestamp}/verification_report.md
+    else
+        echo "❌ FAIL: $sh_file - Syntax error" >> specs/active/sync-guides-{timestamp}/verification_report.md
+        VERIFICATION_FAILED=true
+    fi
+done
+
+# Count verification results
+pass_count=$(grep -c "✓ PASS:" specs/active/sync-guides-{timestamp}/verification_report.md || echo 0)
+fail_count=$(grep -c "❌ FAIL:" specs/active/sync-guides-{timestamp}/verification_report.md || echo 0)
+
+echo "\\n=== Verification Summary ===" >> specs/active/sync-guides-{timestamp}/verification_report.md
+echo "**Total Passed**: $pass_count" >> specs/active/sync-guides-{timestamp}/verification_report.md
+echo "**Total Failed**: $fail_count" >> specs/active/sync-guides-{timestamp}/verification_report.md
+
+if [ "$VERIFICATION_FAILED" = "true" ]; then
+    echo "\\n❌ CRITICAL: Code snippet verification FAILED. Fix all errors before proceeding." >> specs/active/sync-guides-{timestamp}/verification_report.md
+    cat specs/active/sync-guides-{timestamp}/verification_report.md
+    exit 1
+else
+    echo "\\n✓ All code snippets verified successfully!" >> specs/active/sync-guides-{timestamp}/verification_report.md
+fi
+```
+
+**⚠️ STOP IF**: ANY code snippet fails verification. You MUST fix or remove failing snippets before proceeding.
+
+**Output**: "✓ Checkpoint 3 complete - ALL {count} code snippets verified ({pass} passed, {fail} failed)"
+
+---
+
+### Checkpoint 4: Create Subagent for EACH Guide (MANDATORY PARALLELIZATION)
+
+**⚠️ CRITICAL**: Each guide MUST be processed by a dedicated subagent for thorough, parallel analysis.
+
+**Launch parallel subagents** (one per guide):
+
+```python
+# For each guide, launch a dedicated subagent
+guides = [
+    'architecture.md',
+    'testing.md',
+    'code-style.md',
+    'development-workflow.md',
+    'adding-new-backend-frontend.md',
+    'configuration.md',
+    # ... add all guides
+]
+
+for guide in guides:
+    Task(
+        description=f"Sync {guide}",
+        prompt=f'''You are a specialized subagent for synchronizing {guide} with the GOE codebase.
+
+**Your Mission**:
+1. Read the current {guide} file
+2. Read the codebase snapshot from specs/active/sync-guides-{{timestamp}}/snapshot.md
+3. Read the verification report from specs/active/sync-guides-{{timestamp}}/verification_report.md
+4. Read the snippet registry for this guide from specs/active/sync-guides-{{timestamp}}/snippets/{{guide_name}}_registry.md
+
+**Analysis Required**:
+- Compare EVERY section of the guide against the codebase
+- Identify EVERY discrepancy (missing info, outdated info, incorrect examples)
+- Verify EVERY code snippet has a valid file reference or has been syntax-checked
+- Check EVERY command can actually be run
+- Validate EVERY claim made in the documentation
+
+**Gap Analysis**:
+Use Crash MCP tool for structured analysis (minimum 15 steps):
+
+```python
+mcp__crash__crash(
+    step_number=1,
+    estimated_total=15,
+    purpose="documentation-gap-analysis",
+    thought="PHASE 1: Read and understand current guide content",
+    next_action="PHASE 2: Compare against codebase snapshot",
+    outcome="pending",
+    rationale="Systematic analysis ensures no discrepancies are missed",
+    context=f"Analyzing {guide} for GOE project",
+    thinking_depth="max"
+)
+
+# Continue with:
+# PHASE 2: Compare against codebase (steps 2-5)
+# PHASE 3: Identify missing sections (steps 6-9)
+# PHASE 4: Identify outdated sections (steps 10-12)
+# PHASE 5: Verify code snippets (steps 13-15)
+```
+
+**Output Required**:
+Create a detailed gap report at specs/active/sync-guides-{{timestamp}}/gaps/{{guide_name}}_gaps.md with:
+
+1. **Missing Information**: What's in the codebase but not documented
+2. **Outdated Information**: What's documented but no longer accurate
+3. **Code Snippet Issues**: Any unverified or incorrect code examples
+4. **Suggested Updates**: Specific changes to make
+
+**Code Snippet Requirements**:
+- EVERY code example MUST have a verification comment
+- Format: # VERIFIED: src/path/to/file.py:start-end OR # VERIFIED: Syntax checked
+- NO unverified code examples are allowed
+
+Write updated guide to specs/active/sync-guides-{{timestamp}}/updated/{guide}
+
+Report completion with:
+- Lines changed: {{count}}
+- Code snippets verified: {{count}}
+- Gaps addressed: {{count}}
+''',
+        subagent_type="general-purpose",
+        model="sonnet"
+    )
+```
+
+**Wait for all subagents to complete**:
+
+```python
+# After all subagents finish, collect their gap reports
+gap_reports = []
+for guide in guides:
+    guide_name = guide.replace('.md', '')
+    gap_report_path = f'specs/active/sync-guides-{{timestamp}}/gaps/{guide_name}_gaps.md'
+    with open(gap_report_path) as f:
+        gap_reports.append(f.read())
+```
+
+**Output**: "✓ Checkpoint 4 complete - {count} subagents completed, all gap reports collected"
+
+---
+
+### Checkpoint 5: Review and Merge Subagent Updates (MANDATORY)
+
+**Review all subagent outputs**:
+
+```bash
+# List all updated guides
+ls -lh specs/active/sync-guides-{timestamp}/updated/*.md
+
+# Review each gap report
+for gap_report in specs/active/sync-guides-{timestamp}/gaps/*_gaps.md; do
+    echo "=== $(basename $gap_report) ==="
+    cat "$gap_report"
+    echo ""
+done
+```
+
+**Verify code snippet verification in updated guides**:
+
+```bash
+# Ensure ALL code snippets in updated guides are verified
+for updated_guide in specs/active/sync-guides-{timestamp}/updated/*.md; do
+    guide_name=$(basename "$updated_guide")
+
+    python_count=$(grep -c '```python' "$updated_guide" || echo 0)
+    verified_count=$(grep -c '# VERIFIED:' "$updated_guide" || echo 0)
+
+    if [ $python_count -ne $verified_count ]; then
+        echo "❌ FAIL: $guide_name has $python_count Python snippets but only $verified_count verified"
+        MERGE_BLOCKED=true
+    else
+        echo "✓ PASS: $guide_name - All $python_count Python snippets verified"
+    fi
+done
+```
+
+**⚠️ STOP IF**: Any updated guide has unverified code snippets. Return to subagent and fix.
+
+**Merge updates to main guides**:
+
+```bash
+# Only proceed if all checks pass
+if [ "$MERGE_BLOCKED" != "true" ]; then
+    for updated_guide in specs/active/sync-guides-{timestamp}/updated/*.md; do
+        guide_name=$(basename "$updated_guide")
+
+        # Create backup
+        cp "specs/guides/$guide_name" "specs/active/sync-guides-{timestamp}/backups/$guide_name.backup"
+
+        # Merge update
+        cp "$updated_guide" "specs/guides/$guide_name"
+
+        echo "✓ Merged $guide_name"
+    done
+else
+    echo "❌ MERGE BLOCKED: Fix verification issues first"
+    exit 1
+fi
+```
+
+**Output**: "✓ Checkpoint 5 complete - All subagent updates reviewed and merged ({count} guides updated)"
+
+---
+
+### Checkpoint 6: Final Validation (MANDATORY)
+
+**Re-verify EVERYTHING in the updated guides**:
+
+```bash
+# Re-extract and verify all code snippets from updated guides
+for guide in specs/guides/*.md; do
+    guide_name=$(basename "$guide" .md)
+    echo "Final validation of $guide..."
+
+    # Extract Python snippets
+    python -c "
+import re
+guide_path = '$guide'
+with open(guide_path) as f:
+    content = f.read()
+code_blocks = re.findall(r'\\`\\`\\`python\\n(.*?)\\`\\`\\`', content, re.DOTALL)
+print(f'Found {len(code_blocks)} Python snippets')
+
+# Check each has VERIFIED comment
+for i, code in enumerate(code_blocks):
+    if '# VERIFIED:' not in code:
+        print(f'❌ ERROR: Snippet {i+1} in $guide_name not verified!')
+        exit(1)
+print('✓ All snippets verified')
+"
+
+    if [ $? -ne 0 ]; then
+        echo "❌ CRITICAL: Final validation failed for $guide"
+        FINAL_VALIDATION_FAILED=true
+    fi
+done
+
+if [ "$FINAL_VALIDATION_FAILED" = "true" ]; then
+    echo "❌ CRITICAL: Final validation FAILED. Rolling back changes..."
+    for backup in specs/active/sync-guides-{timestamp}/backups/*.backup; do
+        guide_name=$(basename "$backup" .backup)
+        cp "$backup" "specs/guides/$guide_name"
+    done
+    exit 1
+fi
+```
+
+**Test sample commands from guides**:
+
+```bash
+# Run a sample of commands to ensure they work
+pytest tests/unit --help > /dev/null || echo "❌ pytest command test failed"
+make --help > /dev/null || echo "❌ make command test failed"
+python -m py_compile --help > /dev/null || echo "❌ py_compile test failed"
+```
+
+**Output**: "✓ Checkpoint 6 complete - Final validation passed, all guides verified"
+
+---
+
+### Checkpoint 7: Git Verification (MANDATORY)
+
+**Ensure ONLY `specs/guides/` files were modified**:
+
+```bash
+# Check for changes outside specs/guides
+git status --porcelain | grep -v "specs/guides/" | grep -v "specs/active/"
+
+# If command returns anything, VIOLATION!
+```
+
+**Expected result**: Empty (no output) or only specs/guides/ and specs/active/ changes
+
+**Generate change summary**:
+
+```bash
+# Show what changed
+echo "=== Guide Synchronization Summary ===" > specs/active/sync-guides-{timestamp}/summary.md
+echo "" >> specs/active/sync-guides-{timestamp}/summary.md
+
+for guide in specs/guides/*.md; do
+    guide_name=$(basename "$guide")
+
+    if git diff --quiet "specs/guides/$guide_name"; then
+        echo "- $guide_name: No changes" >> specs/active/sync-guides-{timestamp}/summary.md
+    else
+        lines_changed=$(git diff --numstat "specs/guides/$guide_name" | awk '{print "+"$1" -"$2}')
+        echo "- $guide_name: $lines_changed" >> specs/active/sync-guides-{timestamp}/summary.md
+    fi
+done
+
+cat specs/active/sync-guides-{timestamp}/summary.md
+```
+
+**Output**: "✓ Checkpoint 7 complete - Git verification passed, only specs/guides/ modified"
+
+---
+
+### Checkpoint 8: Final Summary (COMPLETE)
+
+**Provide comprehensive summary**:
+
+```
+Guide Synchronization Complete ✓
+
+**Workspace**: specs/active/sync-guides-{timestamp}/
+
+**Guides Analyzed**: {count}
+**Guides Updated**: {count}
+**Guides Unchanged**: {count}
+
+**Code Snippets Processed**: {total_count}
+**Code Snippets Verified**: {verified_count}
+**Code Snippets Fixed**: {fixed_count}
+
+**Subagents Launched**: {count}
+**Gap Reports Generated**: {count}
+
+**Verification Report**: specs/active/sync-guides-{timestamp}/verification_report.md
+**Change Summary**: specs/active/sync-guides-{timestamp}/summary.md
+**Backups**: specs/active/sync-guides-{timestamp}/backups/
+
+All documentation now accurately reflects the current GOE codebase.
+Every code snippet has been verified.
+All commands have been tested.
+```
+
+**Output**: "✓ Checkpoint 8 complete - Guide synchronization finished"
+
+---
+
+## Acceptance Criteria (ALL MUST BE TRUE)
+
+- [ ] **Context Loaded**: All existing guides read and understood
+- [ ] **Codebase Analyzed**: Comprehensive discovery with Zen Analyze
+- [ ] **All Snippets Extracted**: Every code block extracted from every guide
+- [ ] **100% Snippet Verification**: EVERY code snippet verified (syntax, file refs, functionality)
+- [ ] **Subagent Per Guide**: Each guide processed by dedicated subagent
+- [ ] **Gap Analysis Complete**: All discrepancies identified with Crash (15+ steps per guide)
+- [ ] **All Updates Applied**: Updated guides merged back to specs/guides/
+- [ ] **Final Validation Passed**: Re-verification of all updated guides successful
+- [ ] **Git Clean**: Only specs/guides/ and specs/active/ modified
+- [ ] **Zero Unverified Code**: NO code snippets without verification comments
+
+---
+
+## Anti-Patterns to Avoid
+
+❌ **Skipping code verification** - EVERY snippet must be verified, no exceptions
+❌ **Not using subagents** - Each guide must have its own subagent
+❌ **Incomplete gap analysis** - Must use Crash with minimum 15 steps per guide
+❌ **Merging without validation** - Must re-verify after updates
+❌ **Ignoring failed tests** - Any command/example that doesn't work must be fixed or removed
+❌ **Vague updates** - All changes must be specific and traceable to codebase
+
+---
+
+Begin guide synchronization for GOE project.
+"""
