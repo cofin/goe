@@ -69,7 +69,7 @@ research:
 
 | Task ID | Title | State | Dependencies | Target Files | Verification Strategy |
 | :--- | :--- | :---: | :--- | :--- | :--- |
-| `pyproject_modernization` | Migrate pyproject.toml to Hatchling, PEP 735 Dependency Groups, Ruff, and UV | open | None | `pyproject.toml`, `uv.lock` | `static_validation` |
+| `pyproject_modernization` | Migrate pyproject.toml to Hatchling, PEP 735 Dependency Groups, Ruff, and UV | closed | None | `pyproject.toml`, `uv.lock` | `static_validation` |
 | `ruff_formatting_lint_pass` | Code Quality, Formatting & Ruff Linting Pass | open | `pyproject_modernization` | `src/goe/`, `tests/`, `tools/`, `pyproject.toml` | `characterization` |
 | `makefile_modernization` | Modernize Makefile with DMA Standards, UV Execution & Preserved Packaging | open | `pyproject_modernization`, `ruff_formatting_lint_pass` | `Makefile` | `static_validation` |
 | `github_actions_ci_workflows` | Scaffold GitHub Actions CI/CD Workflows & Standalone PyApp Packaging | open | `pyproject_modernization`, `ruff_formatting_lint_pass`, `makefile_modernization` | `.github/workflows/ci.yaml`, `.github/workflows/test.yaml`, `.github/workflows/release.yaml`, `tools/bundle_python.py` | `static_validation` |

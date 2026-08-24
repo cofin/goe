@@ -109,10 +109,7 @@ from tests.testlib.test_framework.frontend_testing_api import (
     FrontendTestingApiException,
     FrontendTestingApiInterface,
 )
-from tests.testlib.test_framework.test_functions import (
-    get_test_set_sql_path,
-    goe_wide_max_columns,
-)
+from tests.testlib.test_framework.test_functions import goe_wide_max_columns
 from tests.testlib.test_framework.test_value_generators import TestDecimal
 
 logger = logging.getLogger(__name__)

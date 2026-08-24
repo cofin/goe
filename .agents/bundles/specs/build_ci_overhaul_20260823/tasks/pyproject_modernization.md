@@ -3,9 +3,9 @@ type: Task
 id: build_ci_overhaul_20260823:pyproject_modernization
 title: Migrate pyproject.toml to Hatchling, PEP 735 Dependency Groups, Ruff, and UV
 description: Migrate pyproject.toml to Hatchling build backend, PEP 735 dependency groups, Ruff, and UV lockfile.
-state: open
+state: closed
 created_at: "2026-08-23T01:15:00Z"
-updated_at: "2026-08-24T21:45:00Z"
+updated_at: "2026-08-24T22:13:00Z"
 tags:
   - migration
   - build

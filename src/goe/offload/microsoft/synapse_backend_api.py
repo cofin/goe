@@ -575,6 +575,8 @@ class BackendSynapseApi(BackendApiInterface):
             self._log_or_not(
                 "%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level
             )
+            if not self._cursor:
+                return [] if fetch_action == FETCH_ACTION_ALL else None
             if query_params:
                 self._log_or_not(
                     "%s SQL parameters: %s" % (self._sql_engine_name, query_params),
