@@ -71,7 +71,7 @@ research:
 | :--- | :--- | :---: | :--- | :--- | :--- |
 | `pyproject_modernization` | Migrate pyproject.toml to Hatchling, PEP 735 Dependency Groups, Ruff, and UV | closed | None | `pyproject.toml`, `uv.lock` | `static_validation` |
 | `ruff_formatting_lint_pass` | Code Quality, Formatting & Ruff Linting Pass | closed | `pyproject_modernization` | `src/goe/`, `tests/`, `tools/`, `pyproject.toml` | `characterization` |
-| `makefile_modernization` | Modernize Makefile with DMA Standards, UV Execution & Preserved Packaging | open | `pyproject_modernization`, `ruff_formatting_lint_pass` | `Makefile` | `static_validation` |
+| `makefile_modernization` | Modernize Makefile with DMA Standards, UV Execution & Preserved Packaging | closed | `pyproject_modernization`, `ruff_formatting_lint_pass` | `Makefile` | `static_validation` |
 | `github_actions_ci_workflows` | Scaffold GitHub Actions CI/CD Workflows & Standalone PyApp Packaging | open | `pyproject_modernization`, `ruff_formatting_lint_pass`, `makefile_modernization` | `.github/workflows/ci.yaml`, `.github/workflows/test.yaml`, `.github/workflows/release.yaml`, `tools/bundle_python.py` | `static_validation` |
 | `knowledge_and_workflow_reconciliation` | Reconcile Knowledge Base & Context Files with Modern Tooling | open | `pyproject_modernization`, `ruff_formatting_lint_pass`, `makefile_modernization`, `github_actions_ci_workflows` | `.agents/bundles/knowledge/workflow.md`, `standards/python.md`, `standards/testing.md`, `.agents/bundles/log.md`, `AGENTS.md` | `documentation_validation` |
 
