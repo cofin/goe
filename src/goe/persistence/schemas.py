@@ -15,10 +15,7 @@
 from typing import Any
 
 import msgspec
-
-from goe.util.serialization import _default
-
-_schema_encoder = msgspec.json.Encoder(enc_hook=_default)
+from sqlspec.utils.serializers import to_json
 
 
 class StepDetailSchema(msgspec.Struct, kw_only=True):
@@ -81,12 +78,12 @@ class PartitionMetadataSchema(msgspec.Struct, kw_only=True):
 
 def encode_schema(struct: msgspec.Struct) -> str:
     """Encode a msgspec Struct to a JSON string."""
-    return _schema_encoder.encode(struct).decode()
+    return to_json(struct)
 
 
 def encode_schema_bytes(struct: msgspec.Struct) -> bytes:
     """Encode a msgspec Struct to JSON bytes."""
-    return _schema_encoder.encode(struct)
+    return to_json(struct, as_bytes=True)
 
 
 def decode_schema[T: msgspec.Struct](schema_type: type[T], payload: bytes | str) -> T:

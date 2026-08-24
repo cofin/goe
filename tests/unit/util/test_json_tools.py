@@ -27,6 +27,7 @@ from goe.util.json_tools import (
     serialize_object,
     serialize_object_bytes,
 )
+from goe.util.serialization import DEFAULT_TYPE_ENCODERS
 
 
 class MockExecutionId:
@@ -40,6 +41,10 @@ class MockExecutionId:
 class MockPredicate:
     def __init__(self, dsl: str):
         self.dsl = dsl
+
+
+DEFAULT_TYPE_ENCODERS[MockExecutionId] = str
+DEFAULT_TYPE_ENCODERS[MockPredicate] = lambda obj: obj.dsl
 
 
 def test_serialize_primitives():

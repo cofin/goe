@@ -25,37 +25,18 @@ from sqlspec.utils.serializers import (
 )
 
 
-def _default(obj: Any) -> Any:
-    """Fallback serialization hook handling custom domain objects with .dsl or .id."""
-    if hasattr(obj, "dsl"):
-        return obj.dsl
-    if hasattr(obj, "id"):
-        return str(obj.id)
-    return str(obj)
-
-
 def serialize_object(obj: Any) -> str:
-    """Encodes an object to a JSON string using sqlspec/msgspec."""
-    try:
-        return to_json(obj)
-    except Exception:
-        from msgspec.json import Encoder
-
-        return Encoder(enc_hook=_default).encode(obj).decode()
+    """Encodes an object to a JSON string using sqlspec."""
+    return to_json(obj)
 
 
 def serialize_object_bytes(obj: Any) -> bytes:
-    """Encodes an object to JSON bytes using sqlspec/msgspec."""
-    try:
-        return to_json(obj, as_bytes=True)
-    except Exception:
-        from msgspec.json import Encoder
-
-        return Encoder(enc_hook=_default).encode(obj)
+    """Encodes an object to JSON bytes using sqlspec."""
+    return to_json(obj, as_bytes=True)
 
 
 def deserialize_object(obj: bytes | bytearray | memoryview | str) -> Any:
-    """Decodes a JSON payload to a Python object using sqlspec/msgspec."""
+    """Decodes a JSON payload to a Python object using sqlspec."""
     return from_json(obj)
 
 
