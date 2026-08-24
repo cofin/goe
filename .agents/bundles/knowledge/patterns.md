@@ -27,7 +27,11 @@ tags:
   - `src/goe/util/text.py`: Re-exports `camelize`, `pascalize`, `snake_case`, `kebabize`, `slugify`, `quote_identifier`, `split_qualified_identifier` from `sqlspec.utils.text`.
   - `src/goe/util/env.py`: Re-exports `get_env`, `get_env_with_aliases`, `get_config_val`, `is_env_set` from `sqlspec.utils.env`.
   - `src/goe/util/uuids.py`: Re-exports `uuid4`, `uuid7`, `nanoid` from `sqlspec.utils.uuids`.
-- **Pure `msgspec.Struct` Schemas**: Define metadata and telemetry schemas in `src/goe/persistence/schemas.py` directly as `msgspec.Struct` models without redundant client wrapper classes.
+- **Centralized Rich-Click CLI Architecture**:
+  - Single authoritative entrypoint in `pyproject.toml` via `[project.scripts] goe = "goe.cli.main:cli"`.
+  - Brand-aligned styling and layout in `src/goe/cli/config.py` using Google Cloud color palette (`#4285F4`, `#34A853`, `#FBBC04`, `#EA4335`), structured command groups (`🚀 Core Orchestration Commands`, `⚙️ Service & Maintenance Commands`), and logical option groups for complex commands.
+  - Subcommands in `src/goe/cli/commands/` (`offload`, `connect`, `validate`, `sync`, `report`, `logmgr`, `listener`) adapting cleanly to orchestration and execution layers.
+  - Legacy `bin/` entrypoints (`bin/offload`, `bin/connect`, `bin/agg_validate`, `bin/schema_sync`, `bin/logmgr`, `bin/listener`, `bin/offload_status_report`) maintained as lightweight in-process Python wrappers emitting `DeprecationWarning` notices and delegating to `goe <subcommand> "$@"`.
 - Three-tier column mapping: Source RDBMS Column -> `CanonicalColumn` -> Target Backend Column.
 - Two-phase data ingestion: Staged extraction to GCS/S3/ABFS -> Atomic `INSERT SELECT` / `COPY INTO`.
 - Event streaming via Redis `goe:run:<execution_id>` for real-time telemetry and UI listeners.
