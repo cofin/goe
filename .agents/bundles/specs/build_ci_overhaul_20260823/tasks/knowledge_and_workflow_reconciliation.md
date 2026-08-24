@@ -5,7 +5,7 @@ title: Reconcile Knowledge Base & Context Files with Modern Tooling
 description: Reconcile Flow knowledge chapters, development standards, and root instructions with modernized tooling.
 state: open
 created_at: "2026-08-23T01:15:00Z"
-updated_at: "2026-08-23T01:15:00Z"
+updated_at: "2026-08-24T21:45:00Z"
 tags:
   - docs
   - workflow
@@ -23,27 +23,27 @@ files:
   - .agents/bundles/log.md
   - AGENTS.md
 tests:
-verification_strategy: documentation_validation
+  - tests/unit
+verification_strategy: static_validation
 ---
 
 # Task: Reconcile Knowledge Base & Context Files with Modern Tooling
 
 ## Objective
-Update all Flow knowledge chapters, development standards, and root context files to reflect the modernized Hatchling, UV, Ruff, and Makefile canonical commands and workflows.
+Update all Flow knowledge chapters, development standards, change logs, and root context files (`AGENTS.md`) to reflect the modernized Hatchling, UV, Ruff, and Makefile tooling, ensuring all "truth" markers and code snippets remain accurate.
 
 ## Implementation Details
 
-1. **`knowledge/workflow.md`**:
-   - Update truth markers and canonical commands: `make install`, `make lint`, `make format`, `make test-unit`, `uv run pytest`, `uv build`.
-2. **`knowledge/standards/python.md` & `standards/testing.md`**:
-   - Document `ruff` as the single authoritative linter and formatter.
-   - Document `uv sync` and PEP 735 dependency groups for test execution.
-3. **`AGENTS.md`**:
-   - Synchronize core invariants and developer command references.
-4. **`bundles/log.md`**:
-   - Record completion of `build_ci_overhaul_20260823`.
+1. Update `.agents/bundles/knowledge/workflow.md`:
+   - Update truth block with `uv run ruff format`, `uv run ruff check`, `make install`, `uv run pytest tests/unit`.
+2. Update `.agents/bundles/knowledge/standards/python.md`:
+   - Document Python 3.10+ requirement, Ruff linter/formatter rules (`line-length = 120`), Mypy configuration.
+3. Update `.agents/bundles/knowledge/standards/testing.md`:
+   - Document pytest commands with UV prefix and client certificate suppression.
+4. Append change entry to `.agents/bundles/log.md`.
+5. Synchronize root `AGENTS.md`.
 
 ## Verification
-- **Strategy**: `documentation_validation`
-- **Initial Evidence**: Knowledge chapters contain stale references to `setuptools` and `black`.
-- **Final Evidence**: All knowledge chapters updated; all internal markdown links resolve; truth blocks remain <= 40 lines.
+- **Strategy**: `static_validation`
+- **Initial Evidence**: Documentation references legacy `black` formatting and `setuptools`.
+- **Final Evidence**: All knowledge documents and `AGENTS.md` reflect current tooling commands; all links resolve cleanly.\n

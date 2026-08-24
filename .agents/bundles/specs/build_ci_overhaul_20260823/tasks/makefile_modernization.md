@@ -5,7 +5,7 @@ title: Modernize Makefile with DMA Standards & UV Commands
 description: Modernize top-level Makefile with standard DMA developer targets, color output, and UV execution.
 state: open
 created_at: "2026-08-23T01:15:00Z"
-updated_at: "2026-08-23T01:15:00Z"
+updated_at: "2026-08-24T21:45:00Z"
 tags:
   - refactor
   - build
@@ -24,33 +24,20 @@ verification_strategy: static_validation
 # Task: Modernize Makefile with DMA Standards & UV Commands
 
 ## Objective
-Re-engineer the top-level `Makefile` to follow the DMA standard architecture: self-documenting `make help`, ANSI color styling, `uv` command execution, and structured targets for developer lifecycle operations, while preserving all sub-make targets required for deployment packaging.
+Re-engineer the top-level `Makefile` to follow the DMA standard architecture: self-documenting `make help`, ANSI color styling, `uv` command execution wrappers, and standard targets (`install`, `upgrade`, `lint`, `format`, `test`, `test-unit`, `test-integration`, `build`, `clean`, `destroy`), while preserving all existing sub-make packaging orchestration rules (`target`, `spark-listener`, `spark-basic-auth`, `package-spark-standalone`, `offload-env`, `offload-home-check`, `package`, `python-goe`).
 
 ## Implementation Details
 
-1. **Header & Help Formatting**:
-   - Add `.ONESHELL:`, `.EXPORT_ALL_VARIABLES:`, `.DEFAULT_GOAL:=help`, and colorized `help` target parsing doc comments (`##`).
-2. **Developer Targets**:
-   - `install`: Runs `uv sync --all-extras --dev`.
-   - `install-dev`: Backward-compatible alias for `install`.
-   - `upgrade`: Updates `uv` and runs `uv sync --upgrade`.
-   - `lint`: Runs `uv run ruff check src tests tools` and `uv run mypy src`.
-   - `format`: Runs `uv run ruff format src tests tools` and `uv run ruff check --fix src tests tools`.
-   - `test`: Runs `uv run pytest tests/unit`.
-   - `test-unit`: Explicit target for unit tests with certificate env flag.
-   - `test-integration`: Explicit target for parallel integration tests.
-   - `build`: Runs `uv build` (producing wheel and sdist into `dist/`).
-   - `clean` & `destroy`: Purges caches, `.venv`, `build/`, `dist/`, and test artifacts cleanly.
-3. **Preserved Sub-Make & Packaging Orchestration Targets**:
-   - `target`: Compiles runtime tree, injects version/build hash into SQL scripts, and stages templates.
-   - `spark-listener`: Invokes `tools/spark-listener/Makefile`.
-   - `spark-basic-auth`: Invokes `spark-basic-auth/Makefile`.
-   - `package-spark-standalone`: Packages transport and Spark listener binaries.
-   - `offload-env`: Invokes `templates/conf/Makefile`.
-   - `offload-home-check`: Asserts `$OFFLOAD_HOME` is set.
-   - `package`: Invokes `target` and `target/Makefile` to generate `goe_<version>.tar.gz`.
+1. Implement `.DEFAULT_GOAL:=help`, `.ONESHELL:`, `.EXPORT_ALL_VARIABLES:`, `MAKEFLAGS += --no-print-directory`.
+2. Add ANSI color scheme and self-documenting `awk` help target.
+3. Wrap `uv sync --all-extras --dev` in `install`, `install-dev`, and `install-dev-extras`.
+4. Wrap `uv lock --upgrade` in `upgrade`.
+5. Wrap `uv run ruff` and `uv run mypy` in `lint` and `format`.
+6. Wrap `uv run pytest` in `test`, `test-unit`, and `test-integration`.
+7. Wrap `uv build` in `build` and `python-goe`.
+8. Preserve `target` rule constructing `$(TARGET_DIR)`.
 
 ## Verification
 - **Strategy**: `static_validation`
-- **Initial Evidence**: Legacy `Makefile` using raw pip and manual venv commands.
-- **Final Evidence**: `make help` renders styled target list; `make lint`, `make format`, `make test-unit`, `make build` execute successfully.
+- **Initial Evidence**: Legacy `Makefile` using raw pip commands.
+- **Final Evidence**: `make help` displays styled help menu; `make lint`, `make format`, `make test-unit`, and `make build` execute successfully.\n

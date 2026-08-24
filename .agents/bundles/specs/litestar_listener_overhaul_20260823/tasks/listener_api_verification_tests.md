@@ -5,7 +5,7 @@ title: Implement End-to-End Litestar Listener API & Contract Test Suite
 description: Implement comprehensive end-to-end API test suite using Litestar AsyncTestClient.
 state: open
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-23T15:25:00Z"
+updated_at: "2026-08-24T21:45:00Z"
 tags:
   - test
   - testing
@@ -17,7 +17,14 @@ depends_on:
   - litestar_listener_overhaul_20260823:litestar_queues_and_workers
   - litestar_listener_overhaul_20260823:litestar_granian_and_mcp
 files:
-  - tests/unit/listener/
+  - tests/unit/listener/__init__.py
+  - tests/unit/listener/conftest.py
+  - tests/unit/listener/test_system_controllers.py
+  - tests/unit/listener/test_orchestration_controllers.py
+  - tests/unit/listener/test_security_guards.py
+  - tests/unit/listener/test_queues_and_workers.py
+  - tests/unit/listener/test_granian_server.py
+  - tests/unit/listener/test_mcp_tools.py
 tests:
   - tests/unit/listener/
 verification_strategy: behavior_tdd
@@ -26,18 +33,20 @@ verification_strategy: behavior_tdd
 # Task: Implement End-to-End Litestar Listener API & Contract Test Suite
 
 ## Objective
-Author a comprehensive unit and integration test suite using Litestar's `TestClient` and `AsyncTestClient` to verify all REST routes, security guards, error responses, and OpenAPI schema compliance.
+Author a comprehensive unit and integration test suite in `tests/unit/listener/` using Litestar's `AsyncTestClient` to verify all REST routes, security guards, error responses, dependency injection, and OpenAPI schema compliance.
 
-## Implementation Details
+## Test Matrix
+- `test_system_controllers.py`: `/status/`, `/config/`, `/schemas/`, `/schemas/{schema}/`, `/columns/`, `/partitions/`
+- `test_orchestration_controllers.py`: `/executions/`, `/executions/{id}/`, `/executions/{id}/execution-log/`, `/offload/`
+- `test_security_guards.py`: Missing token (401), invalid token (401), valid token (200), OpenAPI docs bypass
+- `test_queues_and_workers.py`: `litestar-queues` tasks execution and cron scheduling
+- `test_granian_server.py`: Granian server configuration assembly
+- `test_mcp_tools.py`: `litestar-mcp` tools and resources endpoints
 
-1. Create `tests/unit/listener/conftest.py` providing test client fixtures with security mocks.
-2. Create test modules:
-   - `test_system_routes.py`: Verifies `/api/system/health`, `/api/system/version`, and OpenAPI docs.
-   - `test_orchestration_routes.py`: Verifies `/api/orchestration/executions`, `/api/orchestration/offload`, and `/api/orchestration/schemas`.
-   - `test_security_guards.py`: Verifies header token validation, missing keys, and invalid tokens.
-   - `test_mcp_endpoints.py`: Verifies MCP tool invocation and response structures.
-
-## Verification
+## Verification Strategy
 - **Strategy**: `behavior_tdd`
-- **Initial Evidence**: Legacy tests targeting FastAPI routes.
-- **Final Evidence**: `uv run pytest tests/unit/listener/` passes 100% green; zero FastAPI dependencies remaining.
+- **CLI Command**:
+  ```bash
+  export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/listener/ -v
+  ```
+- **Expected Output**: 100% passing tests with zero regressions.\n

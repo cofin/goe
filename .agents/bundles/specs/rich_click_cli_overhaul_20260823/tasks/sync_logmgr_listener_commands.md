@@ -5,7 +5,7 @@ title: Implement goe sync, goe logmgr, and goe listener Subcommands
 description: Implement goe sync, goe logmgr, and goe listener subcommands within the unified CLI suite.
 state: open
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-23T15:25:00Z"
+updated_at: "2026-08-24T21:45:00Z"
 tags:
   - feature
   - cli
@@ -18,26 +18,27 @@ files:
   - src/goe/cli/commands/sync.py
   - src/goe/cli/commands/logmgr.py
   - src/goe/cli/commands/listener.py
+  - src/goe/schema_sync/schema_sync.py
 tests:
-  - tests/unit
+  - tests/unit/cli/test_sync_command.py
+  - tests/unit/cli/test_logmgr_command.py
 verification_strategy: behavior_tdd
 ---
 
 # Task: Implement goe sync, goe logmgr, and goe listener Subcommands
 
 ## Objective
-Implement `goe sync` (`schema_sync` drift detection & DDL execution), `goe logmgr` (log rotation & archiving), and `goe listener` (listener service runner) subcommands in the unified Click CLI.
+Implement `src/goe/cli/commands/sync.py` (schema drift analysis and automated DDL migration), `src/goe/cli/commands/logmgr.py` (cross-platform log rotation and archive management replacing bash script), and `src/goe/cli/commands/listener.py` (service startup, stop, and status).
 
 ## Implementation Details
+1. Create `src/goe/cli/commands/sync.py` executing `schema_sync`.
+2. Create `src/goe/cli/commands/logmgr.py` implementing pure Python log archiving and purging.
+3. Create `src/goe/cli/commands/listener.py` exposing `start`, `stop`, `status` subcommands.
 
-1. Create `src/goe/cli/commands/sync.py`:
-   - Inspect schema drift between source RDBMS and target DW; render planned DDL modifications with Rich syntax highlighting.
-2. Create `src/goe/cli/commands/logmgr.py`:
-   - Purge or archive old offload logs from `$OFFLOAD_HOME/log/`.
-3. Create `src/goe/cli/commands/listener.py`:
-   - Start and stop the Listener service and workers.
-
-## Verification
+## Verification Strategy
 - **Strategy**: `behavior_tdd`
-- **Initial Evidence**: Missing `goe sync`, `goe logmgr`, and `goe listener` commands.
-- **Final Evidence**: `uv run goe sync --help`, `uv run goe logmgr --help`, `uv run goe listener --help` execute cleanly; unit tests pass with `CliRunner`.
+- **CLI Command**:
+  ```bash
+  export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/cli/test_sync_command.py tests/unit/cli/test_logmgr_command.py -v
+  ```
+- **Expected Output**: Sync and Logmgr unit tests pass green.\n

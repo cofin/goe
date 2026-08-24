@@ -5,7 +5,7 @@ title: Integrate SQLSpec Library & Define msgspec Struct Schemas
 description: Integrate SQLSpec database abstraction library and define typed msgspec.Struct models for schemas.
 state: open
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-23T15:25:00Z"
+updated_at: "2026-08-24T21:45:00Z"
 tags:
   - feature
   - sqlspec
@@ -17,25 +17,38 @@ depends_on:
 files:
   - pyproject.toml
   - src/goe/persistence/schemas.py
+  - src/goe/persistence/sqlspec_client.py
 tests:
-  - tests/unit
+  - tests/unit/persistence/test_schemas.py
 verification_strategy: static_validation
 ---
 
 # Task: Integrate SQLSpec Library & Define msgspec Struct Schemas
 
 ## Objective
-Integrate `sqlspec[duckdb,performance,asyncpg,mypyc,fsspec,uuid,adbc,oracledb,adk]>=0.61.0` into the project dependency tree and define typed `msgspec.Struct` models for execution metadata, system state, and schema definitions.
+Add `sqlspec[duckdb,performance,asyncpg,mypyc,fsspec,uuid,adbc,oracledb,adk]>=0.61.0` and `msgspec>=0.19.0` to `pyproject.toml` (while removing `orjson`), define typed `msgspec.Struct` models in `src/goe/persistence/schemas.py` for execution metadata and telemetry, and scaffold `src/goe/persistence/sqlspec_client.py`.
 
-## Implementation Details
+## Target File Changes
 
-1. Add `sqlspec` to `pyproject.toml` dependencies and lockfile.
-2. Create `src/goe/persistence/schemas.py` defining core typed `msgspec.Struct` models:
-   - `CommandExecutionSchema` (fields: `id`, `command`, `status`, `start_time`, `end_time`, `options`, `messages`).
-   - `OffloadMetadataSchema` (fields: `source_table`, `target_table`, `offload_mode`, `columns`, `partitions`).
-3. Provide decoder/encoder helper methods on schemas.
+1. **`pyproject.toml`**: Add `msgspec` and `sqlspec`, remove `orjson`.
+2. **`src/goe/persistence/schemas.py`**:
+   - `StepDetailSchema(msgspec.Struct)`
+   - `CommandExecutionSchema(msgspec.Struct)`
+   - `OffloadMetadataSchema(msgspec.Struct)`
+   - `LogEventSchema(msgspec.Struct)`
+   - `encode_schema` and `decode_schema` helper functions.
+3. **`src/goe/persistence/sqlspec_client.py`**: Scaffold SQLSpec client interface.
 
-## Verification
+## Itemized Checklist
+- [ ] Update `pyproject.toml` with `msgspec` and `sqlspec`.
+- [ ] Create `src/goe/persistence/schemas.py`.
+- [ ] Create `src/goe/persistence/sqlspec_client.py`.
+- [ ] Create `tests/unit/persistence/test_schemas.py`.
+
+## Verification Strategy
 - **Strategy**: `static_validation`
-- **Initial Evidence**: Absence of `src/goe/persistence/schemas.py` and `sqlspec` dependency.
-- **Final Evidence**: `uv run python -c "import sqlspec, msgspec; from goe.persistence.schemas import CommandExecutionSchema; print('SQLSpec & Structs OK')"` executes successfully.
+- **CLI Command**:
+  ```bash
+  export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/persistence/test_schemas.py -v
+  ```
+- **Expected Output**: Schema encoding/decoding tests pass green.\n

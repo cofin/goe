@@ -5,7 +5,7 @@ title: Migrate OffloadMessages Redis Publishing to msgspec
 description: Migrate OffloadMessages Redis pub/sub message encoding and log telemetry to msgspec.
 state: open
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-23T15:25:00Z"
+updated_at: "2026-08-24T21:45:00Z"
 tags:
   - migration
   - messaging
@@ -16,21 +16,32 @@ depends_on:
 files:
   - src/goe/offload/offload_messages.py
 tests:
-  - tests/unit
+  - tests/unit/offload/test_offload_messages.py
 verification_strategy: characterization
 ---
 
 # Task: Migrate OffloadMessages Redis Publishing to msgspec
 
 ## Objective
-Update `src/goe/offload/offload_messages.py` to serialize log messages and execution status events published to Redis using `msgspec`, eliminating `orjson`.
+Update `src/goe/offload/offload_messages.py` to eliminate `orjson` and serialize real-time log messages published to Redis using `msgspec`, ensuring zero-overhead encoding and resilient exception handling.
 
-## Implementation Details
+## Target File Changes
+- Remove `import orjson` from line 28.
+- Import `serialize_object` from `goe.util.json_tools`.
+- Delete duplicate `serialize_object` definition (lines 85–95).
+- Use `serialize_object({"message": line})` for Redis `cache.rpush`.
 
-1. Replace `orjson.dumps(dict_msg).decode()` in `OffloadMessages._publish_to_redis()` with `msgspec.json.encode(dict_msg).decode("utf-8")`.
-2. Ensure message dictionary structuring remains intact for downstream Redis subscribers.
+## Itemized Checklist
+- [ ] Remove `import orjson` from `src/goe/offload/offload_messages.py`.
+- [ ] Import `serialize_object` from `goe.util.json_tools`.
+- [ ] Remove duplicate `serialize_object` function body.
+- [ ] Verify Redis list pushing (`goe:run:{execution_id}`) functions identically.
+- [ ] Run `tests/unit/offload/test_offload_messages.py`.
 
-## Verification
+## Verification Strategy
 - **Strategy**: `characterization`
-- **Initial Evidence**: Baseline tests passing for offload messaging.
-- **Final Evidence**: Unit tests in `tests/unit/` pass cleanly; zero `orjson` imports in `offload_messages.py`.
+- **CLI Command**:
+  ```bash
+  export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/offload/test_offload_messages.py -v
+  ```
+- **Expected Output**: Offload messages unit tests pass 100% green.\n
