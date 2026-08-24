@@ -14,7 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Backward-compatible wrapper delegating to 'goe validate'."""
 
-from goe.scripts.agg_validate import main
+import sys
+import warnings
 
-main()
+from goe.cli.main import cli
+
+if __name__ == "__main__":
+    warnings.warn(
+        "Invoking 'bin/agg_validate' is deprecated. Please use 'goe validate' instead.",
+        DeprecationWarning,
+        stacklevel=1,
+    )
+    sys.argv.insert(1, "validate")
+    cli()

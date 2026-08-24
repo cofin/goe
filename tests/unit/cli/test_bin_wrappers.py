@@ -1,5 +1,3 @@
-#! /usr/bin/env python3
-
 # Copyright 2016 The GOE Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Backward-compatible wrapper delegating to 'goe sync'."""
+import subprocess
+from pathlib import Path
 
-import sys
-import warnings
+REPO_ROOT = Path(__file__).resolve().parents[3]
+BIN_DIR = REPO_ROOT / "bin"
 
-from goe.cli.main import cli
 
-if __name__ == "__main__":
-    warnings.warn(
-        "Invoking 'bin/schema_sync' is deprecated. Please use 'goe sync' instead.",
-        DeprecationWarning,
-        stacklevel=1,
-    )
-    sys.argv.insert(1, "sync")
-    cli()
+def test_bin_wrappers_executable():
+    wrappers = ["offload", "connect", "agg_validate", "schema_sync", "logmgr", "listener", "offload_status_report"]
+    for name in wrappers:
+        path = BIN_DIR / name
+        assert path.exists(), f"Missing wrapper {name}"
+        res = subprocess.run([str(path), "--help"], capture_output=True, text=True)
+        assert res.returncode == 0
+        assert "deprecated" in res.stderr.lower()

@@ -3,9 +3,9 @@ type: Task
 id: rich_click_cli_overhaul_20260823:bin_legacy_wrappers_and_testing
 title: Provide Backward-Compatible bin/ Wrappers and Comprehensive CLI Test Suite
 description: Update legacy bin/ scripts as backward-compatible delegation wrappers and add CLI unit tests.
-state: open
+state: complete
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-24T21:45:00Z"
+updated_at: "2026-08-24T23:30:00Z"
 tags:
   - refactor
   - cli

@@ -187,8 +187,8 @@ def post_process_args(args):
         args.frontend_parallelism = int(args.frontend_parallelism)
 
 
-def parse_args():
-    """Parse arguments and return "options" object"""
+def get_agg_validate_options():
+    """Build and return option parser for agg_validate."""
     parser = get_options_from_list(GOE_OPTIONS + HS2_OPTIONS)
 
     parser.add_option(
@@ -235,42 +235,45 @@ def parse_args():
         action="store_true",
         help="Do NOT include 'offloaded boundary check' in the list of filters 'offloaded boundary check' filter defines data that was offloaded to BACK-END database (as opposed to data that 'is sourced' from FRONT-END). For example: WHERE TIME_ID < timestamp '2015-07-01 00:00:00' which resulted from applying e.g. --older-than-date=2015-07-01 filter during offload.",
     )
+    return parser
 
+
+def parse_args():
+    """Parse arguments and return "options" object"""
+    parser = get_agg_validate_options()
     args, _ = parser.parse_args()
-
     post_process_args(args)
-
     return args
 
 
-def main():
-    """MAIN ROUTINE"""
-
-    config_file.check_config_path()
-    config_file.load_env()
-
-    args = parse_args()
+def run_agg_validate(args):
+    """Run aggregate validation with parsed args namespace."""
     init(args)
-
     init_log("agg_validate_%s" % args.owner_table)
     log("")
     log(PROG_BANNER, ansi_code="underline")
     log("Log file: %s" % get_log_fh_name())
 
     normalise_owner_table_options(args)
-
     set_logging(args.dev_log_level)
 
     try:
         messages = OffloadMessages.from_options(args)
-
-        ret = validate_table(args=args, messages=messages)
+        return validate_table(args=args, messages=messages)
     except Exception as exc:
         log("Exception caught at top-level", ansi_code="red")
         log_timestamp()
         log_exception(exc, log_fh=get_log_fh(), options=args)
         sys.exit(1)
 
+
+def main():
+    """MAIN ROUTINE"""
+    config_file.check_config_path()
+    config_file.load_env()
+
+    args = parse_args()
+    ret = run_agg_validate(args)
     sys.exit(0 if ret else 1)
 
 

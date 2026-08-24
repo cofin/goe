@@ -2,9 +2,9 @@
 type: Spec
 flow_id: rich_click_cli_overhaul_20260823
 title: Unified Rich-Click CLI Suite & Interactive Terminal UX
-state: planned
+state: implemented
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-24T21:45:00Z"
+updated_at: "2026-08-24T23:34:00Z"
 description: Complete overhaul and consolidation of legacy optparse scripts into a unified, rich-click CLI application (goe) with modular subcommands, option groups, styled terminal panels, backward-compatible bin/ wrappers, and comprehensive unit test suite.
 tags:
   - spec
@@ -102,12 +102,12 @@ flowchart TD
 ```
 
 ### Phase 1: Root CLI Application & Rich Configuration
-- [ ] `rich_click_cli_overhaul_20260823:cli_root_and_styling`: Build `src/goe/cli/main.py`, `config.py`, `console.py`, configure `rich-click` global markup, and register `[project.scripts] goe = "goe.cli.main:cli"`.
+- [x] `rich_click_cli_overhaul_20260823:cli_root_and_styling`: Build `src/goe/cli/main.py`, `config.py`, `console.py`, configure `rich-click` global markup, and register `[project.scripts] goe = "goe.cli.main:cli"`.
 
 ### Phase 2: Core Command Migration
-- [ ] `rich_click_cli_overhaul_20260823:offload_command_migration`: Implement `goe offload` migrating options from `optparse` to Click option groups and adapting execution to `OrchestrationRunner`.
-- [ ] `rich_click_cli_overhaul_20260823:connect_and_validate_commands`: Implement `goe connect` and `goe validate` subcommands with Rich status tables and progress displays.
-- [ ] `rich_click_cli_overhaul_20260823:sync_logmgr_listener_commands`: Implement `goe sync`, `goe logmgr`, and `goe listener` subcommands.
+- [x] `rich_click_cli_overhaul_20260823:offload_command_migration`: Implement `goe offload` migrating options from `optparse` to Click option groups and adapting execution to `OrchestrationRunner`.
+- [x] `rich_click_cli_overhaul_20260823:connect_and_validate_commands`: Implement `goe connect` and `goe validate` subcommands with Rich status tables and progress displays.
+- [x] `rich_click_cli_overhaul_20260823:sync_logmgr_listener_commands`: Implement `goe sync`, `goe logmgr`, and `goe listener` subcommands.
 
 ### Phase 3: Backward Compatibility & CLI Testing
-- [ ] `rich_click_cli_overhaul_20260823:bin_legacy_wrappers_and_testing`: Update `bin/` scripts to delegate cleanly to `goe` with deprecation notices and author comprehensive `CliRunner` unit test suite.\n
+- [x] `rich_click_cli_overhaul_20260823:bin_legacy_wrappers_and_testing`: Update `bin/` scripts to delegate cleanly to `goe` with deprecation notices and author comprehensive `CliRunner` unit test suite.\n

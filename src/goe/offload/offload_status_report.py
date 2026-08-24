@@ -82,7 +82,7 @@ SUMMARY_LEVEL = "summary"
 DEFAULT_OUTPUT_FORMAT = TEXT
 DEFAULT_OUTPUT_LEVEL = SUMMARY_LEVEL
 DEFAULT_REPORT_NAME = "Offload_Status_Report"
-DEFAULT_REPORT_DIRECTORY = "%s/log" % os.environ["OFFLOAD_HOME"]
+DEFAULT_REPORT_DIRECTORY = "%s/log" % os.environ.get("OFFLOAD_HOME", ".")
 DEFAULT_CSV_DELIMITER = ","
 DEFAULT_CSV_ENCLOSURE = '"'
 DEFAULT_DEMO_MODE = False
@@ -3742,11 +3742,13 @@ def incremental_partition_match(row_high_value, table_high_value, incremental_pr
     return bool(row_high_value <= table_high_value)
 
 
-def offload_status_report_run():
-    options = None
+def offload_status_report_run(options=None):
     try:
-        opt = get_offload_status_report_opts()
-        (options, args) = opt.parse_args()
+        if options is None:
+            opt = get_offload_status_report_opts()
+            (options, args) = opt.parse_args()
+        else:
+            opt = get_offload_status_report_opts()
 
         init(options)
         init_log("offload_status_report")

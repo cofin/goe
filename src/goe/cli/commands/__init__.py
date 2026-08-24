@@ -1,5 +1,3 @@
-#! /usr/bin/env python3
-
 # Copyright 2016 The GOE Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,18 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Backward-compatible wrapper delegating to 'goe sync'."""
-
-import sys
-import warnings
-
-from goe.cli.main import cli
-
-if __name__ == "__main__":
-    warnings.warn(
-        "Invoking 'bin/schema_sync' is deprecated. Please use 'goe sync' instead.",
-        DeprecationWarning,
-        stacklevel=1,
-    )
-    sys.argv.insert(1, "sync")
-    cli()
+"""Subcommand registrations for GOE CLI."""

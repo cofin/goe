@@ -14,11 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Backward-compatible wrapper delegating to 'goe connect'."""
 
-from goe.config.config_file import check_config_path
-from goe.connect.connect import connect
+import sys
+import warnings
 
+from goe.cli.main import cli
 
 if __name__ == "__main__":
-    check_config_path()
-    connect()
+    warnings.warn(
+        "Invoking 'bin/connect' is deprecated. Please use 'goe connect' instead.",
+        DeprecationWarning,
+        stacklevel=1,
+    )
+    sys.argv.insert(1, "connect")
+    cli()
