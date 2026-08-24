@@ -16,7 +16,7 @@ The GOE Listener (`src/goe/listener/`) exposes metadata, execution status, and a
 
 ## Application Architecture
 
-- **Framework**: FastAPI with `ORJSONResponse` default response class.
+- **Framework**: FastAPI with `msgspec` serialization and standard `JSONResponse`.
 - **Master Arbiter**: Gunicorn with custom `UvicornWorker` (`uvloop` event loop, `httptools` parser).
 - **Middleware**:
   - `CompressionMiddleware`: Streaming Brotli (`br`) and gzip compression.

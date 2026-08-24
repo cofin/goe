@@ -33,5 +33,5 @@ The Listener uses Redis as an async task queue, distributed cache, cluster servi
 
 ## Real-Time Event Streaming
 
-- During offload execution, log events from `OffloadMessages` are serialized via `orjson` and appended (`RPUSH`) to Redis key `goe:run:<execution_id>` with a 48-hour TTL.
+- During offload execution, log events from `OffloadMessages` are serialized via `msgspec` and appended (`RPUSH`) to Redis key `goe:run:<execution_id>` with a 48-hour TTL.
 - Allows external WebSockets and UI consoles to stream live offload progress without polling log files on disk.

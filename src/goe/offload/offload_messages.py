@@ -24,13 +24,10 @@ from datetime import datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-# Third Party Libraries
-import orjson
-
-# GOE
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.command_steps import STEP_TITLES, step_title
 from goe.util.goe_log_fh import GOELogFileHandle
+from goe.util.json_tools import serialize_object
 from goe.util.misc_functions import standard_log_name
 from goe.util.redis_tools import cache
 
@@ -79,17 +76,6 @@ FORCED_EXCEPTION_TEXT = "Forcing exception"
 logger = logging.getLogger(__name__)
 # Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-def serialize_object(obj) -> str:
-    """Encodes json with the optimized ORJSON package
-
-    orjson.dumps returns bytearray, so you can't pass it directly as json_serializer
-    """
-    return orjson.dumps(
-        obj,
-        option=orjson.OPT_NAIVE_UTC | orjson.OPT_SERIALIZE_NUMPY,
-    ).decode()
 
 
 class OffloadMessages:

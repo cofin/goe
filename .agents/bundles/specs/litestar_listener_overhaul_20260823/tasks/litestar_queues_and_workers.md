@@ -32,13 +32,14 @@ Replace custom daemon loops in `src/goe/listener/worker.py`, `src/goe/listener/c
 > Use `litestar-queues[sqlspec]`. Under no circumstances should `litestar-saq` or legacy `goelib_contrib.worker` be used.
 
 ## Implementation Details
-1. Create `src/goe/listener/tasks.py`:
+1. Replace `goelib_contrib.asyncer` (`asyncify`, `runnify`) across `src/goe/listener/` with `sqlspec.utils.sync_tools.async_` and `sqlspec.utils.portal.get_global_portal()`.
+2. Create `src/goe/listener/tasks.py`:
    - `@task(name="listener:publish_heartbeat")`
    - `@task(name="listener:publish_schemas")`
    - `@task(name="listener:publish_command_executions")`
    - `@task(name="listener:dispatch_async_offload")`
-2. Configure `QueuePlugin` with `CronJob` entries in `src/goe/listener/app.py`.
-3. Create `src/goe/listener/worker.py` worker startup script using `run_worker(app)`.
+3. Configure `QueuePlugin` with `CronJob` entries in `src/goe/listener/app.py`.
+4. Create `src/goe/listener/worker.py` worker startup script using `run_worker(app)`.
 
 ## Verification Strategy
 - **Strategy**: `behavior_tdd`

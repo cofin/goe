@@ -4,6 +4,12 @@ This file records significant lifecycle operations, structural additions, and ma
 
 ## 2026-08-24
 
+- **Msgspec & SQLSpec Modernization (Chapter 2)**:
+  - Added `sqlspec[performance,mypyc,oracledb,adbc,duckdb]>=0.61.0` and `msgspec>=0.19.0` to core dependencies and completely removed `orjson` across the entire codebase.
+  - Rebuilt utility ecosystem under `src/goe/util/` to cleanly re-export `sqlspec.utils` (matching DMA accelerator conventions): `serialization.py` (`to_json`, `from_json`, `schema_dump`), `sync_tools.py` (`async_`, `await_`, `ensure_async_`, `Portal`), `text.py` (`camelize`, `pascalize`, `snake_case`, `slugify`), `env.py` (`get_env`, `get_config_val`), and `uuids.py` (`uuid4`, `uuid7`, `nanoid`).
+  - Defined typed `msgspec.Struct` persistence schemas in `src/goe/persistence/schemas.py` (`StepDetailSchema`, `CommandExecutionSchema`, `OffloadMetadataSchema`, `LogEventSchema`, `PartitionMetadataSchema`).
+  - Refactored `src/goe/persistence/orchestration_repo_client.py`, Oracle/Teradata repo clients, offload messaging, and Listener routes to use `msgspec` and `sqlspec`.
+  - Added unit test characterization in `tests/unit/util/test_json_tools.py` and `tests/unit/persistence/test_schemas.py`; verified all 499 unit tests passing green.
 - **Build & CI Infrastructure Modernization (Chapter 1)**:
   - Migrated build backend from `setuptools` to `hatchling.build` with explicit wheel package mapping (`packages = ["src/goe"]`).
   - Structured PEP 735 `[dependency-groups]` (`dev`, `test`, `lint`, `docs`, `build`) and preserved multi-cloud connector extras (`hadoop`, `snowflake`, `sql_server`, `synapse`, `teradata`, `sqlspec`, `all`).

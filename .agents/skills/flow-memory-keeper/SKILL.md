@@ -114,6 +114,8 @@ Before claiming a task, phase, or flow is complete, verify:
 
 - This consumer skill is installed at `.agents/skills/flow-memory-keeper/SKILL.md`;
   `.agents/skills/` is the only operational project-skill authority.
-- Maintain Python 3.8+ compatibility and PEP 585 built-in collection types (`dict`, `list`).
+- Maintain Python >= 3.12 compatibility and PEP 585 built-in collection types (`dict`, `list`).
 - Run tests with `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false`.
-- Always format Python files with `black` and place PEP 257 explanations in docstrings (no in-line comments).
+- Always format Python files with `ruff` (`line-length = 120`), run `mypy`, and place PEP 257 explanations in docstrings (never in-line comments).
+- Structure utility modules in `src/goe/util/` to cleanly re-export `sqlspec.utils` (matching DMA accelerator conventions).
+- Define serialization schemas as pure `msgspec.Struct` models without redundant client wrapper classes.

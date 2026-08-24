@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Third Party Libraries
-import orjson as json
 from fastapi import APIRouter, status
 from goelib_contrib.asyncer import asyncify
 
-# GOE
 from goe.listener import schemas, services, utils
+from goe.util.json_tools import serialize_object
 
 STATUS_OK = "OK"
 
@@ -78,7 +76,7 @@ async def get_configuration():
         "version": services.system.get_version(),
         "frontend_type": services.system.get_frontend_type(),
         "backend_type": services.system.get_backend_type(),
-        "offload_options": json.dumps(schemas.OffloadOptions.schema(by_alias=False)),
+        "offload_options": serialize_object(schemas.OffloadOptions.schema(by_alias=False)),
         "present_options": None,
         "prepare_options": None,
     }

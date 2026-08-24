@@ -18,16 +18,16 @@ tags:
 - **Storage Systems**: Google Cloud Storage (`google-cloud-storage`, `fsspec[gcs]`), AWS S3 (`boto3`), Azure Blob / ADLS Gen2 (`azure-storage-blob`), HDFS (`hdfs`).
 - **Compute & Transport**: PySpark, Google Cloud Dataproc (Serverless Batches & Clusters), Apache Livy, Scala 2.12/2.13 (`GOETaskListener`).
 - **Data Serialization**: Apache Avro (`avro`, custom `AvroEncoder`), Apache Parquet (`pyarrow`, `ParquetEncoder`).
-- **Listener & Services**: FastAPI, Uvicorn, Gunicorn, Redis (`redis-py`), Pydantic, ORJSON, Brotli.
+- **Listener & Services**: FastAPI, Uvicorn, Gunicorn, Redis (`redis-py`), Pydantic, msgspec, Brotli.
 <!-- truth: end -->
 
 ## Subsystem Details
 
 ### 1. Python Runtime & Core Libraries
-- **Base Environment**: Python >= 3.8 managed with `uv` / `pip` virtual environments.
+- **Base Environment**: Python >= 3.12 managed with `uv` virtual environments.
 - **CLI & Parsing**: Standard library `optparse` / `argparse` wrapped by `goe.orchestration.cli_entry_points`, `lark-parser` for AST predicate grammar parsing.
 - **Concurrency & Locking**: `filelock` for process mutual exclusion, `threading` for asynchronous telemetry scrapers.
-- **Data Serialization**: `pyarrow` (columnar memory buffers), `avro` (schema validation and row serialization), `orjson` (high-performance JSON serialization).
+- **Data Serialization**: `pyarrow` (columnar memory buffers), `avro` (schema validation and row serialization), `msgspec` (high-performance JSON serialization and typed Struct models), `sqlspec` (database abstraction layer).
 
 ### 2. Frontend RDBMS Connectivity
 - **Oracle**: `oracledb` (Thin mode default, Thick mode for Oracle Wallet / OCI features), `DBMS_APPLICATION_INFO` session telemetry, `DBMS_METADATA` DDL extraction.

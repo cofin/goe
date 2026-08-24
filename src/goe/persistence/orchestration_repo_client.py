@@ -18,10 +18,8 @@
 Each frontend/metadata system will have its own implementation.
 """
 
-# Standard Library
 import datetime
 import decimal
-import json
 import logging
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Any
@@ -37,6 +35,7 @@ from goe.persistence.orchestration_metadata import (
     ALL_METADATA_ATTRIBUTES,
     OrchestrationMetadata,
 )
+from goe.util.json_tools import deserialize_object, serialize_object
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -53,17 +52,14 @@ if TYPE_CHECKING:
 ###########################################################################
 
 
-def type_safe_json_dumps(d) -> str:
-    """JSON dump to str that caters for Decimal and datetime, taken from orjson README and modified to suit."""
+def type_safe_json_dumps(d: Any) -> str:
+    """Serialize object to JSON string using msgspec supporting Decimal, datetime, ExecutionId, and Predicate."""
+    return serialize_object(d)
 
-    def default(obj):
-        if isinstance(obj, (decimal.Decimal, datetime.datetime, ExecutionId)):
-            return str(obj)
-        if isinstance(obj, GenericPredicate):
-            return obj.dsl
-        raise TypeError
 
-    return json.dumps(d, default=default)
+def type_safe_json_loads(payload: bytes | str) -> Any:
+    """Deserialize JSON payload using msgspec."""
+    return deserialize_object(payload)
 
 
 logger = logging.getLogger(__name__)
@@ -195,26 +191,18 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
     def _get_metadata(self, frontend_owner: str, frontend_name: str) -> dict:
         """Return metadata object for owner/name"""
 
-    def _metadata_dict_to_json_string(self, metadata_dict) -> str:
-        """Simple wrapper over json.dumps to centralise the encoding args."""
-        return json.dumps(metadata_dict, sort_keys=True, ensure_ascii=False)
+    def _metadata_dict_to_json_string(self, metadata_dict: dict) -> str:
+        """Encode metadata dictionary to JSON string using msgspec."""
+        return serialize_object(metadata_dict)
 
     def _metadata_keys_with_positions(self) -> dict:
         return {k: i for i, k in enumerate(ALL_METADATA_ATTRIBUTES)}
 
     def _prepare_command_parameters(self, parameters: str | dict) -> str:
-        """Ensure PARAMETERS column value is str"""
+        """Ensure PARAMETERS column value is a JSON str."""
         if isinstance(parameters, dict):
-            try:
-                param_str = json.dumps(parameters)
-            except TypeError as exc:
-                if any(_ in str(exc) for _ in ["Decimal", "datetime", "GenericPredicate", "ExecutionId"]):
-                    param_str = type_safe_json_dumps(parameters)
-                else:
-                    raise
-        else:
-            param_str = parameters
-        return param_str
+            return serialize_object(parameters)
+        return parameters
 
     ###########################################################################
     # PUBLIC METHODS

@@ -16,7 +16,6 @@
 
 """TeradataOrchestrationRepoClient: Teradata implementation of API for get/put of orchestration metadata."""
 
-import json
 import logging
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any
@@ -31,6 +30,7 @@ from goe.persistence.orchestration_metadata import (
     OrchestrationMetadata,
 )
 from goe.persistence.orchestration_repo_client import OrchestrationRepoClientInterface
+from goe.util.json_tools import deserialize_object, serialize_object
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -120,7 +120,7 @@ class TeradataOrchestrationRepoClient(OrchestrationRepoClientInterface):
     def _metadata_row_to_metadata_dict(self, row_tuple):
         def format_row_item(k, i):
             if k in (INCREMENTAL_PREDICATE_VALUE) and row_tuple[i]:
-                return json.loads(row_tuple[i])
+                return deserialize_object(row_tuple[i])
             if row_tuple[i] == "":
                 return None
             return row_tuple[i]
@@ -227,7 +227,7 @@ class TeradataOrchestrationRepoClient(OrchestrationRepoClientInterface):
             detail=VVERBOSE,
         )
         self._assert_valid_end_step_inputs(command_step_id, status, step_details)
-        step_details_str = json.dumps(step_details) if step_details is not None else None
+        step_details_str = serialize_object(step_details) if step_details is not None else None
         # TODO For MVP this method is a pass-thru
 
     def start_offload_chunk(
