@@ -19,7 +19,9 @@ tags:
    - Run via:
      ```bash
      export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
-     pytest tests/unit
+     uv run pytest tests/unit
+     # or via Makefile
+     make test-unit
      ```
    - Covers canonical column metadata, predicate AST parsing, options validation, filesystem URI generation, and configuration loading.
 
@@ -30,7 +32,9 @@ tags:
      export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
      export GOE_TEST_USER_PASS="<db_pass>"
      export GOOGLE_CLOUD_PROJECT="<gcp_project>"
-     pytest tests/integration -n 4
+     uv run pytest tests/integration -n 4
+     # or via Makefile
+     make test-integration
      ```
 
 ## Verification Strategies in Flow

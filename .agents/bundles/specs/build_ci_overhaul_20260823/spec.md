@@ -2,9 +2,9 @@
 type: Spec
 flow_id: build_ci_overhaul_20260823
 title: Build Tooling, Ruff, UV Dependency Groups & GitHub Actions CI Overhaul
-state: planned
+state: closed
 created_at: "2026-08-23T01:15:00Z"
-updated_at: "2026-08-24T21:45:00Z"
+updated_at: "2026-08-24T22:26:00Z"
 description: Modernization of build backend to Hatchling, UV dependency groups, Ruff linter/formatter, modernized Makefile, and multi-matrix GitHub Actions CI with PyApp standalone binary builds.
 tags:
   - spec
@@ -73,7 +73,7 @@ research:
 | `ruff_formatting_lint_pass` | Code Quality, Formatting & Ruff Linting Pass | closed | `pyproject_modernization` | `src/goe/`, `tests/`, `tools/`, `pyproject.toml` | `characterization` |
 | `makefile_modernization` | Modernize Makefile with DMA Standards, UV Execution & Preserved Packaging | closed | `pyproject_modernization`, `ruff_formatting_lint_pass` | `Makefile` | `static_validation` |
 | `github_actions_ci_workflows` | Scaffold GitHub Actions CI/CD Workflows & Standalone PyApp Packaging | closed | `pyproject_modernization`, `ruff_formatting_lint_pass`, `makefile_modernization` | `.github/workflows/ci.yaml`, `.github/workflows/test.yaml`, `.github/workflows/release.yaml`, `tools/bundle_python.py` | `static_validation` |
-| `knowledge_and_workflow_reconciliation` | Reconcile Knowledge Base & Context Files with Modern Tooling | open | `pyproject_modernization`, `ruff_formatting_lint_pass`, `makefile_modernization`, `github_actions_ci_workflows` | `.agents/bundles/knowledge/workflow.md`, `standards/python.md`, `standards/testing.md`, `.agents/bundles/log.md`, `AGENTS.md` | `documentation_validation` |
+| `knowledge_and_workflow_reconciliation` | Reconcile Knowledge Base & Context Files with Modern Tooling | closed | `pyproject_modernization`, `ruff_formatting_lint_pass`, `makefile_modernization`, `github_actions_ci_workflows` | `.agents/bundles/knowledge/workflow.md`, `standards/python.md`, `standards/testing.md`, `.agents/bundles/log.md`, `AGENTS.md` | `documentation_validation` |
 
 ---
 

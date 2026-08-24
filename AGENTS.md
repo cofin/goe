@@ -12,17 +12,18 @@ You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)
 - **Patterns & Gotchas**: [Patterns](.agents/bundles/knowledge/patterns.md)
 
 ## 2. Core Operational Invariants
-- **Language**: Python >= 3.8.
+- **Language**: Python >= 3.10.
 - **Environment & Dependency Management**:
-  - Development virtual environment is in `.venv/` (activate via `source .venv/bin/activate`).
-  - Initialize via `make install-dev` (or `make install-dev-extras` for multi-cloud connectors). Run commands with `uv run` where applicable.
-  - Dependencies are managed via `pyproject.toml`. Do not introduce third-party packages without explicit user approval.
+  - Development virtual environment is managed with `uv` in `.venv/` (activate via `source .venv/bin/activate`).
+  - Initialize and sync dependencies via `make install` (uses `uv sync --all-extras --dev`).
+  - Run commands with `uv run` where applicable (`uv run pytest tests/unit`).
+  - Build backend is `hatchling.build` and dependencies are managed via PEP 735 `[dependency-groups]` in `pyproject.toml` with lockfile `uv.lock`.
   - Runtime configuration relies on the `OFFLOAD_HOME` environment variable and `offload.env` configuration file (constructed from `templates/conf/offload.env.template`).
 - **Code Style & Formatting**:
-  - Format all code with `black` before completing tasks.
+  - Format all code with `ruff` (`line-length = 120`). Run `make format` (`uv run ruff format` and `uv run ruff check --fix`) and `make lint` (`uv run ruff check` and `uv run mypy src/goe`).
   - Always place all imports at the top of the file, rather than within function scopes.
   - Adhere to PEP 257 docstrings (one-line summary, blank line, and detailed description for multi-line docstrings).
-  - Use PEP 585 built-in collection types (`list`, `dict`, etc.).
+  - Use PEP 585 built-in collection types (`list`, `dict`, etc.) and PEP 604 union syntax (`str | None`).
   - **Never** use in-line comments in Python functions; place explanations in docstrings.
 - **Testing Requirements**:
   - New features and bug fixes must be covered by corresponding unit tests in `tests/unit/`.
@@ -32,12 +33,16 @@ You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)
     ```
   - **Unit Tests**:
     ```bash
-    pytest tests/unit
+    uv run pytest tests/unit
+    # or via Makefile
+    make test-unit
     ```
   - **Integration Tests**: Require an active database, credentials, and project config (e.g. `GOE_TEST_USER_PASS`, `GOOGLE_CLOUD_PROJECT`):
     ```bash
     export GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOE_TEST_USER_PASS="<password>"
-    pytest tests/integration -n 4
+    uv run pytest tests/integration -n 4
+    # or via Makefile
+    make test-integration
     ```
 - **Concurrency & Locking**: Always acquire table locks via `OrchestrationLockInterface` (`filelock` in `$OFFLOAD_HOME/run/`).
 - **Data Integrity**: Use canonical column types (`column_metadata.py`) and snapshot-consistent reads (`FLASHBACK ANY TABLE` / SCN).

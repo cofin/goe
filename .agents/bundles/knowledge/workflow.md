@@ -12,11 +12,12 @@ tags:
 # Project Workflow
 
 <!-- truth: start -->
-- Virtual environment setup: `make install-dev` (core + dev dependencies) or `make install-dev-extras` (includes Hadoop, Snowflake, SQL Server, Teradata).
-- Unit testing: `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit` (or `.venv/bin/pytest tests/unit`).
-- Integration testing: `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOE_TEST_USER_PASS=... && pytest tests/integration -n 4`.
-- Code formatting & linting: `black src tests`.
-- Packaging & release build: `make clean && make package` (produces `goe_<version>.tar.gz` and wheel under `dist/`).
+- Virtual environment setup: `make install` (or `make setup-env` to configure kernel index).
+- Development packages & lockfile: Managed via `uv` with `pyproject.toml` (`[dependency-groups]`) and `uv.lock`.
+- Unit testing: `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit` (or `make test-unit`).
+- Integration testing: `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOE_TEST_USER_PASS=... && uv run pytest tests/integration -n 4` (or `make test-integration`).
+- Code formatting & linting: `make format` (`uv run ruff format` and `uv run ruff check --fix`) and `make lint` (`uv run ruff check` and `uv run mypy src/goe`).
+- Packaging & release build: `make build` (produces wheel and sdist in `dist/`) and `make package` (produces `goe_<version>.tar.gz`).
 - Pre-flight environment check: `bin/connect` (checks configuration, frontend DB, backend DW, and transport connectivity).
 - Offload CLI: `bin/offload -t <owner.table> -x` (executes offload with execution lock and audit trail).
 <!-- truth: end -->
@@ -25,14 +26,17 @@ tags:
 
 ### 1. Development Environment Setup
 ```bash
-# Clean previous build artifacts and virtual environment
-make clean
+# Display self-documenting make target menu
+make help
 
-# Create .venv and install GOE in editable mode with development dependencies
-make install-dev
+# Configure environment and generate kernel-appropriate uv.toml
+make setup-env
 
-# Install optional backend dependencies (Snowflake, MSSQL, Teradata, Hadoop)
-make install-dev-extras
+# Install GOE in editable mode with all development dependency groups
+make install
+
+# Upgrade all dependencies in uv.lock
+make upgrade
 ```
 
 ### 2. Testing Workflows
@@ -40,25 +44,28 @@ make install-dev-extras
 # Ensure client certificate check is disabled for Google client libraries
 export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
 
-# Run focused unit tests
-pytest tests/unit
+# Run unit test suite via Makefile
+make test-unit
+
+# Run focused unit tests directly with uv
+uv run pytest tests/unit
 
 # Run focused unit test file or expression
-pytest tests/unit/test_column_metadata.py -k "test_canonical_types"
+uv run pytest tests/unit/offload/test_column_metadata.py -k "test_canonical_types"
 
 # Run parallel integration tests against active database
 export GOE_TEST_USER_PASS="<db_password>"
 export GOOGLE_CLOUD_PROJECT="<gcp_project_id>"
-pytest tests/integration -n 4
+uv run pytest tests/integration -n 4
 ```
 
 ### 3. Formatting & Code Quality
 ```bash
-# Format Python source files using black
-black src tests
+# Run Ruff formatter and auto-fix lint issues
+make format
 
-# Verify formatting without modifying files
-black --check src tests
+# Run Ruff linter and Mypy static typecheck
+make lint
 ```
 
 ### 4. Building & Packaging

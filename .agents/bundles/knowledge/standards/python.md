@@ -14,12 +14,12 @@ tags:
 ## Core Principles
 
 1. **Clarity & Readability**: Write clean, modular, and explicit Python code. Avoid clever tricks where simple constructs suffice.
-2. **Compatibility**: Maintain compatibility across Python 3.8 through 3.12+.
-3. **Environment & Tooling**: Use `uv` for Python package and environment management (`uv run` prefix when executing Python tools).
+2. **Compatibility**: Target Python >= 3.10 through 3.13.
+3. **Environment & Tooling**: Use `uv` for Python package and environment management (`uv run` prefix when executing Python tools). Build backend is managed via `hatchling.build` and dependencies via PEP 735 `[dependency-groups]`.
 
 ## Code Style & Formatting
 
-- **Formatter**: Code must be formatted with `black`. Run `black src tests` before submitting changes.
+- **Formatter & Linter**: Code must be formatted and linted with `ruff` (`line-length = 120`). Run `make format` or `uv run ruff format src tests tools` and `uv run ruff check src tests tools` before submitting changes.
 - **Imports**: All imports must be placed at the top of the file, organized into standard library, third-party packages, and internal `goe` modules. Never use deferred imports within function scopes unless breaking an unavoidable circular dependency.
 - **Comments & Docstrings**:
   - Never use in-line comments inside functions.

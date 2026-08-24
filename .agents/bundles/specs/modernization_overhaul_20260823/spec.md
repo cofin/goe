@@ -2,9 +2,9 @@
 type: PRD
 prd_id: modernization_overhaul_20260823
 title: GOE Modernization Master Roadmap (Build, Msgspec/SQLSpec, Rich-Click, Litestar)
-state: planned
+state: in_progress
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-23T15:25:00Z"
+updated_at: "2026-08-24T22:26:00Z"
 description: Master architectural modernization roadmap overhauling packaging/CI, serialization with msgspec & sqlspec, unified rich-click CLI, and Litestar listener ecosystem.
 tags:
   - prd
