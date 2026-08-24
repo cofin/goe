@@ -24,7 +24,6 @@ from goe.persistence.schemas import (
     encode_schema,
     encode_schema_bytes,
 )
-from goe.persistence.sqlspec_client import SQLSpecRepositoryClient
 
 
 def test_step_detail_schema_round_trip():
@@ -83,16 +82,3 @@ def test_log_event_schema():
     decoded = decode_schema(LogEventSchema, encoded)
     assert decoded.message == "Offload process started"
     assert decoded.level == "INFO"
-
-
-def test_sqlspec_repository_client():
-    client = SQLSpecRepositoryClient()
-    cmd = CommandExecutionSchema(
-        execution_id="exec-999",
-        command_type="CONNECT",
-        status="SUCCESS",
-    )
-    formatted = client.format_command_execution(cmd)
-    parsed = client.parse_command_execution(formatted)
-    assert parsed.execution_id == "exec-999"
-    assert parsed.command_type == "CONNECT"

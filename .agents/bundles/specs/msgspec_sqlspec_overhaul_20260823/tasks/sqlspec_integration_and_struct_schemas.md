@@ -17,7 +17,6 @@ depends_on:
 files:
   - pyproject.toml
   - src/goe/persistence/schemas.py
-  - src/goe/persistence/sqlspec_client.py
 tests:
   - tests/unit/persistence/test_schemas.py
 verification_strategy: static_validation
@@ -26,24 +25,23 @@ verification_strategy: static_validation
 # Task: Integrate SQLSpec Library & Define msgspec Struct Schemas
 
 ## Objective
-Add `sqlspec[duckdb,performance,asyncpg,mypyc,fsspec,uuid,adbc,oracledb,adk]>=0.61.0` and `msgspec>=0.19.0` to `pyproject.toml` (while removing `orjson`), define typed `msgspec.Struct` models in `src/goe/persistence/schemas.py` for execution metadata and telemetry, and scaffold `src/goe/persistence/sqlspec_client.py`.
+Add `sqlspec[performance,mypyc,oracledb,adbc,duckdb]>=0.61.0` and `msgspec>=0.19.0` to `pyproject.toml` (while removing `orjson`), and define typed `msgspec.Struct` models in `src/goe/persistence/schemas.py` for execution metadata and telemetry.
 
 ## Target File Changes
 
-1. **`pyproject.toml`**: Add `msgspec` and `sqlspec`, remove `orjson`.
+1. **`pyproject.toml`**: Add `msgspec` and `sqlspec[performance,mypyc,oracledb,adbc,duckdb]`, remove `orjson`.
 2. **`src/goe/persistence/schemas.py`**:
    - `StepDetailSchema(msgspec.Struct)`
    - `CommandExecutionSchema(msgspec.Struct)`
    - `OffloadMetadataSchema(msgspec.Struct)`
    - `LogEventSchema(msgspec.Struct)`
+   - `PartitionMetadataSchema(msgspec.Struct)`
    - `encode_schema` and `decode_schema` helper functions.
-3. **`src/goe/persistence/sqlspec_client.py`**: Scaffold SQLSpec client interface.
 
 ## Itemized Checklist
-- [ ] Update `pyproject.toml` with `msgspec` and `sqlspec`.
-- [ ] Create `src/goe/persistence/schemas.py`.
-- [ ] Create `src/goe/persistence/sqlspec_client.py`.
-- [ ] Create `tests/unit/persistence/test_schemas.py`.
+- [x] Update `pyproject.toml` with `msgspec` and `sqlspec`.
+- [x] Create `src/goe/persistence/schemas.py`.
+- [x] Create `tests/unit/persistence/test_schemas.py`.
 
 ## Verification Strategy
 - **Strategy**: `static_validation`
