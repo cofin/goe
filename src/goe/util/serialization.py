@@ -12,14 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Serialization utilities for GOE leveraging sqlspec/msgspec."""
+
 import datetime
 from typing import Any
 
 from sqlspec.utils.serializers import (
+    DEFAULT_TYPE_ENCODERS,
     from_json,
+    schema_dump,
     to_json,
 )
-from sqlspec.utils.text import camelize
 
 
 def _default(obj: Any) -> Any:
@@ -63,6 +66,13 @@ def encode_datetime_object(dt: datetime.datetime) -> str:
     return dt.isoformat().replace("+00:00", "Z")
 
 
-def convert_field_to_camel_case(string: str) -> str:
-    """Convert snake_case string to camelCase using sqlspec.utils.text."""
-    return camelize(string)
+__all__ = (
+    "DEFAULT_TYPE_ENCODERS",
+    "deserialize_object",
+    "encode_datetime_object",
+    "from_json",
+    "schema_dump",
+    "serialize_object",
+    "serialize_object_bytes",
+    "to_json",
+)

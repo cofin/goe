@@ -16,7 +16,7 @@ from typing import Any
 
 import msgspec
 
-from goe.util.json_tools import _default
+from goe.util.serialization import _default
 
 _schema_encoder = msgspec.json.Encoder(enc_hook=_default)
 

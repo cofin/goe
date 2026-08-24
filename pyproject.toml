@@ -43,6 +43,7 @@ dependencies = [
     "lark-parser",
     "numpy",
     "msgspec>=0.19.0",
+    "sqlspec[performance,mypyc,oracledb,adbc,duckdb]>=0.61.0",
     "python-dateutil",
     "PyYAML",
     "requests",
@@ -102,7 +103,7 @@ teradata = [
     "pyodbc",
 ]
 sqlspec = [
-    "sqlspec[duckdb,performance,asyncpg,mypyc,fsspec,uuid,adbc,oracledb,adk]>=0.61.0",
+    "sqlspec[performance,mypyc,oracledb,adbc,duckdb]>=0.61.0",
 ]
 all = [
     "hdfs",
@@ -112,7 +113,7 @@ all = [
     "snowflake-connector-python",
     "pymssql",
     "pyodbc",
-    "sqlspec[duckdb,performance,asyncpg,mypyc,fsspec,uuid,adbc,oracledb,adk]>=0.61.0",
+    "sqlspec[performance,mypyc,oracledb,adbc,duckdb]>=0.61.0",
 ]
 
 [dependency-groups]
