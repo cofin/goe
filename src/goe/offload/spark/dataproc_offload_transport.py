@@ -186,10 +186,8 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
         gcloud_cmd = self._gcloud_dataproc_submit_command(id=id)
 
         spark_config_props, no_log_password = [], []
-        [
-            spark_config_props.extend(["%s=%s" % (k, cli_safe_the_password(k, v))])
-            for k, v in self._spark_config_properties.items()
-        ]
+        for k, v in self._spark_config_properties.items():
+            spark_config_props.append("%s=%s" % (k, cli_safe_the_password(k, v)))
         if "spark.jdbc.password" in self._spark_config_properties and not self._offload_transport_password_alias:
             # If the rdbms app password is visible in the CLI then obscure it from any logging
             password_config_to_obscure = "spark.jdbc.password=%s" % cli_safe_the_password(

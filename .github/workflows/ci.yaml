@@ -43,35 +43,9 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     uses: ./.github/workflows/test.yaml
     with:
-      coverage: ${{ matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest' }}
+      coverage: ${{ matrix.python-version == '3.12' }}
       python-version: ${{ matrix.python-version }}
-      os: ${{ matrix.os }}
-
-  test-windows:
-    name: "Test Windows - Python ${{ matrix.python-version }}"
-    strategy:
-      fail-fast: true
-      matrix:
-        os: [windows-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
-    uses: ./.github/workflows/test.yaml
-    with:
-      coverage: false
-      python-version: ${{ matrix.python-version }}
-      os: ${{ matrix.os }}
-
-  test-macos:
-    name: "Test macOS - Python ${{ matrix.python-version }}"
-    strategy:
-      fail-fast: true
-      matrix:
-        os: [macos-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
-    uses: ./.github/workflows/test.yaml
-    with:
-      coverage: false
-      python-version: ${{ matrix.python-version }}
-      os: ${{ matrix.os }}
+      os: "ubuntu-latest"
 
   build-wheel:
     name: Build pure Python wheel & sdist

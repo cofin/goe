@@ -447,7 +447,8 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         return set(tc.data_type for tc in self.columns)
 
     def decode_partition_high_values(self, hv_csv, strict=True) -> tuple:
-        """Takes partition high value and rationalise to Python values"""
+        """Takes partition high value and rationalise to Python values."""
+        raise NotImplementedError
 
     def enclose_identifier(self, identifier):
         return self._db_api.enclose_identifier(identifier)

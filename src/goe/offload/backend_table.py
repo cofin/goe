@@ -2092,7 +2092,7 @@ class BackendTableInterface(metaclass=ABCMeta):
     def create_backend_db_step(self) -> list:
         executed_commands = []
         if self.create_database_supported() and self._user_requested_create_backend_db:
-            executed_commands: list = self._offload_step(command_steps.STEP_CREATE_DB, lambda: self.create_db())
+            executed_commands = self._offload_step(command_steps.STEP_CREATE_DB, lambda: self.create_db())
         return executed_commands
 
     def create_backend_table_step(self) -> list:

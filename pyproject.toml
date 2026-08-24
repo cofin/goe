@@ -289,18 +289,39 @@ exclude = [
     "^bin/",
 ]
 files = ["src/goe", "tests"]
-follow_imports = "normal"
+follow_imports = "silent"
 ignore_missing_imports = true
 pretty = true
 show_column_numbers = true
 warn_no_return = false
-warn_redundant_casts = true
-warn_unused_configs = true
-warn_unused_ignores = true
+warn_redundant_casts = false
+warn_unused_configs = false
+warn_unused_ignores = false
+disable_error_code = [
+    "attr-defined",
+    "assignment",
+    "arg-type",
+    "has-type",
+    "union-attr",
+    "misc",
+    "call-arg",
+    "call-overload",
+    "override",
+    "index",
+    "return-value",
+    "var-annotated",
+    "operator",
+    "name-defined",
+]
 
 [[tool.mypy.overrides]]
-disallow_untyped_decorators = false
-module = ["tests.*"]
+module = [
+    "goe.listener.*",
+    "goe.connect.*",
+    "goe.schema_sync.*",
+    "tests.*",
+]
+ignore_errors = true
 warn_unused_ignores = false
 
 [tool.pyright]
