@@ -21,17 +21,16 @@ name = "goe-framework"
 version = "1.1.1.dev0"
 description = "Gluent Offload Engine (GOE) Framework"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 maintainers = [
     { name = "Neil Johnson", email = "neiljohnson@google.com" },
     { name = "Cody Fincher", email = "codyfincher@google.com" },
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
 ]
 dependencies = [
@@ -209,7 +208,7 @@ exclude = [
 fix = true
 line-length = 120
 src = ["src", "tests", "tools"]
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
@@ -253,6 +252,8 @@ ignore = [
     "UP031",   # Use format specifiers instead of percent format
     "UP035",   # Deprecated imports
     "UP037",   # Remove quotes from type annotation
+    "UP042",   # Class inherits from both str and Enum
+    "UP046",   # Generic class uses Generic subclass instead of type parameters
     "RUF002",  # Docstring contains ambiguous character
     "RUF003",  # Comment contains ambiguous character
     "RUF005",  # Consider iterable unpacking instead of concatenation

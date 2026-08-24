@@ -42,7 +42,7 @@ def deserialize_object(obj: bytes | bytearray | memoryview | str) -> Any:
 
 def encode_datetime_object(dt: datetime.datetime) -> str:
     """Handles datetime serialization for nested timestamps in models/dataclasses"""
-    return dt.replace(tzinfo=datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    return dt.replace(tzinfo=datetime.UTC).isoformat().replace("+00:00", "Z")
 
 
 def convert_field_to_camel_case(string: str) -> str:

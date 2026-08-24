@@ -21,7 +21,10 @@ import os
 import random
 from argparse import Namespace
 
-import impala.dbapi as hs2
+try:
+    import impala.dbapi as hs2
+except ModuleNotFoundError:
+    hs2 = None
 
 from goe.offload.offload_constants import DBTYPE_HIVE, DBTYPE_IMPALA
 from goe.util.password_tools import PasswordTools

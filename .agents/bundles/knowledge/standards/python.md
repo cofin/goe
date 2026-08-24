@@ -14,7 +14,7 @@ tags:
 ## Core Principles
 
 1. **Clarity & Readability**: Write clean, modular, and explicit Python code. Avoid clever tricks where simple constructs suffice.
-2. **Compatibility**: Target Python >= 3.10 through 3.13.
+2. **Compatibility**: Target Python >= 3.12 through 3.14.
 3. **Environment & Tooling**: Use `uv` for Python package and environment management (`uv run` prefix when executing Python tools). Build backend is managed via `hatchling.build` and dependencies via PEP 735 `[dependency-groups]`.
 
 ## Code Style & Formatting

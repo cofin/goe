@@ -49,8 +49,12 @@ import inspect
 import logging
 import re
 
-from impala.dbapi import connect
-from impala.error import HiveServer2Error
+try:
+    from impala.dbapi import connect
+    from impala.error import HiveServer2Error
+except ModuleNotFoundError:
+    connect = None
+    HiveServer2Error = Exception
 from numpy import datetime64
 
 from goe.offload.offload_constants import DBTYPE_HIVE, DBTYPE_IMPALA

@@ -12,7 +12,7 @@ You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)
 - **Patterns & Gotchas**: [Patterns](.agents/bundles/knowledge/patterns.md)
 
 ## 2. Core Operational Invariants
-- **Language**: Python >= 3.10.
+- **Language**: Python >= 3.12.
 - **Environment & Dependency Management**:
   - Development virtual environment is managed with `uv` in `.venv/` (activate via `source .venv/bin/activate`).
   - Initialize and sync dependencies via `make install` (uses `uv sync --all-extras --dev`).
