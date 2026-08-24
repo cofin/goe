@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" MSSQLColumn: MSSQL implementation of ColumnMetadataInterface
-"""
+"""MSSQLColumn: MSSQL implementation of ColumnMetadataInterface"""
 
 from goe.offload.column_metadata import ColumnMetadataInterface
 
@@ -79,7 +78,7 @@ class MSSQLColumn(ColumnMetadataInterface):
         partition_info=None,
         char_semantics=None,
     ):
-        super(MSSQLColumn, self).__init__(
+        super().__init__(
             name,
             data_type,
             data_length,
@@ -131,19 +130,17 @@ class MSSQLColumn(ColumnMetadataInterface):
                     self.data_precision,
                     self.data_scale,
                 )
-            elif self.data_precision:
+            if self.data_precision:
                 return "%s(%s)" % (self.data_type, self.data_precision)
-            else:
-                return self.data_type
-        elif self.data_type in [
+            return self.data_type
+        if self.data_type in [
             MSSQL_TYPE_CHAR,
             MSSQL_TYPE_VARCHAR,
             MSSQL_TYPE_NCHAR,
             MSSQL_TYPE_NVARCHAR,
         ]:
             return "%s(%s)" % (self.data_type, self.data_length)
-        else:
-            return self.data_type
+        return self.data_type
 
     def has_time_element(self):
         """Does the column data contain a time"""
@@ -158,10 +155,7 @@ class MSSQLColumn(ColumnMetadataInterface):
         )
 
     def is_binary(self):
-        return bool(
-            self.data_type.lower()
-            in [MSSQL_TYPE_BINARY, MSSQL_TYPE_VARBINARY, MSSQL_TYPE_IMAGE]
-        )
+        return bool(self.data_type.lower() in [MSSQL_TYPE_BINARY, MSSQL_TYPE_VARBINARY, MSSQL_TYPE_IMAGE])
 
     def is_nan_capable(self):
         return False
@@ -222,7 +216,5 @@ class MSSQLColumn(ColumnMetadataInterface):
 
     def valid_for_offload_predicate(self):
         return bool(
-            self.is_number_based()
-            or (self.is_date_based() and not self.is_time_zone_based())
-            or self.is_string_based()
+            self.is_number_based() or (self.is_date_based() and not self.is_time_zone_based()) or self.is_string_based()
         )

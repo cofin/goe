@@ -81,9 +81,7 @@ def drop_backend_test_load_table(
     drop_backend_test_table(config, backend_api, test_messages, db, table_name)
 
 
-def drop_offload_metadata(
-    repo_client: "OrchestrationRepoClientInterface", schema: str, table_name: str
-):
+def drop_offload_metadata(repo_client: "OrchestrationRepoClientInterface", schema: str, table_name: str):
     """Simple wrapper over drop_offload_metadata() in case we need to catch exceptions in the future."""
     repo_client.drop_offload_metadata(schema, table_name)
 
@@ -101,16 +99,13 @@ def gen_drop_sales_based_fact_partition_ddls(
     the same effect.
     """
     if truncate_instead_of_drop:
-        return frontend_api.sales_based_fact_truncate_partition_ddl(
-            schema, table_name, hv_string_list=hv_string_list
-        )
-    else:
-        return frontend_api.sales_based_fact_drop_partition_ddl(
-            schema,
-            table_name,
-            hv_string_list=hv_string_list,
-            dropping_oldest=dropping_oldest,
-        )
+        return frontend_api.sales_based_fact_truncate_partition_ddl(schema, table_name, hv_string_list=hv_string_list)
+    return frontend_api.sales_based_fact_drop_partition_ddl(
+        schema,
+        table_name,
+        hv_string_list=hv_string_list,
+        dropping_oldest=dropping_oldest,
+    )
 
 
 def gen_truncate_sales_based_fact_partition_ddls(
@@ -139,41 +134,30 @@ def get_sales_based_fact_partition_list(
     if isinstance(hv_string_list, str):
         hv_string_list = [hv_string_list]
 
-    partitions = frontend_api.frontend_table_partition_list(
-        schema, table_name, hv_string_list=hv_string_list
-    )
+    partitions = frontend_api.frontend_table_partition_list(schema, table_name, hv_string_list=hv_string_list)
     return partitions
 
 
-def no_query_import_transport_method(
-    config: "OrchestrationConfig", no_table_centric_sqoop=False
-):
+def no_query_import_transport_method(config: "OrchestrationConfig", no_table_centric_sqoop=False):
     if not config:
         return offload_transport.OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
     if offload_transport.is_spark_thrift_available(config, None):
         return offload_transport.OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT
-    elif offload_transport.is_spark_submit_available(config, None):
+    if offload_transport.is_spark_submit_available(config, None):
         return offload_transport.OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT
-    elif offload_transport.is_sqoop_available(None, config):
+    if offload_transport.is_sqoop_available(None, config):
         if no_table_centric_sqoop:
             return offload_transport.OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY
-        else:
-            return offload_transport.OFFLOAD_TRANSPORT_METHOD_SQOOP
-    else:
-        return offload_transport.OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
+        return offload_transport.OFFLOAD_TRANSPORT_METHOD_SQOOP
+    return offload_transport.OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
 
 
 def sales_based_fact_partition_exists(schema, table_name, hv_string_list, frontend_api):
     """hv_string_list in format YYYY-MM-DD"""
-    return bool(
-        get_sales_based_fact_partition_list(
-            schema, table_name, hv_string_list, frontend_api
-        )
-    )
+    return bool(get_sales_based_fact_partition_list(schema, table_name, hv_string_list, frontend_api))
 
 
 def partition_columns_if_supported(backend_api, offload_partition_columns):
     if backend_api and backend_api.partition_by_column_supported():
         return offload_partition_columns
-    else:
-        return None
+    return None

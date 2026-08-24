@@ -14,12 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendHadoopTable: Library for logic/interaction with a table that will
-    be either:
-      1) The target of an offload
-      2) The source of a present
-    This module enforces an interface with common, highlevel, methods shared
-    by Impala and Hive implementations.
+"""BackendHadoopTable: Library for logic/interaction with a table that will
+be either:
+  1) The target of an offload
+  2) The source of a present
+This module enforces an interface with common, highlevel, methods shared
+by Impala and Hive implementations.
 """
 
 import logging
@@ -27,6 +27,10 @@ import os
 from typing import TYPE_CHECKING
 
 from goe.filesystem.goe_dfs import gen_load_uri_from_options
+from goe.offload.backend_table import (
+    TYPICAL_DATE_GRANULARITY_TERMS,
+    BackendTableInterface,
+)
 from goe.offload.column_metadata import ColumnMetadataInterface, get_column_names
 from goe.offload.hadoop import hadoop_predicate
 from goe.offload.hadoop.hadoop_column import (
@@ -39,16 +43,11 @@ from goe.offload.hadoop.hadoop_column import (
 )
 from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_AVRO,
-    OFFLOAD_STATS_METHOD_NATIVE,
     OFFLOAD_STATS_METHOD_HISTORY,
+    OFFLOAD_STATS_METHOD_NATIVE,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_functions import load_db_hdfs_path, schema_path
-from goe.offload.backend_table import (
-    BackendTableInterface,
-    TYPICAL_DATE_GRANULARITY_TERMS,
-)
-from goe.offload.staging.staging_file import OffloadStagingFileInterface
 from goe.offload.staging.avro.avro_staging_file import (
     AVRO_TYPE_DOUBLE,
     AVRO_TYPE_FLOAT,
@@ -61,6 +60,7 @@ from goe.offload.staging.parquet.parquet_column import (
     PARQUET_TYPE_INT32,
     PARQUET_TYPE_INT64,
 )
+from goe.offload.staging.staging_file import OffloadStagingFileInterface
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -110,7 +110,7 @@ class BackendHadoopTable(BackendTableInterface):
         self.db_name = db_name.lower()
         self.table_name = table_name.lower()
 
-        super(BackendHadoopTable, self).__init__(
+        super().__init__(
             self.db_name,
             self.table_name,
             backend_type,
@@ -138,15 +138,9 @@ class BackendHadoopTable(BackendTableInterface):
         if hasattr(orchestration_operation, "hive_column_stats"):
             # Having to do hasattr checking because SchemaSync doesn't have adequate options (and shouldn't really need them)
             self._hive_column_stats_enabled = orchestration_operation.hive_column_stats
-            self._hive_max_dynamic_partitions = (
-                self._orchestration_config.hive_max_dynamic_partitions
-            )
-            self._hive_max_dynamic_partitions_pernode = (
-                self._orchestration_config.hive_max_dynamic_partitions_pernode
-            )
-            self._hive_optimize_sort_dynamic_partition = (
-                self._orchestration_config.hive_optimize_sort_dynamic_partition
-            )
+            self._hive_max_dynamic_partitions = self._orchestration_config.hive_max_dynamic_partitions
+            self._hive_max_dynamic_partitions_pernode = self._orchestration_config.hive_max_dynamic_partitions_pernode
+            self._hive_optimize_sort_dynamic_partition = self._orchestration_config.hive_optimize_sort_dynamic_partition
         else:
             self._hive_column_stats_enabled = None
             self._hive_max_dynamic_partitions = None
@@ -171,18 +165,13 @@ class BackendHadoopTable(BackendTableInterface):
         if not self._user_requested_compute_load_table_stats:
             return
         self._log(COMPUTE_LOAD_TABLE_STATS_LOG_TEXT, detail=VVERBOSE)
-        self._db_api.compute_stats(
-            self._load_db_name, self._load_table_name, incremental=True
-        )
+        self._db_api.compute_stats(self._load_db_name, self._load_table_name, incremental=True)
 
-    def _compute_hive_table_statistics(
-        self, incremental_stats, materialized_join=False
-    ):
+    def _compute_hive_table_statistics(self, incremental_stats, materialized_join=False):
         def progress_message(partitions_done, partitions_total):
             perc = float(partitions_done) / partitions_total * 100
             self._log(
-                "Partition progress %d%% (%d/%d)"
-                % (int(perc), partitions_done, partitions_total),
+                "Partition progress %d%% (%d/%d)" % (int(perc), partitions_done, partitions_total),
                 detail=VERBOSE,
             )
 
@@ -216,17 +205,13 @@ FROM %s.%s""" % (
                 self.enclose_identifier(self._load_db_name),
                 self.enclose_identifier(self.table_name),
             )
-            partitions = self._execute_query_fetch_all(
-                sql, log_level=VERBOSE, not_when_dry_running=True
-            )
+            partitions = self._execute_query_fetch_all(sql, log_level=VERBOSE, not_when_dry_running=True)
 
             process_partitions = []
             for partition in partitions:
                 partition_spec = []
                 for num, partition_value in enumerate(partition):
-                    partition_spec.append(
-                        (self.get_partition_columns()[num].name, partition_value)
-                    )
+                    partition_spec.append((self.get_partition_columns()[num].name, partition_value))
                 process_partitions.append(partition_spec)
 
             return process_partitions
@@ -254,10 +239,7 @@ FROM %s.%s""" % (
           2. If hive_column_stats: gather on those partitions missing column stats
         """
         if incremental_stats and not materialized_join:
-            if (
-                self._offload_stats_method == OFFLOAD_STATS_METHOD_NATIVE
-                and self._hive_column_stats_enabled
-            ):
+            if self._offload_stats_method == OFFLOAD_STATS_METHOD_NATIVE and self._hive_column_stats_enabled:
                 self._log("Gathering column stats for new partitions", detail=VVERBOSE)
                 if not self._dry_run:
                     new_partitions = partitions_from_load_table()
@@ -278,8 +260,7 @@ FROM %s.%s""" % (
                         as_dict=True,
                     )
                     self._log(
-                        "Gathering stats on partitions that have none: %s"
-                        % str(list(part_stats.keys())),
+                        "Gathering stats on partitions that have none: %s" % str(list(part_stats.keys())),
                         detail=VVERBOSE,
                     )
                     for index, partition_str in enumerate(part_stats.keys()):
@@ -287,9 +268,7 @@ FROM %s.%s""" % (
                         gather_partition_stats(False, partition_tuples)
                         progress_message(index + 1, len(part_stats))
                     if self._hive_column_stats_enabled:
-                        self._log(
-                            "Gathering stats on columns that have none", detail=VVERBOSE
-                        )
+                        self._log("Gathering stats on columns that have none", detail=VVERBOSE)
                         for index, partition_str in enumerate(col_stats.keys()):
                             partition_tuples = partition_str_to_tuples(partition_str)
                             gather_partition_stats(True, partition_tuples)
@@ -326,9 +305,7 @@ FROM %s.%s""" % (
         self._log("Staging Avro schema: %s" % avro_schema_str, detail=VVERBOSE)
         self._log_dfs_cmd('write("%s")' % self._avro_schema_hdfs_path)
         if not self._dry_run:
-            self._get_dfs_client().write(
-                self._avro_schema_hdfs_path, data=avro_schema_str, overwrite=True
-            )
+            self._get_dfs_client().write(self._avro_schema_hdfs_path, data=avro_schema_str, overwrite=True)
 
     def _create_load_table(self, staging_file, with_terminator=False) -> list:
         """Create the staging/load table and supporting HDFS directory"""
@@ -340,9 +317,7 @@ FROM %s.%s""" % (
             table_name=self._load_table_name,
         )
         schema_fs_prefix = "hdfs://" if self._avro_schema_hdfs_path[:1] == "/" else ""
-        table_properties = {
-            "avro.schema.url": "%s%s" % (schema_fs_prefix, self._avro_schema_hdfs_path)
-        }
+        table_properties = {"avro.schema.url": "%s%s" % (schema_fs_prefix, self._avro_schema_hdfs_path)}
         return self._db_api.create_table(
             self._load_db_name,
             self._load_table_name,
@@ -359,15 +334,11 @@ FROM %s.%s""" % (
         )
 
     def _create_new_backend_table(self, sort_column_names=None):
-        raise NotImplementedError(
-            "_create_new_backend_table() is not implemented for common Hadoop class"
-        )
+        raise NotImplementedError("_create_new_backend_table() is not implemented for common Hadoop class")
 
     def _drop_load_table(self, sync=None):
         """Drop the staging/load table and any supporting filesystem directory"""
-        self._db_api.drop_table(
-            self._load_db_name, self._load_table_name, purge=True, sync=sync
-        )
+        self._db_api.drop_table(self._load_db_name, self._load_table_name, purge=True, sync=sync)
         # Use the default load table location (from options) and not that of any existing table,
         # this ensures we clear any problem files before we create a new load table and start offloading
         if self._load_table_hdfs_dir:
@@ -380,9 +351,7 @@ FROM %s.%s""" % (
         sort_expr_list,
         for_materialized_join=False,
     ):
-        raise NotImplementedError(
-            "_final_insert_format_sql() is not implemented for common Hadoop class"
-        )
+        raise NotImplementedError("_final_insert_format_sql() is not implemented for common Hadoop class")
 
     def _gen_synthetic_part_number_granularity_sql_expr(
         self,
@@ -404,9 +373,7 @@ FROM %s.%s""" % (
             partition_info=canonical_column.partition_info,
         )
 
-    def _gen_synthetic_partition_date_as_string_sql_expr(
-        self, extract_name, pad_size, source_column_cast
-    ):
+    def _gen_synthetic_partition_date_as_string_sql_expr(self, extract_name, pad_size, source_column_cast):
         """Hadoop implementation"""
         return "LPAD(CAST(%s(%s) AS STRING), %s, '0')" % (
             extract_name,
@@ -446,23 +413,17 @@ FROM %s.%s""" % (
 
     def _get_load_db_hdfs_dir(self):
         if self._load_db_hdfs_dir is None:
-            self._load_db_hdfs_dir = load_db_hdfs_path(
-                self._load_db_name, self._orchestration_config
-            )
+            self._load_db_hdfs_dir = load_db_hdfs_path(self._load_db_name, self._orchestration_config)
         return self._load_db_hdfs_dir
 
     def _get_load_table_hdfs_dir(self):
         if self._load_table_hdfs_dir is None:
-            self._load_table_hdfs_dir = os.path.join(
-                self._get_load_db_hdfs_dir(), self._load_table_name
-            )
+            self._load_table_hdfs_dir = os.path.join(self._get_load_db_hdfs_dir(), self._load_table_name)
         return self._load_table_hdfs_dir
 
     def _get_result_cache_db_hdfs_dir(self):
         if self._result_cache_db_hdfs_dir is None:
-            self._result_cache_db_hdfs_dir = load_db_hdfs_path(
-                self._result_cache_db_name, self._orchestration_config
-            )
+            self._result_cache_db_hdfs_dir = load_db_hdfs_path(self._result_cache_db_name, self._orchestration_config)
         return self._result_cache_db_hdfs_dir
 
     def _recreate_load_table_dir(self, include_remove=True, include_create=True):
@@ -473,9 +434,7 @@ FROM %s.%s""" % (
         if include_remove:
             self._log_dfs_cmd('rmdir("%s")' % load_table_hdfs_dir)
             if not self._dry_run:
-                status = self._get_dfs_client().rmdir(
-                    load_table_hdfs_dir, recursive=True
-                )
+                status = self._get_dfs_client().rmdir(load_table_hdfs_dir, recursive=True)
                 self._messages.log("rmdir status: %s" % status, detail=VVERBOSE)
         if include_create:
             self._log_dfs_cmd('mkdir("%s")' % load_table_hdfs_dir)
@@ -492,19 +451,14 @@ FROM %s.%s""" % (
         """
         self._db_api.refresh_table_files(self._load_db_name, self._load_table_name)
 
-    def _staging_to_backend_cast(
-        self, rdbms_column, backend_column, staging_column
-    ) -> tuple:
+    def _staging_to_backend_cast(self, rdbms_column, backend_column, staging_column) -> tuple:
         """Returns correctly cast or overridden columns ready for insert/select to final table.
         rdbms_column: Required because we need to know what data is actually inside the staging column.
         Common Hadoop version.
         """
 
         def staging_and_backend_types_match(staging_column, backend_column):
-            if (
-                staging_column.format_data_type().upper()
-                == backend_column.format_data_type().upper()
-            ):
+            if staging_column.format_data_type().upper() == backend_column.format_data_type().upper():
                 self._log(
                     "No CAST() required for %s: %s->%s"
                     % (
@@ -515,8 +469,7 @@ FROM %s.%s""" % (
                     detail=VVERBOSE,
                 )
                 return True
-            else:
-                return False
+            return False
 
         def staging_file_int_match(backend_column, staging_column):
             return bool(
@@ -534,21 +487,17 @@ FROM %s.%s""" % (
             return bool(
                 (
                     backend_column.data_type == HADOOP_TYPE_FLOAT
-                    and staging_column.data_type
-                    in [AVRO_TYPE_FLOAT, PARQUET_TYPE_FLOAT]
+                    and staging_column.data_type in [AVRO_TYPE_FLOAT, PARQUET_TYPE_FLOAT]
                 )
                 or (
                     backend_column.data_type == HADOOP_TYPE_DOUBLE
-                    and staging_column.data_type
-                    in [AVRO_TYPE_DOUBLE, PARQUET_TYPE_DOUBLE]
+                    and staging_column.data_type in [AVRO_TYPE_DOUBLE, PARQUET_TYPE_DOUBLE]
                 )
             )
 
         assert backend_column
         assert isinstance(backend_column, ColumnMetadataInterface)
-        assert rdbms_column, (
-            "RDBMS column missing for backend column: %s" % backend_column.name
-        )
+        assert rdbms_column, "RDBMS column missing for backend column: %s" % backend_column.name
         assert isinstance(rdbms_column, ColumnMetadataInterface)
         assert staging_column
         assert isinstance(staging_column, ColumnMetadataInterface)
@@ -557,9 +506,9 @@ FROM %s.%s""" % (
         return_type = backend_column.format_data_type().upper()
 
         if backend_column.is_number_based():
-            if staging_file_int_match(
+            if staging_file_int_match(backend_column, staging_column) or staging_file_float_match(
                 backend_column, staging_column
-            ) or staging_file_float_match(backend_column, staging_column):
+            ):
                 # Same data type so no need to CAST
                 self._log(
                     "No cast required for matching data types: %s/%s"
@@ -600,14 +549,10 @@ FROM %s.%s""" % (
                     LPAD(CONCAT(CAST(%(col)s AS STRING),RPAD('0',10-LENGTH(REGEXP_EXTRACT(%(col)s,'([^ ]+ [0-9:]+)(\\.[0-9]*)?',2)),'0')),29,'0')
                 ELSE
                     LPAD(CONCAT(CAST(%(col)s AS STRING),'.000000000'),29,'0')
-                END""" % {
-                    "col": self._format_staging_column_name(staging_column)
-                }
+                END""" % {"col": self._format_staging_column_name(staging_column)}
             elif not staging_and_backend_types_match(staging_column, backend_column):
                 if backend_column.data_type == HADOOP_TYPE_DATE:
-                    return_cast = "TO_DATE(%s)" % (
-                        self._format_staging_column_name(staging_column)
-                    )
+                    return_cast = "TO_DATE(%s)" % (self._format_staging_column_name(staging_column))
                 else:
                     return_cast = "CAST(%s AS %s)" % (
                         self._format_staging_column_name(staging_column),
@@ -617,14 +562,11 @@ FROM %s.%s""" % (
         # There is no concept of safe cast on Hadoop so return same cast twice
         if return_cast:
             return return_cast, return_type, return_cast
-        else:
-            return_cast = self._format_staging_column_name(staging_column)
-            return return_cast, None, return_cast
+        return_cast = self._format_staging_column_name(staging_column)
+        return return_cast, None, return_cast
 
     def _tzoffset_to_timestamp_sql_expression(self, col_name):
-        raise NotImplementedError(
-            "_tzoffset_to_timestamp_sql_expression() is not implemented for common Hadoop class"
-        )
+        raise NotImplementedError("_tzoffset_to_timestamp_sql_expression() is not implemented for common Hadoop class")
 
     ###########################################################################
     # PUBLIC METHODS - HIGH LEVEL STEP METHODS
@@ -638,9 +580,7 @@ FROM %s.%s""" % (
         Creating a new table may change our world view so the function drops state if in execute mode.
         If dry_run then we leave state in place to allow other operations to preview.
         """
-        cmds = self._create_new_backend_table(
-            sort_column_names=self._sort_columns, with_terminator=with_terminator
-        )
+        cmds = self._create_new_backend_table(sort_column_names=self._sort_columns, with_terminator=with_terminator)
         if not self._dry_run:
             # The CREATE TABLE above may have changed our world view so let's reset what we already know
             self._drop_state()
@@ -649,12 +589,8 @@ FROM %s.%s""" % (
     def empty_staging_area(self, staging_file):
         self._recreate_load_table(staging_file)
 
-    def incremental_merge_final_table(
-        self, extraction_key_columns, staging_columns, sync=None
-    ):
-        raise NotImplementedError(
-            "incremental_merge_final_table() is not implemented for common Hadoop class"
-        )
+    def incremental_merge_final_table(self, extraction_key_columns, staging_columns, sync=None):
+        raise NotImplementedError("incremental_merge_final_table() is not implemented for common Hadoop class")
 
     def load_final_table(self, sync=None):
         """Copy data from the staged load table into the final backend table
@@ -671,18 +607,12 @@ FROM %s.%s""" % (
         )
 
         select_expression_tuples = [
-            (self.get_final_table_cast(col), col.name.upper())
-            for col in self.get_non_synthetic_columns()
+            (self.get_final_table_cast(col), col.name.upper()) for col in self.get_non_synthetic_columns()
         ]
         # Any SORT BY should be of the correct data type
-        sort_expressions = [
-            self.get_final_table_cast(col_name)
-            for col_name in (self._sort_columns or [])
-        ]
+        sort_expressions = [self.get_final_table_cast(col_name) for col_name in (self._sort_columns or [])]
 
-        sqls, query_options = self._gen_final_insert_sqls(
-            select_expression_tuples, sort_expr_list=sort_expressions
-        )
+        sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples, sort_expr_list=sort_expressions)
 
         try:
             self._execute_dml(
@@ -694,8 +624,7 @@ FROM %s.%s""" % (
         except Exception as exc:
             if "ERROR_STATE" in str(exc):
                 partition_expressions = ", ".join(
-                    self.get_final_table_cast(_)
-                    for _ in get_column_names(self.get_partition_columns())
+                    self.get_final_table_cast(_) for _ in get_column_names(self.get_partition_columns())
                 )
                 suggest_sql = """SELECT COUNT(*)
         FROM (
@@ -736,8 +665,7 @@ FROM %s.%s""" % (
             )
         )
         select_expression_tuples = [
-            (self.get_final_table_cast(col), col.name.upper())
-            for col in self.get_non_synthetic_columns()
+            (self.get_final_table_cast(col), col.name.upper()) for col in self.get_non_synthetic_columns()
         ]
         sqls, query_options = self._gen_mat_join_insert_sqls(
             select_expression_tuples,
@@ -798,14 +726,11 @@ FROM %s.%s""" % (
                 location=self._get_load_db_hdfs_dir(),
                 with_terminator=with_terminator,
             )
-        else:
-            return []
+        return []
 
     def get_default_location(self):
         if self._default_location is None:
-            self._default_location = self._db_api.get_table_location(
-                self.db_name, self.table_name
-            )
+            self._default_location = self._db_api.get_table_location(self.db_name, self.table_name)
         return self._default_location
 
     def get_staging_table_location(self):
@@ -830,13 +755,7 @@ FROM %s.%s""" % (
             self._db_api.enclose_object_reference(self.db_name, self.table_name),
             hadoop_predicate.predicate_to_where_clause(self.get_columns(), predicate),
         )
-        return bool(
-            self._execute_query_fetch_one(
-                sql, log_level=VERBOSE, not_when_dry_running=False
-            )
-        )
+        return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
 
     def predicate_to_where_clause(self, predicate, columns_override=None):
-        return hadoop_predicate.predicate_to_where_clause(
-            columns_override or self.get_columns(), predicate
-        )
+        return hadoop_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)

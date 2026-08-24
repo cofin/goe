@@ -20,10 +20,9 @@ Implements abstract methods from FrontendApiInterface.
 
 # Standard Library
 import logging
+import traceback
 from datetime import datetime
 from textwrap import dedent
-import traceback
-from typing import Optional
 
 # Third Party Libraries
 import oracledb as cxo
@@ -75,10 +74,9 @@ CREATE_TABLE_ORACLE_PARTITION_SPEC = "partition_spec"
 def switch_oracle_open_partition_token(frontend_token):
     if frontend_token and frontend_token.upper() == "MAXVALUE":
         return offload_constants.PART_OUT_OF_RANGE
-    elif frontend_token and frontend_token.upper() == "DEFAULT":
+    if frontend_token and frontend_token.upper() == "DEFAULT":
         return offload_constants.PART_OUT_OF_LIST
-    else:
-        return frontend_token
+    return frontend_token
 
 
 ###########################################################################
@@ -101,7 +99,7 @@ class OracleFrontendApi(FrontendApiInterface):
         trace_action=None,
     ):
         """Standard CONSTRUCTOR"""
-        super(OracleFrontendApi, self).__init__(
+        super().__init__(
             connection_options,
             frontend_type,
             messages,
@@ -143,27 +141,21 @@ class OracleFrontendApi(FrontendApiInterface):
     def _conn_user_and_pass_for_override(self):
         """Return a user and password from connection_options object for the override user"""
         assert self._conn_user_override
-        if self._conn_user_override.upper() == self._upper_or_empty(
-            self._connection_options.ora_adm_user
-        ):
+        if self._conn_user_override.upper() == self._upper_or_empty(self._connection_options.ora_adm_user):
             return (
                 self._connection_options.ora_adm_user,
                 self._connection_options.ora_adm_pass,
             )
-        elif self._conn_user_override.upper() == self._upper_or_empty(
-            self._connection_options.ora_app_user
-        ):
+        if self._conn_user_override.upper() == self._upper_or_empty(self._connection_options.ora_app_user):
             return (
                 self._connection_options.ora_app_user,
                 self._connection_options.ora_app_pass,
             )
-        else:
-            # Assume we want to proxy to a hybrid schema through the adm user
-            return (
-                "%s[%s]"
-                % (self._connection_options.ora_adm_user, self._conn_user_override),
-                self._connection_options.ora_app_pass,
-            )
+        # Assume we want to proxy to a hybrid schema through the adm user
+        return (
+            "%s[%s]" % (self._connection_options.ora_adm_user, self._conn_user_override),
+            self._connection_options.ora_app_pass,
+        )
 
     def _close_cursor(self):
         if self._db_conn and self._db_curs:
@@ -173,9 +165,7 @@ class OracleFrontendApi(FrontendApiInterface):
                 self._log("Exception closing cursor:\n%s" % str(exc), detail=VVERBOSE)
         self._db_curs = None
 
-    def _connection_output_type_handler(
-        self, cursor, name, default_type, size, precision, scale
-    ):
+    def _connection_output_type_handler(self, cursor, name, default_type, size, precision, scale):
         if default_type == cxo.DB_TYPE_CLOB:
             return cursor.var(cxo.DB_TYPE_LONG_STRING, arraysize=cursor.arraysize)
         if default_type == cxo.DB_TYPE_BLOB:
@@ -190,20 +180,12 @@ class OracleFrontendApi(FrontendApiInterface):
             # Option based connection
             dsn = self._connection_options.rdbms_dsn
             if self._connection_options.use_oracle_wallet:
-                if (
-                    self._conn_user_override
-                    and self._conn_user_override.upper()
-                    not in [
-                        self._upper_or_empty(self._connection_options.ora_adm_user),
-                        self._upper_or_empty(self._connection_options.ora_app_user),
-                    ]
-                ):
-                    self._debug(
-                        "Proxying to DSN [%s]%s" % (self._conn_user_override, dsn)
-                    )
-                    self._db_conn = cxo.connect(
-                        user="[%s]" % self._conn_user_override, dsn=dsn
-                    )
+                if self._conn_user_override and self._conn_user_override.upper() not in [
+                    self._upper_or_empty(self._connection_options.ora_adm_user),
+                    self._upper_or_empty(self._connection_options.ora_app_user),
+                ]:
+                    self._debug("Proxying to DSN [%s]%s" % (self._conn_user_override, dsn))
+                    self._db_conn = cxo.connect(user="[%s]" % self._conn_user_override, dsn=dsn)
                 else:
                     self._debug("Connecting to DSN %s" % dsn)
                     self._db_conn = cxo.connect(dsn=dsn)
@@ -235,9 +217,7 @@ class OracleFrontendApi(FrontendApiInterface):
         table_properties=None,
     ) -> str:
         if table_properties:
-            raise NotImplementedError(
-                f"Create table properties pending implementation: {table_properties}"
-            )
+            raise NotImplementedError(f"Create table properties pending implementation: {table_properties}")
 
         col_projection = self._create_table_columns_clause_common(column_list)
 
@@ -246,38 +226,23 @@ class OracleFrontendApi(FrontendApiInterface):
             for part_col in partition_column_names:
                 real_col = match_table_column(part_col, column_list)
                 if not real_col:
-                    raise FrontendApiException(
-                        "Partition column is not in proposed table columns: %s"
-                        % part_col
-                    )
+                    raise FrontendApiException("Partition column is not in proposed table columns: %s" % part_col)
             # On Oracle we need a partition spec for the partition_column_names scheme
-            assert (
-                table_properties
-                and CREATE_TABLE_ORACLE_PARTITION_SPEC in table_properties
-            )
-            raise NotImplementedError(
-                "Create table partitioning pending implementation"
-            )
+            assert table_properties and CREATE_TABLE_ORACLE_PARTITION_SPEC in table_properties
+            raise NotImplementedError("Create table partitioning pending implementation")
 
-        sql = (
-            dedent("""\
+        sql = dedent("""\
             CREATE TABLE %(owner_table)s (
                 %(col_projection)s
-            )%(partition_clause)s""")
-            % {
-                "owner_table": self.enclose_object_reference(schema, table_name),
-                "col_projection": col_projection,
-                "partition_clause": partition_clause,
-            }
-        )
+            )%(partition_clause)s""") % {
+            "owner_table": self.enclose_object_reference(schema, table_name),
+            "col_projection": col_projection,
+            "partition_clause": partition_clause,
+        }
         return sql
 
     def _cx_getvalue(self, incoming):
-        return (
-            incoming.getvalue()
-            if incoming and hasattr(incoming, "getvalue")
-            else incoming
-        )
+        return incoming.getvalue() if incoming and hasattr(incoming, "getvalue") else incoming
 
     def _disconnect(self, force=False):
         self._debug("Disconnecting from DB")
@@ -290,9 +255,7 @@ class OracleFrontendApi(FrontendApiInterface):
                     self._db_conn.close()
                     self._db_conn = None
             except Exception as exc:
-                self._log(
-                    "Exception closing connection:\n%s" % str(exc), detail=VVERBOSE
-                )
+                self._log("Exception closing connection:\n%s" % str(exc), detail=VVERBOSE)
             # If we forced disconnection then that invalidates any existing connection.
             self._existing_connection = None
 
@@ -318,25 +281,16 @@ class OracleFrontendApi(FrontendApiInterface):
         run_sqls = []
         sqls = [sql] if isinstance(sql, str) else sql
         for i, run_sql in enumerate(sqls):
-            self._log_or_not(
-                "%s SQL: %s" % (self._sql_engine_name, run_sql), log_level=log_level
-            )
+            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, run_sql), log_level=log_level)
             run_sqls.append(run_sql)
             if not self._dry_run:
                 if query_params:
                     self._log_or_not("Bind values:", log_level=log_level)
                     self._log_or_not(
-                        "\n".join(
-                            "%s = %s" % (k, v)
-                            for k, v in self._to_native_query_params(
-                                query_params
-                            ).items()
-                        ),
+                        "\n".join("%s = %s" % (k, v) for k, v in self._to_native_query_params(query_params).items()),
                         log_level=log_level,
                     )
-                    self._db_curs.execute(
-                        run_sql, self._to_native_query_params(query_params)
-                    )
+                    self._db_curs.execute(run_sql, self._to_native_query_params(query_params))
                 else:
                     self._db_curs.execute(run_sql)
         self._close_cursor()
@@ -358,14 +312,10 @@ class OracleFrontendApi(FrontendApiInterface):
         logger.debug("Calling SQL function %s" % sql_fn)
         self._open_cursor()
         try:
-            self._log_or_not(
-                "%s SQL: %s" % (self._sql_engine_name, sql_fn), log_level=log_level
-            )
+            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql_fn), log_level=log_level)
             if arg_list:
                 assert isinstance(arg_list, list)
-                self._log_or_not(
-                    "Arguments: {}".format(str(arg_list)), log_level=log_level
-                )
+                self._log_or_not(f"Arguments: {arg_list!s}", log_level=log_level)
             if self._dry_run and not_when_dry_running:
                 return None
 
@@ -378,13 +328,12 @@ class OracleFrontendApi(FrontendApiInterface):
                 else:
                     return_val = self._db_curs.callfunc(sql_fn, return_type)
                 return self._cx_getvalue(return_val)
+            # PROCEDURE call with no return value
+            if arg_list:
+                self._db_curs.callproc(sql_fn, arg_list)
             else:
-                # PROCEDURE call with no return value
-                if arg_list:
-                    self._db_curs.callproc(sql_fn, arg_list)
-                else:
-                    self._db_curs.callproc(sql_fn)
-                return None
+                self._db_curs.callproc(sql_fn)
+            return None
         finally:
             self._close_cursor()
             if commit:
@@ -409,16 +358,11 @@ class OracleFrontendApi(FrontendApiInterface):
         """
 
         def log_query():
-            self._log_or_not(
-                "%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level
-            )
+            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
             if query_params:
                 self._log_or_not("Bind values:", log_level=log_level)
                 self._log_or_not(
-                    "\n".join(
-                        "%s = %s" % (k, v)
-                        for k, v in self._to_native_query_params(query_params).items()
-                    ),
+                    "\n".join("%s = %s" % (k, v) for k, v in self._to_native_query_params(query_params).items()),
                     log_level=log_level,
                 )
 
@@ -446,9 +390,7 @@ class OracleFrontendApi(FrontendApiInterface):
                 self._db_curs.execute(sql)
             if as_dict:
                 columns = self._cursor_projection(self._db_curs)
-                self._db_curs.rowfactory = lambda *row_args: self._cursor_row_to_dict(
-                    columns, row_args
-                )
+                self._db_curs.rowfactory = lambda *row_args: self._cursor_row_to_dict(columns, row_args)
             if fetch_action == FETCH_ACTION_ALL:
                 rows = self._db_curs.fetchall()
             elif fetch_action == FETCH_ACTION_ONE:
@@ -481,8 +423,7 @@ class OracleFrontendApi(FrontendApiInterface):
 
         if fetch_action == FETCH_ACTION_CURSOR:
             return self._db_curs
-        else:
-            return rows
+        return rows
 
     def _execute_session_options(self, query_options, log_level):
         return_list = []
@@ -510,9 +451,7 @@ class OracleFrontendApi(FrontendApiInterface):
         if trace_action:
             self._db_conn.action = self.v_session_safe_action(trace_action)
         run_opts = self._execute_session_options(query_options, log_level=log_level)
-        self._log_or_not(
-            "%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level
-        )
+        self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
         self._open_cursor()
         self._db_curs.prepare(sql)
         native_params = [self._to_native_query_params(_) for _ in query_params]
@@ -525,9 +464,7 @@ class OracleFrontendApi(FrontendApiInterface):
         ):
             if param_batch == []:
                 continue
-            self._log_or_not(
-                "Binds(%s): %s rows" % (i, len(param_batch)), log_level=log_level
-            )
+            self._log_or_not("Binds(%s): %s rows" % (i, len(param_batch)), log_level=log_level)
             if not self._dry_run:
                 self._db_curs.executemany(None, param_batch)
         self._close_cursor()
@@ -545,11 +482,9 @@ class OracleFrontendApi(FrontendApiInterface):
         batch_size=None,
         param_inputsizes=None,
     ):
-        raise NotImplementedError(
-            "_fast_executemany_dml() is not implemented for Oracle"
-        )
+        raise NotImplementedError("_fast_executemany_dml() is not implemented for Oracle")
 
-    def _format_query_options(self, query_options: Optional[dict] = None) -> list:
+    def _format_query_options(self, query_options: dict | None = None) -> list:
         """Format options for Oracle
         query_options: key/value pairs for session settings
         """
@@ -615,15 +550,13 @@ class OracleFrontendApi(FrontendApiInterface):
                     ddl_str += ";"
                 if as_list:
                     return ddl_str.split("\n")
-                else:
-                    return ddl_str
-            else:
-                return None
+                return ddl_str
+            return None
         finally:
             self._close_cursor()
 
     def _get_instance_compatible(self):
-        """returns the RDBMS version"""
+        """Returns the RDBMS version"""
         if not self._instance_compatible:
             self._instance_compatible = self.get_session_option("compatible")
         return self._instance_compatible
@@ -631,24 +564,14 @@ class OracleFrontendApi(FrontendApiInterface):
     def _get_partition_column_names(self, schema, table_name, subpartition_level=False):
         """Return a list of partition column names in the correct order."""
         logger.debug("_get_partition_column_names: %s, %s" % (schema, table_name))
-        dba_part_key_columns = (
-            "dba_subpart_key_columns" if subpartition_level else "dba_part_key_columns"
-        )
-        q = (
-            dedent("""\
+        dba_part_key_columns = "dba_subpart_key_columns" if subpartition_level else "dba_part_key_columns"
+        q = dedent("""\
             SELECT UPPER(pk.column_name)
             FROM   %(dba_part_key_columns)s pk
             WHERE  pk.owner = :owner
             AND    pk.name = :table_name
-            ORDER BY pk.column_position""")
-            % {"dba_part_key_columns": dba_part_key_columns}
-        )
-        return [
-            _[0]
-            for _ in self.execute_query_fetch_all(
-                q, query_params={"owner": schema, "table_name": table_name}
-            )
-        ]
+            ORDER BY pk.column_position""") % {"dba_part_key_columns": dba_part_key_columns}
+        return [_[0] for _ in self.execute_query_fetch_all(q, query_params={"owner": schema, "table_name": table_name})]
 
     def _instrumentation_snap(self, delta_dict=None):
         """Capture and return session events and CPU usage and return as a dict
@@ -657,9 +580,7 @@ class OracleFrontendApi(FrontendApiInterface):
 
         def get_cpu_s():
             logger.debug("Fetching CPU time from DB")
-            cpu = self._execute_plsql_function(
-                "DBMS_UTILITY.GET_CPU_TIME", return_type=cxo.DB_TYPE_NUMBER
-            )
+            cpu = self._execute_plsql_function("DBMS_UTILITY.GET_CPU_TIME", return_type=cxo.DB_TYPE_NUMBER)
             return float(cpu) / 100
 
         if delta_dict:
@@ -667,11 +588,10 @@ class OracleFrontendApi(FrontendApiInterface):
             cpu_seconds = get_cpu_s()
 
         logger.debug("Fetching session events from DB")
-        sql = "SELECT event, ROUND(time_waited_micro/1e6,2) FROM v$session_event WHERE sid = SYS_CONTEXT('USERENV','SID')"
-        profile_dict = {
-            event_name: event_sec
-            for event_name, event_sec in self.execute_query_fetch_all(sql)
-        }
+        sql = (
+            "SELECT event, ROUND(time_waited_micro/1e6,2) FROM v$session_event WHERE sid = SYS_CONTEXT('USERENV','SID')"
+        )
+        profile_dict = {event_name: event_sec for event_name, event_sec in self.execute_query_fetch_all(sql)}
 
         if not delta_dict:
             # If this is the first snapshot then get CPU after other stats
@@ -682,14 +602,10 @@ class OracleFrontendApi(FrontendApiInterface):
         if delta_dict:
             # Adjust final values to be the delta value
             for event_name, event_sec in profile_dict.items():
-                profile_dict[event_name] = round(
-                    event_sec - delta_dict.get(event_name, 0), 2
-                )
+                profile_dict[event_name] = round(event_sec - delta_dict.get(event_name, 0), 2)
 
             # Remove any stats with delta of 0
-            for zero_key in [
-                _ for _ in profile_dict if profile_dict[_] == 0 and _ != "cpu_seconds"
-            ]:
+            for zero_key in [_ for _ in profile_dict if profile_dict[_] == 0 and _ != "cpu_seconds"]:
                 del profile_dict[zero_key]
 
         return profile_dict
@@ -699,18 +615,14 @@ class OracleFrontendApi(FrontendApiInterface):
                FROM   all_tables t
                WHERE  t.owner = :owner
                AND    t.table_name = :table_name"""
-        row = self.execute_query_fetch_one(
-            q, query_params={"owner": schema, "table_name": table_name}
-        )
+        row = self.execute_query_fetch_one(q, query_params={"owner": schema, "table_name": table_name})
         return bool(row and row[0] == "IOT")
 
     def _open_cursor(self):
         def setup_cursor():
             self._db_curs = self._db_conn.cursor()
             # This execute() is important for triggering reconnection requirements. Taking a new cursor is not enough.
-            self._db_curs.execute(
-                'ALTER SESSION SET TRACEFILE_IDENTIFIER="%s"' % FRONTEND_TRACE_ID
-            )
+            self._db_curs.execute('ALTER SESSION SET TRACEFILE_IDENTIFIER="%s"' % FRONTEND_TRACE_ID)
 
         if self._db_conn:
             try:
@@ -737,10 +649,8 @@ class OracleFrontendApi(FrontendApiInterface):
                     # "ORA-03135: connection lost contact": e.g. when a firewall rule severs an idle session.
                     # Sometimes error codes are not padded with a zero, for example:
                     #    DPI-1080: connection was closed by ORA-2396
-                    self._log(
-                        f"Reconnecting to Oracle due to: {str(exc)}", detail=VVERBOSE
-                    )
-                    logger.info(f"Reconnecting to Oracle due to: {str(exc)}")
+                    self._log(f"Reconnecting to Oracle due to: {exc!s}", detail=VVERBOSE)
+                    logger.info(f"Reconnecting to Oracle due to: {exc!s}")
                     self._disconnect(force=True)
                     self._connect()
                     setup_cursor()
@@ -778,9 +688,7 @@ class OracleFrontendApi(FrontendApiInterface):
     def close(self, force=False):
         self._disconnect(force=force)
 
-    def agg_validate_sample_column_names(
-        self, schema, table_name, num_required: int = 5
-    ) -> list:
+    def agg_validate_sample_column_names(self, schema, table_name, num_required: int = 5) -> list:
         sql = dedent("""\
         SELECT column_name
         FROM  (
@@ -801,14 +709,10 @@ class OracleFrontendApi(FrontendApiInterface):
             QueryParameter(param_name="REQUIRED_NO", param_value=num_required),
         ]
 
-        query_result = self.execute_query_fetch_all(
-            sql, query_params=binds, log_level=VVERBOSE
-        )
+        query_result = self.execute_query_fetch_all(sql, query_params=binds, log_level=VVERBOSE)
         return [_[0] for _ in query_result]
 
-    def create_new_connection(
-        self, user_name, user_password, trace_action_override=None
-    ):
+    def create_new_connection(self, user_name, user_password, trace_action_override=None):
         self._debug("Making new connection with user %s" % user_name)
         client = cxo.connect(
             user=user_name,
@@ -859,13 +763,12 @@ class OracleFrontendApi(FrontendApiInterface):
 
     def format_query_parameter(self, param_name):
         assert param_name
-        return ":{}".format(param_name)
+        return f":{param_name}"
 
     def frontend_version(self) -> str:
         if self._db_conn:
             return self._db_conn.version
-        else:
-            return None
+        return None
 
     def gen_column_object(self, column_name, **kwargs):
         return OracleColumn(column_name, **kwargs)
@@ -892,9 +795,7 @@ class OracleFrontendApi(FrontendApiInterface):
                ORDER BY column_id ASC"""
 
         cols = []
-        for row in self.execute_query_fetch_all(
-            q, query_params={"owner": schema, "table_name": table_name}
-        ):
+        for row in self.execute_query_fetch_all(q, query_params={"owner": schema, "table_name": table_name}):
             col = OracleColumn.from_oracle(row)
             cols.append(col)
         return cols
@@ -922,28 +823,21 @@ class OracleFrontendApi(FrontendApiInterface):
         row = self.execute_query_fetch_one(sql)
         return row[0] if row else row
 
-    def get_distinct_column_values(
-        self, schema, table_name, column_names, partition_name=None, order_results=False
-    ):
+    def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
         assert schema and table_name
         assert column_names
         if isinstance(column_names, str):
             column_names = [column_names]
         projection = ",".join([self.enclose_identifier(_) for _ in column_names])
-        partition_clause = (
-            " PARTITION ({})".format(partition_name) if partition_name else ""
-        )
-        order_clause = " ORDER BY {}".format(projection) if order_results else ""
-        sql = (
-            "SELECT DISTINCT %(col)s FROM %(own)s.%(tab)s%(part_clause)s%(order_clause)s"
-            % {
-                "col": projection,
-                "own": self.enclose_identifier(schema.upper()),
-                "tab": self.enclose_identifier(table_name.upper()),
-                "part_clause": partition_clause,
-                "order_clause": order_clause,
-            }
-        )
+        partition_clause = f" PARTITION ({partition_name})" if partition_name else ""
+        order_clause = f" ORDER BY {projection}" if order_results else ""
+        sql = "SELECT DISTINCT %(col)s FROM %(own)s.%(tab)s%(part_clause)s%(order_clause)s" % {
+            "col": projection,
+            "own": self.enclose_identifier(schema.upper()),
+            "tab": self.enclose_identifier(table_name.upper()),
+            "part_clause": partition_clause,
+            "order_clause": order_clause,
+        }
         self._messages.log("Distinct column SQL: %s" % sql, detail=VVERBOSE)
         return self.execute_query_fetch_all(sql)
 
@@ -991,9 +885,7 @@ class OracleFrontendApi(FrontendApiInterface):
                   AND    cc.table_name = c.table_name
                   AND    cc.constraint_name = c.constraint_name
                   ORDER BY cc.position"""
-        rows = self.execute_query_fetch_all(
-            q, query_params={"owner": schema, "table_name": table_name}
-        )
+        rows = self.execute_query_fetch_all(q, query_params={"owner": schema, "table_name": table_name})
         return [_[0] for _ in rows] if rows else []
 
     def get_session_option(self, option_name):
@@ -1002,9 +894,7 @@ class OracleFrontendApi(FrontendApiInterface):
         are connected. Making this RAC aware would make it trickier to maintain an interface across all RDBMSs.
         """
         logger.debug(f"Fetching {option_name} from DB")
-        return self._execute_plsql_function(
-            "offload.get_init_param", return_type=str, arg_list=[option_name]
-        )
+        return self._execute_plsql_function("offload.get_init_param", return_type=str, arg_list=[option_name])
 
     def get_session_user(self) -> str:
         sql = "SELECT sys_context('USERENV','SESSION_USER') FROM DUAL"
@@ -1012,25 +902,19 @@ class OracleFrontendApi(FrontendApiInterface):
         return row[0] if row else row
 
     def get_subpartition_column_names(self, schema, table_name, conv_fn=None):
-        names = self._get_partition_column_names(
-            schema, table_name, subpartition_level=True
-        )
+        names = self._get_partition_column_names(schema, table_name, subpartition_level=True)
         return [conv_fn(_) for _ in names or []] if conv_fn else names
 
     def get_subpartition_columns(self, schema, table_name):
         table_columns = self.get_columns(schema, table_name)
         part_cols = []
-        for part_col in self._get_partition_column_names(
-            schema, table_name, subpartition_level=True
-        ):
+        for part_col in self._get_partition_column_names(schema, table_name, subpartition_level=True):
             part_cols.append(match_table_column(part_col, table_columns))
         return part_cols
 
     def get_table_default_parallelism(self, schema, table_name):
         sql = "SELECT TRIM(degree) FROM dba_tables WHERE owner = :owner AND table_name = :table_name"
-        row = self.execute_query_fetch_one(
-            sql, query_params={"owner": schema, "table_name": table_name}
-        )
+        row = self.execute_query_fetch_one(sql, query_params={"owner": schema, "table_name": table_name})
         return row[0] if row else None
 
     def get_table_row_count(
@@ -1043,8 +927,8 @@ class OracleFrontendApi(FrontendApiInterface):
         not_when_dry_running=False,
         log_level=VVERBOSE,
     ):
-        where_clause = " WHERE {}".format(filter_clause) if filter_clause else ""
-        hint_clause = " {}".format(hint_block) if hint_block else ""
+        where_clause = f" WHERE {filter_clause}" if filter_clause else ""
+        hint_clause = f" {hint_block}" if hint_block else ""
         sql = "SELECT%s COUNT(*) FROM %s%s" % (
             hint_clause,
             self.enclose_object_reference(schema, table_name),
@@ -1077,9 +961,7 @@ class OracleFrontendApi(FrontendApiInterface):
                    WHERE s.owner = :owner
                    AND s.segment_name = :table_name"""
 
-        row = self.execute_query_fetch_one(
-            q, query_params={"owner": schema, "table_name": table_name}
-        )
+        row = self.execute_query_fetch_one(q, query_params={"owner": schema, "table_name": table_name})
         return row[0] if row else None
 
     def is_view(self, schema, object_name) -> bool:
@@ -1096,17 +978,12 @@ class OracleFrontendApi(FrontendApiInterface):
         """This maximum identifier length on Oracle changed in 12.2 therefore we must check DB compatible"""
 
         def oracle_max_table_name_length(instance_compatible):
-            if GOEVersion(instance_compatible) >= GOEVersion(
-                ORACLE_VERSION_WITH_128_BYTE_IDENTIFIERS
-            ):
+            if GOEVersion(instance_compatible) >= GOEVersion(ORACLE_VERSION_WITH_128_BYTE_IDENTIFIERS):
                 return 128
-            else:
-                return 30
+            return 30
 
         if not self._max_table_name_length:
-            self._max_table_name_length = oracle_max_table_name_length(
-                self._get_instance_compatible()
-            )
+            self._max_table_name_length = oracle_max_table_name_length(self._get_instance_compatible())
         return self._max_table_name_length
 
     def min_datetime_value(self):
@@ -1150,10 +1027,9 @@ class OracleFrontendApi(FrontendApiInterface):
             assert isinstance(query_parallelism, int)
         if query_parallelism in [0, 1]:
             return "NO_PARALLEL"
-        elif query_parallelism and query_parallelism > 1:
+        if query_parallelism and query_parallelism > 1:
             return "PARALLEL(%s)" % query_parallelism
-        else:
-            return ""
+        return ""
 
     def split_partition_high_value_string(self, hv_string):
         """Break up high value by comma while respecting parentheses in TO_DATE(...,...,...)
@@ -1161,9 +1037,7 @@ class OracleFrontendApi(FrontendApiInterface):
         """
         if not hv_string:
             return []
-        tokens = [
-            hv_val.strip() for hv_val in ORACLE_SPLIT_HIGH_VALUE_RE.findall(hv_string)
-        ]
+        tokens = [hv_val.strip() for hv_val in ORACLE_SPLIT_HIGH_VALUE_RE.findall(hv_string)]
         tokens = [switch_oracle_open_partition_token(_) for _ in tokens]
         return tokens
 
@@ -1174,9 +1048,7 @@ class OracleFrontendApi(FrontendApiInterface):
 
     def table_exists(self, schema, table_name) -> bool:
         sql = "SELECT table_name FROM dba_tables WHERE owner = :owner AND table_name = :table_name"
-        row = self.execute_query_fetch_one(
-            sql, query_params={"owner": schema, "table_name": table_name}
-        )
+        row = self.execute_query_fetch_one(sql, query_params={"owner": schema, "table_name": table_name})
         return bool(row)
 
     def to_frontend_literal(self, py_val, data_type=None) -> str:
@@ -1188,7 +1060,5 @@ class OracleFrontendApi(FrontendApiInterface):
 
     def view_exists(self, schema, view_name) -> bool:
         sql = "SELECT 1 FROM dba_views WHERE owner = :owner AND view_name = :view_name"
-        row = self.execute_query_fetch_one(
-            sql, query_params={"owner": schema, "view_name": view_name}
-        )
+        row = self.execute_query_fetch_one(sql, query_params={"owner": schema, "view_name": view_name})
         return bool(row)

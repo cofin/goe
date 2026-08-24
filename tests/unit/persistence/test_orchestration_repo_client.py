@@ -12,27 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-TestOrchestrationRepoClient: Unit test Orchestration Repo client library.
+"""TestOrchestrationRepoClient: Unit test Orchestration Repo client library.
 Excludes metadata specific methods, they are tested in TestOrchestrationMetadata.
 """
 
 import datetime
 import decimal
-from unittest import TestCase, main
 import uuid
+from unittest import TestCase, main
 
-from goe.persistence.orchestration_repo_client import type_safe_json_dumps
 from goe.offload.predicate_offload import GenericPredicate
 from goe.orchestration.execution_id import ExecutionId
-
+from goe.persistence.orchestration_repo_client import type_safe_json_dumps
 
 GB = 1024**3
 
 
 class TestOrchestrationRepoClient(TestCase):
-    """
-    TestOrchestrationRepoClient: Unit test Orchestration Repo client library.
+    """TestOrchestrationRepoClient: Unit test Orchestration Repo client library.
     Excludes metadata specific methods, they are tested in TestOrchestrationMetadata.
     """
 

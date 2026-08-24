@@ -15,8 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" OracleFrontendTestingApi: An extension of (not yet created) FrontendApi used purely for code relating to the setup,
-    processing and verification of integration tests.
+"""OracleFrontendTestingApi: An extension of (not yet created) FrontendApi used purely for code relating to the setup,
+processing and verification of integration tests.
 """
 
 import datetime
@@ -24,10 +24,8 @@ import logging
 import random
 import re
 from textwrap import dedent
-from typing import Optional, Union
 
 from goe.offload.column_metadata import (
-    CanonicalColumn,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
     GOE_TYPE_BINARY,
     GOE_TYPE_DATE,
@@ -47,72 +45,72 @@ from goe.offload.column_metadata import (
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
     GOE_TYPE_VARIABLE_STRING,
+    CanonicalColumn,
     match_table_column,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.oracle.oracle_column import (
-    OracleColumn,
-    ORACLE_TYPE_CHAR,
-    ORACLE_TYPE_NCHAR,
-    ORACLE_TYPE_CLOB,
-    ORACLE_TYPE_NCLOB,
-    ORACLE_TYPE_VARCHAR,
-    ORACLE_TYPE_VARCHAR2,
-    ORACLE_TYPE_NVARCHAR2,
-    ORACLE_TYPE_RAW,
-    ORACLE_TYPE_BLOB,
-    ORACLE_TYPE_NUMBER,
-    ORACLE_TYPE_FLOAT,
-    ORACLE_TYPE_BINARY_FLOAT,
     ORACLE_TYPE_BINARY_DOUBLE,
+    ORACLE_TYPE_BINARY_FLOAT,
+    ORACLE_TYPE_BLOB,
+    ORACLE_TYPE_CHAR,
+    ORACLE_TYPE_CLOB,
     ORACLE_TYPE_DATE,
-    ORACLE_TYPE_TIMESTAMP,
-    ORACLE_TYPE_TIMESTAMP_TZ,
+    ORACLE_TYPE_FLOAT,
     ORACLE_TYPE_INTERVAL_DS,
     ORACLE_TYPE_INTERVAL_YM,
+    ORACLE_TYPE_NCHAR,
+    ORACLE_TYPE_NCLOB,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_NVARCHAR2,
+    ORACLE_TYPE_RAW,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_TIMESTAMP_TZ,
+    ORACLE_TYPE_VARCHAR,
+    ORACLE_TYPE_VARCHAR2,
+    OracleColumn,
 )
 from tests.testlib.setup import gen_test_data
 from tests.testlib.test_framework.frontend_testing_api import (
     FrontendTestingApiInterface,
 )
-from tests.testlib.test_framework.test_value_generators import TestDecimal
 from tests.testlib.test_framework.test_constants import (
-    SALES_BASED_FACT_PRE_HV,
     SALES_BASED_FACT_HV_1,
-    SALES_BASED_FACT_HV_2,
-    SALES_BASED_FACT_HV_3,
-    SALES_BASED_FACT_HV_4,
-    SALES_BASED_FACT_HV_5,
-    SALES_BASED_FACT_HV_6,
-    SALES_BASED_FACT_HV_7,
-    SALES_BASED_FACT_PRE_HV_NUM,
     SALES_BASED_FACT_HV_1_NUM,
+    SALES_BASED_FACT_HV_2,
     SALES_BASED_FACT_HV_2_NUM,
+    SALES_BASED_FACT_HV_3,
     SALES_BASED_FACT_HV_3_NUM,
+    SALES_BASED_FACT_HV_4,
     SALES_BASED_FACT_HV_4_NUM,
+    SALES_BASED_FACT_HV_5,
     SALES_BASED_FACT_HV_5_NUM,
+    SALES_BASED_FACT_HV_6,
     SALES_BASED_FACT_HV_6_NUM,
+    SALES_BASED_FACT_HV_7,
     SALES_BASED_FACT_HV_7_NUM,
-    SALES_BASED_LIST_PRE_HV,
-    SALES_BASED_LIST_PNAME_0,
+    SALES_BASED_FACT_PRE_HV,
+    SALES_BASED_FACT_PRE_HV_NUM,
     SALES_BASED_LIST_HV_1,
-    SALES_BASED_LIST_PNAME_1,
     SALES_BASED_LIST_HV_2,
-    SALES_BASED_LIST_PNAME_2,
     SALES_BASED_LIST_HV_3,
-    SALES_BASED_LIST_PNAME_3,
     SALES_BASED_LIST_HV_4,
-    SALES_BASED_LIST_PNAME_4,
     SALES_BASED_LIST_HV_5,
-    SALES_BASED_LIST_PNAME_5,
     SALES_BASED_LIST_HV_6,
-    SALES_BASED_LIST_PNAME_6,
     SALES_BASED_LIST_HV_7,
+    SALES_BASED_LIST_PNAME_0,
+    SALES_BASED_LIST_PNAME_1,
+    SALES_BASED_LIST_PNAME_2,
+    SALES_BASED_LIST_PNAME_3,
+    SALES_BASED_LIST_PNAME_4,
+    SALES_BASED_LIST_PNAME_5,
+    SALES_BASED_LIST_PNAME_6,
     SALES_BASED_LIST_PNAME_7,
+    SALES_BASED_LIST_PRE_HV,
     TEST_GEN_DATA_ASCII7_NONULL,
     UNICODE_NAME_TOKEN,
 )
-
+from tests.testlib.test_framework.test_value_generators import TestDecimal
 
 logger = logging.getLogger(__name__)
 # Disabling logging by default
@@ -132,10 +130,9 @@ def lob_to_hash(column_type, column_name):
     if column_type == ORACLE_TYPE_BLOB:
         # literal 3 below = DBMS_CRYPTO.HASH_SH1
         return "DBMS_CRYPTO.HASH(COALESCE(%s, empty_blob()), 3)" % column_name
-    elif column_type in (ORACLE_TYPE_CLOB, ORACLE_TYPE_NCLOB):
+    if column_type in (ORACLE_TYPE_CLOB, ORACLE_TYPE_NCLOB):
         return "DBMS_CRYPTO.HASH(COALESCE(%s, empty_clob()), 3)" % column_name
-    else:
-        raise NotImplementedError("lob_to_hash for %s not supported" % column_type)
+    raise NotImplementedError("lob_to_hash for %s not supported" % column_type)
 
 
 ###########################################################################
@@ -215,7 +212,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 notnull=all_chars_notnull,
                 no_newlines=no_newlines,
             )
-        elif column.data_type in [ORACLE_TYPE_CHAR, ORACLE_TYPE_NCHAR]:
+        if column.data_type in [ORACLE_TYPE_CHAR, ORACLE_TYPE_NCHAR]:
             return gen_test_data.gen_char(
                 row_index,
                 column.char_length or column.data_length,
@@ -225,56 +222,38 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 notnull=all_chars_notnull,
                 no_newlines=no_newlines,
             )
-        elif column.data_type == ORACLE_TYPE_NUMBER:
+        if column.data_type == ORACLE_TYPE_NUMBER:
             return gen_test_data.gen_number(
                 row_index,
                 precision=column.data_precision,
                 scale=column.data_scale,
                 from_list=from_list,
             )
-        elif column.data_type == ORACLE_TYPE_DATE:
-            return gen_test_data.gen_datetime(
-                row_index, from_list=from_list, ordered=ordered
-            )
-        elif column.data_type in [ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ]:
-            return gen_test_data.gen_timestamp(
-                row_index, from_list=from_list, ordered=ordered
-            )
-        elif column.data_type == ORACLE_TYPE_INTERVAL_YM:
+        if column.data_type == ORACLE_TYPE_DATE:
+            return gen_test_data.gen_datetime(row_index, from_list=from_list, ordered=ordered)
+        if column.data_type in [ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ]:
+            return gen_test_data.gen_timestamp(row_index, from_list=from_list, ordered=ordered)
+        if column.data_type == ORACLE_TYPE_INTERVAL_YM:
             return gen_test_data.gen_interval_ym(precision=column.data_precision)
-        elif column.data_type == ORACLE_TYPE_INTERVAL_DS:
-            return gen_test_data.gen_interval_ds(
-                precision=column.data_precision, scale=column.data_scale
-            )
-        elif column.data_type == ORACLE_TYPE_BINARY_DOUBLE:
-            return gen_test_data.gen_float(
-                row_index, from_list=from_list, allow_nan=allow_nan, allow_inf=allow_inf
-            )
-        elif column.data_type == ORACLE_TYPE_BINARY_FLOAT:
-            return gen_test_data.gen_float(
-                row_index, from_list=from_list, allow_nan=allow_nan, allow_inf=allow_inf
-            )
-        elif column.data_type == ORACLE_TYPE_FLOAT:
+        if column.data_type == ORACLE_TYPE_INTERVAL_DS:
+            return gen_test_data.gen_interval_ds(precision=column.data_precision, scale=column.data_scale)
+        if column.data_type == ORACLE_TYPE_BINARY_DOUBLE:
+            return gen_test_data.gen_float(row_index, from_list=from_list, allow_nan=allow_nan, allow_inf=allow_inf)
+        if column.data_type == ORACLE_TYPE_BINARY_FLOAT:
+            return gen_test_data.gen_float(row_index, from_list=from_list, allow_nan=allow_nan, allow_inf=allow_inf)
+        if column.data_type == ORACLE_TYPE_FLOAT:
             return gen_test_data.gen_number(row_index, from_list=from_list)
-        elif column.data_type in (ORACLE_TYPE_CLOB, ORACLE_TYPE_NCLOB):
-            return gen_test_data.gen_varchar(
-                row_index, 32767, from_list=from_list, no_newlines=no_newlines
-            )
-        elif column.data_type == ORACLE_TYPE_BLOB:
-            return gen_test_data.gen_varchar(
-                row_index, 32767, from_list=from_list, no_newlines=no_newlines
-            )
-        elif column.data_type == ORACLE_TYPE_RAW:
+        if column.data_type in (ORACLE_TYPE_CLOB, ORACLE_TYPE_NCLOB):
+            return gen_test_data.gen_varchar(row_index, 32767, from_list=from_list, no_newlines=no_newlines)
+        if column.data_type == ORACLE_TYPE_BLOB:
+            return gen_test_data.gen_varchar(row_index, 32767, from_list=from_list, no_newlines=no_newlines)
+        if column.data_type == ORACLE_TYPE_RAW:
             if column.data_length == 16:
                 return gen_test_data.gen_uuid(row_index)
-            elif column.data_length:
+            if column.data_length:
                 return gen_test_data.gen_bytes(row_index, column.data_length)
-            else:
-                return gen_test_data.gen_bytes(row_index, 2000)
-        else:
-            self._log(
-                f"Attempt to generate data for unsupported RDBMS type: {column.data_type}"
-            )
+            return gen_test_data.gen_bytes(row_index, 2000)
+        self._log(f"Attempt to generate data for unsupported RDBMS type: {column.data_type}")
 
     def _goe_chars_column_definitions(
         self, ascii_only=False, all_chars_notnull=False, supported_canonical_types=None
@@ -330,20 +309,12 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         max_precision = min(max_backend_precision, 38)
         all_columns = {
             name(ORACLE_TYPE_BINARY_DOUBLE): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_BINARY_DOUBLE), ORACLE_TYPE_BINARY_DOUBLE
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_BINARY_DOUBLE), GOE_TYPE_DOUBLE
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_BINARY_DOUBLE), ORACLE_TYPE_BINARY_DOUBLE),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_BINARY_DOUBLE), GOE_TYPE_DOUBLE),
             },
             name(ORACLE_TYPE_BINARY_FLOAT): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_BINARY_FLOAT), ORACLE_TYPE_BINARY_FLOAT
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_BINARY_FLOAT), GOE_TYPE_FLOAT
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_BINARY_FLOAT), ORACLE_TYPE_BINARY_FLOAT),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_BINARY_FLOAT), GOE_TYPE_FLOAT),
             },
             name(ORACLE_TYPE_BINARY_FLOAT, GOE_TYPE_DOUBLE): {
                 "column": OracleColumn(
@@ -354,26 +325,16 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     name(ORACLE_TYPE_BINARY_FLOAT, GOE_TYPE_DOUBLE),
                     GOE_TYPE_DOUBLE,
                 ),
-                "offload_options": {
-                    "double_columns_csv": name(
-                        ORACLE_TYPE_BINARY_FLOAT, GOE_TYPE_DOUBLE
-                    )
-                },
+                "offload_options": {"double_columns_csv": name(ORACLE_TYPE_BINARY_FLOAT, GOE_TYPE_DOUBLE)},
                 "literals": [1.5, 2.5, 3.5],
             },
             name(ORACLE_TYPE_BLOB): {
                 "column": OracleColumn(name(ORACLE_TYPE_BLOB), ORACLE_TYPE_BLOB),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_BLOB), GOE_TYPE_LARGE_BINARY
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_BLOB), GOE_TYPE_LARGE_BINARY),
             },
             name(ORACLE_TYPE_CHAR): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_CHAR), ORACLE_TYPE_CHAR, data_length=3
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_CHAR), GOE_TYPE_FIXED_STRING
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_CHAR), ORACLE_TYPE_CHAR, data_length=3),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_CHAR), GOE_TYPE_FIXED_STRING),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
@@ -388,55 +349,35 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     GOE_TYPE_FIXED_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
                 ),
-                "offload_options": {
-                    "unicode_string_columns_csv": name(
-                        ORACLE_TYPE_CHAR, UNICODE_NAME_TOKEN
-                    )
-                },
+                "offload_options": {"unicode_string_columns_csv": name(ORACLE_TYPE_CHAR, UNICODE_NAME_TOKEN)},
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_CLOB): {
                 "column": OracleColumn(name(ORACLE_TYPE_CLOB), ORACLE_TYPE_CLOB),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_CLOB), GOE_TYPE_LARGE_STRING
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_CLOB), GOE_TYPE_LARGE_STRING),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_CLOB, UNICODE_NAME_TOKEN): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_CLOB, UNICODE_NAME_TOKEN), ORACLE_TYPE_CLOB
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_CLOB, UNICODE_NAME_TOKEN), ORACLE_TYPE_CLOB),
                 "expected_canonical_column": CanonicalColumn(
                     name(ORACLE_TYPE_CLOB, UNICODE_NAME_TOKEN),
                     GOE_TYPE_LARGE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
                 ),
-                "offload_options": {
-                    "unicode_string_columns_csv": name(
-                        ORACLE_TYPE_CLOB, UNICODE_NAME_TOKEN
-                    )
-                },
+                "offload_options": {"unicode_string_columns_csv": name(ORACLE_TYPE_CLOB, UNICODE_NAME_TOKEN)},
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_DATE): {
                 "column": OracleColumn(name(ORACLE_TYPE_DATE), ORACLE_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_DATE), GOE_TYPE_TIMESTAMP
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_DATE), GOE_TYPE_TIMESTAMP),
             },
             name(ORACLE_TYPE_DATE, GOE_TYPE_DATE): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_DATE, GOE_TYPE_DATE), ORACLE_TYPE_DATE
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_DATE, GOE_TYPE_DATE), GOE_TYPE_DATE
-                ),
-                "offload_options": {
-                    "date_columns_csv": name(ORACLE_TYPE_DATE, GOE_TYPE_DATE)
-                },
+                "column": OracleColumn(name(ORACLE_TYPE_DATE, GOE_TYPE_DATE), ORACLE_TYPE_DATE),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_DATE, GOE_TYPE_DATE), GOE_TYPE_DATE),
+                "offload_options": {"date_columns_csv": name(ORACLE_TYPE_DATE, GOE_TYPE_DATE)},
                 "literals": [
                     datetime.date(1970, 1, 1),
                     datetime.date(1970, 1, 2),
@@ -453,42 +394,24 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     name(ORACLE_TYPE_DATE, GOE_TYPE_VARIABLE_STRING),
                     GOE_TYPE_VARIABLE_STRING,
                 ),
-                "offload_options": {
-                    "variable_string_columns_csv": name(
-                        ORACLE_TYPE_DATE, GOE_TYPE_VARIABLE_STRING
-                    )
-                },
+                "offload_options": {"variable_string_columns_csv": name(ORACLE_TYPE_DATE, GOE_TYPE_VARIABLE_STRING)},
             },
             name(ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ), ORACLE_TYPE_DATE
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ), ORACLE_TYPE_DATE),
                 "expected_canonical_column": CanonicalColumn(
                     name(ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ),
                     GOE_TYPE_TIMESTAMP_TZ,
                 ),
-                "offload_options": {
-                    "timestamp_tz_columns_csv": name(
-                        ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ
-                    )
-                },
+                "offload_options": {"timestamp_tz_columns_csv": name(ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ)},
             },
             name(ORACLE_TYPE_FLOAT): {
                 "column": OracleColumn(name(ORACLE_TYPE_FLOAT), ORACLE_TYPE_FLOAT),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_FLOAT), GOE_TYPE_DECIMAL
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_FLOAT), GOE_TYPE_DECIMAL),
             },
             name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE), ORACLE_TYPE_FLOAT
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE), GOE_TYPE_DOUBLE
-                ),
-                "offload_options": {
-                    "double_columns_csv": name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE)
-                },
+                "column": OracleColumn(name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE), ORACLE_TYPE_FLOAT),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE), GOE_TYPE_DOUBLE),
+                "offload_options": {"double_columns_csv": name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE)},
                 "literals": [1.5, 2.5, 3.5],
             },
             name(ORACLE_TYPE_INTERVAL_DS): {
@@ -498,9 +421,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=9,
                     data_scale=9,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_INTERVAL_DS), GOE_TYPE_INTERVAL_DS
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_INTERVAL_DS), GOE_TYPE_INTERVAL_DS),
             },
             name(ORACLE_TYPE_INTERVAL_YM): {
                 "column": OracleColumn(
@@ -508,14 +429,10 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     ORACLE_TYPE_INTERVAL_YM,
                     data_precision=9,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_INTERVAL_YM), GOE_TYPE_INTERVAL_YM
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_INTERVAL_YM), GOE_TYPE_INTERVAL_YM),
             },
             name(ORACLE_TYPE_NCHAR): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_NCHAR), ORACLE_TYPE_NCHAR, char_length=3
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_NCHAR), ORACLE_TYPE_NCHAR, char_length=3),
                 "expected_canonical_column": CanonicalColumn(
                     name(ORACLE_TYPE_NCHAR),
                     GOE_TYPE_FIXED_STRING,
@@ -536,23 +453,15 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
             },
             name(ORACLE_TYPE_NUMBER): {
                 "column": OracleColumn(name(ORACLE_TYPE_NUMBER), ORACLE_TYPE_NUMBER),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_NUMBER), GOE_TYPE_DECIMAL
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_NUMBER), GOE_TYPE_DECIMAL),
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_1): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_1), ORACLE_TYPE_NUMBER
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_1), ORACLE_TYPE_NUMBER),
                 "expected_canonical_column": CanonicalColumn(
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "offload_options": {
-                    "integer_1_columns_csv": name(
-                        ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_1
-                    )
-                },
+                "offload_options": {"integer_1_columns_csv": name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_1)},
                 "literals": [
                     TestDecimal.min(2),
                     TestDecimal.rnd(2),
@@ -560,18 +469,12 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_2): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_2), ORACLE_TYPE_NUMBER
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_2), ORACLE_TYPE_NUMBER),
                 "expected_canonical_column": CanonicalColumn(
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
-                "offload_options": {
-                    "integer_2_columns_csv": name(
-                        ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_2
-                    )
-                },
+                "offload_options": {"integer_2_columns_csv": name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_2)},
                 "literals": [
                     TestDecimal.min(4),
                     TestDecimal.rnd(4),
@@ -579,18 +482,12 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_4): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_4), ORACLE_TYPE_NUMBER
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_4), ORACLE_TYPE_NUMBER),
                 "expected_canonical_column": CanonicalColumn(
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_4,
                 ),
-                "offload_options": {
-                    "integer_4_columns_csv": name(
-                        ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_4
-                    )
-                },
+                "offload_options": {"integer_4_columns_csv": name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_4)},
                 "literals": [
                     TestDecimal.min(9),
                     TestDecimal.rnd(9),
@@ -598,18 +495,12 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_8): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_8), ORACLE_TYPE_NUMBER
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_8), ORACLE_TYPE_NUMBER),
                 "expected_canonical_column": CanonicalColumn(
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_8,
                 ),
-                "offload_options": {
-                    "integer_8_columns_csv": name(
-                        ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_8
-                    )
-                },
+                "offload_options": {"integer_8_columns_csv": name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_8)},
                 "literals": [
                     TestDecimal.min(18),
                     TestDecimal.rnd(18),
@@ -617,18 +508,12 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_38): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_38), ORACLE_TYPE_NUMBER
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_38), ORACLE_TYPE_NUMBER),
                 "expected_canonical_column": CanonicalColumn(
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_38,
                 ),
-                "offload_options": {
-                    "integer_38_columns_csv": name(
-                        ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_38
-                    )
-                },
+                "offload_options": {"integer_38_columns_csv": name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_38)},
                 # 'test' imposes a max precision of 35, I think due to shortcomings of cx-Oracle.
                 # We impose the same limit here to ensure no loss of value accuracy.
                 "literals": [
@@ -638,15 +523,11 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE), ORACLE_TYPE_NUMBER
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE), ORACLE_TYPE_NUMBER),
                 "expected_canonical_column": CanonicalColumn(
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE), GOE_TYPE_DOUBLE
                 ),
-                "offload_options": {
-                    "double_columns_csv": name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE)
-                },
+                "offload_options": {"double_columns_csv": name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE)},
                 "literals": [1, 2, 3],
             },
             name(ORACLE_TYPE_NUMBER, "2"): {
@@ -656,9 +537,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_NUMBER, "2"), GOE_TYPE_INTEGER_1
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_NUMBER, "2"), GOE_TYPE_INTEGER_1),
             },
             name(ORACLE_TYPE_NUMBER, "4"): {
                 "column": OracleColumn(
@@ -667,9 +546,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_NUMBER, "4"), GOE_TYPE_INTEGER_2
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_NUMBER, "4"), GOE_TYPE_INTEGER_2),
             },
             name(ORACLE_TYPE_NUMBER, "9"): {
                 "column": OracleColumn(
@@ -678,9 +555,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_NUMBER, "9"), GOE_TYPE_INTEGER_4
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_NUMBER, "9"), GOE_TYPE_INTEGER_4),
             },
             name(ORACLE_TYPE_NUMBER, "18"): {
                 "column": OracleColumn(
@@ -689,9 +564,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_NUMBER, "18"), GOE_TYPE_INTEGER_8
-                ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_NUMBER, "18"), GOE_TYPE_INTEGER_8),
             },
             name(ORACLE_TYPE_NUMBER, "19"): {
                 "column": OracleColumn(
@@ -744,9 +617,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     data_scale=3,
                 ),
                 "offload_options": {
-                    "decimal_columns_csv_list": [
-                        name(ORACLE_TYPE_NUMBER, GOE_TYPE_DECIMAL, "10", "3")
-                    ],
+                    "decimal_columns_csv_list": [name(ORACLE_TYPE_NUMBER, GOE_TYPE_DECIMAL, "10", "3")],
                     "decimal_columns_type_list": ["10,3"],
                 },
                 "literals": [
@@ -769,9 +640,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     data_scale=3,
                 ),
                 "offload_options": {
-                    "decimal_columns_csv_list": [
-                        name(ORACLE_TYPE_NUMBER, "9", "2", GOE_TYPE_DECIMAL, "10", "3")
-                    ],
+                    "decimal_columns_csv_list": [name(ORACLE_TYPE_NUMBER, "9", "2", GOE_TYPE_DECIMAL, "10", "3")],
                     "decimal_columns_type_list": ["10,3"],
                 },
                 "literals": [
@@ -781,9 +650,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NVARCHAR2): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_NVARCHAR2), ORACLE_TYPE_NVARCHAR2, char_length=30
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_NVARCHAR2), ORACLE_TYPE_NVARCHAR2, char_length=30),
                 "expected_canonical_column": CanonicalColumn(
                     name(ORACLE_TYPE_NVARCHAR2),
                     GOE_TYPE_VARIABLE_STRING,
@@ -793,31 +660,17 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_RAW): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_RAW), ORACLE_TYPE_RAW, data_length=30
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_RAW), GOE_TYPE_BINARY
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_RAW), ORACLE_TYPE_RAW, data_length=30),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_RAW), GOE_TYPE_BINARY),
             },
             name(ORACLE_TYPE_TIMESTAMP): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_TIMESTAMP), ORACLE_TYPE_TIMESTAMP
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_TIMESTAMP), GOE_TYPE_TIMESTAMP
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_TIMESTAMP), ORACLE_TYPE_TIMESTAMP),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_TIMESTAMP), GOE_TYPE_TIMESTAMP),
             },
             name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE), ORACLE_TYPE_TIMESTAMP
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE), GOE_TYPE_DATE
-                ),
-                "offload_options": {
-                    "date_columns_csv": name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE)
-                },
+                "column": OracleColumn(name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE), ORACLE_TYPE_TIMESTAMP),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE), GOE_TYPE_DATE),
+                "offload_options": {"date_columns_csv": name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE)},
                 "literals": [
                     datetime.date(1970, 1, 1),
                     datetime.date(1970, 1, 2),
@@ -835,9 +688,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     GOE_TYPE_VARIABLE_STRING,
                 ),
                 "offload_options": {
-                    "variable_string_columns_csv": name(
-                        ORACLE_TYPE_TIMESTAMP, GOE_TYPE_VARIABLE_STRING
-                    )
+                    "variable_string_columns_csv": name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_VARIABLE_STRING)
                 },
             },
             name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ): {
@@ -849,27 +700,15 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ),
                     GOE_TYPE_TIMESTAMP_TZ,
                 ),
-                "offload_options": {
-                    "timestamp_tz_columns_csv": name(
-                        ORACLE_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ
-                    )
-                },
+                "offload_options": {"timestamp_tz_columns_csv": name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ)},
             },
             name(ORACLE_TYPE_TIMESTAMP_TZ): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_TIMESTAMP_TZ), ORACLE_TYPE_TIMESTAMP_TZ
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_TIMESTAMP_TZ), GOE_TYPE_TIMESTAMP_TZ
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_TIMESTAMP_TZ), ORACLE_TYPE_TIMESTAMP_TZ),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_TIMESTAMP_TZ), GOE_TYPE_TIMESTAMP_TZ),
             },
             name(ORACLE_TYPE_VARCHAR2): {
-                "column": OracleColumn(
-                    name(ORACLE_TYPE_VARCHAR2), ORACLE_TYPE_VARCHAR2, data_length=30
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_VARCHAR2), GOE_TYPE_VARIABLE_STRING
-                ),
+                "column": OracleColumn(name(ORACLE_TYPE_VARCHAR2), ORACLE_TYPE_VARCHAR2, data_length=30),
+                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_VARCHAR2), GOE_TYPE_VARIABLE_STRING),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
@@ -883,32 +722,20 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     name(ORACLE_TYPE_VARCHAR2, UNICODE_NAME_TOKEN),
                     GOE_TYPE_VARIABLE_STRING,
                 ),
-                "offload_options": {
-                    "unicode_string_columns_csv": name(
-                        ORACLE_TYPE_VARCHAR2, UNICODE_NAME_TOKEN
-                    )
-                },
+                "offload_options": {"unicode_string_columns_csv": name(ORACLE_TYPE_VARCHAR2, UNICODE_NAME_TOKEN)},
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
         }
 
-        if (
-            supported_canonical_types
-            and GOE_TYPE_FLOAT not in supported_canonical_types
-        ):
-            keys_to_remove = [
-                _
-                for _ in all_columns
-                if all_columns[_]["column"].data_type == ORACLE_TYPE_BINARY_FLOAT
-            ]
+        if supported_canonical_types and GOE_TYPE_FLOAT not in supported_canonical_types:
+            keys_to_remove = [_ for _ in all_columns if all_columns[_]["column"].data_type == ORACLE_TYPE_BINARY_FLOAT]
             for k in keys_to_remove:
                 del all_columns[k]
 
         if filter_column:
             return all_columns[filter_column]
-        else:
-            return all_columns
+        return all_columns
 
     def _goe_types_column_definitions(
         self,
@@ -955,11 +782,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         if include_interval_columns:
             column_list.extend(
                 [
-                    {
-                        "column": OracleColumn(
-                            name(), ORACLE_TYPE_INTERVAL_YM, data_precision=9
-                        )
-                    },
+                    {"column": OracleColumn(name(), ORACLE_TYPE_INTERVAL_YM, data_precision=9)},
                     {
                         "column": OracleColumn(
                             name(),
@@ -981,18 +804,12 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 # temporarily dropped the spec to 36. We'll raise a bug with cx_Oracle and re-instate extreme testing when
                 # a fix is available.
                 {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=36)},
-                {
-                    "column": OracleColumn(
-                        name(), ORACLE_TYPE_NUMBER, data_precision=None, data_scale=0
-                    )
-                },
+                {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=None, data_scale=0)},
             ]
         )
 
         if supported_canonical_types and GOE_TYPE_FLOAT in supported_canonical_types:
-            column_list.append(
-                {"column": OracleColumn(name(), ORACLE_TYPE_BINARY_FLOAT)}
-            )
+            column_list.append({"column": OracleColumn(name(), ORACLE_TYPE_BINARY_FLOAT)})
 
         column_list.extend(
             [
@@ -1016,9 +833,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     "notnull": all_chars_notnull,
                 },
                 {
-                    "column": OracleColumn(
-                        name(), ORACLE_TYPE_NUMBER, data_precision=1
-                    ),
+                    "column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=1),
                     "column_spec_extra_clause": "AS (MOD(id,10)) VIRTUAL",
                 },
             ]
@@ -1043,10 +858,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
 
         column_list = [{"column": self._id_column(), "ordered": True}]
 
-        column_list.extend(
-            {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=9)}
-            for _ in range(5)
-        )
+        column_list.extend({"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=9)} for _ in range(5))
         column_list.extend(
             {
                 "column": OracleColumn(name(), ORACLE_TYPE_VARCHAR, data_length=10),
@@ -1055,39 +867,24 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
             }
             for _ in range(5)
         )
-        column_list.extend(
-            {"column": OracleColumn(name(), ORACLE_TYPE_DATE)} for _ in range(5)
-        )
-        column_list.extend(
-            {"column": OracleColumn(name(), ORACLE_TYPE_TIMESTAMP, data_scale=0)}
-            for _ in range(5)
-        )
+        column_list.extend({"column": OracleColumn(name(), ORACLE_TYPE_DATE)} for _ in range(5))
+        column_list.extend({"column": OracleColumn(name(), ORACLE_TYPE_TIMESTAMP, data_scale=0)} for _ in range(5))
 
-        extra_column_count = min(
-            self._goe_wide_max_test_column_count(), backend_max_test_column_count
-        ) - len(column_list)
+        extra_column_count = min(self._goe_wide_max_test_column_count(), backend_max_test_column_count) - len(
+            column_list
+        )
 
         column_list.extend(
             random.choice(
                 [
+                    {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=9)},
                     {
-                        "column": OracleColumn(
-                            name(), ORACLE_TYPE_NUMBER, data_precision=9
-                        )
-                    },
-                    {
-                        "column": OracleColumn(
-                            name(), ORACLE_TYPE_VARCHAR, data_length=10
-                        ),
+                        "column": OracleColumn(name(), ORACLE_TYPE_VARCHAR, data_length=10),
                         "ascii_only": ascii_only,
                         "notnull": all_chars_notnull,
                     },
                     {"column": OracleColumn(name(), ORACLE_TYPE_DATE)},
-                    {
-                        "column": OracleColumn(
-                            name(), ORACLE_TYPE_TIMESTAMP, data_scale=0
-                        )
-                    },
+                    {"column": OracleColumn(name(), ORACLE_TYPE_TIMESTAMP, data_scale=0)},
                 ]
             )
             for _ in range(extra_column_count)
@@ -1098,9 +895,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
     def _id_column(self):
         return OracleColumn("ID", ORACLE_TYPE_NUMBER, data_precision=18, data_scale=0)
 
-    def _populate_generated_test_table(
-        self, schema, table_name, columns, rows, fastexecute=False
-    ):
+    def _populate_generated_test_table(self, schema, table_name, columns, rows, fastexecute=False):
         """Using cx-Oracle specific syntax due to copying code directly from 'test --setup'"""
         column_list = [_["column"] for _ in columns]
         bindnames = []
@@ -1119,9 +914,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         ora_curs.prepare(q)
         ora_curs.setinputsizes(
             *[
-                gen_test_data.gen_cxo_type_spec(
-                    col.data_type, col.data_length, col.data_precision, col.data_scale
-                )
+                gen_test_data.gen_cxo_type_spec(col.data_type, col.data_length, col.data_precision, col.data_scale)
                 for col in column_list
             ]
         )
@@ -1179,15 +972,13 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
     def drop_table(self, schema, table_name):
         """Obviously this is dangerous, that's why it is in this TestingApi only."""
         try:
-            return self._db_api.execute_ddl(
-                f"DROP TABLE {schema}.{table_name}", log_level=VERBOSE
-            )
+            return self._db_api.execute_ddl(f"DROP TABLE {schema}.{table_name}", log_level=VERBOSE)
         except Exception as exc:
             if "ORA-00942" in str(exc):
                 # Nothing to drop
                 pass
             else:
-                self._log("Drop table exception: {}".format(str(exc)), detail=VERBOSE)
+                self._log(f"Drop table exception: {exc!s}", detail=VERBOSE)
                 raise
 
     def expected_std_dim_offload_predicates(self):
@@ -1284,8 +1075,8 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         schema: str,
         table_name: str,
         subquery: str,
-        pk_col_name: Optional[str] = None,
-        table_parallelism: Optional[str] = None,
+        pk_col_name: str | None = None,
+        table_parallelism: str | None = None,
         with_drop: bool = True,
         with_stats_collection: bool = False,
     ) -> list:
@@ -1313,10 +1104,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         )
         sqls.append(ctas)
         if pk_col_name:
-            sqls.append(
-                "ALTER TABLE %(schema)s.%(table_name)s ADD PRIMARY KEY (%(pk_col_name)s)"
-                % params
-            )
+            sqls.append("ALTER TABLE %(schema)s.%(table_name)s ADD PRIMARY KEY (%(pk_col_name)s)" % params)
         if with_stats_collection:
             sqls.append(self.collect_table_stats_sql_text(schema, table_name))
         return sqls
@@ -1333,22 +1121,16 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         definitions = self._goe_type_mapping_column_definitions(
             max_backend_precision, max_backend_scale, max_decimal_integral_magnitude
         )
-        for col_dict in [
-            definitions[col_name] for col_name in sorted(definitions.keys())
-        ]:
+        for col_dict in [definitions[col_name] for col_name in sorted(definitions.keys())]:
             frontend_column = col_dict["column"]
-            if (
-                col_dict["expected_canonical_column"].data_type
-                not in supported_canonical_types
-            ):
+            if col_dict["expected_canonical_column"].data_type not in supported_canonical_types:
                 # The canonical type is not supported by the backend
                 continue
             goe_type_mapping_names.append(frontend_column.name)
             offload_options = col_dict.get("offload_options")
             literals = col_dict.get("literals")
             if frontend_column.data_type == ORACLE_TYPE_NUMBER and (
-                frontend_column.data_precision is not None
-                or frontend_column.data_scale is not None
+                frontend_column.data_precision is not None or frontend_column.data_scale is not None
             ):
                 goe_type_mapping_cols.append(
                     (
@@ -1358,9 +1140,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     )
                 )
             elif frontend_column.data_type == ORACLE_TYPE_FLOAT and offload_options:
-                goe_type_mapping_cols.append(
-                    (frontend_column.data_type, literals or [1.5, 2.5, 3.5])
-                )
+                goe_type_mapping_cols.append((frontend_column.data_type, literals or [1.5, 2.5, 3.5]))
             elif frontend_column.is_number_based() and offload_options:
                 # This is a number of some kind and being CAST to something else so we provide specific test data.
                 literals = literals or [1, 2, 3]
@@ -1371,9 +1151,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     GOE_TYPE_INTEGER_8,
                     GOE_TYPE_INTEGER_38,
                 ]:
-                    precision = self._canonical_integer_precision(
-                        col_dict["expected_canonical_column"].data_type
-                    )
+                    precision = self._canonical_integer_precision(col_dict["expected_canonical_column"].data_type)
                     if precision > 35:
                         # scripts/test imposes a max precision of 35, I think due to shortcomings of cx-Oracle.
                         # We impose the same limit here to ensure no loss of value accuracy.
@@ -1383,14 +1161,10 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                         TestDecimal.rnd(precision),
                         TestDecimal.max(precision),
                     ]
-                elif col_dict[
-                    "expected_canonical_column"
-                ].data_type == GOE_TYPE_DECIMAL and offload_options.get(
+                elif col_dict["expected_canonical_column"].data_type == GOE_TYPE_DECIMAL and offload_options.get(
                     "decimal_columns_type_list"
                 ):
-                    precision, scale = offload_options["decimal_columns_type_list"][
-                        0
-                    ].split(",")
+                    precision, scale = offload_options["decimal_columns_type_list"][0].split(",")
                     precision = int(precision)
                     scale = int(scale)
                     literals = [
@@ -1400,17 +1174,13 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     ]
 
                 if self._data_type_supports_precision_and_scale(frontend_column):
-                    goe_type_mapping_cols.append(
-                        (frontend_column.data_type, None, None, literals)
-                    )
+                    goe_type_mapping_cols.append((frontend_column.data_type, None, None, literals))
                 else:
                     goe_type_mapping_cols.append((frontend_column.data_type, literals))
             elif frontend_column.is_string_based():
                 if frontend_column.data_type in [ORACLE_TYPE_CLOB, ORACLE_TYPE_NCLOB]:
                     if ascii_only:
-                        goe_type_mapping_cols.append(
-                            (frontend_column.data_type, TEST_GEN_DATA_ASCII7_NONULL)
-                        )
+                        goe_type_mapping_cols.append((frontend_column.data_type, TEST_GEN_DATA_ASCII7_NONULL))
                     else:
                         goe_type_mapping_cols.append(frontend_column.data_type)
                 elif ascii_only:
@@ -1429,9 +1199,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                         )
                     )
             elif frontend_column.data_type == ORACLE_TYPE_RAW:
-                goe_type_mapping_cols.append(
-                    (frontend_column.data_type, frontend_column.data_length)
-                )
+                goe_type_mapping_cols.append((frontend_column.data_type, frontend_column.data_length))
             elif frontend_column.data_type in [
                 ORACLE_TYPE_DATE,
                 ORACLE_TYPE_TIMESTAMP,
@@ -1453,9 +1221,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                         )
                     )
                 else:
-                    goe_type_mapping_cols.append(
-                        (frontend_column.data_type, frontend_column.data_scale)
-                    )
+                    goe_type_mapping_cols.append((frontend_column.data_type, frontend_column.data_scale))
             elif frontend_column.data_type == ORACLE_TYPE_INTERVAL_DS:
                 goe_type_mapping_cols.append(
                     (
@@ -1465,9 +1231,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     )
                 )
             elif frontend_column.data_type == ORACLE_TYPE_INTERVAL_YM:
-                goe_type_mapping_cols.append(
-                    (frontend_column.data_type, frontend_column.data_precision or 9)
-                )
+                goe_type_mapping_cols.append((frontend_column.data_type, frontend_column.data_precision or 9))
             else:
                 goe_type_mapping_cols.append(frontend_column.data_type)
         return goe_type_mapping_cols, goe_type_mapping_names
@@ -1491,8 +1255,8 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
             ddls = [d.replace("\n", " ").strip() for d in ddl.split(";") if d.strip()]
 
         for ddl in ddls:
-            if re.match("^exec .*", ddl, re.I):
-                ddl = "BEGIN %s; END;" % re.sub("^exec ", "", ddl, flags=re.I)
+            if re.match("^exec .*", ddl, re.IGNORECASE):
+                ddl = "BEGIN %s; END;" % re.sub("^exec ", "", ddl, flags=re.IGNORECASE)
             self._db_api.execute_ddl(ddl)
 
         # Commit because some commands above could be DML
@@ -1503,14 +1267,14 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         schema: str,
         table_name: str,
         maxval_partition: bool = False,
-        extra_pred: Optional[str] = None,
-        degree: Optional[str] = None,
+        extra_pred: str | None = None,
+        degree: str | None = None,
         subpartitions: int = 0,
         enable_row_movement: bool = False,
         noseg_partition: bool = True,
-        part_key_type: Optional[str] = None,
-        time_id_column_name: Optional[str] = None,
-        extra_col_tuples: Optional[list] = None,
+        part_key_type: str | None = None,
+        time_id_column_name: str | None = None,
+        extra_col_tuples: list | None = None,
         simple_partition_names: bool = False,
         with_drop: bool = True,
         range_start_literal_override=None,
@@ -1528,26 +1292,18 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
             ORACLE_TYPE_VARCHAR2,
             ORACLE_TYPE_DATE,
             ORACLE_TYPE_TIMESTAMP,
-        ], (
-            "Unsupported part_key_type: %s" % part_key_type
-        )
+        ], "Unsupported part_key_type: %s" % part_key_type
 
         extra_pred = extra_pred or ""
         degree_clause = ""
         subpartition_clause = ""
         extra_cols = ""
         if degree:
-            degree_clause = (
-                " PARALLEL" if degree == "DEFAULT" else (" PARALLEL %s" % degree)
-            )
+            degree_clause = " PARALLEL" if degree == "DEFAULT" else (" PARALLEL %s" % degree)
         if subpartitions > 0:
-            subpartition_clause = (
-                "SUBPARTITION BY HASH(cust_id) SUBPARTITIONS %s" % subpartitions
-            )
+            subpartition_clause = "SUBPARTITION BY HASH(cust_id) SUBPARTITIONS %s" % subpartitions
         if extra_col_tuples:
-            extra_cols = "," + ",".join(
-                "{} AS {}".format(_[0], _[1]) for _ in extra_col_tuples
-            )
+            extra_cols = "," + ",".join(f"{_[0]} AS {_[1]}" for _ in extra_col_tuples)
         time_id_alias = time_id_column_name or "time_id"
 
         params = {
@@ -1711,9 +1467,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                  ) sales""" % {
             "schema": schema,
             "table": table_name,
-            "sales_gen_subquery": self._sales_gen_subquery(
-                f"DATE'{hv}' + MOD(ROWNUM,25)", rows=60
-            ),
+            "sales_gen_subquery": self._sales_gen_subquery(f"DATE'{hv}' + MOD(ROWNUM,25)", rows=60),
         }
         return [alt, ins]
 
@@ -1722,26 +1476,20 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         schema: str,
         table_name: str,
         hv_string_list: list,
-        dropping_oldest: Optional[bool] = None,
+        dropping_oldest: bool | None = None,
     ) -> list:
         ddls = [
-            "ALTER TABLE %s.%s DROP PARTITION %s"
-            % (schema, table_name, _.partition_name)
-            for _ in self.frontend_table_partition_list(
-                schema, table_name, hv_string_list=hv_string_list
-            )
+            "ALTER TABLE %s.%s DROP PARTITION %s" % (schema, table_name, _.partition_name)
+            for _ in self.frontend_table_partition_list(schema, table_name, hv_string_list=hv_string_list)
         ]
         return ddls
 
     def sales_based_fact_truncate_partition_ddl(
-        self, schema: str, table_name: str, hv_string_list: Optional[list] = None
+        self, schema: str, table_name: str, hv_string_list: list | None = None
     ) -> list:
         ddls = [
-            "ALTER TABLE %s.%s TRUNCATE PARTITION %s DROP ALL STORAGE"
-            % (schema, table_name, _.partition_name)
-            for _ in self.frontend_table_partition_list(
-                schema, table_name, hv_string_list
-            )
+            "ALTER TABLE %s.%s TRUNCATE PARTITION %s DROP ALL STORAGE" % (schema, table_name, _.partition_name)
+            for _ in self.frontend_table_partition_list(schema, table_name, hv_string_list)
         ]
         return ddls
 
@@ -1784,12 +1532,12 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         schema: str,
         table_name: str,
         default_partition: bool = False,
-        extra_pred: Optional[str] = None,
-        part_key_type: Optional[str] = None,
+        extra_pred: str | None = None,
+        part_key_type: str | None = None,
         out_of_sequence: bool = False,
         include_older_partition: bool = False,
-        yrmon_column_name: Optional[str] = None,
-        extra_col_tuples: Optional[list] = None,
+        yrmon_column_name: str | None = None,
+        extra_col_tuples: list | None = None,
         with_drop: bool = True,
     ) -> list:
         if extra_col_tuples:
@@ -1803,17 +1551,13 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
             ORACLE_TYPE_VARCHAR2,
             ORACLE_TYPE_DATE,
             ORACLE_TYPE_TIMESTAMP,
-        ], (
-            "Unsupported part_key_type: %s" % part_key_type
-        )
+        ], "Unsupported part_key_type: %s" % part_key_type
 
         extra_pred = extra_pred or ""
         yrmon = yrmon_column_name or "yrmon"
         extra_cols = ""
         if extra_col_tuples:
-            extra_cols = "," + ",".join(
-                "{} AS {}".format(_[0], _[1]) for _ in extra_col_tuples
-            )
+            extra_cols = "," + ",".join(f"{_[0]} AS {_[1]}" for _ in extra_col_tuples)
         params = {
             "schema": schema,
             "table": table_name,
@@ -1899,8 +1643,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         if include_older_partition:
             # In order to mimic RANGE for LIST_AS_RANGE we need an older partition
             params["p0_partition"] = (
-                "PARTITION %(pname0)s VALUES (%(datefn)s%(chr)s%(hv0)s%(chr)s%(datefnmask)s),\n"
-                % params
+                "PARTITION %(pname0)s VALUES (%(datefn)s%(chr)s%(hv0)s%(chr)s%(datefnmask)s),\n" % params
             )
 
         create_ddl = (
@@ -1944,7 +1687,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         return sqls
 
     def sales_based_list_fact_add_partition_ddl(
-        self, schema: str, table_name: str, next_ym_override: Optional[tuple] = None
+        self, schema: str, table_name: str, next_ym_override: tuple | None = None
     ) -> list:
         columns = self._db_api.get_columns(schema, table_name)
         part_col = match_table_column("YRMON", columns)
@@ -1964,14 +1707,11 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 "SELECT TO_CHAR(next_date,'YYYY'), TO_CHAR(next_date,'MM') FROM (SELECT ADD_MONTHS(%(hv)s,1) next_date FROM dual)"
                 % {"hv": hv_expr}
             )
-            self._log(
-                "gen_add_sales_based_list_partition_ddl q: %s" % q, detail=VERBOSE
-            )
+            self._log("gen_add_sales_based_list_partition_ddl q: %s" % q, detail=VERBOSE)
             next_y, next_m = self._db_api.execute_query_fetch_one(q)
 
         self._log(
-            "gen_add_sales_based_list_partition_ddl adding partition: %s%s"
-            % (next_y, next_m),
+            "gen_add_sales_based_list_partition_ddl adding partition: %s%s" % (next_y, next_m),
             detail=VERBOSE,
         )
         if part_col.data_type == ORACLE_TYPE_NUMBER:
@@ -2016,9 +1756,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
             "next_y": next_y,
             "next_m": next_m,
             "yrmon_expr": yrmon_expr,
-            "sales_gen_subquery": self._sales_gen_subquery(
-                f"DATE'{next_y}-{next_m}-10'", rows=60
-            ),
+            "sales_gen_subquery": self._sales_gen_subquery(f"DATE'{next_y}-{next_m}-10'", rows=60),
         }
         self._log("Add DDL: %s" % alt, detail=VERBOSE)
         self._log("Ins DML: %s" % ins, detail=VERBOSE)
@@ -2040,9 +1778,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         }
         return [ins]
 
-    def sales_based_multi_col_fact_create_ddl(
-        self, schema: str, table_name: str, maxval_partition=False
-    ) -> list:
+    def sales_based_multi_col_fact_create_ddl(self, schema: str, table_name: str, maxval_partition=False) -> list:
         """Create a partitioned table with a multi column partition key.
         Uses a limited number of CHANNEL_IDs to reduce the rows, volume not a factor.
         """
@@ -2056,9 +1792,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     "hv4": "TO_DATE('2014-01-01','YYYY-MM-DD')",
                 }
             )
-        params["sales_gen_subquery"] = self._sales_gen_subquery(
-            f"DATE'2012-01-01' + (MOD(ROWNUM,104)*7)", rows=500
-        )
+        params["sales_gen_subquery"] = self._sales_gen_subquery("DATE'2012-01-01' + (MOD(ROWNUM,104)*7)", rows=500)
         sqls = [
             "DROP TABLE %(schema)s.%(table)s" % params,
             """CREATE TABLE %(schema)s.%(table)s
@@ -2127,9 +1861,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     ,SUBPARTITION C3_201204 VALUES LESS THAN (TO_DATE('2012-05-01','YYYY-MM-DD'))
                     ,SUBPARTITION C3_201205 VALUES LESS THAN (TO_DATE('2012-06-01','YYYY-MM-DD'))
                     )
-                )""" % {
-                "table": table_name
-            }
+                )""" % {"table": table_name}
         else:
             partition_scheme = """PARTITION BY LIST (channel_id)
                 SUBPARTITION BY RANGE (time_id)
@@ -2151,17 +1883,13 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                     ,SUBPARTITION C3_201204 VALUES LESS THAN (TO_DATE('2012-05-01','YYYY-MM-DD'))
                     ,SUBPARTITION C3_201205 VALUES LESS THAN (TO_DATE('2012-06-01','YYYY-MM-DD'))
                     )
-                )""" % {
-                "table": table_name
-            }
+                )""" % {"table": table_name}
         params = {
             "schema": schema,
             "table": table_name,
             "partition_scheme": partition_scheme,
             "rowdependencies": rowdeps,
-            "sales_gen_subquery": self._sales_gen_subquery(
-                f"DATE'2012-01-01' + (MOD(ROWNUM,52)*7)", rows=500
-            ),
+            "sales_gen_subquery": self._sales_gen_subquery("DATE'2012-01-01' + (MOD(ROWNUM,52)*7)", rows=500),
         }
         sqls = [
             "DROP TABLE %(schema)s.%(table)s" % params,
@@ -2190,11 +1918,10 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         schema: str,
         table_name: str,
         to_user: str,
-        grantable: Optional[bool] = None,
+        grantable: bool | None = None,
     ) -> bool:
         self._log(
-            "select_grant_exists(%s, %s, %s, %s)"
-            % (schema, table_name, to_user, grantable),
+            "select_grant_exists(%s, %s, %s, %s)" % (schema, table_name, to_user, grantable),
             detail=VERBOSE,
         )
         q = """SELECT grantable
@@ -2213,26 +1940,23 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         )
         if not row:
             return False
-        elif grantable is None:
+        if grantable is None:
             return True
         if grantable:
             return bool(row[0] == "YES")
-        else:
-            return bool(row[0] == "NO")
+        return bool(row[0] == "NO")
 
     def standard_dimension_frontend_ddl(
         self,
         schema: str,
         table_name: str,
-        extra_col_tuples: Optional[list] = None,
+        extra_col_tuples: list | None = None,
         empty: bool = False,
         pk_col_name: str = None,
     ) -> list:
         extra_cols = ""
         if extra_col_tuples:
-            extra_cols = "," + ",".join(
-                "{} AS {}".format(_[0], _[1]) for _ in extra_col_tuples
-            )
+            extra_cols = "," + ",".join(f"{_[0]} AS {_[1]}" for _ in extra_col_tuples)
         if empty:
             subquery = dedent(
                 f"""\
@@ -2294,14 +2018,10 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
             with_stats_collection=True,
         )
 
-    def table_row_count_from_stats(
-        self, schema: str, table_name: str
-    ) -> Union[int, None]:
+    def table_row_count_from_stats(self, schema: str, table_name: str) -> int | None:
         self._log("table_row_count_from_stats for %s" % table_name, detail=VERBOSE)
         q = "SELECT num_rows FROM all_tables WHERE owner = :o AND table_name = :t"
-        r = self._db_api.execute_query_fetch_one(
-            q, query_params={"o": schema.upper(), "t": table_name.upper()}
-        )
+        r = self._db_api.execute_query_fetch_one(q, query_params={"o": schema.upper(), "t": table_name.upper()})
         stats_value = r[0] if r else r
         self._log("table_row_count_from_stats: %s" % str(stats_value), detail=VVERBOSE)
         return stats_value

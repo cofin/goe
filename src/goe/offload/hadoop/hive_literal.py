@@ -14,11 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" HiveLiteral: Format a Hive literal based on data type.
-"""
+"""HiveLiteral: Format a Hive literal based on data type."""
 
-from datetime import date
 import logging
+from datetime import date
 
 from numpy import datetime64
 
@@ -46,10 +45,9 @@ class HiveLiteral(FormatLiteralInterface):
     def _format_data_type_with_prefix(cls, str_val, data_type):
         if data_type == HADOOP_TYPE_DATE:
             return "date '%s'" % str_val[:10]
-        elif data_type == HADOOP_TYPE_TIMESTAMP:
+        if data_type == HADOOP_TYPE_TIMESTAMP:
             return "timestamp '%s'" % str_val
-        else:
-            return str_val
+        return str_val
 
     @classmethod
     def format_literal(cls, python_value, data_type=None):
@@ -63,23 +61,17 @@ class HiveLiteral(FormatLiteralInterface):
             str_value = cls._strip_unused_time_scale(
                 str(python_value).replace("T", " "), trim_unnecessary_subseconds=True
             )
-            new_py_val = cls._format_data_type_with_prefix(
-                str_value, data_type or HADOOP_TYPE_TIMESTAMP
-            )
+            new_py_val = cls._format_data_type_with_prefix(str_value, data_type or HADOOP_TYPE_TIMESTAMP)
         elif isinstance(python_value, date):
             if data_type == HADOOP_TYPE_DATE:
-                new_py_val = cls._format_data_type_with_prefix(
-                    python_value.strftime("%Y-%m-%d"), data_type
-                )
+                new_py_val = cls._format_data_type_with_prefix(python_value.strftime("%Y-%m-%d"), data_type)
             else:
                 # Assuming TIMESTAMP if no data_type specified
                 str_value = cls._strip_unused_time_scale(
                     python_value.strftime("%Y-%m-%d %H:%M:%S.%f"),
                     trim_unnecessary_subseconds=True,
                 )
-                new_py_val = cls._format_data_type_with_prefix(
-                    str_value, data_type or HADOOP_TYPE_TIMESTAMP
-                )
+                new_py_val = cls._format_data_type_with_prefix(str_value, data_type or HADOOP_TYPE_TIMESTAMP)
         elif isinstance(python_value, str):
             new_py_val = "'%s'" % python_value
         elif python_value is None:

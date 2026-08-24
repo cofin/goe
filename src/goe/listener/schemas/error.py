@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # Copyright 2016 The GOE Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,9 +13,10 @@
 # limitations under the License.
 
 """Response models."""
+
 # Standard Library
 from http import HTTPStatus
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 # Third Party Libraries
 from pydantic import root_validator
@@ -43,7 +42,7 @@ class ErrorDetail(BaseSchema):
 
     code: int
     message: str
-    details: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]]
+    details: list[dict[str, Any]] | dict[str, Any] | None
 
     @root_validator(pre=False, skip_on_failure=True)
     def _set_status(cls, values: dict) -> dict:
@@ -68,7 +67,7 @@ class ErrorDetail(BaseSchema):
         """
 
         @staticmethod
-        def schema_extra(schema: Dict[str, Any]) -> None:
+        def schema_extra(schema: dict[str, Any]) -> None:
             """Post-process the generated schema.
 
             Mathod can have one or two positional arguments. The first will be
@@ -117,7 +116,7 @@ class ErrorMessage(BaseSchema):
         """
 
         @staticmethod
-        def schema_extra(schema: Dict[str, Any]) -> None:
+        def schema_extra(schema: dict[str, Any]) -> None:
             """Post-process the generated schema.
 
             Mathod can have one or two positional arguments. The first will be

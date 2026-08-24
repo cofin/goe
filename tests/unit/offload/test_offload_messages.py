@@ -14,20 +14,20 @@
 
 from datetime import timedelta
 
+import pytest
+
 from goe.config import orchestration_defaults
 from goe.offload.offload_messages import (
-    OffloadMessages,
-    OffloadMessagesForcedException,
     VERBOSE,
     VVERBOSE,
+    OffloadMessages,
+    OffloadMessagesForcedException,
 )
 from goe.orchestration import command_steps, orchestration_constants
 from goe.util.goe_log_fh import GOELogFileHandle
 
-import pytest
 
-
-class FakeOpts(object):
+class FakeOpts:
     def __init__(self, option_modifiers=None):
         if option_modifiers:
             assert isinstance(option_modifiers, dict)
@@ -130,12 +130,8 @@ def test_offload_step():
         # Now check that step interaction works
         messages_title = command_steps.step_title(command_steps.STEP_MESSAGES)
         skip_title = command_steps.step_title(command_steps.STEP_UNITTEST_SKIP)
-        error_before_title = command_steps.step_title(
-            command_steps.STEP_UNITTEST_ERROR_BEFORE
-        )
-        error_after_title = command_steps.step_title(
-            command_steps.STEP_UNITTEST_ERROR_AFTER
-        )
+        error_before_title = command_steps.step_title(command_steps.STEP_UNITTEST_ERROR_BEFORE)
+        error_after_title = command_steps.step_title(command_steps.STEP_UNITTEST_ERROR_AFTER)
         messages = OffloadMessages.from_options(FakeOpts(), log_fh=fh)
         messages.setup_offload_step(
             skip=[skip_title.replace(" ", "_").lower()],

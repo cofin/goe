@@ -12,28 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestOffloadFunctions: Unit test library to test global functions defined in offload_functions.py
-"""
+"""TestOffloadFunctions: Unit test library to test global functions defined in offload_functions.py"""
+
 import re
 from unittest import TestCase, main
 
+from goe.offload.column_metadata import (
+    GOE_TYPE_INTEGER_2,
+    GOE_TYPE_VARIABLE_STRING,
+    CanonicalColumn,
+)
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     expand_columns_csv,
     hybrid_threshold_clauses,
     hybrid_view_list_clauses,
 )
-from goe.offload.column_metadata import (
-    CanonicalColumn,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_VARIABLE_STRING,
-)
 from goe.offload.predicate_offload import GenericPredicate
 
 
 class TestOffloadFunctions(TestCase):
     def test_convert_backend_identifier_case(self):
-        class Opts(object):
+        class Opts:
             def __init__(self, backend_identifier_case):
                 self.backend_identifier_case = backend_identifier_case
 
@@ -65,15 +65,9 @@ class TestOffloadFunctions(TestCase):
             CanonicalColumn("COL5_YEAR", GOE_TYPE_INTEGER_2),
             CanonicalColumn("COL6_MONTH", GOE_TYPE_INTEGER_2),
         ]
-        self.assertListEqual(
-            expand_columns_csv("COL1_ID,COL4_KEY", columns), ["COL1_ID", "COL4_KEY"]
-        )
-        self.assertListEqual(
-            expand_columns_csv("COL1_ID,COL5_YEAR", columns), ["COL1_ID", "COL5_YEAR"]
-        )
-        self.assertListEqual(
-            expand_columns_csv("COL1_ID,*_YEAR", columns), ["COL1_ID", "COL5_YEAR"]
-        )
+        self.assertListEqual(expand_columns_csv("COL1_ID,COL4_KEY", columns), ["COL1_ID", "COL4_KEY"])
+        self.assertListEqual(expand_columns_csv("COL1_ID,COL5_YEAR", columns), ["COL1_ID", "COL5_YEAR"])
+        self.assertListEqual(expand_columns_csv("COL1_ID,*_YEAR", columns), ["COL1_ID", "COL5_YEAR"])
         self.assertListEqual(
             expand_columns_csv("*_ID,*_YEAR", columns),
             ["COL1_ID", "COL2_ID", "COL5_YEAR"],
@@ -82,9 +76,7 @@ class TestOffloadFunctions(TestCase):
         self.assertListEqual(expand_columns_csv("*COL1_ID*", columns), ["COL1_ID"])
 
     def test_hybrid_view_list_clauses(self):
-        def check_call(
-            columns, pretend_hvs, in_list_chunk_size, expected_number_of_clauses, ch
-        ):
+        def check_call(columns, pretend_hvs, in_list_chunk_size, expected_number_of_clauses, ch):
             def quote_fn(x):
                 return (ch + x + ch) if ch else x
 
@@ -100,17 +92,15 @@ class TestOffloadFunctions(TestCase):
             self.assertIsInstance(clauses[0], str)
             self.assertIsInstance(clauses[1], str)
             col_name = ch + columns[0].name + ch
+            self.assertEqual(clauses[0].count(f"{col_name} IN "), expected_number_of_clauses)
             self.assertEqual(
-                clauses[0].count("{} IN ".format(col_name)), expected_number_of_clauses
-            )
-            self.assertEqual(
-                clauses[1].count("{} NOT IN ".format(col_name)),
+                clauses[1].count(f"{col_name} NOT IN "),
                 expected_number_of_clauses,
             )
             # Check that IN list items are same in number as HVs
-            in_lists = re.findall(r"IN \(([a-z0-9, \']+)\)", clauses[0], flags=re.I)
+            in_lists = re.findall(r"IN \(([a-z0-9, \']+)\)", clauses[0], flags=re.IGNORECASE)
             self.assertEqual(sum(len(_.split(",")) for _ in in_lists), len(pretend_hvs))
-            in_lists = re.findall(r"NOT IN \(([a-z0-9, \']+)\)", clauses[1], flags=re.I)
+            in_lists = re.findall(r"NOT IN \(([a-z0-9, \']+)\)", clauses[1], flags=re.IGNORECASE)
             self.assertEqual(sum(len(_.split(",")) for _ in in_lists), len(pretend_hvs))
 
         # Numeric list
@@ -122,7 +112,7 @@ class TestOffloadFunctions(TestCase):
         check_call(columns, pretend_hvs, 10, 2, "`")
         # Character list
         columns = [CanonicalColumn("COL_NAME", GOE_TYPE_VARIABLE_STRING)]
-        pretend_hvs = [("'{}'".format(_),) for _ in range(20)]
+        pretend_hvs = [(f"'{_}'",) for _ in range(20)]
         check_call(columns, pretend_hvs, 9, 3, '"')
         check_call(columns, pretend_hvs, 10, 2, '"')
         check_call(columns, pretend_hvs, 21, 1, '"')

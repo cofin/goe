@@ -12,15 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""TestCommandSteps: Unit test constants in command_steps are sound.
+1) Within the module.
+2) When compared to GOE Repo data.
 """
-TestCommandSteps: Unit test constants in command_steps are sound.
-    1) Within the module.
-    2) When compared to GOE Repo data.
-"""
+
 from unittest import TestCase, main
 
 from goe.orchestration import command_steps
-
 
 # Console phase 1 only adds steps to the repo for Offload/Present. In time the OSR/Schema Sync steps
 # below will be added to the repo. KNOWN_MISSING_STEPS serves two purposes:
@@ -49,17 +48,13 @@ KNOWN_MISSING_STEPS = [
 
 
 class TestCommandSteps(TestCase):
-    """
-    TestCommandSteps: Unit test constants in command_steps are sound within the module.
-    """
+    """TestCommandSteps: Unit test constants in command_steps are sound within the module."""
 
     def _get_step_constants(self):
         return [
             v
             for k, v in vars(command_steps).items()
-            if k.startswith("STEP_")
-            and k != "STEP_TITLES"
-            and k not in KNOWN_MISSING_STEPS
+            if k.startswith("STEP_") and k != "STEP_TITLES" and k not in KNOWN_MISSING_STEPS
         ]
 
     def test_command_steps_internal(self):

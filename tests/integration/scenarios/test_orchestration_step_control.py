@@ -18,10 +18,9 @@ from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
-from goe.offload.offload_messages import step_title_to_step_id, FORCED_EXCEPTION_TEXT
+from goe.offload.offload_messages import FORCED_EXCEPTION_TEXT, step_title_to_step_id
 from goe.orchestration import command_steps
 from goe.orchestration.command_steps import step_title
-
 from tests.integration.scenarios.assertion_functions import (
     messages_step_executions,
 )
@@ -41,7 +40,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 STEP_DIM = "STORY_STEP_DIM"
 
@@ -65,9 +63,10 @@ def data_db(schema, config):
 
 def test_offload_step_dim(config, schema, data_db):
     id = "test_offload_step_dim"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         backend_name = convert_backend_identifier_case(config, STEP_DIM)
 
@@ -77,39 +76,26 @@ def test_offload_step_dim(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, STEP_DIM
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, STEP_DIM),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, STEP_DIM
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, STEP_DIM),
             ],
         )
 
         # Offload skipping step STEP_VALIDATE_DATA.
         options = {
             "owner_table": schema + "." + STEP_DIM,
-            "skip": [
-                step_title_to_step_id(step_title(command_steps.STEP_VALIDATE_DATA))
-            ],
+            "skip": [step_title_to_step_id(step_title(command_steps.STEP_VALIDATE_DATA))],
             "reset_backend_table": True,
             "execute": False,
         }
         offload_messages = run_offload(options, config, messages)
-        assert (
-            messages_step_executions(
-                offload_messages, step_title(command_steps.STEP_VALIDATE_DATA), messages
-            )
-            == 0
-        )
+        assert messages_step_executions(offload_messages, step_title(command_steps.STEP_VALIDATE_DATA), messages) == 0
 
         # Offload skipping step STEP_VALIDATE_CASTS.
         options = {
             "owner_table": schema + "." + STEP_DIM,
-            "skip": [
-                step_title_to_step_id(step_title(command_steps.STEP_VALIDATE_CASTS))
-            ],
+            "skip": [step_title_to_step_id(step_title(command_steps.STEP_VALIDATE_CASTS))],
             "reset_backend_table": True,
             "execute": False,
         }
@@ -126,11 +112,7 @@ def test_offload_step_dim(config, schema, data_db):
         # Offload skipping step STEP_VERIFY_EXPORTED_DATA.
         options = {
             "owner_table": schema + "." + STEP_DIM,
-            "skip": [
-                step_title_to_step_id(
-                    step_title(command_steps.STEP_VERIFY_EXPORTED_DATA)
-                )
-            ],
+            "skip": [step_title_to_step_id(step_title(command_steps.STEP_VERIFY_EXPORTED_DATA))],
             "reset_backend_table": True,
             "execute": False,
         }
@@ -165,9 +147,7 @@ def test_offload_step_dim(config, schema, data_db):
             "reset_backend_table": True,
             "execute": True,
         }
-        run_offload(
-            options, config, messages, expected_exception_string=FORCED_EXCEPTION_TEXT
-        )
+        run_offload(options, config, messages, expected_exception_string=FORCED_EXCEPTION_TEXT)
 
         # Table exists
         assert backend_api.table_exists(data_db, backend_name)

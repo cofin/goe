@@ -14,26 +14,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" GOEGcs: GCS implementation of GOEDfs
-"""
+"""GOEGcs: GCS implementation of GOEDfs"""
 
 import logging
-from os.path import basename, exists as file_exists
+from os.path import basename
+from os.path import exists as file_exists
+
+from google.api_core import exceptions as google_exceptions
+from google.api_core import retry
+from google.cloud import storage
 from requests import ConnectionError
 
-from google.api_core import retry, exceptions as google_exceptions
-from google.cloud import storage
-
 from goe.filesystem.goe_dfs import (
-    GOEDfs,
-    GOEDfsDeleteNotComplete,
-    GOEDfsException,
-    gen_fs_uri,
     DFS_RETRY_TIMEOUT,
     DFS_TYPE_DIRECTORY,
     DFS_TYPE_FILE,
     GOE_DFS_GCS,
     URI_SEP,
+    GOEDfs,
+    GOEDfsDeleteNotComplete,
+    GOEDfsException,
+    gen_fs_uri,
 )
 
 ###############################################################################
@@ -65,16 +66,12 @@ class GOEGcs(GOEDfs):
     do_not_connect: Do not even connect, used for unit testing.
     """
 
-    def __init__(
-        self, messages, dry_run=False, do_not_connect=False, db_path_suffix=None
-    ):
+    def __init__(self, messages, dry_run=False, do_not_connect=False, db_path_suffix=None):
         assert messages
 
         logger.info("Client setup: GOEGcs")
 
-        super(GOEGcs, self).__init__(
-            messages, dry_run=dry_run, do_not_connect=do_not_connect
-        )
+        super().__init__(messages, dry_run=dry_run, do_not_connect=do_not_connect)
 
         if do_not_connect:
             self._client = None
@@ -116,17 +113,12 @@ class GOEGcs(GOEDfs):
         logger.info("copy_from_local(%s, %s)" % (local_path, dfs_path))
         scheme, container, path = self._uri_component_split(dfs_path)
         target_path = (path + basename(local_path)) if path.endswith(URI_SEP) else path
-        self.debug(
-            "Copying to target scheme/container/path: %s"
-            % str([scheme, container, target_path])
-        )
+        self.debug("Copying to target scheme/container/path: %s" % str([scheme, container, target_path]))
         if not self._dry_run:
             bucket = self._client.get_bucket(container)
             blob = bucket.blob(target_path)
             if blob.exists() and not overwrite:
-                raise GOEDfsException(
-                    "Cannot copy file over existing file: %s" % target_path
-                )
+                raise GOEDfsException("Cannot copy file over existing file: %s" % target_path)
             blob.upload_from_filename(local_path)
 
     def copy_to_local(self, dfs_path, local_path, overwrite=False):
@@ -136,16 +128,12 @@ class GOEGcs(GOEDfs):
         assert isinstance(local_path, str)
         logger.info("copy_to_local(%s, %s)" % (dfs_path, local_path))
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Copying from scheme/container/path: %s" % str([scheme, container, path])
-        )
+        self.debug("Copying from scheme/container/path: %s" % str([scheme, container, path]))
         if not self._dry_run:
             bucket = self._client.get_bucket(container)
             blob = bucket.blob(path)
             if file_exists(local_path) and not overwrite:
-                raise GOEDfsException(
-                    "Cannot copy file over existing file: %s" % local_path
-                )
+                raise GOEDfsException("Cannot copy file over existing file: %s" % local_path)
             with open(local_path, "wb") as file_handle:
                 blob.download_to_file(file_handle)
 
@@ -165,10 +153,7 @@ class GOEGcs(GOEDfs):
             try:
                 blob.delete()
             except google_exceptions.NotFound:
-                self.debug(
-                    "delete(%s) returned 404 (NotFound), accepting as deleted"
-                    % blob.name
-                )
+                self.debug("delete(%s) returned 404 (NotFound), accepting as deleted" % blob.name)
 
         assert dfs_path
         assert isinstance(dfs_path, str)
@@ -202,9 +187,7 @@ class GOEGcs(GOEDfs):
                     pragmatic_delete(blob)
             if found_files:
                 self._post_cloud_delete_wait(scheme)
-                blobs_pending_delete = [
-                    _ for _ in self._client.list_blobs(bucket, prefix=path)
-                ]
+                blobs_pending_delete = [_ for _ in self._client.list_blobs(bucket, prefix=path)]
                 if blobs_pending_delete:
                     self.debug("GCS delete incomplete, retrying")
                     raise GOEDfsDeleteNotComplete
@@ -240,10 +223,7 @@ class GOEGcs(GOEDfs):
         assert isinstance(dfs_path, str)
         logger.info("list_dir(%s)" % dfs_path)
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Listing contents of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Listing contents of scheme/container/path: %s" % str([scheme, container, path]))
         if path and not path.endswith(URI_SEP):
             path += URI_SEP
         if self._client:
@@ -258,7 +238,6 @@ class GOEGcs(GOEDfs):
 
     def mkdir(self, dfs_path):
         """No mkdir on GCS"""
-        pass
 
     @retry.Retry(
         predicate=retry.if_exception_type(google_exceptions.GatewayTimeout),
@@ -269,10 +248,7 @@ class GOEGcs(GOEDfs):
         assert isinstance(dfs_path, str)
         logger.info("read(%s)" % dfs_path)
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Downloading contents of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Downloading contents of scheme/container/path: %s" % str([scheme, container, path]))
         if self._dry_run:
             return None
         bucket = self._client.get_bucket(container)
@@ -281,8 +257,7 @@ class GOEGcs(GOEDfs):
             raise GOEDfsException("Cannot download non-existent file: %s" % path)
         if as_str:
             return blob.download_as_text()
-        else:
-            return blob.download_as_bytes()
+        return blob.download_as_bytes()
 
     def rename(self, hdfs_src_path, hdfs_dst_path):
         raise NotImplementedError("rename() not implemented for GOEGcs")
@@ -304,10 +279,7 @@ class GOEGcs(GOEDfs):
         if not self._client:
             return None
 
-        self.debug(
-            "Checking status of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Checking status of scheme/container/path: %s" % str([scheme, container, path]))
 
         bucket = self._client.get_bucket(container)
         # No delimiter parameter because we want to be able to stat directories
@@ -315,36 +287,30 @@ class GOEGcs(GOEDfs):
         # We need to ensure we only match the requested path, not
         # any other files that happen to start with the same characters
         matched_files = [_ for _ in blobs if _.name == path]
-        matched_files_by_dir = [
-            _ for _ in blobs if _.name.startswith(path.rstrip(URI_SEP) + URI_SEP)
-        ]
+        matched_files_by_dir = [_ for _ in blobs if _.name.startswith(path.rstrip(URI_SEP) + URI_SEP)]
 
         if len(matched_files) > 1:
             self.debug("Multiple file matches: %s" % str(matched_files))
             raise GOEDfsException("Path matches multiple files: %s" % dfs_path)
-        elif matched_files:
+        if matched_files:
             return {
                 "length": matched_files[0].size,
                 "permission": None,
                 "type": DFS_TYPE_FILE,
             }
-        elif matched_files_by_dir:
+        if matched_files_by_dir:
             # We found file entries prefixed with dfs_path as a dir, so we know it is a directory
             return {"length": 0, "permission": None, "type": DFS_TYPE_DIRECTORY}
-        else:
-            return None
+        return None
 
     def write(self, dfs_path: str, data, overwrite=False):
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("write(%s)" % dfs_path)
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Writing contents of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Writing contents of scheme/container/path: %s" % str([scheme, container, path]))
         if self._dry_run:
-            return None
+            return
         bucket = self._client.get_bucket(container)
         blob = bucket.blob(path)
         if blob.exists() and not overwrite:

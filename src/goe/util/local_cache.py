@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Data Cache abstractions
-"""
+"""Data Cache abstractions"""
 
 import datetime
 import json
@@ -23,9 +22,8 @@ import logging
 import os.path
 import tempfile
 import time
-
 from abc import ABCMeta, abstractmethod
-from functools import wraps, partial
+from functools import partial, wraps
 
 
 ###############################################################################
@@ -51,7 +49,7 @@ logger.addHandler(logging.NullHandler())  # Disabling logging by default
 ###########################################################################
 
 
-class LocalCache(object, metaclass=ABCMeta):
+class LocalCache(metaclass=ABCMeta):
     """ABSTRACT CLASS: LocalCache: (Local file) data cache"""
 
     def __init__(self, cache_id, cache_dir, expiration=DEFAULT_EXPIRATION):
@@ -66,9 +64,7 @@ class LocalCache(object, metaclass=ABCMeta):
         self._expiration = expiration  # ... expiration, in seconds
 
         # Cache file name
-        self._cache_file = self.cache_file_name(
-            self._sanitize_cache_name(self._id), self._dir
-        )
+        self._cache_file = self.cache_file_name(self._sanitize_cache_name(self._id), self._dir)
         self._cache = None  # Cache data
 
         # Load cache if cache file exists
@@ -77,10 +73,7 @@ class LocalCache(object, metaclass=ABCMeta):
         else:
             logger.debug("Cache file does NOT exist. Nothing to load")
 
-        logger.debug(
-            "LocalCache() object: %s successfully initialized with file: %s"
-            % (self._id, self._cache_file)
-        )
+        logger.debug("LocalCache() object: %s successfully initialized with file: %s" % (self._id, self._cache_file))
 
     ###########################################################################
     # ABSTRACT ROUTINES
@@ -89,17 +82,14 @@ class LocalCache(object, metaclass=ABCMeta):
     @abstractmethod
     def cache_file_name(self, cache_id, cache_dir):
         """Construct cache file name"""
-        pass
 
     @abstractmethod
     def load(self):
         """Load contents of self._cache_file into self._cache"""
-        pass
 
     @abstractmethod
     def save(self):
         """Save self._cache to self._cache_file"""
-        pass
 
     ###########################################################################
     # PRIVATE ROUTINES
@@ -107,13 +97,9 @@ class LocalCache(object, metaclass=ABCMeta):
 
     def _sanitize_cache_name(self, original_name):
         """Make cache file name 'pretty'"""
-        better_name = (
-            original_name.replace("/", ".").replace("..", ".").replace("_.", "_")
-        )
-        if better_name.startswith("."):
-            better_name = better_name[1:]
-        if better_name.endswith("."):
-            better_name = better_name[:-1]
+        better_name = original_name.replace("/", ".").replace("..", ".").replace("_.", "_")
+        better_name = better_name.removeprefix(".")
+        better_name = better_name.removesuffix(".")
 
         logger.debug("Transcoded a better cache file name: %s" % better_name)
         return better_name
@@ -124,33 +110,25 @@ class LocalCache(object, metaclass=ABCMeta):
         if not os.path.exists(self._cache_file):
             logger.debug("Local cache file: %s does NOT exist" % self._cache_file)
             return False
-        elif not os.path.isfile(self._cache_file):
-            raise LocalCacheException(
-                "Serious cache error: %s is not a file" % self._cache_file
-            )
-        else:
-            logger.debug("Local cache file: %s exists" % self._cache_file)
-            return True
+        if not os.path.isfile(self._cache_file):
+            raise LocalCacheException("Serious cache error: %s is not a file" % self._cache_file)
+        logger.debug("Local cache file: %s exists" % self._cache_file)
+        return True
 
     def _expired(self):
         """Return True if cache contents has expired, False otherwise"""
         cache_expiration = int(os.path.getmtime(self._cache_file))
-        cache_expiration_str = datetime.datetime.fromtimestamp(
-            cache_expiration + self._expiration
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        cache_expiration_str = datetime.datetime.fromtimestamp(cache_expiration + self._expiration).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
 
         if time.time() - cache_expiration >= self._expiration:
-            logger.debug(
-                "Cache file: %s already expired: %s"
-                % (self._cache_file, cache_expiration_str)
-            )
+            logger.debug("Cache file: %s already expired: %s" % (self._cache_file, cache_expiration_str))
             return True
-        else:
-            logger.debug(
-                "Cache file: %s is not yet expired. Current expiration: %s"
-                % (self._cache_file, cache_expiration_str)
-            )
-            return False
+        logger.debug(
+            "Cache file: %s is not yet expired. Current expiration: %s" % (self._cache_file, cache_expiration_str)
+        )
+        return False
 
     ###########################################################################
     # PROPERTIES
@@ -195,7 +173,7 @@ class JsonCache(LocalCache):
     def __init__(self, cache_id, cache_dir, expiration=DEFAULT_EXPIRATION):
         """CONSTRUCTOR"""
 
-        super(JsonCache, self).__init__(cache_id, cache_dir, expiration)
+        super().__init__(cache_id, cache_dir, expiration)
         logger.debug("JsonCache() object: %s successfully initialized" % self._id)
 
     ###########################################################################
@@ -254,9 +232,7 @@ def attach_wrapper(obj, func=None):
     return func
 
 
-def json_cached(
-    cache_id, cache_dir=tempfile.gettempdir(), expiration=DEFAULT_EXPIRATION
-):
+def json_cached(cache_id, cache_dir=tempfile.gettempdir(), expiration=DEFAULT_EXPIRATION):
     """Wrap function in the following logic:
 
     If cache exists and not expired:
@@ -274,9 +250,7 @@ def json_cached(
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            cache_obj = JsonCache(
-                decorate.cache_id, decorate.cache_dir, decorate.expiration
-            )
+            cache_obj = JsonCache(decorate.cache_id, decorate.cache_dir, decorate.expiration)
 
             if decorate.force or cache_obj.expired:
                 cache_obj.cache = func(*args, **kwargs)
@@ -295,16 +269,12 @@ def json_cached(
 
         @attach_wrapper(wrapper)
         def set_dir(cache_dir):
-            logger.debug(
-                "Setting json_cache decorator DIR attribute to: %s" % cache_dir
-            )
+            logger.debug("Setting json_cache decorator DIR attribute to: %s" % cache_dir)
             decorate.cache_dir = cache_dir
 
         @attach_wrapper(wrapper)
         def set_expiration(expiration):
-            logger.debug(
-                "Setting json_cache decorator EXPIRATION attribute to: %s" % expiration
-            )
+            logger.debug("Setting json_cache decorator EXPIRATION attribute to: %s" % expiration)
             decorate.expiration = expiration
 
         return wrapper

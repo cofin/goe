@@ -15,14 +15,13 @@
 import pytest
 
 from goe.connect.connect import (
-    _os_release_file_exists,
-    _os_version_from_file_content,
     OS_RELEASE_FILE_DEBIAN,
     OS_RELEASE_FILE_REDHAT,
     OS_RELEASE_FILE_SUSE,
+    _os_release_file_exists,
+    _os_version_from_file_content,
     upgrade_environment_file,
 )
-
 
 EXAMPLE_REDHAT_RELEASE_CONTENT = "CentOS Linux release 1.2.1234 (Core)\n"
 

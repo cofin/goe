@@ -14,7 +14,7 @@
 
 # Standard Library
 import datetime
-from typing import Generic, List, TypeVar
+from typing import Generic, TypeVar
 
 # Third Party Libraries
 from pydantic import BaseModel as PydanticBaseModel
@@ -90,7 +90,7 @@ class TotaledResults(GenericModel, Generic[PM]):
     """Provides count and result of resultset"""
 
     count: int
-    results: List[PM]
+    results: list[PM]
 
 
 class PaginatedResults(GenericModel, Generic[PM]):
@@ -99,4 +99,4 @@ class PaginatedResults(GenericModel, Generic[PM]):
     count: int
     limit: int
     offset: int
-    results: List[PM]
+    results: list[PM]

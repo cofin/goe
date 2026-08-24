@@ -17,7 +17,7 @@ import atexit
 import logging
 import signal
 import threading
-from multiprocessing.util import _exit_function  # noqa: WPS433 WPS450
+from multiprocessing.util import _exit_function
 from typing import Optional
 
 # Third Party Libraries
@@ -46,7 +46,7 @@ async def _signal_handler(scope: CancelScope, instance: "ListenerHeartbeat"):
             return
 
 
-class ListenerHeartbeat(object):
+class ListenerHeartbeat:
     """Class to manage agent Heartbeats while the agent is running
 
     Posts a message to a redis key with a lmited TTL.
@@ -74,8 +74,7 @@ class ListenerHeartbeat(object):
 
     @classmethod
     async def start(cls):
-        """
-        Create Vite client session object instance.
+        """Create Vite client session object instance.
 
         Returns:
             Future
@@ -106,9 +105,7 @@ class ListenerHeartbeat(object):
                 )
                 cls.logger.debug("Published Heartbeat")
             except RedisError:
-                cls.logger.warning(
-                    "Failed to publish heartbeat to caching backend.  Will try again."
-                )
+                cls.logger.warning("Failed to publish heartbeat to caching backend.  Will try again.")
             await anyio.sleep(settings.heartbeat_interval)
 
 

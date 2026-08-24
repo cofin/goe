@@ -16,28 +16,27 @@
 
 """OffloadSourceTable: Library for logic/interaction with source of an offload"""
 
+import logging
+import math
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
-import math
-import logging
 from string import Template
 from textwrap import dedent
-from typing import Union
 
 from numpy import datetime64
 
 from goe.offload.column_metadata import (
+    GOE_TYPE_INTEGER_1,
+    GOE_TYPE_INTEGER_2,
+    GOE_TYPE_INTEGER_4,
+    GOE_TYPE_INTEGER_8,
+    GOE_TYPE_INTEGER_38,
     ColumnMetadataInterface,
     ColumnPartitionInfo,
     get_column_names,
     get_partition_columns,
     match_table_column,
     valid_column_list,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
 )
 from goe.offload.factory.frontend_api_factory import frontend_api_factory
 from goe.offload.offload_constants import INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT
@@ -58,12 +57,8 @@ DATA_SAMPLE_SIZE_AUTO = -1
 COLUMN_INTEGRAL_MAGNITUDE_MESSAGE_TEXT = Template(
     "Data in column $column has integral magnitude beyond backend capability"
 )
-COLUMNS_FAILED_SAMPLING_EXCEPTION_TEXT = (
-    "One or more columns have data issues, see warnings for details"
-)
-COLUMN_SAMPLE_SCALE_MESSAGE_TEXT = Template(
-    "Data in column $column has scale beyond backend capability"
-)
+COLUMNS_FAILED_SAMPLING_EXCEPTION_TEXT = "One or more columns have data issues, see warnings for details"
+COLUMN_SAMPLE_SCALE_MESSAGE_TEXT = Template("Data in column $column has scale beyond backend capability")
 DATETIME_STATS_SAMPLING_OPT_ACTION_TEXT = "checking column optimizer statistics"
 
 OFFLOAD_PARTITION_TYPE_RANGE = "RANGE"
@@ -80,19 +75,15 @@ logger.addHandler(logging.NullHandler())
 ###########################################################################
 
 
-def convert_high_values_to_python(
-    partition_columns, hvs_individual, partition_type, source_table, strict=True
-):
+def convert_high_values_to_python(partition_columns, hvs_individual, partition_type, source_table, strict=True):
     """Wrapper for OffloadSourceTable.decode_partition_high_values_with_literals allowing calls from goe.py
     based on offload metadata rather than an OffloadSourceTable object
     """
-    assert isinstance(
-        source_table, OffloadSourceTableInterface
-    ), "%s is not of type OffloadSourceTable" % str(type(source_table))
-    assert valid_column_list(partition_columns)
-    assert not hvs_individual or (
-        hvs_individual and type(hvs_individual) in (list, tuple)
+    assert isinstance(source_table, OffloadSourceTableInterface), "%s is not of type OffloadSourceTable" % str(
+        type(source_table)
     )
+    assert valid_column_list(partition_columns)
+    assert not hvs_individual or (hvs_individual and type(hvs_individual) in (list, tuple))
     hv_list = []
     if partition_type == OFFLOAD_PARTITION_TYPE_LIST:
         # LIST partition tables can have multiple values per partition key and only one partition column
@@ -100,17 +91,13 @@ def convert_high_values_to_python(
     else:
         zip_part_cols = partition_columns
     for part_col, hv in zip(zip_part_cols, hvs_individual):
-        py_hv = source_table.rdbms_literal_to_python(
-            part_col, hv, partition_type, strict=strict
-        )
+        py_hv = source_table.rdbms_literal_to_python(part_col, hv, partition_type, strict=strict)
         hv_list.append(py_hv)
     return hv_list
 
 
 def char_literal_to_python(rdbms_literal, quote_type="'"):
-    return OffloadSourceTableInterface.char_literal_to_python(
-        rdbms_literal, quote_type=quote_type
-    )
+    return OffloadSourceTableInterface.char_literal_to_python(rdbms_literal, quote_type=quote_type)
 
 
 ###########################################################################
@@ -144,11 +131,7 @@ class RdbmsPartition:
                 self.partition_position,
                 self.subpartition_count,
                 self.subpartition_name,
-                (
-                    ",".join(n for n in self.subpartition_names)
-                    if self.subpartition_names is not None
-                    else None
-                ),
+                (",".join(n for n in self.subpartition_names) if self.subpartition_names is not None else None),
                 self.subpartition_position,
                 self.high_values_csv,
                 self.high_values_python,
@@ -241,17 +224,14 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         """Oracle implementation has an override for this."""
         if self._is_view():
             return self._columns
-        else:
-            return self._columns_with_partition_info
+        return self._columns_with_partition_info
 
     def _columns_setter(self, new_columns, skip_exists_check=False):
         """When running in verification mode we might need to fake the columns in order to continue processing.
         Oracle implementation has an override for this.
         """
         if not skip_exists_check and self.exists():
-            raise OffloadSourceTableException(
-                "Set of columns is only supported when the table does NOT exist"
-            )
+            raise OffloadSourceTableException("Set of columns is only supported when the table does NOT exist")
         self._columns = new_columns
         self._columns_with_partition_info = self._get_columns_with_partition_info()
 
@@ -265,27 +245,25 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         """
         return True
 
-    def _frontend_decimal_to_integral_type(
-        self, data_precision, data_scale, safe_mapping=True
-    ):
+    def _frontend_decimal_to_integral_type(self, data_precision, data_scale, safe_mapping=True):
         if data_scale == 0:
             # Integral numbers
             if 1 <= (data_precision or 0) <= 2:
                 return GOE_TYPE_INTEGER_1
-            elif 3 <= (data_precision or 0) <= 4:
+            if 3 <= (data_precision or 0) <= 4:
                 return GOE_TYPE_INTEGER_2
-            elif 5 <= (data_precision or 0) <= 9:
+            if 5 <= (data_precision or 0) <= 9:
                 return GOE_TYPE_INTEGER_4
-            elif (17 <= (data_precision or 0) <= 18) and not safe_mapping:
+            if (17 <= (data_precision or 0) <= 18) and not safe_mapping:
                 # An unsafe mapping predicted a precision right on the edge of INT_8, round up to next threshold.
                 self._log(
                     f"Switching unsafe INT8({data_precision}) mapping to INT38",
                     detail=VVERBOSE,
                 )
                 return GOE_TYPE_INTEGER_38
-            elif 10 <= (data_precision or 0) <= 18:
+            if 10 <= (data_precision or 0) <= 18:
                 return GOE_TYPE_INTEGER_8
-            elif 19 <= (data_precision or 0) <= 38:
+            if 19 <= (data_precision or 0) <= 38:
                 return GOE_TYPE_INTEGER_38
         return None
 
@@ -299,15 +277,11 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
 
     def _get_columns_with_partition_info(self, part_col_names_override=None):
         """Process self._columns and return a list of objects with partition_info set for partition columns."""
-        logger.debug(
-            "_get_columns_with_partition_info: %s, %s" % (self.owner, self.table_name)
-        )
+        logger.debug("_get_columns_with_partition_info: %s, %s" % (self.owner, self.table_name))
         if part_col_names_override:
             part_cols = part_col_names_override
         else:
-            part_cols = self._db_api.get_partition_column_names(
-                self.owner, self.table_name
-            )
+            part_cols = self._db_api.get_partition_column_names(self.owner, self.table_name)
         if part_cols:
             logger.debug("Found part_cols: %s" % str(part_cols))
         new_columns = []
@@ -325,8 +299,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         return t
 
     def _get_primary_index_columns(self) -> list:
-        """
-        Return a list of primary index column objects for applicable frontends.
+        """Return a list of primary index column objects for applicable frontends.
         This interface level method returns nothing but individual frontends may override.
         """
         return []
@@ -366,9 +339,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
 
     def _log_cols(self, columns):
         for col in columns:
-            self._messages.log(
-                "%s %s" % (col.name, col.format_data_type()), detail=VVERBOSE
-            )
+            self._messages.log("%s %s" % (col.name, col.format_data_type()), detail=VVERBOSE)
 
     def _reset_timer(self):
         self._timer = self._get_now()
@@ -403,9 +374,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
 
     def _sample_data_types_execute_query(self, sample_sql):
         """Execute a query allowing for individual backends to override certain inputs. Oracle has an override."""
-        return self._db_api.execute_query_fetch_one(
-            sample_sql, log_level=VERBOSE, profile=True
-        )
+        return self._db_api.execute_query_fetch_one(sample_sql, log_level=VERBOSE, profile=True)
 
     @abstractmethod
     def _sample_data_types_min_gb(self):
@@ -422,9 +391,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
     def _sample_data_types_parallel_query_hint_block(self, query_parallelism):
         if query_parallelism is None:
             return ""
-        return self._db_api.enclose_query_hints(
-            self.parallel_query_hint(query_parallelism)
-        )
+        return self._db_api.enclose_query_hints(self.parallel_query_hint(query_parallelism))
 
     def _sample_data_types_v2_query_hint_block(self):
         """No hint by default. Oracle implementation has an override"""
@@ -438,12 +405,8 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
     # PUBLIC METHODS
     ###########################################################################
 
-    def check_nan_offload_allowed(
-        self, backend_nan_supported, allow_floating_point_conversions=None
-    ):
-        nan_cols = [
-            _ for _ in self.columns if _.data_type in self.nan_capable_data_types()
-        ]
+    def check_nan_offload_allowed(self, backend_nan_supported, allow_floating_point_conversions=None):
+        nan_cols = [_ for _ in self.columns if _.data_type in self.nan_capable_data_types()]
         if nan_cols and not backend_nan_supported:
             if allow_floating_point_conversions:
                 self._messages.warning(
@@ -464,9 +427,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         return True
 
     @abstractmethod
-    def check_nanosecond_offload_allowed(
-        self, backend_max_datetime_scale, allow_nanosecond_timestamp_columns=None
-    ):
+    def check_nanosecond_offload_allowed(self, backend_max_datetime_scale, allow_nanosecond_timestamp_columns=None):
         pass
 
     def close(self):
@@ -521,8 +482,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         match = [col for col in self.columns if col.name.upper() == column_name.upper()]
         if not match:
             return None
-        else:
-            return match[0]
+        return match[0]
 
     def get_current_scn(self):
         """Return the current system change number for the source RDBMS."""
@@ -540,9 +500,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         Optional partition_name to select from.
         """
         assert isinstance(column, (ColumnMetadataInterface, str))
-        column_name = (
-            column.name if isinstance(column, ColumnMetadataInterface) else column
-        )
+        column_name = column.name if isinstance(column, ColumnMetadataInterface) else column
         return self._db_api.get_distinct_column_values(
             self.owner, self.table_name, column_name, partition_name=partition_name
         )
@@ -561,11 +519,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         """
 
     def get_hash_bucket_last_resort(self):
-        cols = [
-            col.name
-            for col in self.columns
-            if col.data_type not in self.hash_bucket_unsuitable_data_types()
-        ]
+        cols = [col.name for col in self.columns if col.data_type not in self.hash_bucket_unsuitable_data_types()]
         if cols:
             return cols[0]
 
@@ -584,9 +538,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
 
     def get_primary_key_columns(self):
         if self._primary_key_columns is None:
-            self._primary_key_columns = self._db_api.get_primary_key_column_names(
-                self.owner, self.table_name
-            )
+            self._primary_key_columns = self._db_api.get_primary_key_column_names(self.owner, self.table_name)
         return self._primary_key_columns
 
     def get_session_option(self, option_name):
@@ -642,7 +594,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def offload_partition_level(self) -> Union[int, None]:
+    def offload_partition_level(self) -> int | None:
         """The partition level we've taken for OffloadSourcePartitions"""
 
     def has_rowdependencies(self):
@@ -715,34 +667,24 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         using arithmetic functions.
         """
 
-        def check_backend_max_decimal_integral_magnitude(
-            col_name, num_value=None, magnitude=None
-        ):
-            if (
-                num_value
-                and get_integral_part_magnitude(num_value)
-                > backend_max_decimal_integral_magnitude
-            ):
+        def check_backend_max_decimal_integral_magnitude(col_name, num_value=None, magnitude=None):
+            if num_value and get_integral_part_magnitude(num_value) > backend_max_decimal_integral_magnitude:
                 # This data won't fit and we need to reject the offload
                 self._messages.warning(
                     "%s: %s > %s"
                     % (
-                        COLUMN_INTEGRAL_MAGNITUDE_MESSAGE_TEXT.substitute(
-                            column=col_name
-                        ),
+                        COLUMN_INTEGRAL_MAGNITUDE_MESSAGE_TEXT.substitute(column=col_name),
                         get_integral_part_magnitude(num_value),
                         backend_max_decimal_integral_magnitude,
                     ),
                     ansi_code="red",
                 )
                 return False
-            elif (magnitude or 0) > backend_max_decimal_integral_magnitude:
+            if (magnitude or 0) > backend_max_decimal_integral_magnitude:
                 self._messages.warning(
                     "%s: %s > %s"
                     % (
-                        COLUMN_INTEGRAL_MAGNITUDE_MESSAGE_TEXT.substitute(
-                            column=col_name
-                        ),
+                        COLUMN_INTEGRAL_MAGNITUDE_MESSAGE_TEXT.substitute(column=col_name),
                         magnitude,
                         backend_max_decimal_integral_magnitude,
                     ),
@@ -751,13 +693,8 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
                 return False
             return True
 
-        def check_backend_max_decimal_scale(
-            col_name, scale, allow_decimal_scale_rounding
-        ):
-            if (
-                not allow_decimal_scale_rounding
-                and (scale or 0) > backend_max_decimal_scale
-            ):
+        def check_backend_max_decimal_scale(col_name, scale, allow_decimal_scale_rounding):
+            if not allow_decimal_scale_rounding and (scale or 0) > backend_max_decimal_scale:
                 # This data won't fit and we need to reject the offload
                 self._messages.warning(
                     "%s: %s > %s"
@@ -794,19 +731,14 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
                     min_value = None
                     if self._db_api.low_high_value_from_stats_supported():
                         # For min value detection RDBMS optimizer stats will be more accurate than our sampling
-                        min_value, _ = self._get_column_low_high_values(
-                            col.name, from_stats=True
-                        )
+                        min_value, _ = self._get_column_low_high_values(col.name, from_stats=True)
                     if min_value:
                         self._messages.log(
-                            "%s min_value (%s): %s"
-                            % (col.name, type(min_value), min_value),
+                            "%s min_value (%s): %s" % (col.name, type(min_value), min_value),
                             detail=VVERBOSE,
                         )
                         if min_value < backend_min_possible_date:
-                            columns_affected_by_sampling.append(
-                                self._sample_data_types_date_as_string_column(col.name)
-                            )
+                            columns_affected_by_sampling.append(self._sample_data_types_date_as_string_column(col.name))
                             self._messages.notice(
                                 'Detected incompatible value "%s" for %s after %s, offloading via %s'
                                 % (
@@ -823,17 +755,14 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
                 else:
                     if (
                         col.data_precision is not None
-                        and (col.data_precision - max(col.data_scale, 0))
-                        > backend_max_decimal_integral_magnitude
+                        and (col.data_precision - max(col.data_scale, 0)) > backend_max_decimal_integral_magnitude
                     ):
                         # We have max() on scale above because scales can be negative which effectively means 0
                         # The backend can only cope with a smaller number of digits to left of decimal place than frontend
                         # Check to see if stats give a short-cut to finding a bad value
                         min_value = max_value = None
                         if self._db_api.low_high_value_from_stats_supported():
-                            min_value, max_value = self._get_column_low_high_values(
-                                col.name, from_stats=True
-                            )
+                            min_value, max_value = self._get_column_low_high_values(col.name, from_stats=True)
                         if min_value or max_value:
                             self._messages.log(
                                 "%s min_value/max_value: %s (%s)/%s (%s)"
@@ -846,14 +775,10 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
                                 ),
                                 detail=VVERBOSE,
                             )
-                            if not check_backend_max_decimal_integral_magnitude(
-                                col.name, num_value=min_value
-                            ):
+                            if not check_backend_max_decimal_integral_magnitude(col.name, num_value=min_value):
                                 abort = True
                                 continue
-                            if not check_backend_max_decimal_integral_magnitude(
-                                col.name, num_value=max_value
-                            ):
+                            if not check_backend_max_decimal_integral_magnitude(col.name, num_value=max_value):
                                 abort = True
                                 continue
                     proj.append(
@@ -864,27 +789,17 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
                         """MAX(CASE WHEN "%(col_alias)s" = 0 THEN 0 ELSE LENGTH("%(col)s")-"%(col_alias)s" END)"""
                         % subs
                     )
-                    proj.append(
-                        """MAX(CASE WHEN INSTR("%(col)s",'E') > 0 THEN 1 ELSE NULL END)"""
-                        % subs
-                    )
-                    cols_abs.append(
-                        """TO_CHAR(ABS("%(col)s"),'TM') AS "%(col)s" """ % subs
-                    )
+                    proj.append("""MAX(CASE WHEN INSTR("%(col)s",'E') > 0 THEN 1 ELSE NULL END)""" % subs)
+                    cols_abs.append("""TO_CHAR(ABS("%(col)s"),'TM') AS "%(col)s" """ % subs)
                     cols_with_instr.append('"%(col)s"' % subs)
-                    cols_with_instr.append(
-                        """INSTR("%(col)s",'.') AS "%(col_alias)s" """ % subs
-                    )
+                    cols_with_instr.append("""INSTR("%(col)s",'.') AS "%(col_alias)s" """ % subs)
                 columns_in_results.append(col)
 
             if abort:
-                raise OffloadSourceTableException(
-                    COLUMNS_FAILED_SAMPLING_EXCEPTION_TEXT
-                )
+                raise OffloadSourceTableException(COLUMNS_FAILED_SAMPLING_EXCEPTION_TEXT)
 
-            sample_sql = (
-                dedent(
-                    """\
+            sample_sql = dedent(
+                """\
                 SELECT %(projection)s
                 FROM   (
                     SELECT %(v2_qb_hint_block)s
@@ -895,20 +810,16 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
                         FROM   "%(owner)s"."%(table)s" %(sample_clause)s
                     ) v1
                 ) v2"""
-                )
-                % {
-                    "projection": "\n,      ".join(proj),
-                    "cols_with_instr": "\n    ,      ".join(cols_with_instr),
-                    "inner_cols": "\n        ,      ".join(cols_abs),
-                    "owner": self.owner.upper(),
-                    "table": self.table_name.upper(),
-                    "sample_clause": self._sample_perc_sql_clause(data_sample_pct),
-                    "v1_qb_hint_block": self._sample_data_types_parallel_query_hint_block(
-                        data_sample_parallelism
-                    ),
-                    "v2_qb_hint_block": self._sample_data_types_v2_query_hint_block(),
-                }
-            )
+            ) % {
+                "projection": "\n,      ".join(proj),
+                "cols_with_instr": "\n    ,      ".join(cols_with_instr),
+                "inner_cols": "\n        ,      ".join(cols_abs),
+                "owner": self.owner.upper(),
+                "table": self.table_name.upper(),
+                "sample_clause": self._sample_perc_sql_clause(data_sample_pct),
+                "v1_qb_hint_block": self._sample_data_types_parallel_query_hint_block(data_sample_parallelism),
+                "v2_qb_hint_block": self._sample_data_types_v2_query_hint_block(),
+            }
 
             return sample_sql
 
@@ -917,13 +828,11 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
 
         assert isinstance(columns_to_sample, list)
         if not columns_to_sample:
-            return
+            return None
         assert isinstance(columns_to_sample[0], ColumnMetadataInterface)
 
         local_data_sample_pct = self._sample_data_types_data_sample_pct(data_sample_pct)
-        local_data_sample_parallelism = self._sample_data_types_data_sample_parallelism(
-            data_sample_parallelism
-        )
+        local_data_sample_parallelism = self._sample_data_types_data_sample_parallelism(data_sample_parallelism)
 
         self._messages.log(
             "Minimum valid date for backend: %s" % str(backend_min_possible_date),
@@ -954,16 +863,14 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
                 % (sample_output_row[0] if sample_output_row else None),
                 ansi_code="red",
             )
-            return
+            return None
 
         # From here on we reduce sample_output_row as we use each column's data.
 
         # Remove count star first column
         self._messages.log("Sampled %s rows" % str(sample_output_row[0]), VVERBOSE)
         sample_output_row = list(sample_output_row[1:])
-        self._messages.log(
-            "Sampled precision/scale raw data: %s" % str(sample_output_row), VVERBOSE
-        )
+        self._messages.log("Sampled precision/scale raw data: %s" % str(sample_output_row), VVERBOSE)
 
         # There are 3 columns per RDBMS column, loop through them using the information as appropriate
         abort = False
@@ -971,9 +878,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
             if col.is_date_based():
                 min_value = sample_output_row.pop(0)
                 if min_value and datetime64(min_value) < backend_min_possible_date:
-                    columns_affected_by_sampling.append(
-                        self._sample_data_types_date_as_string_column(col.name)
-                    )
+                    columns_affected_by_sampling.append(self._sample_data_types_date_as_string_column(col.name))
                     self._messages.notice(
                         'Detected incompatible value "%s" for %s after sampling column data, offloading via %s'
                         % (min_value, col.name, self._db_api.generic_string_data_type())
@@ -983,35 +888,25 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
                 sample_output_row = sample_output_row[3:]
                 int_part = int_if_float(int_part)
                 scale = int_if_float(scale)
-                if not check_backend_max_decimal_integral_magnitude(
-                    col.name, magnitude=int_part
-                ):
+                if not check_backend_max_decimal_integral_magnitude(col.name, magnitude=int_part):
                     abort = True
                     continue
-                if not check_backend_max_decimal_scale(
-                    col.name, scale, allow_decimal_scale_rounding
-                ):
+                if not check_backend_max_decimal_scale(col.name, scale, allow_decimal_scale_rounding):
                     abort = True
                     continue
                 if suspect:
                     self._messages.warning(
-                        "Unable to sample column data for %s due to suspect data"
-                        % col.name,
+                        "Unable to sample column data for %s due to suspect data" % col.name,
                         ansi_code="red",
                     )
                     continue
-                precision = (
-                    None if int_part is None and scale is None else (int_part + scale)
-                )
+                precision = None if int_part is None and scale is None else (int_part + scale)
                 self._messages.log(
-                    "Detected precision=%s, scale=%s for %s after sampling column data"
-                    % (precision, scale, col.name),
+                    "Detected precision=%s, scale=%s for %s after sampling column data" % (precision, scale, col.name),
                     VERBOSE,
                 )
                 # Create a fake column object with the sampled precision and scale and then run it through auto detection routine
-                columns_affected_by_sampling.append(
-                    self._sample_data_types_decimal_column(col, precision, scale)
-                )
+                columns_affected_by_sampling.append(self._sample_data_types_decimal_column(col, precision, scale))
 
         if abort:
             raise OffloadSourceTableException(COLUMNS_FAILED_SAMPLING_EXCEPTION_TEXT)
@@ -1044,10 +939,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
     ):
         source_data_types = self.data_types_in_use()
         if not source_data_types.issubset(self.supported_data_types()):
-            self._messages.log(
-                "Data types not supported: %s"
-                % list(source_data_types - self.supported_data_types())
-            )
+            self._messages.log("Data types not supported: %s" % list(source_data_types - self.supported_data_types()))
             return False
 
         if self.max_datetime_scale() > 6 and not self.check_nanosecond_offload_allowed(
@@ -1079,17 +971,9 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         partition_column_types = [_.data_type for _ in self.partition_columns]
         check_partition_type = partition_type_override or self.partition_type
         if check_partition_type == OFFLOAD_PARTITION_TYPE_RANGE:
-            bad_data_types = [
-                _
-                for _ in partition_column_types
-                if not self.supported_range_partition_data_type(_)
-            ]
+            bad_data_types = [_ for _ in partition_column_types if not self.supported_range_partition_data_type(_)]
         else:
-            bad_data_types = [
-                _
-                for _ in partition_column_types
-                if not self.supported_list_partition_data_type(_)
-            ]
+            bad_data_types = [_ for _ in partition_column_types if not self.supported_list_partition_data_type(_)]
         return bad_data_types
 
     @abstractmethod
@@ -1112,9 +996,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def rdbms_literal_to_python(
-        self, rdbms_column, rdbms_literal, partition_type, strict=True
-    ):
+    def rdbms_literal_to_python(self, rdbms_column, rdbms_literal, partition_type, strict=True):
         pass
 
     @abstractmethod
@@ -1192,9 +1074,9 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         auto_detect_dates: Can be set to false to ignore default rules and go for a default data type.
         """
         assert rdbms_column
-        assert isinstance(
-            rdbms_column, ColumnMetadataInterface
-        ), "%s is not an instance of ColumnMetadataInterface" % type(rdbms_column)
+        assert isinstance(rdbms_column, ColumnMetadataInterface), (
+            "%s is not an instance of ColumnMetadataInterface" % type(rdbms_column)
+        )
         if canonical_overrides:
             assert valid_column_list(canonical_overrides)
 
@@ -1281,9 +1163,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         """Return a backend data type matching the output of a tokenization expression"""
 
     @abstractmethod
-    def transform_regexp_replace_expression(
-        self, rdbms_column, regexp_replace_pattern, regexp_replace_string
-    ):
+    def transform_regexp_replace_expression(self, rdbms_column, regexp_replace_pattern, regexp_replace_string):
         pass
 
     @abstractmethod

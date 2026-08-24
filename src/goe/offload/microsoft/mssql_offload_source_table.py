@@ -18,65 +18,63 @@
 
 import inspect
 import logging
-from typing import Union
 
 from goe.offload.column_metadata import (
-    CanonicalColumn,
-    is_safe_mapping,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_VARIABLE_STRING,
+    ALL_CANONICAL_TYPES,
     GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_FLOAT,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
+    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_LARGE_STRING,
     GOE_TYPE_TIME,
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_BOOLEAN,
-    ALL_CANONICAL_TYPES,
+    GOE_TYPE_VARIABLE_STRING,
     NUMERIC_CANONICAL_TYPES,
     STRING_CANONICAL_TYPES,
+    CanonicalColumn,
+    is_safe_mapping,
 )
 from goe.offload.microsoft.mssql_column import (
-    MSSQLColumn,
     MSSQL_TYPE_BIGINT,
+    MSSQL_TYPE_BINARY,
     MSSQL_TYPE_BIT,
+    MSSQL_TYPE_CHAR,
+    MSSQL_TYPE_DATE,
+    MSSQL_TYPE_DATETIME,
+    MSSQL_TYPE_DATETIME2,
+    MSSQL_TYPE_DATETIMEOFFSET,
     MSSQL_TYPE_DECIMAL,
+    MSSQL_TYPE_FLOAT,
+    MSSQL_TYPE_IMAGE,
     MSSQL_TYPE_INT,
     MSSQL_TYPE_MONEY,
+    MSSQL_TYPE_NCHAR,
+    MSSQL_TYPE_NTEXT,
     MSSQL_TYPE_NUMERIC,
+    MSSQL_TYPE_NVARCHAR,
+    MSSQL_TYPE_REAL,
+    MSSQL_TYPE_SMALLDATETIME,
     MSSQL_TYPE_SMALLINT,
     MSSQL_TYPE_SMALLMONEY,
-    MSSQL_TYPE_TINYINT,
-    MSSQL_TYPE_FLOAT,
-    MSSQL_TYPE_REAL,
-    MSSQL_TYPE_DATE,
-    MSSQL_TYPE_DATETIME2,
-    MSSQL_TYPE_DATETIME,
-    MSSQL_TYPE_DATETIMEOFFSET,
-    MSSQL_TYPE_SMALLDATETIME,
-    MSSQL_TYPE_TIME,
-    MSSQL_TYPE_CHAR,
-    MSSQL_TYPE_VARCHAR,
-    MSSQL_TYPE_NCHAR,
-    MSSQL_TYPE_NVARCHAR,
-    MSSQL_TYPE_UNIQUEIDENTIFIER,
     MSSQL_TYPE_TEXT,
-    MSSQL_TYPE_NTEXT,
-    MSSQL_TYPE_BINARY,
+    MSSQL_TYPE_TIME,
+    MSSQL_TYPE_TINYINT,
+    MSSQL_TYPE_UNIQUEIDENTIFIER,
     MSSQL_TYPE_VARBINARY,
-    MSSQL_TYPE_IMAGE,
+    MSSQL_TYPE_VARCHAR,
+    MSSQLColumn,
 )
 from goe.offload.offload_source_table import OffloadSourceTableInterface
-
 
 logger = logging.getLogger(__name__)
 # Disabling logging by default
@@ -113,7 +111,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         assert hasattr(connection_options, "rdbms_app_pass")
         assert hasattr(connection_options, "rdbms_dsn")
 
-        super(MSSQLSourceTable, self).__init__(
+        super().__init__(
             schema_name,
             table_name,
             connection_options,
@@ -123,8 +121,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         )
 
         logger.info(
-            "MSSQLSourceTable setup: (%s, %s, %s)"
-            % (schema_name, table_name, connection_options.rdbms_app_user)
+            "MSSQLSourceTable setup: (%s, %s, %s)" % (schema_name, table_name, connection_options.rdbms_app_user)
         )
         if dry_run:
             logger.info("* Dry run *")
@@ -158,15 +155,9 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
 
     def _extra_data_type_supported_checks(self):
         # Check (n)varchar is not max precision
-        if [
-            tc.name
-            for tc in self._columns
-            if "varchar" in tc.data_type and tc.data_length == -1
-        ]:
+        if [tc.name for tc in self._columns if "varchar" in tc.data_type and tc.data_length == -1]:
             [
-                self._messages.log(
-                    "MAX precision not supported for (n)varchar column: %s" % tc.name
-                )
+                self._messages.log("MAX precision not supported for (n)varchar column: %s" % tc.name)
                 for tc in self._columns
                 if "varchar" in tc.data_type and tc.data_length == -1
             ]
@@ -205,9 +196,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
             FROM partitions"""
 
         # TODO: what if we don't have SELECT ON SCHEMA::xyz granted TO [GOE_APP] - below will cause exception
-        row = self._db_api.execute_query_fetch_one(
-            q, query_params=(self.owner, self.table_name)
-        )
+        row = self._db_api.execute_query_fetch_one(q, query_params=(self.owner, self.table_name))
         if row:
             (
                 self._iot_type,
@@ -220,13 +209,10 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
             self._table_exists = False
 
     def _get_columns_with_partition_info(self, part_col_names_override=None):
-        raise NotImplementedError(
-            "MSSQL _get_columns_with_partition_info not implemented."
-        )
+        raise NotImplementedError("MSSQL _get_columns_with_partition_info not implemented.")
 
     def _get_hash_bucket_candidate(self):
-        """
-        Seems that unlike Oracle, column statistics are manually created using for e.g.:
+        """Seems that unlike Oracle, column statistics are manually created using for e.g.:
            CREATE STATISTICS STATS_COL1 ON SH_TEST.ALL_SUPPORTED_DATA_TYPES_NOPK (COL1) WITH FULLSCAN
         Unfortuntately it seems access to view statistcs is done through stored procedures rather than viewing system views
         We can list the statistics objects on a table using:
@@ -238,24 +224,14 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         In the absence of any column stats we return None and goe.py will use the first column in the table
         SP_AUTOSTATS is not valid for Azure Serverless SQL Pools
         """
-        rows = self._db_api.execute_query_fetch_all(
-            'SP_AUTOSTATS "{schema}.{table}"'.format(
-                schema=self.owner, table=self.table_name
-            )
-        )
+        rows = self._db_api.execute_query_fetch_all(f'SP_AUTOSTATS "{self.owner}.{self.table_name}"')
         hash_bucket_density, hash_bucket_column_name = 2, None
         if rows:
             for row in rows:
                 stats_rows = self._db_api.execute_query_fetch_all(
-                    'DBCC SHOW_STATISTICS ("{schema}.{table}", {stats_col}) WITH DENSITY_VECTOR'.format(
-                        schema=self.owner, table=self.table_name, stats_col=row[0]
-                    )
+                    f'DBCC SHOW_STATISTICS ("{self.owner}.{self.table_name}", {row[0]}) WITH DENSITY_VECTOR'
                 )
-                stats_col = [
-                    stats_row
-                    for stats_row in stats_rows
-                    if len(stats_row[2].split(",")) == 1
-                ]
+                stats_col = [stats_row for stats_row in stats_rows if len(stats_row[2].split(",")) == 1]
                 if len(stats_col) > 0:
                     if stats_col[0][0] < hash_bucket_density:
                         hash_bucket_density, hash_bucket_column_name = (
@@ -263,8 +239,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
                             stats_col[0][2],
                         )
             return hash_bucket_column_name
-        else:
-            return None
+        return None
 
     def _get_table_stats(self):
         # TODO NJ@2017-02-07 When we revisit MSSQL support we need to decide if having the stats is required
@@ -275,24 +250,16 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         raise NotImplementedError("MSSQL _is_compression_enabled not implemented.")
 
     def _sample_data_types_compression_factor(self):
-        raise NotImplementedError(
-            "MSSQL _sample_data_types_compression_factor not implemented."
-        )
+        raise NotImplementedError("MSSQL _sample_data_types_compression_factor not implemented.")
 
     def _sample_data_types_data_sample_parallelism(self, data_sample_parallelism):
-        raise NotImplementedError(
-            "MSSQL _sample_data_types_compression_factor not implemented."
-        )
+        raise NotImplementedError("MSSQL _sample_data_types_compression_factor not implemented.")
 
     def _sample_data_types_data_sample_pct(self, data_sample_pct):
-        raise NotImplementedError(
-            "MSSQL _sample_data_types_data_sample_pct not implemented."
-        )
+        raise NotImplementedError("MSSQL _sample_data_types_data_sample_pct not implemented.")
 
     def _sample_data_types_date_as_string_column(self, column_name):
-        raise NotImplementedError(
-            "MSSQL _sample_data_types_date_as_string_column not implemented."
-        )
+        raise NotImplementedError("MSSQL _sample_data_types_date_as_string_column not implemented.")
 
     def _sample_data_types_decimal_column(self, column, data_precision, data_scale):
         return MSSQLColumn(
@@ -330,7 +297,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         return False
 
     @property
-    def offload_partition_level(self) -> Union[int, None]:
+    def offload_partition_level(self) -> int | None:
         return None
 
     @property
@@ -341,9 +308,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         raise NotImplementedError("MSSQL decode_partition_high_values not implemented.")
 
     def enable_offload_by_subpartition(self, desired_state=True):
-        raise NotImplementedError(
-            "MSSQL enable_offload_by_subpartition() not implemented."
-        )
+        raise NotImplementedError("MSSQL enable_offload_by_subpartition() not implemented.")
 
     def get_hash_bucket_candidate(self):
         return self._hash_bucket_candidate
@@ -363,7 +328,6 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         """Return the size of the largest partition"""
         if self.is_partitioned():
             raise NotImplementedError("MSSQL get_max_partition_size not implemented.")
-        return None
 
     def is_iot(self):
         return self._iot_type == "IOT"
@@ -403,22 +367,14 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
             ]
         )
 
-    def check_nanosecond_offload_allowed(
-        self, backend_max_datetime_scale, allow_nanosecond_timestamp_columns=None
-    ):
-        raise NotImplementedError(
-            "MSSQL check_nanosecond_offload_allowed() not implemented."
-        )
+    def check_nanosecond_offload_allowed(self, backend_max_datetime_scale, allow_nanosecond_timestamp_columns=None):
+        raise NotImplementedError("MSSQL check_nanosecond_offload_allowed() not implemented.")
 
     def supported_range_partition_data_type(self, rdbms_data_type):
-        raise NotImplementedError(
-            "MSSQL supported_range_partition_data_type() not implemented."
-        )
+        raise NotImplementedError("MSSQL supported_range_partition_data_type() not implemented.")
 
     def supported_list_partition_data_type(self, rdbms_data_type):
-        raise NotImplementedError(
-            "MSSQL supported_list_partition_data_type() not implemented."
-        )
+        raise NotImplementedError("MSSQL supported_list_partition_data_type() not implemented.")
 
     @staticmethod
     def hash_bucket_unsuitable_data_types():
@@ -436,9 +392,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
     def numeric_literal_to_python(rdbms_literal):
         raise NotImplementedError("MSSQL numeric_literal_to_python() not implemented.")
 
-    def rdbms_literal_to_python(
-        self, rdbms_column, rdbms_literal, partition_type, strict=True
-    ):
+    def rdbms_literal_to_python(self, rdbms_column, rdbms_literal, partition_type, strict=True):
         raise NotImplementedError("MSSQL rdbms_literal_to_python() not implemented.")
 
     def get_minimum_partition_key_data(self):
@@ -447,9 +401,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         return []
 
     def to_rdbms_literal_with_sql_conv_fn(self, py_val, rdbms_data_type):
-        raise NotImplementedError(
-            "MSSQL to_rdbms_literal_with_sql_conv_fn() not implemented."
-        )
+        raise NotImplementedError("MSSQL to_rdbms_literal_with_sql_conv_fn() not implemented.")
 
     def get_suitable_sample_size(self, bytes_override=None) -> int:
         # Return something even though sampling is not implemented
@@ -469,9 +421,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         return []
 
     def supported_partition_data_types(self):
-        raise NotImplementedError(
-            "MSSQL supported_partition_data_types() not implemented."
-        )
+        raise NotImplementedError("MSSQL supported_partition_data_types() not implemented.")
 
     def offload_by_subpartition_capable(self, valid_for_auto_enable=False):
         return False
@@ -480,19 +430,13 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         raise NotImplementedError("MSSQL partition_has_rows() not implemented.")
 
     def predicate_has_rows(self, predicate):
-        raise NotImplementedError(
-            self.__class__.__name__ + "." + inspect.currentframe().f_code.co_names
-        )
+        raise NotImplementedError(self.__class__.__name__ + "." + inspect.currentframe().f_code.co_names)
 
     def predicate_to_where_clause(self, predicate, columns_override=None):
-        raise NotImplementedError(
-            self.__class__.__name__ + "." + inspect.currentframe().f_code.co_names
-        )
+        raise NotImplementedError(self.__class__.__name__ + "." + inspect.currentframe().f_code.co_names)
 
     def predicate_to_where_clause_with_binds(self, predicate):
-        raise NotImplementedError(
-            self.__class__.__name__ + "." + inspect.currentframe().f_code.co_names
-        )
+        raise NotImplementedError(self.__class__.__name__ + "." + inspect.currentframe().f_code.co_names)
 
     def valid_canonical_override(self, column, canonical_override):
         assert isinstance(column, MSSQLColumn)
@@ -502,38 +446,35 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
             target_type = canonical_override
         if column.data_type == MSSQL_TYPE_BIT:
             return bool(target_type == GOE_TYPE_BOOLEAN)
-        elif column.data_type in [MSSQL_TYPE_CHAR, MSSQL_TYPE_NCHAR]:
+        if column.data_type in [MSSQL_TYPE_CHAR, MSSQL_TYPE_NCHAR]:
             return bool(target_type == GOE_TYPE_FIXED_STRING)
-        elif column.data_type in [MSSQL_TYPE_TEXT, MSSQL_TYPE_NTEXT]:
+        if column.data_type in [MSSQL_TYPE_TEXT, MSSQL_TYPE_NTEXT]:
             return bool(target_type == GOE_TYPE_LARGE_STRING)
-        elif column.data_type in [
+        if column.data_type in [
             MSSQL_TYPE_VARCHAR,
             MSSQL_TYPE_NVARCHAR,
             MSSQL_TYPE_UNIQUEIDENTIFIER,
         ]:
             return bool(target_type == GOE_TYPE_VARIABLE_STRING)
-        elif column.data_type in [
+        if column.data_type in [
             MSSQL_TYPE_BINARY,
             MSSQL_TYPE_VARBINARY,
             MSSQL_TYPE_IMAGE,
         ]:
             return bool(target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
-        elif column.data_type == MSSQL_TYPE_FLOAT:
+        if column.data_type == MSSQL_TYPE_FLOAT:
             return bool(target_type == GOE_TYPE_DOUBLE)
-        elif column.data_type == MSSQL_TYPE_REAL:
+        if column.data_type == MSSQL_TYPE_REAL:
             return bool(target_type == GOE_TYPE_FLOAT)
-        elif column.is_number_based():
+        if column.is_number_based():
             return target_type in NUMERIC_CANONICAL_TYPES
-        elif column.is_date_based() and column.is_time_zone_based():
+        if column.is_date_based() and column.is_time_zone_based():
             return bool(target_type == GOE_TYPE_TIMESTAMP_TZ)
-        elif column.is_date_based():
-            return bool(
-                target_type in [GOE_TYPE_DATE, GOE_TYPE_TIMESTAMP]
-                or target_type in STRING_CANONICAL_TYPES
-            )
-        elif column.data_type == MSSQL_TYPE_TIME:
+        if column.is_date_based():
+            return bool(target_type in [GOE_TYPE_DATE, GOE_TYPE_TIMESTAMP] or target_type in STRING_CANONICAL_TYPES)
+        if column.data_type == MSSQL_TYPE_TIME:
             return bool(target_type == GOE_TYPE_TIME)
-        elif target_type not in ALL_CANONICAL_TYPES:
+        if target_type not in ALL_CANONICAL_TYPES:
             # Ideally we would log something here but this class has no messages object
             # self._log('Unknown canonical type in mapping: %s' % target_type, detail=VVERBOSE)
             return False
@@ -572,40 +513,38 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
 
         if column.data_type == MSSQL_TYPE_BIT:
             return new_column(column, GOE_TYPE_BOOLEAN)
-        elif column.data_type in (MSSQL_TYPE_CHAR, MSSQL_TYPE_NCHAR):
+        if column.data_type in (MSSQL_TYPE_CHAR, MSSQL_TYPE_NCHAR):
             return new_column(
                 column,
                 GOE_TYPE_FIXED_STRING,
                 data_length=column.data_length,
                 safe_mapping=True,
             )
-        elif column.data_type in (MSSQL_TYPE_TEXT, MSSQL_TYPE_NTEXT):
+        if column.data_type in (MSSQL_TYPE_TEXT, MSSQL_TYPE_NTEXT):
             return new_column(column, GOE_TYPE_LARGE_STRING)
-        elif column.data_type in (
+        if column.data_type in (
             MSSQL_TYPE_VARCHAR,
             MSSQL_TYPE_NVARCHAR,
             MSSQL_TYPE_UNIQUEIDENTIFIER,
         ):
-            return new_column(
-                column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length
-            )
-        elif column.data_type in (
+            return new_column(column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length)
+        if column.data_type in (
             MSSQL_TYPE_BINARY,
             MSSQL_TYPE_VARBINARY,
             MSSQL_TYPE_IMAGE,
         ):
             return new_column(column, GOE_TYPE_BINARY, data_length=column.data_length)
-        elif column.data_type in (MSSQL_TYPE_TINYINT, MSSQL_TYPE_SMALLINT):
+        if column.data_type in (MSSQL_TYPE_TINYINT, MSSQL_TYPE_SMALLINT):
             return new_column(column, GOE_TYPE_INTEGER_2)
-        elif column.data_type == MSSQL_TYPE_INT:
+        if column.data_type == MSSQL_TYPE_INT:
             return new_column(column, GOE_TYPE_INTEGER_4)
-        elif column.data_type == MSSQL_TYPE_BIGINT:
+        if column.data_type == MSSQL_TYPE_BIGINT:
             return new_column(column, GOE_TYPE_INTEGER_8)
-        elif column.data_type == MSSQL_TYPE_FLOAT:
+        if column.data_type == MSSQL_TYPE_FLOAT:
             return new_column(column, GOE_TYPE_DOUBLE)
-        elif column.data_type == MSSQL_TYPE_REAL:
+        if column.data_type == MSSQL_TYPE_REAL:
             return new_column(column, GOE_TYPE_FLOAT)
-        elif column.data_type in (
+        if column.data_type in (
             MSSQL_TYPE_DECIMAL,
             MSSQL_TYPE_NUMERIC,
             MSSQL_TYPE_MONEY,
@@ -636,37 +575,29 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
                 else:
                     # The precision overflows our canonical integral types so store as a decimal
                     integral_type = GOE_TYPE_DECIMAL
-                return new_column(
-                    column, integral_type, data_precision=data_precision, data_scale=0
-                )
-            else:
-                # If precision & scale are None then this is unsafe, otherwise leave it None to let new_column() logic take over
-                safe_mapping = (
-                    False if data_precision is None and data_scale is None else None
-                )
-                return new_column(
-                    column,
-                    GOE_TYPE_DECIMAL,
-                    data_precision=data_precision,
-                    data_scale=data_scale,
-                    safe_mapping=safe_mapping,
-                )
-        elif column.data_type == MSSQL_TYPE_DATE:
+                return new_column(column, integral_type, data_precision=data_precision, data_scale=0)
+            # If precision & scale are None then this is unsafe, otherwise leave it None to let new_column() logic take over
+            safe_mapping = False if data_precision is None and data_scale is None else None
+            return new_column(
+                column,
+                GOE_TYPE_DECIMAL,
+                data_precision=data_precision,
+                data_scale=data_scale,
+                safe_mapping=safe_mapping,
+            )
+        if column.data_type == MSSQL_TYPE_DATE:
             return new_column(column, GOE_TYPE_DATE)
-        elif column.data_type == MSSQL_TYPE_TIME:
+        if column.data_type == MSSQL_TYPE_TIME:
             return new_column(column, GOE_TYPE_TIME)
-        elif column.data_type in (
+        if column.data_type in (
             MSSQL_TYPE_SMALLDATETIME,
             MSSQL_TYPE_DATETIME,
             MSSQL_TYPE_DATETIME2,
         ):
             return new_column(column, GOE_TYPE_TIMESTAMP)
-        elif column.data_type == MSSQL_TYPE_DATETIMEOFFSET:
+        if column.data_type == MSSQL_TYPE_DATETIMEOFFSET:
             return new_column(column, GOE_TYPE_TIMESTAMP_TZ)
-        else:
-            raise NotImplementedError(
-                "Unsupported MSSQL data type: %s" % column.data_type
-            )
+        raise NotImplementedError("Unsupported MSSQL data type: %s" % column.data_type)
 
     def from_canonical_column(self, column):
         # Present is not yet in scope
@@ -714,16 +645,10 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
     def transform_tokenize_data_type(self):
         return MSSQL_TYPE_VARCHAR
 
-    def transform_regexp_replace_expression(
-        self, backend_column, regexp_replace_pattern, regexp_replace_string
-    ):
+    def transform_regexp_replace_expression(self, backend_column, regexp_replace_pattern, regexp_replace_string):
         # SQL Server has no support for regular expressions without writing a function
-        raise NotImplementedError(
-            "MSSQL transform_regexp_replace_expression() not implemented."
-        )
+        raise NotImplementedError("MSSQL transform_regexp_replace_expression() not implemented.")
 
     def transform_translate_expression(self, backend_column, from_string, to_string):
         # SQL Server has support for TRANSLATE() only for versions 2017 and above
-        raise NotImplementedError(
-            "MSSQL transform_translate_expression() not implemented."
-        )
+        raise NotImplementedError("MSSQL transform_translate_expression() not implemented.")

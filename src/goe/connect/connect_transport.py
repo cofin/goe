@@ -24,8 +24,8 @@ from goe.connect.connect_backend import (
 from goe.connect.connect_functions import (
     debug,
     detail,
-    get_one_host_from_option,
     failure,
+    get_one_host_from_option,
     log,
     section_header,
     success,
@@ -34,29 +34,29 @@ from goe.connect.connect_functions import (
 from goe.offload.factory.offload_transport_factory import (
     spark_dataproc_batches_jdbc_connectivity_checker,
     spark_dataproc_jdbc_connectivity_checker,
+    spark_livy_jdbc_connectivity_checker,
     spark_submit_jdbc_connectivity_checker,
     spark_thrift_jdbc_connectivity_checker,
-    spark_livy_jdbc_connectivity_checker,
     sqoop_jdbc_connectivity_checker,
 )
 from goe.offload.offload_messages import VVERBOSE
 from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_SPARK_GCLOUD_EXECUTABLE,
-    spark_submit_executable_exists,
+    is_livy_available,
     is_spark_gcloud_available,
     is_spark_gcloud_batches_available,
     is_spark_gcloud_dataproc_available,
     is_spark_submit_available,
     is_spark_thrift_available,
-    is_livy_available,
+    spark_submit_executable_exists,
 )
 from goe.offload.offload_transport_functions import (
     credential_provider_path_jvm_override,
     ssh_cmd_prefix,
 )
 from goe.offload.spark.livy_offload_transport import (
-    URL_SEP,
     LIVY_SESSIONS_SUBURL,
+    URL_SEP,
 )
 from goe.offload.spark.offload_transport_livy_requests import (
     OffloadTransportLivyRequests,
@@ -67,25 +67,17 @@ def test_credential_api_alias(options, orchestration_config):
     if not orchestration_config.offload_transport_password_alias:
         return
 
-    host = orchestration_config.offload_transport_cmd_host or get_one_host_from_option(
-        options.original_hadoop_host
-    )
+    host = orchestration_config.offload_transport_cmd_host or get_one_host_from_option(options.original_hadoop_host)
     test_name = "Offload Transport Password Alias"
     test_header(test_name)
     jvm_overrides = []
-    if (
-        orchestration_config.sqoop_overrides
-        or orchestration_config.offload_transport_spark_overrides
-    ):
+    if orchestration_config.sqoop_overrides or orchestration_config.offload_transport_spark_overrides:
         jvm_overrides.append(
-            orchestration_config.sqoop_overrides
-            or orchestration_config.offload_transport_spark_overrides
+            orchestration_config.sqoop_overrides or orchestration_config.offload_transport_spark_overrides
         )
     if orchestration_config.offload_transport_credential_provider_path:
         jvm_overrides.append(
-            credential_provider_path_jvm_override(
-                orchestration_config.offload_transport_credential_provider_path
-            )
+            credential_provider_path_jvm_override(orchestration_config.offload_transport_credential_provider_path)
         )
     # Using hadoop_ssh_user below and not offload_transport_user because this is running a Hadoop CLI command
     cmd = (
@@ -99,10 +91,9 @@ def test_credential_api_alias(options, orchestration_config):
         log("Cmd: %s" % " ".join(cmd), detail=VVERBOSE)
         cmd_out = subprocess.check_output(cmd)
         m = re.search(
-            r"^%s[\r]?$"
-            % re.escape(orchestration_config.offload_transport_password_alias),
+            r"^%s[\r]?$" % re.escape(orchestration_config.offload_transport_password_alias),
             cmd_out,
-            re.M | re.I,
+            re.MULTILINE | re.IGNORECASE,
         )
 
         if m:
@@ -110,8 +101,7 @@ def test_credential_api_alias(options, orchestration_config):
             success(test_name)
         else:
             detail(
-                'Alias "%s" not found in Hadoop credential API'
-                % orchestration_config.offload_transport_password_alias
+                'Alias "%s" not found in Hadoop credential API' % orchestration_config.offload_transport_password_alias
             )
             failure(test_name)
 
@@ -133,17 +123,12 @@ def test_sqoop_pwd_file(options, orchestration_config, messages):
         detail("%s found in HDFS" % orchestration_config.sqoop_password_file)
         success(test_name)
     else:
-        detail(
-            "Sqoop Password File not found: %s"
-            % orchestration_config.sqoop_password_file
-        )
+        detail("Sqoop Password File not found: %s" % orchestration_config.sqoop_password_file)
         failure(test_name)
 
 
 def test_sqoop_import(orchestration_config, messages):
-    data_transport_client = sqoop_jdbc_connectivity_checker(
-        orchestration_config, messages
-    )
+    data_transport_client = sqoop_jdbc_connectivity_checker(orchestration_config, messages)
     verify_offload_transport_rdbms_connectivity(data_transport_client, "Sqoop")
 
 
@@ -188,17 +173,12 @@ def test_spark_thrift_server(options, orchestration_config, messages):
         log("Skipping Spark Thrift Server tests due to absent config", detail=VVERBOSE)
         return
 
-    detail(
-        "Testing Spark Thrift Server hosts individually: %s"
-        % ", ".join(host for host, _ in hosts_to_check)
-    )
+    detail("Testing Spark Thrift Server hosts individually: %s" % ", ".join(host for host, _ in hosts_to_check))
     spark_options = copy.copy(orchestration_config)
     for host, port in hosts_to_check:
         spark_options.hadoop_host = host
         spark_options.hadoop_port = port
-        backend_spark_api = test_backend_db_connectivity(
-            spark_options, orchestration_config, messages
-        )
+        backend_spark_api = test_backend_db_connectivity(spark_options, orchestration_config, messages)
         del backend_spark_api
 
     # test_backend_db_connectivity() will exit on failure so we know it is sound to proceed if we get this far
@@ -207,12 +187,8 @@ def test_spark_thrift_server(options, orchestration_config, messages):
         and orchestration_config.offload_transport_spark_thrift_port
     ):
         # we only connect back to the RDBMS from Spark for offload transport
-        data_transport_client = spark_thrift_jdbc_connectivity_checker(
-            orchestration_config, messages
-        )
-        verify_offload_transport_rdbms_connectivity(
-            data_transport_client, "Spark Thrift Server"
-        )
+        data_transport_client = spark_thrift_jdbc_connectivity_checker(orchestration_config, messages)
+        verify_offload_transport_rdbms_connectivity(data_transport_client, "Spark Thrift Server")
 
 
 def test_spark_livy_api(orchestration_config, messages):
@@ -223,9 +199,7 @@ def test_spark_livy_api(orchestration_config, messages):
     test_name = "Spark Livy settings"
     test_header(test_name)
     try:
-        sessions_url = URL_SEP.join(
-            [orchestration_config.offload_transport_livy_api_url, LIVY_SESSIONS_SUBURL]
-        )
+        sessions_url = URL_SEP.join([orchestration_config.offload_transport_livy_api_url, LIVY_SESSIONS_SUBURL])
         detail(sessions_url)
         livy_requests = OffloadTransportLivyRequests(orchestration_config, messages)
         resp = livy_requests.get(sessions_url)
@@ -242,9 +216,7 @@ def test_spark_livy_api(orchestration_config, messages):
         # no sense in more Livy checks if this fails
         return
 
-    data_transport_client = spark_livy_jdbc_connectivity_checker(
-        orchestration_config, messages
-    )
+    data_transport_client = spark_livy_jdbc_connectivity_checker(orchestration_config, messages)
     verify_offload_transport_rdbms_connectivity(data_transport_client, "Livy Server")
 
 
@@ -259,30 +231,21 @@ def test_spark_submit(orchestration_config, messages):
     test_name = "Spark Submit settings"
     test_header(test_name)
     if spark_submit_executable_exists(orchestration_config, messages):
-        detail(
-            "Executable %s exists"
-            % orchestration_config.offload_transport_spark_submit_executable
-        )
+        detail("Executable %s exists" % orchestration_config.offload_transport_spark_submit_executable)
         success(test_name)
     else:
-        detail(
-            "Executable %s does not exist"
-            % orchestration_config.offload_transport_spark_submit_executable
-        )
+        detail("Executable %s does not exist" % orchestration_config.offload_transport_spark_submit_executable)
         failure(test_name)
         # no sense in more spark-submit checks if this fails
         return
 
-    data_transport_client = spark_submit_jdbc_connectivity_checker(
-        orchestration_config, messages
-    )
+    data_transport_client = spark_submit_jdbc_connectivity_checker(orchestration_config, messages)
     verify_offload_transport_rdbms_connectivity(data_transport_client, "Spark Submit")
 
 
 def test_spark_gcloud(orchestration_config, messages):
     if (
-        not orchestration_config.google_dataproc_cluster
-        and not orchestration_config.google_dataproc_batches_version
+        not orchestration_config.google_dataproc_cluster and not orchestration_config.google_dataproc_batches_version
     ) or not orchestration_config.offload_transport_cmd_host:
         log("Skipping Spark gcloud tests due to absent config", detail=VVERBOSE)
         return
@@ -302,23 +265,13 @@ def test_spark_gcloud(orchestration_config, messages):
         # no sense in more gcloud checks if this fails
         return
 
-    if is_spark_gcloud_dataproc_available(
-        orchestration_config, None, messages=messages
-    ):
-        data_transport_client = spark_dataproc_jdbc_connectivity_checker(
-            orchestration_config, messages
-        )
-        verify_offload_transport_rdbms_connectivity(
-            data_transport_client, "Google Managed Spark"
-        )
+    if is_spark_gcloud_dataproc_available(orchestration_config, None, messages=messages):
+        data_transport_client = spark_dataproc_jdbc_connectivity_checker(orchestration_config, messages)
+        verify_offload_transport_rdbms_connectivity(data_transport_client, "Google Managed Spark")
 
     if is_spark_gcloud_batches_available(orchestration_config, None, messages=messages):
-        data_transport_client = spark_dataproc_batches_jdbc_connectivity_checker(
-            orchestration_config, messages
-        )
-        verify_offload_transport_rdbms_connectivity(
-            data_transport_client, "Google Managed Spark serverless"
-        )
+        data_transport_client = spark_dataproc_batches_jdbc_connectivity_checker(orchestration_config, messages)
+        verify_offload_transport_rdbms_connectivity(data_transport_client, "Google Managed Spark serverless")
 
 
 def verify_offload_transport_rdbms_connectivity(data_transport_client, transport_type):

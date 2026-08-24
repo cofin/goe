@@ -12,29 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestGOEDfs: Unit test library to test API for all supported backend filesystems.
-    This focuses on API calls that do not need to connect to the system.
-    Because there is no connection we can fake any backend and test basic functionality.
+"""TestGOEDfs: Unit test library to test API for all supported backend filesystems.
+This focuses on API calls that do not need to connect to the system.
+Because there is no connection we can fake any backend and test basic functionality.
 """
+
 import logging
 import os
 from unittest import main
 
 from goe.filesystem.goe_dfs import (
-    GOEDfsException,
     DFS_TYPE_DIRECTORY,
     DFS_TYPE_FILE,
+    GOEDfsException,
 )
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
-
-from tests.unit.filesystem.test_goe_dfs import TestGOEDfs
 from tests.integration.test_functions import (
     build_current_options,
 )
 from tests.testlib.test_framework.test_functions import (
     get_test_messages,
 )
-
+from tests.unit.filesystem.test_goe_dfs import TestGOEDfs
 
 ###############################################################################
 # LOGGING
@@ -52,7 +51,7 @@ logger.addHandler(logging.NullHandler())
 
 class TestCurrentDfs(TestGOEDfs):
     def __init__(self, *args, **kwargs):
-        super(TestCurrentDfs, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.some_dir = None
         self.some_file = None
@@ -95,7 +94,7 @@ class TestCurrentDfsExecuteMode(TestGOEDfs):
     """
 
     def __init__(self, *args, **kwargs):
-        super(TestCurrentDfsExecuteMode, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.some_dir = None
         self.some_file = None
@@ -145,9 +144,7 @@ class TestCurrentDfsExecuteMode(TestGOEDfs):
         path = self._remote_dir
         if file_name:
             if with_subdir and self._test_files[file_name]["subdir"]:
-                file_name = (
-                    self._test_files[file_name]["subdir"].rstrip("/") + "/" + file_name
-                )
+                file_name = self._test_files[file_name]["subdir"].rstrip("/") + "/" + file_name
             path = path.rstrip("/") + "/" + file_name
         return path
 
@@ -194,9 +191,7 @@ class TestCurrentDfsExecuteMode(TestGOEDfs):
 
         # Before we start check list_dir find no entries
         files = self.api.list_dir(self._remote_path())
-        self.assertFalse(
-            bool(files), "These files should not be here: {}".format(files)
-        )
+        self.assertFalse(bool(files), f"These files should not be here: {files}")
 
         # Upload file1 using copy_from_local()
         self.api.copy_from_local(
@@ -284,11 +279,7 @@ class TestCurrentDfsExecuteMode(TestGOEDfs):
         )
 
         # Upload file4 in a subdirectory
-        self._try_mkdir(
-            self._remote_path(
-                self._test_files[self._file4]["subdir"], with_subdir=False
-            )
-        )
+        self._try_mkdir(self._remote_path(self._test_files[self._file4]["subdir"], with_subdir=False))
         self.api.copy_from_local(
             self._local_path(self._file4),
             self._remote_path(self._file4),
@@ -296,19 +287,10 @@ class TestCurrentDfsExecuteMode(TestGOEDfs):
         )
         stat = self.api.stat(self._remote_path(self._file4))
         self.assertEqual(stat["type"], DFS_TYPE_FILE)
-        stat = self.api.stat(
-            self._remote_path(
-                self._test_files[self._file4]["subdir"], with_subdir=False
-            )
-        )
+        stat = self.api.stat(self._remote_path(self._test_files[self._file4]["subdir"], with_subdir=False))
         self.assertEqual(stat["type"], DFS_TYPE_DIRECTORY)
         # Directory also visible with trailing slash
-        stat = self.api.stat(
-            self._remote_path(
-                self._test_files[self._file4]["subdir"], with_subdir=False
-            )
-            + "/"
-        )
+        stat = self.api.stat(self._remote_path(self._test_files[self._file4]["subdir"], with_subdir=False) + "/")
         self.assertEqual(stat["type"], DFS_TYPE_DIRECTORY)
         # Check file contents are correct
         content = self.api.read(self._remote_path(self._file4), as_str=True)
@@ -318,11 +300,7 @@ class TestCurrentDfsExecuteMode(TestGOEDfs):
         self._check_dir_has_x_entries(self._remote_path(), 4)
 
         # Upload file4 in a subdirectory of a subdirectory
-        self._try_mkdir(
-            self._remote_path(
-                self._test_files[self._file5]["subdir"], with_subdir=False
-            )
-        )
+        self._try_mkdir(self._remote_path(self._test_files[self._file5]["subdir"], with_subdir=False))
         self.api.copy_from_local(
             self._local_path(self._file5),
             self._remote_path(self._file5),
@@ -330,19 +308,10 @@ class TestCurrentDfsExecuteMode(TestGOEDfs):
         )
         stat = self.api.stat(self._remote_path(self._file5))
         self.assertEqual(stat["type"], DFS_TYPE_FILE)
-        stat = self.api.stat(
-            self._remote_path(
-                self._test_files[self._file5]["subdir"], with_subdir=False
-            )
-        )
+        stat = self.api.stat(self._remote_path(self._test_files[self._file5]["subdir"], with_subdir=False))
         self.assertEqual(stat["type"], DFS_TYPE_DIRECTORY)
         # Directory also visible with trailing slash
-        stat = self.api.stat(
-            self._remote_path(
-                self._test_files[self._file5]["subdir"], with_subdir=False
-            )
-            + "/"
-        )
+        stat = self.api.stat(self._remote_path(self._test_files[self._file5]["subdir"], with_subdir=False) + "/")
         self.assertEqual(stat["type"], DFS_TYPE_DIRECTORY)
         # Check file contents are correct
         content = self.api.read(self._remote_path(self._file5), as_str=True)
@@ -352,13 +321,9 @@ class TestCurrentDfsExecuteMode(TestGOEDfs):
         self._check_dir_has_x_entries(self._remote_path(), 4)
 
         # Delete a file
-        self.assertIn(
-            self._remote_path(self._file2), self.api.list_dir(self._remote_path())
-        )
+        self.assertIn(self._remote_path(self._file2), self.api.list_dir(self._remote_path()))
         self.api.delete(self._remote_path(self._file2))
-        self.assertNotIn(
-            self._remote_path(self._file2), self.api.list_dir(self._remote_path())
-        )
+        self.assertNotIn(self._remote_path(self._file2), self.api.list_dir(self._remote_path()))
         # Deleting non-existent file is fine
         self.api.delete(self._remote_path(self._file2))
 
@@ -367,9 +332,7 @@ class TestCurrentDfsExecuteMode(TestGOEDfs):
 
         # Delete a directory and contents
         self.api.delete(
-            self._remote_path(
-                self._test_files[self._file4]["subdir"], with_subdir=False
-            ),
+            self._remote_path(self._test_files[self._file4]["subdir"], with_subdir=False),
             recursive=True,
         )
         self.assertIsNone(self.api.stat(self._remote_path(self._file4)))

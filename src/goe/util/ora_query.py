@@ -19,10 +19,11 @@
 import datetime
 import inspect
 import logging
+
 import oracledb
 from numpy import datetime64
 
-from goe.offload.offload_messages import OffloadMessagesMixin, VERBOSE
+from goe.offload.offload_messages import VERBOSE, OffloadMessagesMixin
 
 
 ############################################################
@@ -72,20 +73,17 @@ def get_oracle_connection(
             ora_conn = oracledb.connect(user="[%s]" % ora_proxy_user, dsn=ora_dsn)
         else:
             ora_conn = oracledb.connect(dsn=ora_dsn)
+    elif ora_proxy_user:
+        ora_conn = oracledb.connect(
+            user="%s[%s]" % (ora_user, ora_proxy_user),
+            password=ora_pass,
+            dsn=ora_dsn,
+        )
     else:
-        if ora_proxy_user:
-            ora_conn = oracledb.connect(
-                user="%s[%s]" % (ora_user, ora_proxy_user),
-                password=ora_pass,
-                dsn=ora_dsn,
-            )
-        else:
-            ora_conn = oracledb.connect(user=ora_user, password=ora_pass, dsn=ora_dsn)
+        ora_conn = oracledb.connect(user=ora_user, password=ora_pass, dsn=ora_dsn)
     session_cursor = ora_conn.cursor()
     try:
-        session_cursor.execute(
-            'ALTER SESSION SET TRACEFILE_IDENTIFIER="%s"' % ora_trace_id
-        )
+        session_cursor.execute('ALTER SESSION SET TRACEFILE_IDENTIFIER="%s"' % ora_trace_id)
     finally:
         session_cursor.close()
     ora_conn.module = "GOE"
@@ -93,7 +91,7 @@ def get_oracle_connection(
     return ora_conn
 
 
-class OracleQuery(OffloadMessagesMixin, object):
+class OracleQuery(OffloadMessagesMixin):
     """Execute ORACLE sql and return results"""
 
     def __init__(self, user, password, dsn, **kwargs):
@@ -115,11 +113,9 @@ class OracleQuery(OffloadMessagesMixin, object):
         self._my_connection = False  # Marker: "this object created oracledb connection"
 
         self._messages = kwargs["messages"] if "messages" in kwargs else None
-        super(OracleQuery, self).__init__(self._messages, logger)
+        super().__init__(self._messages, logger)
 
-        logger.debug(
-            "Constructed OracleQuery object for user: %s, dsn: %s" % (user, dsn)
-        )
+        logger.debug("Constructed OracleQuery object for user: %s, dsn: %s" % (user, dsn))
 
     def __del__(self):
         """DESTRUCTOR"""
@@ -136,8 +132,7 @@ class OracleQuery(OffloadMessagesMixin, object):
         obj._dsn = obj._db_handle.dsn
 
         logger.debug(
-            "Constructed OracleQuery object from existing cursor for user: %s, dsn: %s"
-            % (obj._user, obj._dsn)
+            "Constructed OracleQuery object from existing cursor for user: %s, dsn: %s" % (obj._user, obj._dsn)
         )
         return obj
 
@@ -145,9 +140,7 @@ class OracleQuery(OffloadMessagesMixin, object):
     def fromconnection(cls, connection, **kwargs):
         """Construct object from existing connection"""
         obj = cls.fromcursor(connection.cursor(), **kwargs)
-        obj._my_cursor = (
-            True  # Destroy the cursor on exit as we just (artificially) created it
-        )
+        obj._my_cursor = True  # Destroy the cursor on exit as we just (artificially) created it
         return obj
 
     ###############################################################################
@@ -156,14 +149,10 @@ class OracleQuery(OffloadMessagesMixin, object):
 
     def _connect(self):
         """Connect to ORACLE db and initialize oracledb handle objects"""
-        logger.debug(
-            "Connecting to ORACLE dsn: %s with user: %s" % (self._dsn, self._user)
-        )
+        logger.debug("Connecting to ORACLE dsn: %s with user: %s" % (self._dsn, self._user))
 
         try:
-            self._db_handle = oracledb.connect(
-                user=self._user, password=self._password, dsn=self._dsn
-            )
+            self._db_handle = oracledb.connect(user=self._user, password=self._password, dsn=self._dsn)
             self._cursor = self._db_handle.cursor()
             self._my_cursor = True
             self._my_connection = True
@@ -173,9 +162,7 @@ class OracleQuery(OffloadMessagesMixin, object):
             self._retcode = error.code
             self._err = str(error)
 
-            raise OracleQueryException(
-                "Error: %s connecting to db: %s" % (self._err, self._dsn)
-            )
+            raise OracleQueryException("Error: %s connecting to db: %s" % (self._err, self._dsn))
 
     def _execute(self, sql, binds, bulk, ignore_errors, detail):
         """Execute ORACLE sql
@@ -214,8 +201,7 @@ class OracleQuery(OffloadMessagesMixin, object):
             else:
                 self._cursor.execute(sql)
             logger.debug(
-                "Executing %s ORACLE SQL [%s]: %s in db: %s - SUCCESS"
-                % (bulk_type, sql_command, sql, self._dsn)
+                "Executing %s ORACLE SQL [%s]: %s in db: %s - SUCCESS" % (bulk_type, sql_command, sql, self._dsn)
             )
         except oracledb.Error as e:
             logger.debug(
@@ -226,36 +212,22 @@ class OracleQuery(OffloadMessagesMixin, object):
             self._retcode = error.code
             self._err = str(error)
             if sql_command in ("insert", "update", "delete", "merge"):
-                logger.debug(
-                    "Rolling back ORACLE transaction for command: %s" % sql_command
-                )
+                logger.debug("Rolling back ORACLE transaction for command: %s" % sql_command)
                 self._db_handle.rollback()
             else:
-                logger.debug(
-                    "No need to roll back ORACLE transaction for command: %s"
-                    % sql_command
-                )
+                logger.debug("No need to roll back ORACLE transaction for command: %s" % sql_command)
             if ignore_errors:
-                logger.warn(
-                    "ORACLE execution problem: [%s] %s" % (self._retcode, self._err)
-                )
+                logger.warning("ORACLE execution problem: [%s] %s" % (self._retcode, self._err))
                 return False
-            else:
-                raise OracleQueryException(
-                    "ORACLE execution problem: [%s] %s" % (self._retcode, self._err)
-                )
+            raise OracleQueryException("ORACLE execution problem: [%s] %s" % (self._retcode, self._err))
         else:
             self._retcode = 0
             self._err = None
             if sql_command in ("insert", "update", "delete", "merge"):
-                logger.debug(
-                    "Committing ORACLE transaction for command: %s" % sql_command
-                )
+                logger.debug("Committing ORACLE transaction for command: %s" % sql_command)
                 self._db_handle.commit()
             else:
-                logger.debug(
-                    "No need to commit ORACLE transaction for command: %s" % sql_command
-                )
+                logger.debug("No need to commit ORACLE transaction for command: %s" % sql_command)
 
         return True
 
@@ -270,7 +242,7 @@ class OracleQuery(OffloadMessagesMixin, object):
 
         try:
             ret = inspect.getsource(obj)
-        except (IOError, TypeError) as e:
+        except (OSError, TypeError) as e:
             logger.debug("Exception: %s when inspecting the code" % e)
 
         return ret
@@ -304,8 +276,7 @@ class OracleQuery(OffloadMessagesMixin, object):
         """Set "fetch" array size"""
         if not isinstance(val, int) or val <= 0 or val > MAX_ARRAYSIZE:
             raise OracleQueryException(
-                "Invalid arraysize: %s Needs to be a number within range: 1..%d"
-                % (str(val), MAX_ARRAYSIZE)
+                "Invalid arraysize: %s Needs to be a number within range: 1..%d" % (str(val), MAX_ARRAYSIZE)
             )
 
         self._arraysize = val
@@ -347,30 +318,19 @@ class OracleQuery(OffloadMessagesMixin, object):
         if not self._cursor:
             raise OracleQueryException("Query has NOT been executed yet!")
 
-        logger.debug(
-            "Executing cursor function: %s" % self._retrieve_source_code(cursor_fn)
-        )
+        logger.debug("Executing cursor function: %s" % self._retrieve_source_code(cursor_fn))
         if as_dict:
-            logger.debug(
-                "AS_DICT transformation requested for: %s"
-                % self._retrieve_source_code(cursor_fn)
-            )
+            logger.debug("AS_DICT transformation requested for: %s" % self._retrieve_source_code(cursor_fn))
             ret = []
             if self._cursor.description:
                 col_names = [_[0] for _ in self._cursor.description]
                 for rec in cursor_fn(self._cursor):
                     ret.append(dict(list(zip(col_names, rec))))
         else:
-            logger.debug(
-                "Passthrough requested for: %s" % self._retrieve_source_code(cursor_fn)
-            )
+            logger.debug("Passthrough requested for: %s" % self._retrieve_source_code(cursor_fn))
             ret = cursor_fn(self._cursor)
 
-        logger.debug(
-            "RESULT=%s" % ret
-            if len(ret) <= 1
-            else ("%s\n%s" % (ret[0], "<+ %d records>" % (len(ret) - 1)))
-        )
+        logger.debug("RESULT=%s" % ret if len(ret) <= 1 else ("%s\n%s" % (ret[0], "<+ %d records>" % (len(ret) - 1))))
 
         return ret
 
@@ -379,9 +339,7 @@ class OracleQuery(OffloadMessagesMixin, object):
         Strictly speaking this is unnecessary as oracledb will close them upon __del__
         Nice to have the option though
         """
-        logger.debug(
-            "Disconnecting from ORACLE. User: %s DSN: %s" % (self._user, self._dsn)
-        )
+        logger.debug("Disconnecting from ORACLE. User: %s DSN: %s" % (self._user, self._dsn))
         if self._my_cursor:
             # This object created oracledb AND cursor object
             if self._cursor:

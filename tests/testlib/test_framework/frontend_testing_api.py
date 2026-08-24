@@ -22,7 +22,6 @@ processing and verification of integration tests.
 import logging
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
-from typing import Optional, Union
 
 from goe.offload.column_metadata import (
     GOE_TYPE_INTEGER_1,
@@ -129,33 +128,28 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
     ) -> list:
         """Returns column definitions for the format described in _goe_type_mapping_column_definitions() docstring."""
         if table_name == test_constants.GOE_CHARS:
-            return self._goe_chars_column_definitions(
-                ascii_only=ascii_only, all_chars_notnull=all_chars_notnull
-            )
-        elif table_name == test_constants.GOE_TYPES:
+            return self._goe_chars_column_definitions(ascii_only=ascii_only, all_chars_notnull=all_chars_notnull)
+        if table_name == test_constants.GOE_TYPES:
             return self._goe_types_column_definitions(
                 ascii_only=ascii_only,
                 all_chars_notnull=all_chars_notnull,
                 supported_canonical_types=supported_canonical_types,
                 include_interval_columns=True,
             )
-        elif table_name == test_constants.GOE_TYPES_QI:
+        if table_name == test_constants.GOE_TYPES_QI:
             return self._goe_types_column_definitions(
                 ascii_only=ascii_only,
                 all_chars_notnull=all_chars_notnull,
                 supported_canonical_types=supported_canonical_types,
                 include_interval_columns=False,
             )
-        elif table_name == test_constants.GOE_WIDE:
+        if table_name == test_constants.GOE_WIDE:
             return self._goe_wide_column_definitions(
                 ascii_only=ascii_only,
                 all_chars_notnull=all_chars_notnull,
                 backend_max_test_column_count=backend_max_test_column_count,
             )
-        else:
-            raise NotImplementedError(
-                f"Missing _generated_table_column_definitions entry for: {table_name}"
-            )
+        raise NotImplementedError(f"Missing _generated_table_column_definitions entry for: {table_name}")
 
     # Enforced methods/properties
 
@@ -216,9 +210,7 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def _populate_generated_test_table(
-        self, schema, table_name, columns, rows, fastexecute
-    ):
+    def _populate_generated_test_table(self, schema, table_name, columns, rows, fastexecute):
         """This method populates a frontend object. It is expected to be called from an SH_TEST connection
         and not an ADM or APP one.
         columns is a list of dicts of the format:
@@ -271,9 +263,7 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         rows = 100
         self._log(f"Rows: {rows}", detail=VERBOSE)
         t = SimpleTimer(f"Populate: {schema}.{table_name}")
-        self._populate_generated_test_table(
-            schema, table_name, column_specs, rows, fastexecute=False
-        )
+        self._populate_generated_test_table(schema, table_name, column_specs, rows, fastexecute=False)
         self._debug(t.show())
         self.collect_table_stats(schema, table_name)
 
@@ -288,17 +278,11 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         connection = self._db_api.create_new_connection(
             user_name, user_password, trace_action_override=trace_action_override
         )
-        return self._create_new_testing_client(
-            connection, trace_action_override=trace_action_override
-        )
+        return self._create_new_testing_client(connection, trace_action_override=trace_action_override)
 
     @contextmanager
-    def create_new_connection_ctx(
-        self, user_name, user_password, trace_action_override=None
-    ):
-        new_api = self.create_new_connection(
-            user_name, user_password, trace_action_override=trace_action_override
-        )
+    def create_new_connection_ctx(self, user_name, user_password, trace_action_override=None):
+        new_api = self.create_new_connection(user_name, user_password, trace_action_override=trace_action_override)
         yield new_api
         try:
             new_api.close(force=True)
@@ -309,9 +293,7 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         return self._db_api.enclose_object_reference(schema, object_name)
 
     def execute_ddl(self, sql, query_options=None, log_level=VERBOSE) -> list:
-        return self._db_api.execute_ddl(
-            sql, query_options=query_options, log_level=log_level
-        )
+        return self._db_api.execute_ddl(sql, query_options=query_options, log_level=log_level)
 
     def execute_query_fetch_all(
         self,
@@ -353,19 +335,11 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
             trace_action=trace_action,
         )
 
-    def frontend_table_partition_list(
-        self, schema: str, table_name: str, hv_string_list: Optional[list] = None
-    ) -> list:
-        frontend_table = OffloadSourceTable.create(
-            schema, table_name, self._connection_options, self._messages
-        )
+    def frontend_table_partition_list(self, schema: str, table_name: str, hv_string_list: list | None = None) -> list:
+        frontend_table = OffloadSourceTable.create(schema, table_name, self._connection_options, self._messages)
         partitions = frontend_table.get_partitions()
         if hv_string_list:
-            partitions = [
-                p
-                for p in partitions
-                if any(_ in p.high_values_csv for _ in hv_string_list)
-            ]
+            partitions = [p for p in partitions if any(_ in p.high_values_csv for _ in hv_string_list)]
         return partitions
 
     def frontend_version(self):
@@ -380,9 +354,7 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
     def get_current_scn(self) -> int:
         return self._db_api.get_current_scn()
 
-    def get_max_range_partition_name_and_hv(
-        self, schema: str, table_name: str
-    ) -> tuple:
+    def get_max_range_partition_name_and_hv(self, schema: str, table_name: str) -> tuple:
         """Return a tuple of name, high value literal for last partition in a RANGE table."""
         partitions = self.frontend_table_partition_list(schema, table_name)
         # partitions are newest to oldest so we can pluck first row to satisfy this function.
@@ -427,9 +399,7 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
             if col_dict.get("offload_options"):
                 opts = col_dict["offload_options"]
                 for opt in opts:
-                    if opt in offload_options and isinstance(
-                        offload_options[opt], list
-                    ):
+                    if opt in offload_options and isinstance(offload_options[opt], list):
                         offload_options[opt] += opts[opt]
                     elif opt in offload_options:
                         offload_options[opt] += "," + opts[opt]
@@ -446,9 +416,7 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
     def min_datetime_value(self):
         return self._db_api.min_datetime_value()
 
-    def get_table_row_count(
-        self, schema, table_name, filter_clause=None, filter_clause_params=None
-    ) -> int:
+    def get_table_row_count(self, schema, table_name, filter_clause=None, filter_clause_params=None) -> int:
         return self._db_api.get_table_row_count(
             schema,
             table_name,
@@ -529,8 +497,8 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         schema: str,
         table_name: str,
         subquery: str,
-        pk_col_name: Optional[str] = None,
-        table_parallelism: Optional[str] = None,
+        pk_col_name: str | None = None,
+        table_parallelism: str | None = None,
         with_drop: bool = True,
         with_stats_collection: bool = False,
     ) -> list:
@@ -562,14 +530,14 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         schema: str,
         table_name: str,
         maxval_partition: bool = False,
-        extra_pred: Optional[str] = None,
-        degree: Optional[int] = None,
+        extra_pred: str | None = None,
+        degree: int | None = None,
         subpartitions: int = 0,
         enable_row_movement: bool = False,
         noseg_partition: bool = True,
-        part_key_type: Optional[str] = None,
-        time_id_column_name: Optional[str] = None,
-        extra_col_tuples: Optional[list] = None,
+        part_key_type: str | None = None,
+        time_id_column_name: str | None = None,
+        extra_col_tuples: list | None = None,
         simple_partition_names: bool = False,
         with_drop: bool = True,
         range_start_literal_override=None,
@@ -586,20 +554,19 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         schema: str,
         table_name: str,
         hv_string_list: list,
-        dropping_oldest: Optional[bool] = None,
+        dropping_oldest: bool | None = None,
     ) -> list:
         pass
 
     @abstractmethod
     def sales_based_fact_truncate_partition_ddl(
-        self, schema: str, table_name: str, hv_string_list: Optional[list] = None
+        self, schema: str, table_name: str, hv_string_list: list | None = None
     ) -> list:
         pass
 
     @abstractmethod
     def sales_based_fact_hwm_literal(self, sales_literal: str, data_type: str) -> tuple:
-        """
-        Takes a SALES story constant and data type and returns a tuple of 3 strings.
+        """Takes a SALES story constant and data type and returns a tuple of 3 strings.
         Tuple format:
             (literal suitable for data type,
              literal suitable for searching within HV metadata,
@@ -622,26 +589,24 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         schema: str,
         table_name: str,
         default_partition: bool = False,
-        extra_pred: Optional[str] = None,
-        part_key_type: Optional[str] = None,
+        extra_pred: str | None = None,
+        part_key_type: str | None = None,
         out_of_sequence: bool = False,
         include_older_partition: bool = False,
-        yrmon_column_name: Optional[str] = None,
-        extra_col_tuples: Optional[list] = None,
+        yrmon_column_name: str | None = None,
+        extra_col_tuples: list | None = None,
         with_drop: bool = True,
     ) -> list:
         pass
 
     @abstractmethod
     def sales_based_list_fact_add_partition_ddl(
-        self, schema: str, table_name: str, next_ym_override: Optional[tuple] = None
+        self, schema: str, table_name: str, next_ym_override: tuple | None = None
     ) -> list:
         pass
 
     @abstractmethod
-    def sales_based_multi_col_fact_create_ddl(
-        self, schema: str, table_name: str, maxval_partition=False
-    ) -> list:
+    def sales_based_multi_col_fact_create_ddl(self, schema: str, table_name: str, maxval_partition=False) -> list:
         pass
 
     @abstractmethod
@@ -662,17 +627,14 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         schema: str,
         table_name: str,
         to_user: str,
-        grantable: Optional[bool] = None,
+        grantable: bool | None = None,
     ) -> bool:
-        """
-        Return bool depending on whether to_user has SELECT privileges on source table.
+        """Return bool depending on whether to_user has SELECT privileges on source table.
         grantable: None mean don't check. True/False means ensure the privilege is or isn't grantable.
         """
 
     @abstractmethod
-    def table_row_count_from_stats(
-        self, schema: str, table_name: str
-    ) -> Union[int, None]:
+    def table_row_count_from_stats(self, schema: str, table_name: str) -> int | None:
         """Return row count specifically from stats - not from a select on the table."""
 
     @abstractmethod

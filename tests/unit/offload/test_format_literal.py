@@ -12,13 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Unit tests for FormatLiteralInterface implementations
-"""
+"""Unit tests for FormatLiteralInterface implementations"""
+
 from datetime import date, datetime
 from decimal import Decimal
-from numpy import datetime64
-import pytest
 
+import pytest
+from numpy import datetime64
+
+from goe.offload.bigquery.bigquery_column import (
+    BIGQUERY_TYPE_BIGNUMERIC,
+    BIGQUERY_TYPE_DATE,
+    BIGQUERY_TYPE_DATETIME,
+    BIGQUERY_TYPE_FLOAT64,
+    BIGQUERY_TYPE_INT64,
+    BIGQUERY_TYPE_NUMERIC,
+    BIGQUERY_TYPE_STRING,
+    BIGQUERY_TYPE_TIME,
+)
+from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
 from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_DATE,
@@ -29,17 +41,6 @@ from goe.offload.hadoop.hadoop_column import (
 )
 from goe.offload.hadoop.hive_literal import HiveLiteral
 from goe.offload.hadoop.impala_literal import ImpalaLiteral
-from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
-from goe.offload.bigquery.bigquery_column import (
-    BIGQUERY_TYPE_DATE,
-    BIGQUERY_TYPE_DATETIME,
-    BIGQUERY_TYPE_FLOAT64,
-    BIGQUERY_TYPE_INT64,
-    BIGQUERY_TYPE_NUMERIC,
-    BIGQUERY_TYPE_BIGNUMERIC,
-    BIGQUERY_TYPE_STRING,
-    BIGQUERY_TYPE_TIME,
-)
 from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_BIGINT,
     SYNAPSE_TYPE_BINARY,
@@ -66,7 +67,6 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_VARCHAR2,
 )
 from goe.offload.oracle.oracle_literal import OracleLiteral
-from goe.offload.spark.pyspark_literal import PysparkLiteral
 from goe.offload.snowflake.snowflake_column import (
     SNOWFLAKE_TYPE_DATE,
     SNOWFLAKE_TYPE_FLOAT,
@@ -76,6 +76,7 @@ from goe.offload.snowflake.snowflake_column import (
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
 )
 from goe.offload.snowflake.snowflake_literal import SnowflakeLiteral
+from goe.offload.spark.pyspark_literal import PysparkLiteral
 from goe.offload.teradata.teradata_column import (
     TERADATA_TYPE_BIGINT,
     TERADATA_TYPE_BYTE,
@@ -330,9 +331,7 @@ def test_format_bigquery_literal(py_val, data_type, expected_literal):
 )
 def test_format_oracle_literal(py_val, data_type, expected_literal):
     formatted_value = OracleLiteral.format_literal(py_val, data_type)
-    assert formatted_value == expected_literal, "Input value: ({}) {}".format(
-        type(py_val), py_val
-    )
+    assert formatted_value == expected_literal, f"Input value: ({type(py_val)}) {py_val}"
 
 
 @pytest.mark.parametrize(
@@ -454,9 +453,7 @@ def test_format_snowflake_literal(py_val, data_type, expected_literal):
 )
 def test_format_synapse_literal(py_val, data_type, expected_literal):
     formatted_value = SynapseLiteral.format_literal(py_val, data_type)
-    assert formatted_value == expected_literal, "Input value: ({}) {}".format(
-        data_type or type(py_val), py_val
-    )
+    assert formatted_value == expected_literal, f"Input value: ({data_type or type(py_val)}) {py_val}"
 
 
 @pytest.mark.parametrize(
@@ -470,11 +467,11 @@ def test_format_synapse_literal(py_val, data_type, expected_literal):
         ("Hello", TERADATA_TYPE_CLOB, "'Hello'"),
         # Numbers
         (3, TERADATA_TYPE_BYTEINT, "3"),
-        (Decimal("3"), TERADATA_TYPE_BYTEINT, "3"),
+        (Decimal(3), TERADATA_TYPE_BYTEINT, "3"),
         (123, TERADATA_TYPE_SMALLINT, "123"),
         (1234567890, TERADATA_TYPE_INTEGER, "1234567890"),
         (1234567890, TERADATA_TYPE_BIGINT, "1234567890"),
-        (Decimal("1234567890"), TERADATA_TYPE_BIGINT, "1234567890"),
+        (Decimal(1234567890), TERADATA_TYPE_BIGINT, "1234567890"),
         (
             123456789012345678901234567890,
             TERADATA_TYPE_NUMBER,
@@ -549,9 +546,7 @@ def test_format_synapse_literal(py_val, data_type, expected_literal):
 )
 def test_format_teradata_literal(py_val, data_type, expected_literal):
     formatted_value = TeradataLiteral.format_literal(py_val, data_type)
-    assert formatted_value == expected_literal, "Input value: ({}) {}".format(
-        data_type or type(py_val), py_val
-    )
+    assert formatted_value == expected_literal, f"Input value: ({data_type or type(py_val)}) {py_val}"
 
 
 @pytest.mark.parametrize(
@@ -562,7 +557,7 @@ def test_format_teradata_literal(py_val, data_type, expected_literal):
         (None, None, "None"),
         # Numbers
         (3, None, "3"),
-        (Decimal("1234567890"), None, "1234567890"),
+        (Decimal(1234567890), None, "1234567890"),
         (
             123456789012345678901234567890,
             None,
@@ -581,6 +576,4 @@ def test_format_teradata_literal(py_val, data_type, expected_literal):
 )
 def test_format_pysparkl_literal(py_val, data_type, expected_literal):
     formatted_value = PysparkLiteral.format_literal(py_val, data_type)
-    assert formatted_value == expected_literal, "Input value: ({}) {}".format(
-        data_type or type(py_val), py_val
-    )
+    assert formatted_value == expected_literal, f"Input value: ({data_type or type(py_val)}) {py_val}"

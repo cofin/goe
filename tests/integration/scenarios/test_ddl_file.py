@@ -24,7 +24,6 @@ from goe.offload.offload_functions import (
 )
 from goe.orchestration import command_steps
 from goe.util.misc_functions import get_temp_path
-
 from tests.integration.scenarios.assertion_functions import (
     backend_table_exists,
     text_in_messages,
@@ -45,7 +44,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 TEST_TABLE_LFS_1 = "DDL_FILE_DIM_LFS_1"
 TEST_TABLE_LFS_2 = "DDL_FILE_DIM_LFS_2"
@@ -72,23 +70,18 @@ def data_db(schema, config):
 
 def step_assertions(offload_messages):
     """Check that we didn't run Offload steps that come after the DDL file is produced."""
-    assert (
-        command_steps.step_title(command_steps.STEP_DDL_FILE) in offload_messages.steps
-    )
+    assert command_steps.step_title(command_steps.STEP_DDL_FILE) in offload_messages.steps
     # After creating the DDL file Offload should stop, therefore
     # we should never see data staged or loaded.
-    assert (
-        command_steps.step_title(command_steps.STEP_CREATE_TABLE)
-        not in offload_messages.steps
-    ), f"We ran an offload step that shouldn't be run: {command_steps.step_title(command_steps.STEP_CREATE_TABLE)}"
-    assert (
-        command_steps.step_title(command_steps.STEP_STAGING_TRANSPORT)
-        not in offload_messages.steps
-    ), f"We ran an offload step that shouldn't be run: {command_steps.step_title(command_steps.STEP_STAGING_TRANSPORT)}"
-    assert (
-        command_steps.step_title(command_steps.STEP_FINAL_LOAD)
-        not in offload_messages.steps
-    ), f"We ran an offload step that shouldn't be run: {command_steps.step_title(command_steps.STEP_FINAL_LOAD)}"
+    assert command_steps.step_title(command_steps.STEP_CREATE_TABLE) not in offload_messages.steps, (
+        f"We ran an offload step that shouldn't be run: {command_steps.step_title(command_steps.STEP_CREATE_TABLE)}"
+    )
+    assert command_steps.step_title(command_steps.STEP_STAGING_TRANSPORT) not in offload_messages.steps, (
+        f"We ran an offload step that shouldn't be run: {command_steps.step_title(command_steps.STEP_STAGING_TRANSPORT)}"
+    )
+    assert command_steps.step_title(command_steps.STEP_FINAL_LOAD) not in offload_messages.steps, (
+        f"We ran an offload step that shouldn't be run: {command_steps.step_title(command_steps.STEP_FINAL_LOAD)}"
+    )
 
 
 def new_table_ddl_file_tests(
@@ -112,12 +105,10 @@ def new_table_ddl_file_tests(
     }
     offload_messages = run_offload(options, config, messages)
     # When using DDL file no table should be created, even in execute mode.
-    assert not backend_table_exists(
-        config, backend_api, messages, data_db, test_table
-    ), f"Backend table for {schema}.{test_table} should not exist"
-    assert text_in_messages(
-        offload_messages, offload_constants.DDL_FILE_EXECUTE_MESSAGE_TEXT, messages
+    assert not backend_table_exists(config, backend_api, messages, data_db, test_table), (
+        f"Backend table for {schema}.{test_table} should not exist"
     )
+    assert text_in_messages(offload_messages, offload_constants.DDL_FILE_EXECUTE_MESSAGE_TEXT, messages)
     step_assertions(offload_messages)
 
     if dfs_client:
@@ -134,9 +125,9 @@ def new_table_ddl_file_tests(
         "execute": False,
     }
     run_offload(options, config, messages)
-    assert not backend_table_exists(
-        config, backend_api, messages, data_db, test_table
-    ), f"Backend table for {schema}.{test_table} should not exist"
+    assert not backend_table_exists(config, backend_api, messages, data_db, test_table), (
+        f"Backend table for {schema}.{test_table} should not exist"
+    )
     step_assertions(offload_messages)
     # Even in non-execture mode we expect to see a DDL file.
     if dfs_client:
@@ -175,12 +166,10 @@ def exsting_table_ddl_file_tests(
         "execute": True,
     }
     offload_messages = run_offload(options, config, messages)
-    assert backend_table_exists(
-        config, backend_api, messages, data_db, test_table
-    ), f"Backend table for {schema}.{test_table} should exist"
-    assert text_in_messages(
-        offload_messages, offload_constants.DDL_FILE_EXECUTE_MESSAGE_TEXT, messages
+    assert backend_table_exists(config, backend_api, messages, data_db, test_table), (
+        f"Backend table for {schema}.{test_table} should exist"
     )
+    assert text_in_messages(offload_messages, offload_constants.DDL_FILE_EXECUTE_MESSAGE_TEXT, messages)
     step_assertions(offload_messages)
     assert os.path.isfile(ddl_file), f"DDL file has not been created: {ddl_file}"
 
@@ -193,9 +182,9 @@ def exsting_table_ddl_file_tests(
         "execute": False,
     }
     offload_messages = run_offload(options, config, messages)
-    assert backend_table_exists(
-        config, backend_api, messages, data_db, test_table
-    ), f"Backend table for {schema}.{test_table} should exist"
+    assert backend_table_exists(config, backend_api, messages, data_db, test_table), (
+        f"Backend table for {schema}.{test_table} should exist"
+    )
     step_assertions(offload_messages)
     assert os.path.isfile(ddl_file), f"DDL file has not been created: {ddl_file}"
 
@@ -203,9 +192,10 @@ def exsting_table_ddl_file_tests(
 def test_ddl_file_new_table_local_fs(config, schema, data_db):
     """Test requesting a DDL file to local FS for a new table."""
     id = "test_ddl_file_new_table_local_fs"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         test_table = TEST_TABLE_LFS_1
 
@@ -215,26 +205,21 @@ def test_ddl_file_new_table_local_fs(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, test_table
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, test_table
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, test_table),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, test_table),
         )
 
         ddl_file_prefix = get_temp_path(prefix=id)
-        new_table_ddl_file_tests(
-            config, schema, data_db, test_table, ddl_file_prefix, backend_api, messages
-        )
+        new_table_ddl_file_tests(config, schema, data_db, test_table, ddl_file_prefix, backend_api, messages)
 
 
 def test_ddl_file_existing_table_local_fs(config, schema, data_db):
     """Test requesting a DDL file to local FS for a previously offloaded table."""
     id = "test_ddl_file_existing_table_local_fs"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         test_table = TEST_TABLE_LFS_2
 
@@ -244,18 +229,12 @@ def test_ddl_file_existing_table_local_fs(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, test_table
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, test_table
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, test_table),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, test_table),
         )
 
         ddl_file_prefix = get_temp_path(prefix=id)
-        exsting_table_ddl_file_tests(
-            config, schema, data_db, test_table, ddl_file_prefix, backend_api, messages
-        )
+        exsting_table_ddl_file_tests(config, schema, data_db, test_table, ddl_file_prefix, backend_api, messages)
 
 
 def test_ddl_file_new_table_cloud_storage(config, schema, data_db):
@@ -264,9 +243,10 @@ def test_ddl_file_new_table_cloud_storage(config, schema, data_db):
     if not config.offload_fs_container:
         pytest.skip(f"Skipping {id} when OFFLOAD_FS_CONTAINER is empty")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         test_table = TEST_TABLE_CS_1
 
@@ -276,12 +256,8 @@ def test_ddl_file_new_table_cloud_storage(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, test_table
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, test_table
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, test_table),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, test_table),
         )
 
         dfs_client = get_dfs_from_options(config, messages)

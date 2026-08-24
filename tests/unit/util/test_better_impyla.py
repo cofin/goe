@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestBetterImpyla: Unit test library to test functions from better_impyla module.
-    BetterImpyla class is tested via BackendApi therefore this is about standalone routines.
+"""TestBetterImpyla: Unit test library to test functions from better_impyla module.
+BetterImpyla class is tested via BackendApi therefore this is about standalone routines.
 """
+
 from unittest import TestCase, main
+
 from tests.unit.test_functions import optional_hadoop_dependency_exception
 
 try:
@@ -46,15 +48,11 @@ class TestBetterImpyla(TestCase):
             ("18TB", 18 * 1024 * 1024 * 1024 * 1024),
         ]
         for str_size, byte_size in test_tuples:
-            self.assertEqual(
-                from_impala_size(str_size), byte_size, f"Input: {str_size}"
-            )
+            self.assertEqual(from_impala_size(str_size), byte_size, f"Input: {str_size}")
         for bad_input in [None, ""]:
             self.assertRaises(AssertionError, lambda: from_impala_size(bad_input))
         for bad_input in ["0", "12345"]:
-            self.assertRaises(
-                BetterImpylaException, lambda: from_impala_size(bad_input)
-            )
+            self.assertRaises(BetterImpylaException, lambda: from_impala_size(bad_input))
 
 
 if __name__ == "__main__":

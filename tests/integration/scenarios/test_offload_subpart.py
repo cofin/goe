@@ -20,17 +20,16 @@ from goe.offload.offload_functions import (
     data_db_name,
 )
 from goe.offload.offload_metadata_functions import (
+    INCREMENTAL_PREDICATE_TYPE_LIST,
     OFFLOAD_TYPE_FULL,
     OFFLOAD_TYPE_INCREMENTAL,
-    INCREMENTAL_PREDICATE_TYPE_LIST,
 )
 from goe.offload.oracle.oracle_column import ORACLE_TYPE_NUMBER
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
-from tests.integration.scenarios.assertion_functions import sales_based_fact_assertion
 from tests.integration.scenarios import scenario_constants
+from tests.integration.scenarios.assertion_functions import sales_based_fact_assertion
 from tests.integration.scenarios.scenario_runner import (
     run_offload,
     run_setup,
@@ -47,7 +46,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 FACT_RANGE_RANGE = "STORY_SP_RR"
 FACT_LIST_RANGE_R = "STORY_SP_LR_R"
@@ -74,13 +72,12 @@ def data_db(schema, config):
 
 def test_offload_subpart_lr_range(config, schema, data_db):
     id = "test_offload_subpart_lr_range"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -92,9 +89,7 @@ def test_offload_subpart_lr_range(config, schema, data_db):
                 schema,
                 FACT_LIST_RANGE_R,
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, FACT_LIST_RANGE_R
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, FACT_LIST_RANGE_R),
         )
 
         # Initial Offload of Range Subpartitioned Fact.
@@ -152,9 +147,7 @@ def test_offload_subpart_lr_range(config, schema, data_db):
             "older_than_date": test_constants.SALES_BASED_FACT_HV_3,
             "execute": True,
         }
-        run_offload(
-            options, config, messages, expected_exception_string="common boundary"
-        )
+        run_offload(options, config, messages, expected_exception_string="common boundary")
 
         # This test chooses the final HWM in the table and therefore should throw an exception.
         options = {
@@ -162,9 +155,7 @@ def test_offload_subpart_lr_range(config, schema, data_db):
             "older_than_date": test_constants.SALES_BASED_FACT_HV_6,
             "execute": True,
         }
-        run_offload(
-            options, config, messages, expected_exception_string="--offload-type=FULL"
-        )
+        run_offload(options, config, messages, expected_exception_string="--offload-type=FULL")
 
         # Offload type FULL of subpartitioned fact.
         options = {
@@ -205,13 +196,12 @@ def test_offload_subpart_lr_range(config, schema, data_db):
 
 def test_offload_subpart_lr_list(config, schema, data_db):
     id = "test_offload_subpart_lr_list"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -223,9 +213,7 @@ def test_offload_subpart_lr_list(config, schema, data_db):
                 schema,
                 FACT_LIST_RANGE_L,
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, FACT_LIST_RANGE_L
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, FACT_LIST_RANGE_L),
         )
 
         # Initial LPA Offload of Same List/Range Fact.
@@ -253,7 +241,6 @@ def test_offload_subpart_lr_list(config, schema, data_db):
             incremental_predicate_type=INCREMENTAL_PREDICATE_TYPE_LIST,
         )
 
-        #
         options = {
             "owner_table": schema + "." + FACT_LIST_RANGE_L,
             "equal_to_values": ["3"],
@@ -278,13 +265,12 @@ def test_offload_subpart_lr_list(config, schema, data_db):
 
 def test_offload_subpart_range_range(config, schema, data_db):
     id = "test_offload_subpart_range_range"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -297,9 +283,7 @@ def test_offload_subpart_range_range(config, schema, data_db):
                 FACT_RANGE_RANGE,
                 top_level="RANGE",
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, FACT_RANGE_RANGE
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, FACT_RANGE_RANGE),
         )
 
         # Offload a RANGE/RANGE NUMBER/DATE table, will offload at top level RANGE.
@@ -356,13 +340,12 @@ def test_offload_subpart_range_range(config, schema, data_db):
 
 def test_offload_subpart_hash_range(config, schema, data_db):
     id = "test_offload_subpart_hash_range"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -375,9 +358,7 @@ def test_offload_subpart_hash_range(config, schema, data_db):
                 FACT_HASH_RANGE,
                 top_level="HASH",
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, FACT_HASH_RANGE
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, FACT_HASH_RANGE),
         )
 
         # Offloads from a HASH/RANGE subpartitioned fact table.

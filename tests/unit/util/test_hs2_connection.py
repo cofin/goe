@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestHs2Connection: Unit test library to test functions from hs2_connection module.
-"""
-from argparse import Namespace
+"""TestHs2Connection: Unit test library to test functions from hs2_connection module."""
+
 import os
+from argparse import Namespace
 from unittest import TestCase, main, mock
+
 from tests.unit.test_functions import (
     FAKE_ORACLE_HIVE_ENV,
     optional_hadoop_dependency_exception,

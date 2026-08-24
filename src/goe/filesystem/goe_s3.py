@@ -14,26 +14,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" GOES3: S3 implementation of GOEDfs
-"""
+"""GOES3: S3 implementation of GOEDfs"""
 
 import logging
-from os.path import basename, exists as file_exists
+from os.path import basename
+from os.path import exists as file_exists
 
 import boto3
 from botocore.exceptions import ClientError
 from google.api_core import retry
 
 from goe.filesystem.goe_dfs import (
-    GOEDfs,
-    GOEDfsDeleteNotComplete,
-    GOEDfsException,
-    gen_fs_uri,
     DFS_RETRY_TIMEOUT,
     DFS_TYPE_DIRECTORY,
     DFS_TYPE_FILE,
     GOE_DFS_S3,
     URI_SEP,
+    GOEDfs,
+    GOEDfsDeleteNotComplete,
+    GOEDfsException,
+    gen_fs_uri,
 )
 
 ###############################################################################
@@ -65,16 +65,12 @@ class GOES3(GOEDfs):
     do_not_connect: Do not even connect, used for unit testing.
     """
 
-    def __init__(
-        self, messages, dry_run=False, do_not_connect=False, db_path_suffix=None
-    ):
+    def __init__(self, messages, dry_run=False, do_not_connect=False, db_path_suffix=None):
         assert messages
 
         logger.info("Client setup: GOES3")
 
-        super(GOES3, self).__init__(
-            messages, dry_run=dry_run, do_not_connect=do_not_connect
-        )
+        super().__init__(messages, dry_run=dry_run, do_not_connect=do_not_connect)
 
         if do_not_connect:
             self._client = None
@@ -109,10 +105,7 @@ class GOES3(GOEDfs):
         def get_paginator(recursive):
             if recursive:
                 return paginator.paginate(Bucket=container, Prefix=path)
-            else:
-                return paginator.paginate(
-                    Bucket=container, Prefix=path, Delimiter=URI_SEP
-                )
+            return paginator.paginate(Bucket=container, Prefix=path, Delimiter=URI_SEP)
 
         logger.info("_list_by_prefix(%s, %s)" % (container, path))
         matched_entries = {}
@@ -159,8 +152,7 @@ class GOES3(GOEDfs):
             error_code = int(e.response["Error"]["Code"])
             if error_code in [403, 404]:
                 return False
-            else:
-                raise
+            raise
 
     def copy_from_local(self, local_path, dfs_path, overwrite=False):
         assert local_path
@@ -170,15 +162,10 @@ class GOES3(GOEDfs):
         logger.info("copy_from_local(%s, %s)" % (local_path, dfs_path))
         scheme, container, path = self._uri_component_split(dfs_path)
         target_path = (path + basename(local_path)) if path.endswith(URI_SEP) else path
-        self.debug(
-            "Copying to target scheme/container/path: %s"
-            % str([scheme, container, target_path])
-        )
+        self.debug("Copying to target scheme/container/path: %s" % str([scheme, container, target_path]))
         if not self._dry_run:
             if self._blob_exists(container, target_path) and not overwrite:
-                raise GOEDfsException(
-                    "Cannot copy file over existing file: %s" % target_path
-                )
+                raise GOEDfsException("Cannot copy file over existing file: %s" % target_path)
             s3_bucket = self._client.Bucket(container)
             s3_bucket.upload_file(Filename=local_path, Key=target_path)
 
@@ -189,14 +176,10 @@ class GOES3(GOEDfs):
         assert isinstance(local_path, str)
         logger.info("copy_to_local(%s, %s)" % (dfs_path, local_path))
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Copying from scheme/container/path: %s" % str([scheme, container, path])
-        )
+        self.debug("Copying from scheme/container/path: %s" % str([scheme, container, path]))
         if not self._dry_run:
             if file_exists(local_path) and not overwrite:
-                raise GOEDfsException(
-                    "Cannot copy file over existing file: %s" % local_path
-                )
+                raise GOEDfsException("Cannot copy file over existing file: %s" % local_path)
             s3_bucket = self._client.Bucket(container)
             s3_bucket.download_file(Key=path, Filename=local_path)
 
@@ -229,18 +212,12 @@ class GOES3(GOEDfs):
                 return None
             delete_request = [{"Key": _} for _ in list(objects.keys())]
             s3_bucket = self._client.Bucket(container)
-            delete_response = s3_bucket.delete_objects(
-                Delete={"Objects": delete_request}
-            )
+            delete_response = s3_bucket.delete_objects(Delete={"Objects": delete_request})
             if delete_response and delete_response.get("Errors"):
                 # There were failures
-                self.debug(
-                    "Object delete errors: %s" % str(delete_response.get("Errors"))
-                )
+                self.debug("Object delete errors: %s" % str(delete_response.get("Errors")))
                 problem_keys = [_["Key"] for _ in delete_response.get("Errors")]
-                raise GOEDfsException(
-                    "Errors deleting following objects from S3: %s" % str(problem_keys)
-                )
+                raise GOEDfsException("Errors deleting following objects from S3: %s" % str(problem_keys))
             self._post_cloud_delete_wait(scheme)
             if self._list_by_prefix(container, path, recursive=True):
                 self.debug("S3 delete incomplete, retrying")
@@ -275,31 +252,23 @@ class GOES3(GOEDfs):
         scheme, container, path = self._uri_component_split(dfs_path)
         if path and not path.endswith(URI_SEP):
             path += URI_SEP
-        self.debug(
-            "Listing contents of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Listing contents of scheme/container/path: %s" % str([scheme, container, path]))
         objects = self._list_by_prefix(container, path)
         if objects:
             self.debug("Matched objects: %s" % len(objects))
             # We need to prefix the scheme & bucket back on the front of results
             return [self.gen_uri(scheme, container, _) for _ in list(objects.keys())]
-        else:
-            return None
+        return None
 
     def mkdir(self, dfs_path):
         """No mkdir on S3"""
-        pass
 
     def read(self, dfs_path, as_str=False):
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("read(%s)" % dfs_path)
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Downloading contents of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Downloading contents of scheme/container/path: %s" % str([scheme, container, path]))
         if self._dry_run:
             return None
         try:
@@ -329,10 +298,7 @@ class GOES3(GOEDfs):
         if not self._client:
             return None
 
-        self.debug(
-            "Checking status of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Checking status of scheme/container/path: %s" % str([scheme, container, path]))
 
         # We don't want a trailing '/' which would send us down a path level
         path = path.rstrip(URI_SEP)
@@ -340,23 +306,19 @@ class GOES3(GOEDfs):
         matches = self._list_by_prefix(container, path)
         if path in matches:
             return matches[path]
-        elif path + URI_SEP in matches:
+        if path + URI_SEP in matches:
             return matches[path + URI_SEP]
-        else:
-            self.debug("Could not find path in %s matched files" % len(matches))
-            return None
+        self.debug("Could not find path in %s matched files" % len(matches))
+        return None
 
     def write(self, dfs_path, data, overwrite=False):
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("write(%s)" % dfs_path)
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Writing contents of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Writing contents of scheme/container/path: %s" % str([scheme, container, path]))
         if self._dry_run:
-            return None
+            return
         if self._blob_exists(container, path) and not overwrite:
             raise GOEDfsException("Cannot write over existing file: %s" % path)
         s3_bucket = self._client.Bucket(container)

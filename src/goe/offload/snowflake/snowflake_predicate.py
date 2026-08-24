@@ -14,10 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-    Offload predicate specialisations for Snowflake SQL dialect.
+"""Offload predicate specialisations for Snowflake SQL dialect.
 
-    Includes transformer for inserting synthetic partition predicates.
+Includes transformer for inserting synthetic partition predicates.
 """
 
 import numpy as np
@@ -28,21 +27,13 @@ from goe.offload.snowflake.snowflake_literal import SnowflakeLiteral
 
 def predicate_to_template(backend_columns):
     generic_to_typed = predicate_offload.GenericPredicateToTyped(backend_columns)
-    insert_synthetic_partition_clauses = (
-        predicate_offload.InsertSyntheticPartitionClauses(backend_columns)
-    )
-    return (
-        generic_to_typed
-        * insert_synthetic_partition_clauses
-        * TypedPredicateToSnowflakeTemplate()
-    )
+    insert_synthetic_partition_clauses = predicate_offload.InsertSyntheticPartitionClauses(backend_columns)
+    return generic_to_typed * insert_synthetic_partition_clauses * TypedPredicateToSnowflakeTemplate()
 
 
 def predicate_to_where_clause(backend_columns, predicate):
     with predicate_offload.handle_parse_errors():
-        to_literal_ast = (
-            predicate_to_template(backend_columns) * TypedPredicateToSnowflakeLiterals()
-        )
+        to_literal_ast = predicate_to_template(backend_columns) * TypedPredicateToSnowflakeLiterals()
         to_sql = GenericPredicateToSnowflakeSQL()
         return (to_literal_ast * to_sql).transform(predicate.ast)
 

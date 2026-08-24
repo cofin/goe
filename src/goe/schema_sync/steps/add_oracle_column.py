@@ -17,6 +17,7 @@ import traceback
 from goe.goe import log
 from goe.util.misc_functions import double_quote_sandwich
 from goe.util.ora_query import get_oracle_connection
+
 from .. import schema_sync_constants
 from ..schema_sync_step import SchemaSyncStep
 
@@ -24,13 +25,9 @@ normal, verbose, vverbose = list(range(3))
 
 
 class AddOracleColumn(SchemaSyncStep):
-    def __init__(
-        self, options, orchestration_options, messages, execution_id, repo_client
-    ):
+    def __init__(self, options, orchestration_options, messages, execution_id, repo_client):
         if not orchestration_options.db_type == "oracle":
-            raise NotImplementedError(
-                'Database type "%s" not supported' % orchestration_options.db_type
-            )
+            raise NotImplementedError('Database type "%s" not supported' % orchestration_options.db_type)
 
         super().__init__(
             schema_sync_constants.ADD_ORACLE_COLUMN,
@@ -55,8 +52,7 @@ class AddOracleColumn(SchemaSyncStep):
         )
 
         new_rdbms_cols = [
-            "%s %s" % (double_quote_sandwich(_.name), _.format_data_type())
-            for _ in run_params["columns"]
+            "%s %s" % (double_quote_sandwich(_.name), _.format_data_type()) for _ in run_params["columns"]
         ]
         sql = "ALTER TABLE %s.%s ADD (%s)" % (
             double_quote_sandwich(rdbms_owner),
@@ -80,7 +76,7 @@ class AddOracleColumn(SchemaSyncStep):
 
             return None, [sql]
 
-        except Exception as exc:
+        except Exception:
             source_name = "%s.%s" % (
                 double_quote_sandwich(rdbms_owner),
                 double_quote_sandwich(rdbms_table_name),
@@ -94,8 +90,7 @@ class AddOracleColumn(SchemaSyncStep):
                 verbose,
             )
             self._messages.warning(
-                "%s for table %s"
-                % (schema_sync_constants.EXCEPTION_ADD_ORACLE_COLUMN, source_name),
+                "%s for table %s" % (schema_sync_constants.EXCEPTION_ADD_ORACLE_COLUMN, source_name),
                 ansi_code="red",
             )
             return schema_sync_constants.EXCEPTION_ADD_ORACLE_COLUMN, [sql]

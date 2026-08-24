@@ -14,13 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Library of functions to support offload and present column transformations
-    Initially used to move functions out of goe.py to make them sharable, in the future this may evolve
-    to be a class
+"""Library of functions to support offload and present column transformations
+Initially used to move functions out of goe.py to make them sharable, in the future this may evolve
+to be a class
 """
 
 from goe.offload.column_metadata import ColumnMetadataInterface
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.offload_messages import VVERBOSE
 
 TRANSFORMATION_ACTION_OFFLOAD = "offload"
 TRANSFORMATION_ACTION_PRESENT = "present"
@@ -57,32 +57,22 @@ def apply_transformation(column_transformations, column, db_api, messages):
             )
             return None
         elif col_trans["transformation"] == "translate":
-            return_expr = db_api.transform_translate_expression(
-                column, col_trans["params"][0], col_trans["params"][1]
-            )
+            return_expr = db_api.transform_translate_expression(column, col_trans["params"][0], col_trans["params"][1])
         elif col_trans["transformation"] == "regexp_replace":
             return_expr = db_api.transform_regexp_replace_expression(
                 column, col_trans["params"][0], col_trans["params"][1]
             )
         elif col_trans["transformation"] == "encrypt":
-            raise NotImplementedError(
-                "Encryption transformation is not supported in this version"
-            )
+            raise NotImplementedError("Encryption transformation is not supported in this version")
         elif col_trans["transformation"] == "tokenize":
-            raise NotImplementedError(
-                "Tokenization transformation is not supported in this version"
-            )
+            raise NotImplementedError("Tokenization transformation is not supported in this version")
         else:
-            messages.notice(
-                "Ignoring unimplemented transformation: %s"
-                % col_trans["transformation"]
-            )
+            messages.notice("Ignoring unimplemented transformation: %s" % col_trans["transformation"])
 
     if return_expr:
         messages.log("Transformation applied: %s" % str(return_expr), detail=VVERBOSE)
         return return_expr
-    else:
-        return db_api.enclose_identifier(column.name)
+    return db_api.enclose_identifier(column.name)
 
 
 def transformations_to_metadata(column_transformations):
@@ -97,4 +87,4 @@ def transformations_to_metadata(column_transformations):
         else:
             xform = "%s" % column_transformations[colname]["transformation"]
         xform_dict[colname.upper()] = xform
-    return xform_dict if xform_dict else None
+    return xform_dict or None

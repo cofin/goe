@@ -14,19 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" GOEDfs: Backend storage (e.g. HDFS) interaction library.
-"""
+"""GOEDfs: Backend storage (e.g. HDFS) interaction library."""
 
-from abc import ABCMeta, abstractmethod, abstractproperty
 import logging
 import os
 import time
+from abc import ABCMeta, abstractmethod, abstractproperty
 from urllib.parse import urlparse
 
-from google.api_core import retry, exceptions as google_exceptions
+from google.api_core import exceptions as google_exceptions
+from google.api_core import retry
 
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-
 
 ###############################################################################
 # EXCEPTIONS
@@ -103,14 +102,10 @@ OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER = [
     OFFLOAD_FS_SCHEME_ABFSS,
 ]
 OFFLOAD_NON_HDFS_FS_SCHEMES = [
-    _
-    for _ in VALID_OFFLOAD_FS_SCHEMES
-    if _ not in (OFFLOAD_FS_SCHEME_INHERIT, OFFLOAD_FS_SCHEME_HDFS)
+    _ for _ in VALID_OFFLOAD_FS_SCHEMES if _ not in (OFFLOAD_FS_SCHEME_INHERIT, OFFLOAD_FS_SCHEME_HDFS)
 ]
 OFFLOAD_WEBHDFS_COMPATIBLE_FS_SCHEMES = [
-    _
-    for _ in VALID_OFFLOAD_FS_SCHEMES
-    if _ in (OFFLOAD_FS_SCHEME_INHERIT, OFFLOAD_FS_SCHEME_HDFS)
+    _ for _ in VALID_OFFLOAD_FS_SCHEMES if _ in (OFFLOAD_FS_SCHEME_INHERIT, OFFLOAD_FS_SCHEME_HDFS)
 ]
 AZURE_OFFLOAD_FS_SCHEMES = [
     OFFLOAD_FS_SCHEME_WASB,
@@ -142,17 +137,14 @@ def uri_component_split(uri):
     parsed = urlparse(uri, allow_fragments=False)
     scheme = parsed.scheme.lower()
     if scheme and scheme not in VALID_OFFLOAD_FS_SCHEMES:
-        raise GOEDfsException(
-            "%s: %s" % (UNSUPPORTED_URI_SCHEME_EXCEPTION_TEXT, scheme)
-        )
-    else:
-        container = parsed.netloc
-        path = parsed.path
+        raise GOEDfsException("%s: %s" % (UNSUPPORTED_URI_SCHEME_EXCEPTION_TEXT, scheme))
+    container = parsed.netloc
+    path = parsed.path
     return scheme, container, path
 
 
 def get_scheme_from_location_uri(dfs_path):
-    """get the scheme from a uri. only return values we understand how to deal with"""
+    """Get the scheme from a uri. only return values we understand how to deal with"""
     scheme = dfs_path.split(":")[0]
     if not scheme or scheme[0] == "/":
         return OFFLOAD_FS_SCHEME_HDFS
@@ -195,22 +187,16 @@ def gen_fs_uri(
     container_str = container or ""
 
     if backend_db and table_name:
-        final_path = os.path.join(
-            path_prefix.strip(URI_SEP), backend_db + (db_path_suffix or ""), table_name
-        )
+        final_path = os.path.join(path_prefix.strip(URI_SEP), backend_db + (db_path_suffix or ""), table_name)
     elif backend_db:
-        final_path = os.path.join(
-            path_prefix.strip(URI_SEP), backend_db + (db_path_suffix or "")
-        )
+        final_path = os.path.join(path_prefix.strip(URI_SEP), backend_db + (db_path_suffix or ""))
     else:
         final_path = path_prefix.strip(URI_SEP)
 
     return scheme_str + container_str + URI_SEP + final_path
 
 
-def gen_load_uri_from_options(
-    offload_options, hadoop_db=None, table_name=None, scheme_override=None
-) -> str:
+def gen_load_uri_from_options(offload_options, hadoop_db=None, table_name=None, scheme_override=None) -> str:
     """Returns a Hadoop file URI based on options config."""
     uri = gen_fs_uri(
         offload_options.hdfs_load,
@@ -235,7 +221,7 @@ logger.addHandler(logging.NullHandler())
 ###############################################################################
 
 
-class GOEDfs(object, metaclass=ABCMeta):
+class GOEDfs(metaclass=ABCMeta):
     def __init__(self, messages, dry_run=False, do_not_connect=False):
         self._messages = messages
         self._dry_run = dry_run
@@ -373,9 +359,7 @@ class GOEDfs(object, metaclass=ABCMeta):
         """
         logger.info("get_perms(%s)" % dfs_path)
         stats = self.stat(dfs_path)
-        logger.debug(
-            "get_perms() returning: %s" % stats["permission"] if stats else stats
-        )
+        logger.debug("get_perms() returning: %s" % stats["permission"] if stats else stats)
         return stats["permission"] if stats else stats
 
     def convert_rwx_perms_to_oct_str(self, perm_string):
@@ -392,14 +376,7 @@ class GOEDfs(object, metaclass=ABCMeta):
         logger.debug("Trimmed string to %s" % perm_string)
         # Sum up the octal value of each set of 3 perm characters
         for i in range(3):
-            oct_str += str(
-                sum(
-                    [
-                        perm_values.get(char, 0)
-                        for char in list(perm_string[i * 3 : i * 3 + 3])
-                    ]
-                )
-            )
+            oct_str += str(sum([perm_values.get(char, 0) for char in list(perm_string[i * 3 : i * 3 + 3])]))
         logger.debug("Returning %s" % oct_str)
         return oct_str
 
@@ -408,9 +385,7 @@ class GOEDfs(object, metaclass=ABCMeta):
         return any(_ for _ in concerning_chars if _ in command_string)
 
     @retry.Retry(
-        predicate=retry.if_exception_type(
-            GOEDfsFilesNotVisible, google_exceptions.ServiceUnavailable
-        ),
+        predicate=retry.if_exception_type(GOEDfsFilesNotVisible, google_exceptions.ServiceUnavailable),
         deadline=DFS_RETRY_TIMEOUT,
     )
     def list_dir_and_wait_for_contents(self, dfs_path):

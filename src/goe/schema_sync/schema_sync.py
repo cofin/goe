@@ -16,14 +16,14 @@
 from typing import TYPE_CHECKING
 
 from goe.goe import get_common_options, log
-from goe.schema_sync.schema_sync_analyzer import SchemaSyncAnalyzer
-from goe.schema_sync.schema_sync_processor import SchemaSyncProcessor
-from goe.schema_sync.schema_sync_command_file import SchemaSyncCommandFile
 from goe.orchestration import command_steps
 from goe.orchestration.orchestration_lock import (
     OrchestrationLockTimeout,
     orchestration_lock_for_table,
 )
+from goe.schema_sync.schema_sync_analyzer import SchemaSyncAnalyzer
+from goe.schema_sync.schema_sync_command_file import SchemaSyncCommandFile
+from goe.schema_sync.schema_sync_processor import SchemaSyncProcessor
 from goe.util.misc_functions import double_quote_sandwich
 
 if TYPE_CHECKING:
@@ -90,14 +90,14 @@ def schema_sync(
     def display_exceptions(exceptions):
         column_header = "=" * 70
         log("%-70s %-70s" % ("Table", "Exception"))
-        log("{0:70s} {0:70s}".format(column_header))
+        log(f"{column_header:70s} {column_header:70s}")
 
         for table, exception in exceptions:
             source_table = "%s.%s" % (
                 double_quote_sandwich(table["offloaded_owner"]),
                 double_quote_sandwich(table["offloaded_table"]),
             )
-            log("{0:70s} {1:70s}".format(source_table, exception))
+            log(f"{source_table:70s} {exception:70s}")
 
     tables_in_scope = messages.offload_step(
         command_steps.STEP_NORMALIZE_INCLUDES,
@@ -116,15 +116,11 @@ def schema_sync(
                 table_changes["offloaded_table"],
             )
             try:
-                with orchestration_lock_for_table(
-                    table_owner, table_name, dry_run=bool(not options.execute)
-                ):
+                with orchestration_lock_for_table(table_owner, table_name, dry_run=bool(not options.execute)):
                     log("Changes detected")
                     step_status, _ = messages.offload_step(
                         command_steps.STEP_PROCESS_TABLE_CHANGES,
-                        lambda: schema_processor.process_changes(
-                            table_owner, table_name, table_changes, cmd_file
-                        ),
+                        lambda: schema_processor.process_changes(table_owner, table_name, table_changes, cmd_file),
                         execute=options.execute,
                     )
                     if step_status:
@@ -149,15 +145,10 @@ def schema_sync(
             messages.notice('Command file written to "%s"' % options.command_file)
         else:
             cmd_file.remove()
-            messages.notice(
-                'Command file "%s" not created (no commands to log)'
-                % options.command_file
-            )
+            messages.notice('Command file "%s" not created (no commands to log)' % options.command_file)
 
     if messages.get_messages():
-        messages.offload_step(
-            command_steps.STEP_MESSAGES, messages.log_messages, execute=options.execute
-        )
+        messages.offload_step(command_steps.STEP_MESSAGES, messages.log_messages, execute=options.execute)
 
     if exceptions:
         messages.offload_step(
@@ -166,5 +157,4 @@ def schema_sync(
             execute=options.execute,
         )
         return 1
-    else:
-        return 0
+    return 0

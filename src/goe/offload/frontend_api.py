@@ -76,9 +76,9 @@ GET_DDL_TYPE_VIEW = "VIEW"
 def extract_connection_details_from_dsn(rdbms_dsn):
     """Take a rdbms_dsn of the form: <server>:<port>;database=<database> and return server, port and database"""
     assert rdbms_dsn
-    assert 0 not in [
-        _ in rdbms_dsn for _ in [":", ";", "="]
-    ], "rdbms_dsn must be of the form: <server>:<port>;database=<database>"
+    assert 0 not in [_ in rdbms_dsn for _ in [":", ";", "="]], (
+        "rdbms_dsn must be of the form: <server>:<port>;database=<database>"
+    )
     server, port = rdbms_dsn.split(";")[0].split(":")
     database = rdbms_dsn.split(";")[1].split("=")[1]
     return server, port, database
@@ -274,23 +274,18 @@ class FrontendApiInterface(metaclass=ABCMeta):
     def _create_table_columns_clause_common(self, column_list):
         """Trivial helper for SQL text consistency"""
         return "    \n,   ".join(
-            [
-                "%-32s %-20s" % (self.enclose_identifier(_.name), _.format_data_type())
-                for _ in column_list
-            ]
+            ["%-32s %-20s" % (self.enclose_identifier(_.name), _.format_data_type()) for _ in column_list]
         )
 
     def _cursor_projection(self, cursor) -> list:
-        """
-        Returns a list of strings describing the projection of a cursor.
+        """Returns a list of strings describing the projection of a cursor.
         Names are coerced to lower case to give a standard output across different frontend systems.
         This should be called after the query has been executed.
         """
         return [_[0].lower() for _ in cursor.description]
 
     def _cursor_row_to_dict(self, cursor_projection, row) -> dict:
-        """
-        Trivial function combining typical tuple/list row format with results of _cursor_projection() to
+        """Trivial function combining typical tuple/list row format with results of _cursor_projection() to
         generate a row dict.
         """
         return dict(zip(cursor_projection, row))
@@ -310,8 +305,7 @@ class FrontendApiInterface(metaclass=ABCMeta):
             for qp in query_params:
                 param_values.append(qp.param_value)
             return param_values
-        else:
-            return query_params
+        return query_params
 
     def _upper_or_empty(self, s):
         return (s or "").upper()
@@ -326,15 +320,12 @@ class FrontendApiInterface(metaclass=ABCMeta):
 
     @abstractmethod
     def agg_validate_sample_column_names(self, num_required: int = 5) -> list:
-        """
-        Return a list of column names suitable for aggreage validation.
+        """Return a list of column names suitable for aggreage validation.
         Mandatory first, last columns + top (num_required) "high cardinality" columns.
         """
 
     @abstractmethod
-    def create_new_connection(
-        self, user_name, user_password, trace_action_override=None
-    ):
+    def create_new_connection(self, user_name, user_password, trace_action_override=None):
         """Creates a new low level client connection with an alternative username and password.
         This is primarily used when testing but is included in this class in order to keep connection
         specifics in a single place.
@@ -412,9 +403,7 @@ class FrontendApiInterface(metaclass=ABCMeta):
         """Return the unique name for the frontend database"""
 
     @abstractmethod
-    def get_distinct_column_values(
-        self, schema, table_name, column_names, partition_name=None, order_results=False
-    ):
+    def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
         """Run SQL to get distinct values for a list of columns.
         column_names accepts a list of names or a single name.
         """
@@ -560,9 +549,7 @@ class FrontendApiInterface(metaclass=ABCMeta):
         assert schema
         assert table_name
         assert column_list
-        assert valid_column_list(column_list), (
-            "Incorrectly formed column_list: %s" % column_list
-        )
+        assert valid_column_list(column_list), "Incorrectly formed column_list: %s" % column_list
         if partition_column_names:
             assert isinstance(partition_column_names, list)
             assert isinstance(partition_column_names[0], str)
@@ -587,13 +574,9 @@ class FrontendApiInterface(metaclass=ABCMeta):
         a frontend that uses something like BigQuery, e.g. `ownerobject`, then the frontend implementation will
         need to override this method.
         """
-        return ".".join(
-            [self.enclose_identifier(schema), self.enclose_identifier(object_name)]
-        )
+        return ".".join([self.enclose_identifier(schema), self.enclose_identifier(object_name)])
 
-    def execute_ddl(
-        self, sql, query_options=None, log_level=VERBOSE, trace_action=None
-    ) -> list:
+    def execute_ddl(self, sql, query_options=None, log_level=VERBOSE, trace_action=None) -> list:
         """Simple wrapper over _execute_ddl_or_dml() to ensure we always get a return value"""
         return_sqls = self._execute_ddl_or_dml(
             sql,
@@ -774,14 +757,13 @@ class FrontendApiInterface(metaclass=ABCMeta):
     def get_table_default_parallelism(self, schema, table_name):
         """Return the table level default parallelism. Oracle has an override for this."""
         # Assume no table level default unless an implementation overrides.
-        return None
+        return
 
     def goe_db_component_version(self):
         """Return version of any in-database GOE code"""
         if self.goe_has_db_code_component():
             return self._goe_db_component_version()
-        else:
-            return None
+        return None
 
     def get_column(self, schema, table_name, column_name):
         """Get a single column from get_columns()"""
@@ -792,19 +774,13 @@ class FrontendApiInterface(metaclass=ABCMeta):
 
     def get_partition_column_names(self, schema, table_name, conv_fn=None):
         """Some backends may override this to avoid double call on get_columns()"""
-        return get_column_names(
-            self.get_partition_columns(schema, table_name), conv_fn=conv_fn
-        )
+        return get_column_names(self.get_partition_columns(schema, table_name), conv_fn=conv_fn)
 
     def get_subpartition_column_names(self, schema, table_name, conv_fn=None):
         """Some backends may override this to avoid double call on get_columns()"""
-        return get_column_names(
-            self.get_partition_columns(schema, table_name), conv_fn=conv_fn
-        )
+        return get_column_names(self.get_partition_columns(schema, table_name), conv_fn=conv_fn)
 
-    def get_table_ddl(
-        self, schema, table_name, as_list=False, terminate_sql=False, remap_schema=None
-    ):
+    def get_table_ddl(self, schema, table_name, as_list=False, terminate_sql=False, remap_schema=None):
         """Return CREATE TABLE DDL as a string (or a list of strings split on CR if as_list=True)
         terminate_sql: Adds any executing character to the end of the SQL (e.g. a semi-colon)
         remap_schema: Replaces the actual schema (schema) with a different name (remap_schema)
@@ -823,9 +799,7 @@ class FrontendApiInterface(metaclass=ABCMeta):
     ###########################################################################
 
     def is_capability_supported(self, capability_constant) -> bool:
-        assert capability_constant in self._frontend_capabilities(), (
-            "Unknown capability: %s" % capability_constant
-        )
+        assert capability_constant in self._frontend_capabilities(), "Unknown capability: %s" % capability_constant
         return self._frontend_capabilities()[capability_constant]
 
     def canonical_date_supported(self) -> bool:

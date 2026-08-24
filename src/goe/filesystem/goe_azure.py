@@ -14,11 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" GOEAzure: Azure implementation of GOEDfs
-"""
+"""GOEAzure: Azure implementation of GOEDfs"""
 
 import logging
-from os.path import basename, exists as file_exists
+from os.path import basename
+from os.path import exists as file_exists
 
 from azure.common import AzureMissingResourceHttpError
 from azure.core.exceptions import HttpResponseError
@@ -26,20 +26,19 @@ from azure.storage.blob import BlobServiceClient
 from google.api_core import retry
 
 from goe.filesystem.goe_dfs import (
+    DFS_RETRY_TIMEOUT,
+    DFS_TYPE_DIRECTORY,
+    DFS_TYPE_FILE,
+    GOE_DFS_AZURE,
+    OFFLOAD_FS_SCHEME_ABFS,
+    OFFLOAD_FS_SCHEME_ABFSS,
+    URI_SEP,
     GOEDfs,
     GOEDfsDeleteNotComplete,
     GOEDfsException,
     gen_fs_uri,
     uri_component_split,
-    OFFLOAD_FS_SCHEME_ABFS,
-    OFFLOAD_FS_SCHEME_ABFSS,
-    DFS_RETRY_TIMEOUT,
-    DFS_TYPE_DIRECTORY,
-    DFS_TYPE_FILE,
-    GOE_DFS_AZURE,
-    URI_SEP,
 )
-
 
 ###############################################################################
 # EXCEPTIONS
@@ -59,9 +58,7 @@ class GOEAzureTryAgainException(Exception):
 ###############################################################################
 
 
-def azure_fq_container_name(
-    azure_account_name, azure_account_domain, container, account_in_path=False
-):
+def azure_fq_container_name(azure_account_name, azure_account_domain, container, account_in_path=False):
     """Returns a fully qualified Azure container name based on options, e.g. container@account.domain.
     account_in_path is an override giving the format: account.domain/container
     """
@@ -118,9 +115,7 @@ class GOEAzure(GOEDfs):
 
         logger.info("Client setup: GOEAzure")
 
-        super(GOEAzure, self).__init__(
-            messages, dry_run=dry_run, do_not_connect=do_not_connect
-        )
+        super().__init__(messages, dry_run=dry_run, do_not_connect=do_not_connect)
 
         if azure_account_domain and not azure_account_domain.startswith("."):
             azure_account_domain = "." + azure_account_domain
@@ -128,10 +123,8 @@ class GOEAzure(GOEDfs):
         if do_not_connect:
             self._client = None
         else:
-            azure_url = "https://{}{}".format(azure_account_name, azure_account_domain)
-            self._client = BlobServiceClient(
-                account_url=azure_url, credential=azure_account_key
-            )
+            azure_url = f"https://{azure_account_name}{azure_account_domain}"
+            self._client = BlobServiceClient(account_url=azure_url, credential=azure_account_key)
         self._azure_account_name = azure_account_name
         self._azure_account_domain = azure_account_domain
         self._db_path_suffix = db_path_suffix
@@ -155,18 +148,11 @@ class GOEAzure(GOEDfs):
         if recursive:
             blobs = [_ for _ in container_client.list_blobs(name_starts_with=prefix)]
         else:
-            blobs = [
-                _
-                for _ in container_client.walk_blobs(
-                    name_starts_with=prefix, delimiter=URI_SEP
-                )
-            ]
+            blobs = [_ for _ in container_client.walk_blobs(name_starts_with=prefix, delimiter=URI_SEP)]
         return blobs
 
     def _list_blob_names(self, container, prefix, recursive=False):
-        return [
-            _.name for _ in self._list_blobs(container, prefix, recursive=recursive)
-        ]
+        return [_.name for _ in self._list_blobs(container, prefix, recursive=recursive)]
 
     @staticmethod
     def _uri_component_split(dfs_path):
@@ -203,22 +189,15 @@ class GOEAzure(GOEDfs):
         logger.info("copy_from_local(%s, %s)" % (local_path, dfs_path))
         scheme, container, path = self._uri_component_split(dfs_path)
         target_path = (path + basename(local_path)) if path.endswith(URI_SEP) else path
-        self.debug(
-            "Copying to target scheme/container/path: %s"
-            % str([scheme, container, target_path])
-        )
+        self.debug("Copying to target scheme/container/path: %s" % str([scheme, container, target_path]))
         if not self._dry_run:
             if not self._container_exists(container):
                 raise GOEDfsException("Container does not exist: %s" % container)
             if self._blob_exists(container, target_path) and not overwrite:
-                raise GOEDfsException(
-                    "Cannot copy file over existing file: %s" % target_path
-                )
+                raise GOEDfsException("Cannot copy file over existing file: %s" % target_path)
             container_client = self._client.get_container_client(container)
             with open(local_path, "rb") as data:
-                container_client.upload_blob(
-                    name=target_path, data=data, overwrite=overwrite
-                )
+                container_client.upload_blob(name=target_path, data=data, overwrite=overwrite)
 
     def copy_to_local(self, dfs_path, local_path, overwrite=False):
         assert dfs_path
@@ -227,23 +206,17 @@ class GOEAzure(GOEDfs):
         assert isinstance(local_path, str)
         logger.info("copy_to_local(%s, %s)" % (dfs_path, local_path))
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Copying from scheme/container/path: %s" % str([scheme, container, path])
-        )
+        self.debug("Copying from scheme/container/path: %s" % str([scheme, container, path]))
         if not self._dry_run:
             if file_exists(local_path) and not overwrite:
-                raise GOEDfsException(
-                    "Cannot copy file over existing file: %s" % local_path
-                )
+                raise GOEDfsException("Cannot copy file over existing file: %s" % local_path)
             blob_client = self._client.get_blob_client(container, blob=path)
             with open(local_path, "wb") as file:
                 data = blob_client.download_blob()
                 file.write(data.readall())
 
     @retry.Retry(
-        predicate=retry.if_exception_type(
-            GOEDfsDeleteNotComplete, GOEAzureTryAgainException
-        ),
+        predicate=retry.if_exception_type(GOEDfsDeleteNotComplete, GOEAzureTryAgainException),
         deadline=DFS_RETRY_TIMEOUT,
     )
     def delete(self, dfs_path, recursive=False):
@@ -283,19 +256,12 @@ class GOEAzure(GOEDfs):
                 path += URI_SEP
             found_files = False
             try:
-                blobs_pending_delete = self._list_blob_names(
-                    container, path, recursive=True
-                )
+                blobs_pending_delete = self._list_blob_names(container, path, recursive=True)
             except HttpResponseError as exc:
                 if "try again after some time" in str(exc):
-                    self.debug(
-                        "Azure list_blobs timeout, retrying operation:\n{}".format(
-                            str(exc)
-                        )
-                    )
+                    self.debug(f"Azure list_blobs timeout, retrying operation:\n{exc!s}")
                     raise GOEAzureTryAgainException
-                else:
-                    raise
+                raise
 
             if scheme in [OFFLOAD_FS_SCHEME_ABFS, OFFLOAD_FS_SCHEME_ABFSS]:
                 # Reversing the order of the paths so deepest entries are first reduced the number of
@@ -313,9 +279,7 @@ class GOEAzure(GOEDfs):
                     self.debug("delete_blob(%s)" % blob_name)
                     pragmatic_delete(container, blob_name)
                 elif scheme in [OFFLOAD_FS_SCHEME_ABFS, OFFLOAD_FS_SCHEME_ABFSS]:
-                    if (
-                        self.stat(self.gen_uri(scheme, container, blob_name)) or {}
-                    ).get("type") == DFS_TYPE_DIRECTORY:
+                    if (self.stat(self.gen_uri(scheme, container, blob_name)) or {}).get("type") == DFS_TYPE_DIRECTORY:
                         # On ABFS directories don't disappear when they empty (like prefixes do).
                         # We need to explicitly delete them.
                         found_files = True
@@ -326,9 +290,7 @@ class GOEAzure(GOEDfs):
                                 raise
                 self._post_cloud_delete_wait(scheme)
             if found_files:
-                blobs_pending_delete = self._list_blob_names(
-                    container, path, recursive=True
-                )
+                blobs_pending_delete = self._list_blob_names(container, path, recursive=True)
                 if blobs_pending_delete:
                     self.debug("Azure delete incomplete, retrying")
                     raise GOEDfsDeleteNotComplete
@@ -347,9 +309,7 @@ class GOEAzure(GOEDfs):
         if container_override:
             fq_container = container_override
         else:
-            fq_container = azure_fq_container_name(
-                self._azure_account_name, self._azure_account_domain, container
-            )
+            fq_container = azure_fq_container_name(self._azure_account_name, self._azure_account_domain, container)
         uri = gen_fs_uri(
             path_prefix,
             self._db_path_suffix,
@@ -366,10 +326,7 @@ class GOEAzure(GOEDfs):
         assert isinstance(dfs_path, str)
         logger.info("list_dir(%s)" % dfs_path)
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Listing contents of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Listing contents of scheme/container/path: %s" % str([scheme, container, path]))
         if path and not path.endswith(URI_SEP):
             path += URI_SEP
         if self._client:
@@ -383,17 +340,13 @@ class GOEAzure(GOEDfs):
 
     def mkdir(self, dfs_path):
         """No mkdir on Azure block storage"""
-        pass
 
     def read(self, dfs_path, as_str=False):
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("read(%s)" % dfs_path)
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Downloading contents of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Downloading contents of scheme/container/path: %s" % str([scheme, container, path]))
         if self._dry_run:
             return None
         if not self._blob_exists(container, path):
@@ -425,10 +378,7 @@ class GOEAzure(GOEDfs):
         if not self._client:
             return None
 
-        self.debug(
-            "Checking status of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Checking status of scheme/container/path: %s" % str([scheme, container, path]))
 
         if not self._container_exists(container):
             raise GOEDfsException("Container does not exist: %s" % container)
@@ -440,40 +390,33 @@ class GOEAzure(GOEDfs):
             blobs = self._list_blobs(container, path)
         except HttpResponseError as exc:
             if "OperationTimedOut" in str(exc):
-                self.debug(
-                    "Azure list_blobs timeout, retrying operation:\n{}".format(str(exc))
-                )
+                self.debug(f"Azure list_blobs timeout, retrying operation:\n{exc!s}")
                 raise GOEAzureTryAgainException
-            else:
-                raise
+            raise
         matched_files = [_ for _ in blobs if _.name == path]
         matched_dirs = [_ for _ in blobs if _.name == path.rstrip(URI_SEP) + URI_SEP]
         if matched_dirs:
             return {"length": 0, "permission": None, "type": DFS_TYPE_DIRECTORY}
-        elif len(matched_files) > 1:
+        if len(matched_files) > 1:
             self.debug("Multiple file matches: %s" % str(matched_files))
             raise GOEDfsException("Path matches multiple files: %s" % dfs_path)
-        elif matched_files:
+        if matched_files:
             return {
                 "length": matched_files[0].size,
                 "permission": None,
                 "type": DFS_TYPE_FILE,
             }
-        else:
-            return None
+        return None
 
     def write(self, dfs_path, data, overwrite=False):
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("write(%s)" % dfs_path)
         scheme, container, path = self._uri_component_split(dfs_path)
-        self.debug(
-            "Writing contents of scheme/container/path: %s"
-            % str([scheme, container, path])
-        )
+        self.debug("Writing contents of scheme/container/path: %s" % str([scheme, container, path]))
 
         if self._dry_run:
-            return None
+            return
         if not self._container_exists(container):
             raise GOEDfsException("Container does not exist: %s" % container)
 

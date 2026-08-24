@@ -20,8 +20,8 @@ from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
     DBTYPE_HIVE,
     DBTYPE_IMPALA,
-    DBTYPE_SPARK,
     DBTYPE_SNOWFLAKE,
+    DBTYPE_SPARK,
     DBTYPE_SYNAPSE,
 )
 
@@ -56,7 +56,7 @@ def backend_testing_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_IMPALA:
+    if backend_type == DBTYPE_IMPALA:
         from tests.testlib.test_framework.hadoop.impala_backend_testing_api import (
             BackendImpalaTestingApi,
         )
@@ -69,7 +69,7 @@ def backend_testing_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_BIGQUERY:
+    if backend_type == DBTYPE_BIGQUERY:
         from tests.testlib.test_framework.bigquery.bigquery_backend_testing_api import (
             BackendBigQueryTestingApi,
         )
@@ -82,7 +82,7 @@ def backend_testing_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_SPARK:
+    if backend_type == DBTYPE_SPARK:
         from tests.testlib.test_framework.spark.spark_thrift_backend_testing_api import (
             BackendSparkThriftTestingApi,
         )
@@ -95,7 +95,7 @@ def backend_testing_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_SNOWFLAKE:
+    if backend_type == DBTYPE_SNOWFLAKE:
         from tests.testlib.test_framework.snowflake.snowflake_backend_testing_api import (
             BackendSnowflakeTestingApi,
         )
@@ -108,7 +108,7 @@ def backend_testing_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_SYNAPSE:
+    if backend_type == DBTYPE_SYNAPSE:
         from tests.testlib.test_framework.microsoft.synapse_backend_testing_api import (
             BackendSynapseTestingApi,
         )
@@ -121,5 +121,4 @@ def backend_testing_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    else:
-        raise NotImplementedError("Unsupported remote system type: %s" % backend_type)
+    raise NotImplementedError("Unsupported remote system type: %s" % backend_type)

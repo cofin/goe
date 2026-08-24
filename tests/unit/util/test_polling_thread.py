@@ -17,9 +17,9 @@
 import threading
 import time
 import traceback
-
-from unittest import TestCase, main
 from itertools import groupby
+from unittest import TestCase, main
+
 from goe.util.polling_thread import PollingThread
 
 
@@ -66,8 +66,7 @@ class TestPollingThread(TestCase):
                     p = test_data[c]
                     c += 1
                     return p
-                else:
-                    return test_data[-1]
+                return test_data[-1]
 
             return stats_function
 
@@ -104,9 +103,7 @@ class TestPollingThread(TestCase):
 
         sql_info = []
         row_snapshots = [item for sublist in queue_payload for item in sublist]
-        for sql_id_child_num, row_data in groupby(
-            sorted(row_snapshots), lambda x: "%s:%s" % (x[0], x[1])
-        ):
+        for sql_id_child_num, row_data in groupby(sorted(row_snapshots), lambda x: "%s:%s" % (x[0], x[1])):
             rows = list(row_data)
             sql_id, child_number = sql_id_child_num.split(":")
             sql_info.append(
@@ -126,11 +123,7 @@ class TestPollingThread(TestCase):
 
         if test_thread.name in exceptions_caught_in_threads:
             self.fail(
-                "".join(
-                    traceback.format_exception(
-                        **exceptions_caught_in_threads[test_thread.name]["exception"]
-                    )
-                )
+                "".join(traceback.format_exception(**exceptions_caught_in_threads[test_thread.name]["exception"]))
             )
 
 

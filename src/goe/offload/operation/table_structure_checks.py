@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from textwrap import dedent
 from typing import TYPE_CHECKING
 
 from goe.exceptions import OffloadException
@@ -28,7 +27,9 @@ if TYPE_CHECKING:
     from goe.offload.offload_source_table import OffloadSourceTableInterface
 
 
-OFFLOAD_SCHEMA_CHECK_EXCEPTION_TEXT = "Column mismatch detected between the source and backend table. Resolve before offloading"
+OFFLOAD_SCHEMA_CHECK_EXCEPTION_TEXT = (
+    "Column mismatch detected between the source and backend table. Resolve before offloading"
+)
 
 
 def check_table_structure(
@@ -49,9 +50,7 @@ def check_table_structure(
     backend_cols = backend_table.get_non_synthetic_columns()
 
     # Check case insensitive names match.
-    new_frontend_cols, missing_frontend_cols = check_table_columns_by_name(
-        frontend_cols, backend_cols
-    )
+    new_frontend_cols, missing_frontend_cols = check_table_columns_by_name(frontend_cols, backend_cols)
     if new_frontend_cols or missing_frontend_cols:
         check_table_columns_by_name_logging(
             frontend_table,
@@ -61,25 +60,15 @@ def check_table_structure(
             messages,
         )
         raise OffloadException(
-            "{}: {}.{}".format(
-                OFFLOAD_SCHEMA_CHECK_EXCEPTION_TEXT,
-                frontend_table.owner,
-                frontend_table.table_name,
-            )
+            f"{OFFLOAD_SCHEMA_CHECK_EXCEPTION_TEXT}: {frontend_table.owner}.{frontend_table.table_name}"
         )
 
     # Check data types are compatible via canonical classes.
     invalid_combinations = check_table_columns_by_type(frontend_table, backend_table)
     if invalid_combinations:
-        check_table_columns_by_type_logging(
-            frontend_table, backend_table, invalid_combinations, messages
-        )
+        check_table_columns_by_type_logging(frontend_table, backend_table, invalid_combinations, messages)
         raise OffloadException(
-            "{}: {}.{}".format(
-                OFFLOAD_SCHEMA_CHECK_EXCEPTION_TEXT,
-                frontend_table.owner,
-                frontend_table.table_name,
-            )
+            f"{OFFLOAD_SCHEMA_CHECK_EXCEPTION_TEXT}: {frontend_table.owner}.{frontend_table.table_name}"
         )
 
 
@@ -92,9 +81,7 @@ def check_table_columns_by_name(frontend_cols: list, backend_cols: list) -> tupl
     frontend_names = get_column_names(frontend_cols, conv_fn=str.upper)
     backend_names = get_column_names(backend_cols, conv_fn=str.upper)
     new_frontend_names = sorted([_ for _ in frontend_names if _ not in backend_names])
-    missing_frontend_names = sorted(
-        [_ for _ in backend_names if _ not in frontend_names]
-    )
+    missing_frontend_names = sorted([_ for _ in backend_names if _ not in frontend_names])
     return new_frontend_names, missing_frontend_names
 
 
@@ -107,9 +94,7 @@ def check_table_columns_by_name_logging(
 ):
     if not new_frontend_cols and not missing_frontend_cols:
         return
-    column_table = [
-        (frontend_table.frontend_db_name(), backend_table.backend_db_name())
-    ]
+    column_table = [(frontend_table.frontend_db_name(), backend_table.backend_db_name())]
     column_table.extend([(_, "-") for _ in new_frontend_cols])
     column_table.extend([("-", _) for _ in missing_frontend_cols])
     messages.warning(

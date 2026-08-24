@@ -41,24 +41,16 @@ def offload_transport_rdbms_api_factory(
             messages,
             dry_run=dry_run,
         )
-    elif offload_options.db_type == DBTYPE_MSSQL:
+    if offload_options.db_type == DBTYPE_MSSQL:
         from goe.offload.microsoft.mssql_offload_transport_rdbms_api import (
             OffloadTransportMSSQLApi,
         )
 
-        return OffloadTransportMSSQLApi(
-            rdbms_owner, rdbms_table_name, offload_options, messages, dry_run=dry_run
-        )
-    elif offload_options.db_type == DBTYPE_TERADATA:
+        return OffloadTransportMSSQLApi(rdbms_owner, rdbms_table_name, offload_options, messages, dry_run=dry_run)
+    if offload_options.db_type == DBTYPE_TERADATA:
         from goe.offload.teradata.teradata_offload_transport_rdbms_api import (
             OffloadTransportTeradataApi,
         )
 
-        return OffloadTransportTeradataApi(
-            rdbms_owner, rdbms_table_name, offload_options, messages, dry_run=dry_run
-        )
-    else:
-        raise NotImplementedError(
-            "Offload transport source RDBMS not implemented: %s"
-            % offload_options.db_type
-        )
+        return OffloadTransportTeradataApi(rdbms_owner, rdbms_table_name, offload_options, messages, dry_run=dry_run)
+    raise NotImplementedError("Offload transport source RDBMS not implemented: %s" % offload_options.db_type)

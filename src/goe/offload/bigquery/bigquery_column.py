@@ -14,13 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BigQueryColumn: Oracle implementation of ColumnMetadataInterface
-"""
+"""BigQueryColumn: Oracle implementation of ColumnMetadataInterface"""
 
 from goe.offload.column_metadata import (
-    ColumnMetadataInterface,
     CANONICAL_CHAR_SEMANTICS_CHAR,
-    CANONICAL_CHAR_SEMANTICS_UNICODE,
+    ColumnMetadataInterface,
 )
 
 ###############################################################################
@@ -77,7 +75,7 @@ class BigQueryColumn(ColumnMetadataInterface):
             data_type = BIGQUERY_TYPE_INT64
         elif data_type == BIGQUERY_TYPE_STRING and data_length:
             char_length = data_length
-        super(BigQueryColumn, self).__init__(
+        super().__init__(
             name,
             data_type,
             data_length=data_length,
@@ -99,29 +97,22 @@ class BigQueryColumn(ColumnMetadataInterface):
                     self.data_precision,
                     self.data_scale,
                 )
-            elif self.data_precision:
+            if self.data_precision:
                 return "%s(%s)" % (self.data_type, self.data_precision)
-            else:
-                return self.data_type
-        elif self.data_type == BIGQUERY_TYPE_STRING:
+            return self.data_type
+        if self.data_type == BIGQUERY_TYPE_STRING:
             if self.char_length:
                 return "%s(%s)" % (self.data_type, self.char_length)
-            else:
-                return self.data_type
-        elif self.data_type == BIGQUERY_TYPE_BYTES:
+            return self.data_type
+        if self.data_type == BIGQUERY_TYPE_BYTES:
             if self.data_length:
                 return "%s(%s)" % (self.data_type, self.data_length)
-            else:
-                return self.data_type
-        else:
             return self.data_type
+        return self.data_type
 
     def has_time_element(self):
         """Does the column data contain a time"""
-        return bool(
-            self.data_type
-            in [BIGQUERY_TYPE_DATETIME, BIGQUERY_TYPE_TIME, BIGQUERY_TYPE_TIMESTAMP]
-        )
+        return bool(self.data_type in [BIGQUERY_TYPE_DATETIME, BIGQUERY_TYPE_TIME, BIGQUERY_TYPE_TIMESTAMP])
 
     def is_binary(self):
         return bool(self.data_type == BIGQUERY_TYPE_BYTES)
@@ -143,10 +134,7 @@ class BigQueryColumn(ColumnMetadataInterface):
 
     def is_date_based(self):
         """Is the column date in class"""
-        return bool(
-            self.data_type
-            in (BIGQUERY_TYPE_DATE, BIGQUERY_TYPE_DATETIME, BIGQUERY_TYPE_TIMESTAMP)
-        )
+        return bool(self.data_type in (BIGQUERY_TYPE_DATE, BIGQUERY_TYPE_DATETIME, BIGQUERY_TYPE_TIMESTAMP))
 
     def is_interval(self):
         return False
@@ -161,7 +149,5 @@ class BigQueryColumn(ColumnMetadataInterface):
 
     def valid_for_offload_predicate(self):
         return bool(
-            self.is_number_based()
-            or (self.is_date_based() and not self.is_time_zone_based())
-            or self.is_string_based()
+            self.is_number_based() or (self.is_date_based() and not self.is_time_zone_based()) or self.is_string_based()
         )

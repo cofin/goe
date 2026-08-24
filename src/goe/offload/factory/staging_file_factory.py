@@ -44,10 +44,7 @@ def staging_file_factory(
     "offload transport orchestration query engine" - quite a mouthful. I'm just trying to convey that this is not
     the engine used to write to the Avro file but the engine used to validate it and insert into the final table.
     """
-    if (
-        staging_file_format == FILE_STORAGE_FORMAT_AVRO
-        and orchestration_options.target == DBTYPE_IMPALA
-    ):
+    if staging_file_format == FILE_STORAGE_FORMAT_AVRO and orchestration_options.target == DBTYPE_IMPALA:
         return OffloadStagingAvroImpalaFile(
             load_db_name,
             table_name,
@@ -57,11 +54,11 @@ def staging_file_factory(
             messages,
             dry_run=dry_run,
         )
-    elif (
-        staging_file_format == FILE_STORAGE_FORMAT_AVRO
-        and orchestration_options.target
-        in [DBTYPE_HIVE, DBTYPE_BIGQUERY, DBTYPE_SNOWFLAKE]
-    ):
+    if staging_file_format == FILE_STORAGE_FORMAT_AVRO and orchestration_options.target in [
+        DBTYPE_HIVE,
+        DBTYPE_BIGQUERY,
+        DBTYPE_SNOWFLAKE,
+    ]:
         return OffloadStagingAvroFile(
             load_db_name,
             table_name,
@@ -71,11 +68,11 @@ def staging_file_factory(
             messages,
             dry_run=dry_run,
         )
-    elif (
-        staging_file_format == FILE_STORAGE_FORMAT_PARQUET
-        and orchestration_options.target
-        in [DBTYPE_BIGQUERY, DBTYPE_SNOWFLAKE, DBTYPE_SYNAPSE]
-    ):
+    if staging_file_format == FILE_STORAGE_FORMAT_PARQUET and orchestration_options.target in [
+        DBTYPE_BIGQUERY,
+        DBTYPE_SNOWFLAKE,
+        DBTYPE_SYNAPSE,
+    ]:
         return OffloadStagingParquetFile(
             load_db_name,
             table_name,
@@ -85,8 +82,6 @@ def staging_file_factory(
             messages,
             dry_run=dry_run,
         )
-    else:
-        raise NotImplementedError(
-            "Unsupported staging file format: %s on %s"
-            % (staging_file_format, orchestration_options.target)
-        )
+    raise NotImplementedError(
+        "Unsupported staging file format: %s on %s" % (staging_file_format, orchestration_options.target)
+    )

@@ -12,34 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions used as entry points for Orchestration CLI commands.
-"""
+"""Functions used as entry points for Orchestration CLI commands."""
 
 import sys
 
+from goe.config.orchestration_config import OrchestrationConfig
 from goe.goe import (
+    OFFLOAD_OP_NAME,
     get_log_fh,
     get_log_fh_name,
     init,
     init_log,
     log,
-    log_command_line,
     log_close,
+    log_command_line,
     log_timestamp,
     normalise_options,
-    version,
-    OFFLOAD_OP_NAME,
     verbose,
+    version,
 )
-from goe.config.orchestration_config import OrchestrationConfig
 from goe.orchestration.orchestration_runner import OrchestrationRunner
 from goe.util.goe_log import log_exception
 
 
 def offload_by_cli(options, messages_override=None):
-    """
-    CLI entrypoint for Offload.
+    """CLI entrypoint for Offload.
 
     messages_override: Only used during testing to access messages object.
     """

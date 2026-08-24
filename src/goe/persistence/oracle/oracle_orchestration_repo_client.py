@@ -19,7 +19,7 @@
 # Standard Library
 import json
 import logging
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 # Third Party Libraries
 import oracledb
@@ -34,12 +34,13 @@ from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_constants import (
     BACKEND_DISTRO_CDH,
     BACKEND_DISTRO_GCP,
-    BACKEND_DISTRO_SNOWFLAKE,
     BACKEND_DISTRO_MSAZURE,
+    BACKEND_DISTRO_SNOWFLAKE,
 )
 from goe.offload.offload_messages import QUIET, VERBOSE, VVERBOSE, OffloadMessages
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.orchestration_metadata import (
+    COMMAND_EXECUTION,
     HADOOP_OWNER,
     HADOOP_TABLE,
     INCREMENTAL_HIGH_VALUE,
@@ -54,7 +55,6 @@ from goe.persistence.orchestration_metadata import (
     OFFLOAD_TYPE,
     OFFLOADED_OWNER,
     OFFLOADED_TABLE,
-    COMMAND_EXECUTION,
     OrchestrationMetadata,
 )
 from goe.persistence.orchestration_repo_client import (
@@ -101,9 +101,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         dry_run: bool = False,
         trace_action: str = None,
     ):
-        super().__init__(
-            connection_options, messages, dry_run=dry_run, trace_action=trace_action
-        )
+        super().__init__(connection_options, messages, dry_run=dry_run, trace_action=trace_action)
         self._repo_user = self._connection_options.ora_repo_user
 
     ###########################################################################
@@ -134,9 +132,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         metadata_obj = self._frontend_api.execute_function(
             "offload_repo.get_offload_metadata",
             return_type=oracledb.DB_TYPE_OBJECT,
-            return_type_name=self._get_ora_type_object_name(
-                OFFLOAD_METADATA_ORA_TYPE_NAME
-            ),
+            return_type_name=self._get_ora_type_object_name(OFFLOAD_METADATA_ORA_TYPE_NAME),
             arg_list=[frontend_owner, frontend_name],
             log_level=VVERBOSE,
         )
@@ -151,22 +147,14 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         return self._get_ora_type_object(OFFLOAD_METADATA_ORA_TYPE_NAME)
 
     def _get_ora_type_object(self, repo_type_name: str, owner_override: str = None):
-        qualified_name = self._get_ora_type_object_name(
-            repo_type_name, owner_override=owner_override
-        )
+        qualified_name = self._get_ora_type_object_name(repo_type_name, owner_override=owner_override)
         return self._frontend_api.oracle_get_type_object(qualified_name)
 
-    def _get_ora_type_object_name(
-        self, repo_type_name: str, owner_override: str = None
-    ):
-        return '"{}"."{}"'.format(
-            (owner_override or self._repo_user).upper(), repo_type_name.upper()
-        )
+    def _get_ora_type_object_name(self, repo_type_name: str, owner_override: str = None):
+        return f'"{(owner_override or self._repo_user).upper()}"."{repo_type_name.upper()}"'
 
     def _metadata_dict_to_ora_object(self, metadata_dict):
-        """
-        Used to convert a Python dict of metadata to an Oracle object type ready for saving to the database.
-        """
+        """Used to convert a Python dict of metadata to an Oracle object type ready for saving to the database."""
         logger.debug(f"Converting metadata: {metadata_dict}")
         metadata_obj = self._get_offload_metadata_ora_type_object()
         metadata_obj.FRONTEND_OBJECT_OWNER = metadata_dict[OFFLOADED_OWNER]
@@ -179,9 +167,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         metadata_obj.OFFLOAD_HIGH_VALUE = metadata_dict[INCREMENTAL_HIGH_VALUE]
         metadata_obj.OFFLOAD_PREDICATE_TYPE = metadata_dict[INCREMENTAL_PREDICATE_TYPE]
         if metadata_dict[INCREMENTAL_PREDICATE_VALUE] is None:
-            metadata_obj.OFFLOAD_PREDICATE_VALUE = metadata_dict[
-                INCREMENTAL_PREDICATE_VALUE
-            ]
+            metadata_obj.OFFLOAD_PREDICATE_VALUE = metadata_dict[INCREMENTAL_PREDICATE_VALUE]
         else:
             metadata_obj.OFFLOAD_PREDICATE_VALUE = self._metadata_dict_to_json_string(
                 metadata_dict[INCREMENTAL_PREDICATE_VALUE]
@@ -189,9 +175,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         metadata_obj.OFFLOAD_SNAPSHOT = metadata_dict[OFFLOAD_SNAPSHOT]
         metadata_obj.OFFLOAD_HASH_COLUMN = metadata_dict[OFFLOAD_BUCKET_COLUMN]
         metadata_obj.OFFLOAD_SORT_COLUMNS = metadata_dict[OFFLOAD_SORT_COLUMNS]
-        metadata_obj.OFFLOAD_PARTITION_FUNCTIONS = metadata_dict[
-            OFFLOAD_PARTITION_FUNCTIONS
-        ]
+        metadata_obj.OFFLOAD_PARTITION_FUNCTIONS = metadata_dict[OFFLOAD_PARTITION_FUNCTIONS]
         metadata_obj.COMMAND_EXECUTION = metadata_dict[COMMAND_EXECUTION].as_bytes()
         return metadata_obj
 
@@ -205,9 +189,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             OFFLOADED_TABLE: metadata_obj.FRONTEND_OBJECT_NAME,
             INCREMENTAL_KEY: metadata_obj.OFFLOAD_KEY or None,
             INCREMENTAL_HIGH_VALUE: (
-                metadata_obj.OFFLOAD_HIGH_VALUE.read()
-                if metadata_obj.OFFLOAD_HIGH_VALUE
-                else None
+                metadata_obj.OFFLOAD_HIGH_VALUE.read() if metadata_obj.OFFLOAD_HIGH_VALUE else None
             ),
             INCREMENTAL_RANGE: metadata_obj.OFFLOAD_RANGE_TYPE or None,
             INCREMENTAL_PREDICATE_TYPE: metadata_obj.OFFLOAD_PREDICATE_TYPE or None,
@@ -219,8 +201,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             OFFLOAD_BUCKET_COLUMN: metadata_obj.OFFLOAD_HASH_COLUMN or None,
             OFFLOAD_SORT_COLUMNS: metadata_obj.OFFLOAD_SORT_COLUMNS or None,
             OFFLOAD_SNAPSHOT: metadata_obj.OFFLOAD_SNAPSHOT or None,
-            OFFLOAD_PARTITION_FUNCTIONS: metadata_obj.OFFLOAD_PARTITION_FUNCTIONS
-            or None,
+            OFFLOAD_PARTITION_FUNCTIONS: metadata_obj.OFFLOAD_PARTITION_FUNCTIONS or None,
             COMMAND_EXECUTION: ExecutionId.from_bytes(metadata_obj.COMMAND_EXECUTION),
         }
         return metadata_dict
@@ -232,9 +213,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         frontend_schema: str,
         frontend_table_name: str,
     ):
-        """
-        Used to convert a Python dict of metadata to an Oracle object type ready for saving to the database.
-        """
+        """Used to convert a Python dict of metadata to an Oracle object type ready for saving to the database."""
         logger.debug("Converting offload_partitions")
         partitions_ntt = self._get_ora_type_object(OFFLOAD_PARTITIONS_ORA_TYPE_NAME)
         if not offload_partitions:
@@ -252,7 +231,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
 
     def _set_metadata(
         self,
-        metadata: Union[dict, OrchestrationMetadata],
+        metadata: dict | OrchestrationMetadata,
     ):
         assert metadata
         # In Oracle we expect the identifying owner/name to be upper case
@@ -270,7 +249,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         )
         # FrontendApi logging won't show metadata values due to being in an Oracle type. So we log it here for
         # benefit of support.
-        self._log("Saved metadata: {}".format(str(metadata)), detail=VERBOSE)
+        self._log(f"Saved metadata: {metadata!s}", detail=VERBOSE)
 
     ###########################################################################
     # PUBLIC METHODS
@@ -278,7 +257,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
 
     def set_offload_metadata(
         self,
-        metadata: Union[dict, OrchestrationRepoClientInterface],
+        metadata: dict | OrchestrationRepoClientInterface,
     ):
         self._set_metadata(metadata)
 
@@ -292,13 +271,11 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         self,
         execution_id: ExecutionId,
         command_type: str,
-        command_input: Union[str, dict, None],
-        parameters: Union[dict, None],
+        command_input: str | dict | None,
+        parameters: dict | None,
     ) -> int:
         """Call into Oracle API function OFFLOAD_REPO.START_COMMAND_EXECUTION()"""
-        self._log(
-            f"Recording command start: {execution_id}/{command_type})", detail=VVERBOSE
-        )
+        self._log(f"Recording command start: {execution_id}/{command_type})", detail=VVERBOSE)
         self._debug(f"command_input: {command_input}")
         self._assert_valid_start_command_inputs(execution_id, command_type)
         prepared_input = self._prepare_command_parameters(command_input)
@@ -336,9 +313,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             not_when_dry_running=True,
         )
 
-    def start_command_step(
-        self, execution_id: ExecutionId, command_type: str, command_step: str
-    ) -> int:
+    def start_command_step(self, execution_id: ExecutionId, command_type: str, command_step: str) -> int:
         """Call into Oracle API function OFFLOAD_REPO.START_COMMAND_EXECUTION_STEP()"""
         self._log(
             f"Recording command step start: {execution_id}/{command_step}",
@@ -362,18 +337,14 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         self._debug(f"command_step_id: {command_step_id})")
         return command_step_id
 
-    def end_command_step(
-        self, command_step_id: int, status: str, step_details: Union[dict, None] = None
-    ) -> None:
+    def end_command_step(self, command_step_id: int, status: str, step_details: dict | None = None) -> None:
         """Call into Oracle API function OFFLOAD_REPO.END_COMMAND_EXECUTION_STEP()"""
         self._log(
             f"Recording command step {command_step_id} status: {status}",
             detail=VVERBOSE,
         )
         self._assert_valid_end_step_inputs(command_step_id, status, step_details)
-        step_details_str = (
-            json.dumps(step_details) if step_details is not None else None
-        )
+        step_details_str = json.dumps(step_details) if step_details is not None else None
         self._frontend_api.execute_function(
             "offload_repo.end_command_execution_step",
             arg_list=[command_step_id, step_details_str, status],
@@ -389,8 +360,8 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         backend_schema: str,
         backend_table_name: str,
         chunk_number: int = 1,
-        offload_partitions: Union[list, None] = None,
-        offload_partition_level: Union[int, None] = None,
+        offload_partitions: list | None = None,
+        offload_partition_level: int | None = None,
     ) -> int:
         """Call into Oracle API function OFFLOAD_REPO.START_OFFLOAD_CHUNK()"""
         self._log(
@@ -440,10 +411,10 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         self,
         chunk_id: int,
         status: str,
-        row_count: Union[int, None] = None,
-        frontend_bytes: Union[int, None] = None,
-        transport_bytes: Union[int, None] = None,
-        backend_bytes: Union[int, None] = None,
+        row_count: int | None = None,
+        frontend_bytes: int | None = None,
+        transport_bytes: int | None = None,
+        backend_bytes: int | None = None,
     ) -> None:
         """Call into Oracle API function OFFLOAD_REPO.END_OFFLOAD_CHUNK()"""
         self._log(f"Recording chunk {chunk_id} status: {status}", detail=VVERBOSE)
@@ -543,7 +514,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             , s.table_count
         ORDER BY
             s.owner
-        """  # noqa: W605 E501
+        """  # noqa: W605
 
         return self._frontend_api.execute_query_fetch_all(
             sql,
@@ -909,7 +880,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
               END                                                                    AS reason_not_offloadable
         FROM table_data t
         ORDER BY t.table_name
-        """  # noqa: E501 W291
+        """
 
         return self._frontend_api.execute_query_fetch_all(
             sql,
@@ -920,12 +891,8 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
 
     def get_table_columns(self, schema_name, table_name):
         cols = self._frontend_api.get_columns(schema_name.upper(), table_name.upper())
-        partition_columns = self._frontend_api.get_partition_columns(
-            schema_name.upper(), table_name.upper()
-        )
-        subpartition_columns = self._frontend_api.get_subpartition_columns(
-            schema_name.upper(), table_name.upper()
-        )
+        partition_columns = self._frontend_api.get_partition_columns(schema_name.upper(), table_name.upper())
+        subpartition_columns = self._frontend_api.get_subpartition_columns(schema_name.upper(), table_name.upper())
         return_columns = [
             ColumnDetail(
                 column_name=one_col.name,
@@ -961,15 +928,10 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         try:
             table_partitions = frontend_table.get_partitions()
         except Exception as exc:
-            logger.error(
-                f"Table partition type is not supported: {exc.__class__.__qualname__}{exc.args}"
-            )
+            logger.error(f"Table partition type is not supported: {exc.__class__.__qualname__}{exc.args}")
         else:
             if table_partitions:
-                return [
-                    PartitionDetail.from_orm(table_partition).dict()
-                    for table_partition in table_partitions
-                ]
+                return [PartitionDetail.from_orm(table_partition).dict() for table_partition in table_partitions]
 
         return []
 
@@ -984,15 +946,10 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         try:
             table_subpartitions = frontend_table.get_subpartitions()
         except Exception as exc:
-            logger.error(
-                f"Table subpartition type is not supported: {exc.__class__.__qualname__}{exc.args}"
-            )
+            logger.error(f"Table subpartition type is not supported: {exc.__class__.__qualname__}{exc.args}")
         else:
             if table_subpartitions:
-                return [
-                    SubPartitionDetail.from_orm(table_subpartition)
-                    for table_subpartition in table_subpartitions
-                ]
+                return [SubPartitionDetail.from_orm(table_subpartition) for table_subpartition in table_subpartitions]
         return []
 
     def get_command_step_codes(self) -> list:
@@ -1002,7 +959,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
 
     def get_command_executions(
         self,
-    ) -> List[Dict[str, Union[str, Any]]]:
+    ) -> list[dict[str, str | Any]]:
         """Gets command execution stats"""
         sql = f"""
             SELECT  CE.UUID                AS EXECUTION_ID,
@@ -1021,16 +978,14 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             JOIN {self._repo_user}.STATUS S on S.ID = CE.STATUS_ID
             JOIN {self._repo_user}.COMMAND_TYPE CT on CT.ID = CE.COMMAND_TYPE_ID
             JOIN {self._repo_user}.GOE_VERSION GV on GV.ID = CE.GOE_VERSION_ID
-        """  # noqa: W605 W291
+        """
         return self._frontend_api.execute_query_fetch_all(
             sql,
             as_dict=True,
             log_level=None,
         )
 
-    def get_command_execution(
-        self, execution_id: ExecutionId
-    ) -> Dict[str, Union[str, Any]]:
+    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | Any]:
         """Gets command execution stats"""
         sql = f"""
             SELECT  CE.UUID                AS EXECUTION_ID,
@@ -1050,7 +1005,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             JOIN {self._repo_user}.COMMAND_TYPE CT on CT.ID = CE.COMMAND_TYPE_ID
             JOIN {self._repo_user}.GOE_VERSION GV on GV.ID = CE.GOE_VERSION_ID
             WHERE CE.UUID = :execution_id
-        """  # noqa: W605 W291
+        """
         return self._frontend_api.execute_query_fetch_one(
             sql,
             as_dict=True,
@@ -1060,8 +1015,8 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
 
     def get_command_execution_steps(
         self,
-        execution_id: Optional[ExecutionId],
-    ) -> List[Dict[str, Union[str, Any]]]:
+        execution_id: ExecutionId | None,
+    ) -> list[dict[str, str | Any]]:
         """Gets command execution stats"""
         query_params = {}
         sql = f"""
@@ -1080,7 +1035,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             JOIN {self._repo_user}.STATUS CESS on CESS.ID = CES.STATUS_ID
             JOIN {self._repo_user}.COMMAND_STEP CS ON CS.ID = CES.COMMAND_STEP_ID
             JOIN {self._repo_user}.COMMAND_TYPE CT ON CT.ID = CES.COMMAND_TYPE_ID
-        """  # noqa: W605 W291
+        """
         if execution_id:
             sql = f"{sql} WHERE CE.UUID = :execution_id"
             query_params = {"execution_id": execution_id.as_bytes()}

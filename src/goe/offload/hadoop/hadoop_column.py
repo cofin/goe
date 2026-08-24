@@ -14,14 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" HadoopColumn: Hadoop implementation of ColumnMetadataInterface
-"""
+"""HadoopColumn: Hadoop implementation of ColumnMetadataInterface"""
 
 from goe.offload.column_metadata import (
-    ColumnMetadataInterface,
     CANONICAL_CHAR_SEMANTICS_BYTE,
+    ColumnMetadataInterface,
 )
-
 
 ###############################################################################
 # CONSTANTS
@@ -71,7 +69,7 @@ class HadoopColumn(ColumnMetadataInterface):
         safe_mapping=True,
         partition_info=None,
     ):
-        super(HadoopColumn, self).__init__(
+        super().__init__(
             name,
             data_type,
             data_length=data_length,
@@ -92,14 +90,12 @@ class HadoopColumn(ColumnMetadataInterface):
                     self.data_precision,
                     self.data_scale,
                 )
-            elif self.data_precision:
+            if self.data_precision:
                 return "%s(%s)" % (self.data_type, self.data_precision)
-            else:
-                return self.data_type
-        elif self.data_type in (HADOOP_TYPE_VARCHAR, HADOOP_TYPE_CHAR):
-            return "%s(%s)" % (self.data_type, self.data_length)
-        else:
             return self.data_type
+        if self.data_type in (HADOOP_TYPE_VARCHAR, HADOOP_TYPE_CHAR):
+            return "%s(%s)" % (self.data_type, self.data_length)
+        return self.data_type
 
     def has_time_element(self):
         """Does the column data contain a time"""
@@ -136,16 +132,11 @@ class HadoopColumn(ColumnMetadataInterface):
 
     def is_string_based(self):
         """Is the column string based in class"""
-        return bool(
-            self.data_type
-            in (HADOOP_TYPE_CHAR, HADOOP_TYPE_VARCHAR, HADOOP_TYPE_STRING)
-        )
+        return bool(self.data_type in (HADOOP_TYPE_CHAR, HADOOP_TYPE_VARCHAR, HADOOP_TYPE_STRING))
 
     def is_time_zone_based(self):
         """Does the column contain time zone data"""
         return False
 
     def valid_for_offload_predicate(self):
-        return bool(
-            self.is_number_based() or self.is_date_based() or self.is_string_based()
-        )
+        return bool(self.is_number_based() or self.is_date_based() or self.is_string_based())

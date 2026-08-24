@@ -43,7 +43,6 @@ from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )
-
 from tests.integration.scenarios.assertion_functions import (
     sales_based_fact_assertion,
     text_in_log,
@@ -58,8 +57,8 @@ from tests.integration.scenarios.scenario_runner import (
 )
 from tests.integration.scenarios.setup_functions import drop_backend_test_table
 from tests.integration.scenarios.test_offload_pbo import (
-    const_to_date_expr,
     check_predicate_count_matches_log,
+    const_to_date_expr,
 )
 from tests.integration.test_functions import (
     cached_current_options,
@@ -71,7 +70,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 RANGE_TABLE_LATE = "STORY_PBO_R_LATE"
 RANGE_TABLE_LATE_100_0 = "STORY_PBO_R_LATE_100_0"
@@ -103,9 +101,7 @@ def data_db(schema, config):
     return data_db
 
 
-def gen_insert_late_arriving_sales_based_multi_pcol_data(
-    schema, table_name, new_time_id_string
-):
+def gen_insert_late_arriving_sales_based_multi_pcol_data(schema, table_name, new_time_id_string):
     ins = f"""INSERT INTO {schema}.{table_name}
              SELECT prod_id, cust_id, TO_DATE('{new_time_id_string}','YYYY-MM-DD HH24:MI:SS') AS time_id
              ,      channel_id, promo_id, quantity_sold, amount_sold
@@ -139,9 +135,7 @@ def offload_pbo_late_100_x_tests(
         ipa_predicate_type = INCREMENTAL_PREDICATE_TYPE_RANGE
 
         def add_rows_fn():
-            return frontend_api.sales_based_fact_late_arriving_data_sql(
-                schema, table_name, OLD_HV_1
-            )
+            return frontend_api.sales_based_fact_late_arriving_data_sql(schema, table_name, OLD_HV_1)
 
         if offload_pattern == OFFLOAD_PATTERN_100_0:
             test_id = "range_100_0"
@@ -151,9 +145,7 @@ def offload_pbo_late_100_x_tests(
             hv_1 = chk_hv_1 = test_constants.SALES_BASED_FACT_HV_2
     elif table_name == LAR_TABLE_LATE_100_0:
         if config.db_type == DBTYPE_TERADATA:
-            messages.log(
-                "Skipping LAR tests on Teradata because CASE_N is not yet supported"
-            )
+            messages.log("Skipping LAR tests on Teradata because CASE_N is not yet supported")
             return []
         inc_key = "YRMON"
         ipa_predicate_type = INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE
@@ -221,9 +213,7 @@ def offload_pbo_late_100_x_tests(
     # Attempt to Switch to INCREMENTAL During LAPBO Offload.
     options = {
         "owner_table": schema + "." + table_name,
-        "offload_predicate": GenericPredicate(
-            "column(time_id) = datetime(%s)" % OLD_HV_1
-        ),
+        "offload_predicate": GenericPredicate("column(time_id) = datetime(%s)" % OLD_HV_1),
         "ipa_predicate_type": ipa_predicate_type,
         "offload_type": OFFLOAD_TYPE_INCREMENTAL,
         "execute": True,
@@ -239,9 +229,7 @@ def offload_pbo_late_100_x_tests(
     # Late arriving data should be invisible as far as metadata and hybrid view is concerned.
     options = {
         "owner_table": schema + "." + table_name,
-        "offload_predicate": GenericPredicate(
-            "column(time_id) = datetime(%s)" % OLD_HV_1
-        ),
+        "offload_predicate": GenericPredicate("column(time_id) = datetime(%s)" % OLD_HV_1),
         "ipa_predicate_type": ipa_predicate_type,
         "execute": True,
     }
@@ -310,18 +298,16 @@ def offload_pbo_late_arriving_std_range_tests(
         hv_pred = "(column(time_id) = datetime(%s))" % OLD_HV_1
 
         def add_row_fn():
-            return frontend_api.sales_based_fact_late_arriving_data_sql(
-                schema, table_name, OLD_HV_1
-            )
+            return frontend_api.sales_based_fact_late_arriving_data_sql(schema, table_name, OLD_HV_1)
 
     elif table_name == LAR_TABLE_LATE:
         inc_key = "YRMON"
         ipa_predicate_type = INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE
         chk_hv_1 = test_constants.SALES_BASED_FACT_HV_1
         hv_1 = test_constants.SALES_BASED_FACT_HV_2
-        hv_pred = (
-            "(column(yrmon) = datetime(%s)) and (column(time_id) = datetime(%s))"
-            % (test_constants.SALES_BASED_FACT_HV_1, OLD_HV_1)
+        hv_pred = "(column(yrmon) = datetime(%s)) and (column(time_id) = datetime(%s))" % (
+            test_constants.SALES_BASED_FACT_HV_1,
+            OLD_HV_1,
         )
 
         def add_row_fn():
@@ -338,9 +324,7 @@ def offload_pbo_late_arriving_std_range_tests(
         hv_pred = "(column(time_id) = datetime(%s))" % OLD_HV_1
 
         def add_row_fn():
-            return gen_insert_late_arriving_sales_based_multi_pcol_data(
-                schema, table_name, OLD_HV_1
-            )
+            return gen_insert_late_arriving_sales_based_multi_pcol_data(schema, table_name, OLD_HV_1)
 
         check_hwm_in_metadata = False
         if config.target == DBTYPE_BIGQUERY:
@@ -411,12 +395,7 @@ def offload_pbo_late_arriving_std_range_tests(
         messages,
         frontend_sqls=add_row_fn(),
     )
-    assert (
-        frontend_api.get_table_row_count(
-            schema, table_name, filter_clause=chk_cnt_filter
-        )
-        > 0
-    )
+    assert frontend_api.get_table_row_count(schema, table_name, filter_clause=chk_cnt_filter) > 0
 
     # Attempt offload late arriving predicate with --reset-hybrid-view, fails.
     options = {
@@ -521,13 +500,12 @@ def offload_pbo_late_arriving_std_range_tests(
 def test_offload_pbo_late_range_90_10(config, schema, data_db):
     """Tests for Late Arriving Predicate Based Offload."""
     id = "test_offload_pbo_late_range_90_10"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -539,9 +517,7 @@ def test_offload_pbo_late_range_90_10(config, schema, data_db):
                 schema, RANGE_TABLE_LATE, simple_partition_names=True
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, RANGE_TABLE_LATE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, RANGE_TABLE_LATE),
             ],
         )
 
@@ -565,13 +541,12 @@ def test_offload_pbo_late_range_90_10(config, schema, data_db):
 def test_offload_pbo_late_range_100_0(config, schema, data_db):
     """Tests for Late Arriving Predicate Based Offload."""
     id = "test_offload_pbo_late_range_100_0"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -583,9 +558,7 @@ def test_offload_pbo_late_range_100_0(config, schema, data_db):
                 schema, RANGE_TABLE_LATE_100_0, simple_partition_names=True
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, RANGE_TABLE_LATE_100_0
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, RANGE_TABLE_LATE_100_0),
             ],
         )
 
@@ -609,13 +582,12 @@ def test_offload_pbo_late_list_as_range(config, schema, data_db):
     if config.db_type == DBTYPE_TERADATA:
         pytest.skip(f"Skipping {id} on Teradata because CASE_N is not yet supported")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -630,9 +602,7 @@ def test_offload_pbo_late_list_as_range(config, schema, data_db):
                 with_drop=True,
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LAR_TABLE_LATE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LAR_TABLE_LATE),
             ],
         )
 
@@ -659,13 +629,12 @@ def test_offload_pbo_late_list_as_range_100_0(config, schema, data_db):
     if config.db_type == DBTYPE_TERADATA:
         pytest.skip(f"Skipping {id} on Teradata because CASE_N is not yet supported")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -680,9 +649,7 @@ def test_offload_pbo_late_list_as_range_100_0(config, schema, data_db):
                 with_drop=True,
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LAR_TABLE_LATE_100_0
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LAR_TABLE_LATE_100_0),
             ],
         )
 
@@ -708,13 +675,12 @@ def test_offload_pbo_late_mcol_range(config, schema, data_db):
             "Skipping multi-column tests on Teradata because we currently only support RANGE with a single column"
         )
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -727,9 +693,7 @@ def test_offload_pbo_late_mcol_range(config, schema, data_db):
                 MCOL_TABLE_LATE,
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, MCOL_TABLE_LATE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, MCOL_TABLE_LATE),
             ],
         )
 
@@ -751,17 +715,14 @@ def test_offload_pbo_late_range_sub(config, schema, data_db):
     id = "test_offload_pbo_late_range_sub"
 
     if config.db_type == DBTYPE_TERADATA:
-        pytest.skip(
-            "Skipping subpartition tests on Teradata because we currently only support RANGE at top level"
-        )
+        pytest.skip("Skipping subpartition tests on Teradata because we currently only support RANGE at top level")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -774,9 +735,7 @@ def test_offload_pbo_late_range_sub(config, schema, data_db):
                 RANGE_SP_LATE,
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, RANGE_SP_LATE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, RANGE_SP_LATE),
             ],
         )
 

@@ -16,7 +16,6 @@ import json
 import os
 import re
 import time
-from typing import Union
 
 from goe.config import orchestration_defaults
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
@@ -26,14 +25,14 @@ from goe.offload.factory.offload_transport_rdbms_api_factory import (
 from goe.offload.offload_constants import LIVY_MAX_SESSIONS
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport import (
-    OffloadTransportException,
-    OffloadTransportSpark,
     FRONTEND_TRACE_MODULE,
     GOE_LISTENER_JAR,
     OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
     TRANSPORT_CXT_BYTES,
     TRANSPORT_CXT_ROWS,
     YARN_TRANSPORT_NAME,
+    OffloadTransportException,
+    OffloadTransportSpark,
 )
 from goe.offload.offload_transport_functions import (
     finish_progress_on_stdout,
@@ -43,7 +42,6 @@ from goe.offload.spark.offload_transport_livy_requests import (
     OffloadTransportLivyRequests,
 )
 from goe.orchestration import command_steps
-
 
 URL_SEP = "/"
 LIVY_SESSIONS_SUBURL = "sessions"
@@ -71,7 +69,7 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
     ):
         """CONSTRUCTOR"""
         self._offload_transport_method = OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY
-        super(OffloadTransportSparkLivy, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -79,9 +77,7 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
             messages,
             dfs_client,
         )
-        assert (
-            offload_options.offload_transport_livy_api_url
-        ), "REST API URL has not been defined"
+        assert offload_options.offload_transport_livy_api_url, "REST API URL has not been defined"
 
         self._api_url = offload_options.offload_transport_livy_api_url
         self._livy_requests = OffloadTransportLivyRequests(offload_options, messages)
@@ -92,9 +88,7 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
             else LIVY_MAX_SESSIONS
         )
         # timeout and close Livy sessions when idle
-        self._idle_session_timeout = int(
-            offload_options.offload_transport_livy_idle_session_timeout
-        )
+        self._idle_session_timeout = int(offload_options.offload_transport_livy_idle_session_timeout)
         # For Livy we need to pass compression in as a config to the driving session
         self._load_table_compression_pyspark_settings()
 
@@ -107,9 +101,7 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
         return YARN_TRANSPORT_NAME
 
     def _column_type_read_remappings(self):
-        return self._offload_transport_type_remappings(
-            return_as_list=False, remap_sep="="
-        )
+        return self._offload_transport_type_remappings(return_as_list=False, remap_sep="=")
 
     def _close_livy_session(self, session_url):
         try:
@@ -124,11 +116,7 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
             if log_msg != last_log_msg:
                 self._messages.log_timestamp(detail=VVERBOSE)
                 self.log(
-                    (
-                        "\n".join(_ for _ in log_msg)
-                        if isinstance(log_msg, list)
-                        else str(log_msg)
-                    ),
+                    ("\n".join(_ for _ in log_msg) if isinstance(log_msg, list) else str(log_msg)),
                     detail=VVERBOSE,
                 )
             return log_msg
@@ -147,12 +135,9 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
             )
         else:
             # Ensure jar file is copied to DFS
-            spark_listener_jar_remote_path = os.path.join(
-                self._offload_options.hdfs_home, GOE_LISTENER_JAR
-            )
+            spark_listener_jar_remote_path = os.path.join(self._offload_options.hdfs_home, GOE_LISTENER_JAR)
             self.log_dfs_cmd(
-                'copy_from_local("%s", "%s")'
-                % (spark_listener_jar_local_path, spark_listener_jar_remote_path)
+                'copy_from_local("%s", "%s")' % (spark_listener_jar_local_path, spark_listener_jar_remote_path)
             )
             if not self._dry_run:
                 self._dfs_client.copy_from_local(
@@ -207,12 +192,8 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
         }
         if self._offload_transport_queue_name:
             data["queue"] = self._offload_transport_queue_name
-        add_payload_option_from_spark_properties(
-            data, "driverMemory", "spark.driver.memory"
-        )
-        add_payload_option_from_spark_properties(
-            data, "executorMemory", "spark.executor.memory"
-        )
+        add_payload_option_from_spark_properties(data, "driverMemory", "spark.driver.memory")
+        add_payload_option_from_spark_properties(data, "executorMemory", "spark.executor.memory")
         self.log(
             "%s: Requesting Livy session: %s"
             % (
@@ -222,16 +203,10 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
             detail=VVERBOSE,
         )
 
-        resp = self._livy_requests.post(
-            self._get_api_sessions_url(), data=json.dumps(data)
-        )
+        resp = self._livy_requests.post(self._get_api_sessions_url(), data=json.dumps(data))
         if resp.ok:
             self.log("Livy session id: %s" % resp.json().get("id"), detail=VVERBOSE)
-            session_url = (
-                (self._api_url + resp.headers["location"])
-                if resp.headers.get("location")
-                else None
-            )
+            session_url = (self._api_url + resp.headers["location"]) if resp.headers.get("location") else None
             session_state = None
             polls = 0
             # Wait until the state of the session is "idle" - not "starting"
@@ -242,13 +217,12 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
                         finish_progress_on_stdout()
                     self.log("REST session started: %s" % session_url, detail=VVERBOSE)
                     return session_url
-                elif session_state == "starting":
+                if session_state == "starting":
                     last_log_msg = self._log_app_info(resp.json(), last_log_msg)
                     time.sleep(LIVY_CONNECT_POLL_DELAY)
                     polls += 1
                     self.log(
-                        "%s: Polling session with state: %s"
-                        % (self._str_time(), session_state),
+                        "%s: Polling session with state: %s" % (self._str_time(), session_state),
                         detail=VVERBOSE,
                     )
                     resp = self._livy_requests.get(session_url)
@@ -264,25 +238,18 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
                     # Something went wrong
                     self.log("Response text: %s" % resp.text, detail=VVERBOSE)
                     self._close_livy_session(session_url)
-                    raise OffloadTransportException(
-                        "REST session was not created: state=%s" % session_state
-                    )
+                    raise OffloadTransportException("REST session was not created: state=%s" % session_state)
             # If we got here then we're timing out
             self.log("Response text: %s" % resp.text, detail=VVERBOSE)
             self._close_livy_session(session_url)
-            raise OffloadTransportException(
-                "REST session was not created, timing out: state=%s" % session_state
-            )
-        else:
-            self.log("Response code: %s" % resp.status_code, detail=VERBOSE)
-            self.log("Response text: %s" % resp.text, detail=VERBOSE)
-            resp.raise_for_status()
+            raise OffloadTransportException("REST session was not created, timing out: state=%s" % session_state)
+        self.log("Response code: %s" % resp.status_code, detail=VERBOSE)
+        self.log("Response text: %s" % resp.text, detail=VERBOSE)
+        resp.raise_for_status()
 
     def _attach_livy_session(self):
         def is_goe_usable_session(job_dict, ignore_session_state=False):
-            if job_dict.get("kind") != "pyspark" or (
-                job_dict.get("state") != "idle" and not ignore_session_state
-            ):
+            if job_dict.get("kind") != "pyspark" or (job_dict.get("state") != "idle" and not ignore_session_state):
                 return False
             if self._offload_transport_queue_name:
                 pattern = re.compile(
@@ -306,39 +273,28 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
             if len(goe_usable_sessions) > 0:
                 use_session = goe_usable_sessions.pop()
                 self.log(
-                    "Re-using Livy session: %s/%s"
-                    % (str(use_session["id"]), use_session.get("appId")),
+                    "Re-using Livy session: %s/%s" % (str(use_session["id"]), use_session.get("appId")),
                     detail=VERBOSE,
                 )
-                return URL_SEP.join(
-                    [self._get_api_sessions_url(), str(use_session["id"])]
-                )
-            else:
-                all_goe_sessions = [
-                    _
-                    for _ in sessions
-                    if is_goe_usable_session(_, ignore_session_state=True)
-                ]
-                self.log(
-                    "No usable Livy sessions out of total: %s" % len(all_goe_sessions),
-                    detail=VVERBOSE,
-                )
-                if len(all_goe_sessions) < self._livy_max_sessions:
-                    # create and use a new session
-                    return self._create_livy_session()
-                else:
-                    self.log(
-                        "All goe capable Livy sessions: %s" % str(all_goe_sessions),
-                        detail=VVERBOSE,
-                    )
-                    raise OffloadTransportException(
-                        "Exceeded maximum Livy sessions for offload transport: %s"
-                        % str(self._livy_max_sessions)
-                    )
-        else:
-            self.log("Response code: %s" % resp.status_code, detail=VERBOSE)
-            self.log("Response text: %s" % resp.text, detail=VERBOSE)
-            resp.raise_for_status()
+                return URL_SEP.join([self._get_api_sessions_url(), str(use_session["id"])])
+            all_goe_sessions = [_ for _ in sessions if is_goe_usable_session(_, ignore_session_state=True)]
+            self.log(
+                "No usable Livy sessions out of total: %s" % len(all_goe_sessions),
+                detail=VVERBOSE,
+            )
+            if len(all_goe_sessions) < self._livy_max_sessions:
+                # create and use a new session
+                return self._create_livy_session()
+            self.log(
+                "All goe capable Livy sessions: %s" % str(all_goe_sessions),
+                detail=VVERBOSE,
+            )
+            raise OffloadTransportException(
+                "Exceeded maximum Livy sessions for offload transport: %s" % str(self._livy_max_sessions)
+            )
+        self.log("Response code: %s" % resp.status_code, detail=VERBOSE)
+        self.log("Response text: %s" % resp.text, detail=VERBOSE)
+        resp.raise_for_status()
 
     def _submit_pyspark_to_session(self, session_url, payload_data):
         """Submit a pyspark job to Livy and poll until the job is complete. Returns log output."""
@@ -347,41 +303,28 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
         payload = {"code": payload_data}
         resp = self._livy_requests.post(statements_url, data=json.dumps(payload))
         if resp.ok:
-            statement_url = (
-                (self._api_url + resp.headers["location"])
-                if resp.headers.get("location")
-                else None
-            )
+            statement_url = (self._api_url + resp.headers["location"]) if resp.headers.get("location") else None
             self.log("Submitted REST statement: %s" % statement_url, detail=VERBOSE)
             # Wait until the state of the statement is "available" - not "running" or "waiting"
             polls = 0
             while True:
                 statement_state = resp.json()["state"]
                 if statement_state == "available":
-                    self.log(
-                        "REST statement complete: %s" % statement_url, detail=VVERBOSE
-                    )
+                    self.log("REST statement complete: %s" % statement_url, detail=VVERBOSE)
                     statement_output = resp.json().get("output")
                     self.log("Output: %s" % statement_output, detail=VVERBOSE)
-                    status = (
-                        statement_output.get("status") if statement_output else None
-                    )
+                    status = statement_output.get("status") if statement_output else None
                     if status != "ok":
-                        raise OffloadTransportException(
-                            "Spark statement has failed with status: %s" % status
-                        )
+                        raise OffloadTransportException("Spark statement has failed with status: %s" % status)
                     # The REST response has CRs converted to plain text, change them back before return the value
-                    statement_log = str(statement_output.get("data")).replace(
-                        "\\n", "\n"
-                    )
+                    statement_log = str(statement_output.get("data")).replace("\\n", "\n")
                     return statement_log
-                elif statement_state in ("running", "waiting"):
+                if statement_state in ("running", "waiting"):
                     last_log_msg = self._log_app_info(resp.json(), last_log_msg)
                     time.sleep(LIVY_STATEMENT_POLL_DELAY)
                     polls += 1
                     self.log(
-                        "%s: Polling statement with state: %s"
-                        % (self._str_time(), statement_state),
+                        "%s: Polling statement with state: %s" % (self._str_time(), statement_state),
                         detail=VVERBOSE,
                     )
                     resp = self._livy_requests.get(statement_url)
@@ -392,9 +335,7 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
                 else:
                     # Something went wrong
                     self.log("Response text: %s" % resp.text, detail=VVERBOSE)
-                    raise OffloadTransportException(
-                        "Spark statement has unexpected state: %s" % statement_state
-                    )
+                    raise OffloadTransportException("Spark statement has unexpected state: %s" % statement_state)
         else:
             self.log("Response code: %s" % resp.status_code, detail=VERBOSE)
             self.log("Response text: %s" % resp.text, detail=VERBOSE)
@@ -402,16 +343,14 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
 
         return None
 
-    def _livy_import(self, partition_chunk=None) -> Union[int, None]:
+    def _livy_import(self, partition_chunk=None) -> int | None:
         """Submit PySpark code via Livy REST interface"""
         self._refresh_rdbms_action()
 
         if self._nothing_to_do(partition_chunk):
             return 0
 
-        pyspark_body = self._get_pyspark_body(
-            partition_chunk, create_spark_context=False
-        )
+        pyspark_body = self._get_pyspark_body(partition_chunk, create_spark_context=False)
         self.log("PySpark: " + pyspark_body, detail=VVERBOSE)
         session_url = self._attach_livy_session()
         if not self._dry_run:
@@ -443,7 +382,7 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
     # PUBLIC METHODS
     ###########################################################################
 
-    def transport(self, partition_chunk=None) -> Union[int, None]:
+    def transport(self, partition_chunk=None) -> int | None:
         """Run the data transport"""
         self._reset_transport_context()
 
@@ -472,9 +411,7 @@ class OffloadTransportSparkLivyCanary(OffloadTransportSparkLivy):
         """CONSTRUCTOR
         This does not call up the stack to parent constructor because we only want a subset of functionality
         """
-        assert (
-            offload_options.offload_transport_livy_api_url
-        ), "REST API URL has not been defined"
+        assert offload_options.offload_transport_livy_api_url, "REST API URL has not been defined"
 
         self._offload_options = offload_options
         self._messages = messages
@@ -502,21 +439,13 @@ class OffloadTransportSparkLivyCanary(OffloadTransportSparkLivy):
 
         self._create_basic_connectivity_attributes(offload_options)
 
-        self._offload_transport_consistent_read = (
-            orchestration_defaults.bool_option_from_string(
-                "OFFLOAD_TRANSPORT_CONSISTENT_READ",
-                orchestration_defaults.offload_transport_consistent_read_default(),
-            )
+        self._offload_transport_consistent_read = orchestration_defaults.bool_option_from_string(
+            "OFFLOAD_TRANSPORT_CONSISTENT_READ",
+            orchestration_defaults.offload_transport_consistent_read_default(),
         )
-        self._offload_transport_fetch_size = (
-            orchestration_defaults.offload_transport_fetch_size_default()
-        )
-        self._offload_transport_jvm_overrides = (
-            orchestration_defaults.offload_transport_spark_overrides_default()
-        )
-        self._offload_transport_queue_name = (
-            orchestration_defaults.offload_transport_spark_queue_name_default()
-        )
+        self._offload_transport_fetch_size = orchestration_defaults.offload_transport_fetch_size_default()
+        self._offload_transport_jvm_overrides = orchestration_defaults.offload_transport_spark_overrides_default()
+        self._offload_transport_queue_name = orchestration_defaults.offload_transport_spark_queue_name_default()
         self._offload_transport_parallelism = 1
         self._validation_polling_interval = (
             orchestration_defaults.offload_transport_validation_polling_interval_default()

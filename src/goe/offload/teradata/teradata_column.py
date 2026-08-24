@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TeradataColumn: Teradata implementation of ColumnMetadataInterface
-"""
+"""TeradataColumn: Teradata implementation of ColumnMetadataInterface"""
 
 import re
 
@@ -104,7 +103,7 @@ TERADATA_INTERVAL_YM_SUB_PATTERN = "INTERVAL YEAR(%s) TO MONTH"
 TERADATA_TIME_SUB_PATTERN = "TIME(%s)"
 TERADATA_TIMESTAMP_SUB_PATTERN = "TIMESTAMP(%s)"
 
-TERADATA_TIMESTAMP_RE = re.compile(r"^TIMESTAMP\(([0-6])\)$", re.I)
+TERADATA_TIMESTAMP_RE = re.compile(r"^TIMESTAMP\(([0-6])\)$", re.IGNORECASE)
 
 TERADATA_STRING_DATA_TYPES = [
     TERADATA_TYPE_CHAR,
@@ -200,9 +199,7 @@ class TeradataColumn(ColumnMetadataInterface):
         return col
 
     def format_data_type(self):
-        assert (
-            self.data_type in TERADATA_TYPE_TO_SQL_NAME_MAP
-        ), f"Data type name unknown for: {self.data_type}"
+        assert self.data_type in TERADATA_TYPE_TO_SQL_NAME_MAP, f"Data type name unknown for: {self.data_type}"
         data_type_name = TERADATA_TYPE_TO_SQL_NAME_MAP[self.data_type]
         if self.data_type in [TERADATA_TYPE_DECIMAL, TERADATA_TYPE_NUMBER]:
             if self.data_precision and self.data_scale is not None:
@@ -211,11 +208,10 @@ class TeradataColumn(ColumnMetadataInterface):
                     self.data_precision,
                     self.data_scale,
                 )
-            elif self.data_precision:
+            if self.data_precision:
                 return "%s(%s)" % (data_type_name, self.data_precision)
-            else:
-                return data_type_name
-        elif self.data_length is not None and self.data_type in [
+            return data_type_name
+        if self.data_length is not None and self.data_type in [
             TERADATA_TYPE_BLOB,
             TERADATA_TYPE_BYTE,
             TERADATA_TYPE_VARBYTE,
@@ -223,11 +219,11 @@ class TeradataColumn(ColumnMetadataInterface):
             TERADATA_TYPE_VARCHAR,
         ]:
             return "%s(%s)" % (data_type_name, self.data_length)
-        elif self.data_scale is not None and self.data_type == TERADATA_TYPE_TIMESTAMP:
+        if self.data_scale is not None and self.data_type == TERADATA_TYPE_TIMESTAMP:
             return TERADATA_TIMESTAMP_SUB_PATTERN % self.data_scale
-        elif self.data_scale is not None and self.data_type == TERADATA_TYPE_TIME:
+        if self.data_scale is not None and self.data_type == TERADATA_TYPE_TIME:
             return TERADATA_TIME_SUB_PATTERN % self.data_scale
-        elif (
+        if (
             self.data_type == TERADATA_TYPE_INTERVAL_DS
             and self.data_precision is not None
             and self.data_scale is not None
@@ -236,13 +232,9 @@ class TeradataColumn(ColumnMetadataInterface):
                 self.data_precision or 2,
                 self.data_scale or 6,
             )
-        elif (
-            self.data_type == TERADATA_TYPE_INTERVAL_YM
-            and self.data_precision is not None
-        ):
+        if self.data_type == TERADATA_TYPE_INTERVAL_YM and self.data_precision is not None:
             return TERADATA_INTERVAL_YM_SUB_PATTERN % self.data_precision
-        else:
-            return data_type_name
+        return data_type_name
 
     def has_time_element(self):
         """Does the column data contain a time"""
@@ -257,10 +249,7 @@ class TeradataColumn(ColumnMetadataInterface):
         )
 
     def is_binary(self):
-        return bool(
-            self.data_type
-            in [TERADATA_TYPE_BLOB, TERADATA_TYPE_BYTE, TERADATA_TYPE_VARBYTE]
-        )
+        return bool(self.data_type in [TERADATA_TYPE_BLOB, TERADATA_TYPE_BYTE, TERADATA_TYPE_VARBYTE])
 
     def is_nan_capable(self):
         return bool(self.data_type == TERADATA_TYPE_DOUBLE)
@@ -282,10 +271,7 @@ class TeradataColumn(ColumnMetadataInterface):
 
     def is_date_based(self):
         """Is the column date in class"""
-        return bool(
-            self.data_type
-            in [TERADATA_TYPE_DATE, TERADATA_TYPE_TIMESTAMP, TERADATA_TYPE_TIMESTAMP_TZ]
-        )
+        return bool(self.data_type in [TERADATA_TYPE_DATE, TERADATA_TYPE_TIMESTAMP, TERADATA_TYPE_TIMESTAMP_TZ])
 
     def is_interval(self):
         return bool(self.data_type in TERADATA_INTERVAL_DATA_TYPES)
@@ -296,10 +282,7 @@ class TeradataColumn(ColumnMetadataInterface):
 
     def is_time_zone_based(self):
         """Does the column contain time zone data"""
-        return bool(
-            self.data_type.upper()
-            in (TERADATA_TYPE_TIME_TZ, TERADATA_TYPE_TIMESTAMP_TZ)
-        )
+        return bool(self.data_type.upper() in (TERADATA_TYPE_TIME_TZ, TERADATA_TYPE_TIMESTAMP_TZ))
 
     def valid_for_offload_predicate(self):
         return bool(

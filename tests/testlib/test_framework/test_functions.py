@@ -14,14 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Functions used in both "test --setup", "test_runner" and "test_setup".
-    Allows us to share code but also keep scripts trim and healthy.
+"""Functions used in both "test --setup", "test_runner" and "test_setup".
+Allows us to share code but also keep scripts trim and healthy.
 """
 
 from contextlib import contextmanager
 
 from goe.goe import (
     log as offload_log,
+)
+from goe.goe import (
     normal,
 )
 from goe.offload.offload_functions import convert_backend_identifier_case, data_db_name
@@ -37,15 +39,11 @@ from tests.testlib.test_framework.offload_test_messages import OffloadTestMessag
 
 
 def get_backend_testing_api(config, messages, no_caching=True):
-    return backend_testing_api_factory(
-        config.target, config, messages, dry_run=False, no_caching=no_caching
-    )
+    return backend_testing_api_factory(config.target, config, messages, dry_run=False, no_caching=no_caching)
 
 
 def get_frontend_testing_api(config, messages, trace_action=None):
-    return frontend_testing_api_factory(
-        config.db_type, config, messages, dry_run=False, trace_action=trace_action
-    )
+    return frontend_testing_api_factory(config.db_type, config, messages, dry_run=False, trace_action=trace_action)
 
 
 @contextmanager
@@ -97,20 +95,15 @@ def get_lines_from_log(
         for line in lf:
             if not start_found:
                 start_found = search_from_text in line
-            else:
-                if search_text in line:
-                    matches.append(line)
-                    if max_matches and len(matches) >= max_matches:
-                        return matches
+            elif search_text in line:
+                matches.append(line)
+                if max_matches and len(matches) >= max_matches:
+                    return matches
     return matches
 
 
-def get_line_from_log(
-    messages: OffloadMessages, search_text, search_from_text=""
-) -> str:
-    matches = get_lines_from_log(
-        messages, search_text, search_from_text=search_from_text, max_matches=1
-    )
+def get_line_from_log(messages: OffloadMessages, search_text, search_from_text="") -> str:
+    matches = get_lines_from_log(messages, search_text, search_from_text=search_from_text, max_matches=1)
     return matches[0] if matches else None
 
 
@@ -122,10 +115,8 @@ def goe_wide_max_columns(frontend_api, backend_api_or_count):
             backend_count = backend_api_or_count.goe_wide_max_test_column_count()
         if backend_count:
             return min(backend_count, frontend_api.goe_wide_max_test_column_count())
-        else:
-            return frontend_api.goe_wide_max_test_column_count()
-    else:
         return frontend_api.goe_wide_max_test_column_count()
+    return frontend_api.goe_wide_max_test_column_count()
 
 
 def log(line: str, detail: int = normal, ansi_code=None):
@@ -141,9 +132,7 @@ def text_in_log(search_text, search_from_text="") -> bool:
     """Will search for text in the test logfile starting from the start of the
     story in the log or the top of the file if search_from_text is blank.
     """
-    return bool(
-        get_line_from_log(search_text, search_from_text=search_from_text) is not None
-    )
+    return bool(get_line_from_log(search_text, search_from_text=search_from_text) is not None)
 
 
 def text_in_messages(messages, log_text) -> bool:

@@ -27,7 +27,6 @@ from goe.offload.operation.sort_columns import (
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
 from tests.integration.scenarios.assertion_functions import check_metadata
 from tests.integration.scenarios.scenario_runner import (
     run_offload,
@@ -44,7 +43,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 OFFLOAD_DIM = "STORY_SORT_DIM"
 OFFLOAD_FACT = "STORY_SORT_FACT"
@@ -70,20 +68,15 @@ def data_db(schema, config):
 
 def sorted_table_supported(backend_api, modify=False):
     if modify:
-        return bool(
-            backend_api.sorted_table_supported()
-            and backend_api.sorted_table_modify_supported()
-        )
-    else:
-        return backend_api.sorted_table_supported()
+        return bool(backend_api.sorted_table_supported() and backend_api.sorted_table_modify_supported())
+    return backend_api.sorted_table_supported()
 
 
 def column_supports_sorting(backend_api, data_db, table_name, column_name):
     backend_col = backend_api.get_column(data_db, table_name, column_name)
     if backend_api.is_valid_sort_data_type(backend_col.data_type):
         return column_name
-    else:
-        return None
+    return None
 
 
 def offload_sorting_fact_offload1_partition_columns(backend_api):
@@ -91,16 +84,14 @@ def offload_sorting_fact_offload1_partition_columns(backend_api):
         return None
     if backend_api.max_partition_columns() == 1:
         return "TIME_ID"
-    else:
-        return "TIME_ID,CHANNEL_ID"
+    return "TIME_ID,CHANNEL_ID"
 
 
 def offload_sorting_fact_offload1_granularity(backend_api, date=True):
     if backend_api.max_partition_columns() <= 1:
         # Let default kick in for date based columns.
         return None if date else "1"
-    else:
-        return "%s,1" % ("M" if date else "1")
+    return "%s,1" % ("M" if date else "1")
 
 
 def sort_story_assertion(
@@ -128,13 +119,10 @@ def sort_story_assertion(
         return False
     # Hive doesn't store sort columns in the metastore.
     if backend_api.backend_type() != offload_constants.DBTYPE_HIVE:
-        table_sort_columns = (
-            backend_api.get_table_sort_columns(data_db, backend_name) or "NULL"
-        ).upper()
+        table_sort_columns = (backend_api.get_table_sort_columns(data_db, backend_name) or "NULL").upper()
         if table_sort_columns.upper() != offload_sort_columns.upper():
             messages.log(
-                "table_sort_columns (%s) != offload_sort_columns (%s)"
-                % (table_sort_columns, offload_sort_columns)
+                "table_sort_columns (%s) != offload_sort_columns (%s)" % (table_sort_columns, offload_sort_columns)
             )
             return False
     return True
@@ -142,13 +130,12 @@ def sort_story_assertion(
 
 def test_offload_sorting_dim(config, schema, data_db):
     id = "test_offload_sorting_dim"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
         backend_name = convert_backend_identifier_case(config, OFFLOAD_DIM)
 
         # Setup
@@ -157,13 +144,9 @@ def test_offload_sorting_dim(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, OFFLOAD_DIM, pk_col_name="ID"
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, OFFLOAD_DIM, pk_col_name="ID"),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, OFFLOAD_DIM
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, OFFLOAD_DIM),
             ],
         )
 
@@ -176,9 +159,7 @@ def test_offload_sorting_dim(config, schema, data_db):
             "execute": True,
         }
         run_offload(options, config, messages)
-        expected_sort_cols = (
-            "ID" if backend_api.default_sort_columns_to_primary_key() else "NULL"
-        )
+        expected_sort_cols = "ID" if backend_api.default_sort_columns_to_primary_key() else "NULL"
         assert sort_story_assertion(
             schema,
             OFFLOAD_DIM,
@@ -283,17 +264,16 @@ def test_offload_sorting_dim(config, schema, data_db):
 
 def test_offload_sorting_fact(config, schema, data_db):
     id = "test_offload_sorting_fact"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         if not sorted_table_supported(backend_api):
             pytest.skip(f"Skipping {id} due to sorted_table_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
         backend_name = convert_backend_identifier_case(config, OFFLOAD_FACT)
 
         # Setup
@@ -302,12 +282,8 @@ def test_offload_sorting_fact(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.sales_based_fact_create_ddl(
-                schema, OFFLOAD_FACT, simple_partition_names=True
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, OFFLOAD_FACT
-            ),
+            frontend_sqls=frontend_api.sales_based_fact_create_ddl(schema, OFFLOAD_FACT, simple_partition_names=True),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, OFFLOAD_FACT),
         )
 
         if backend_api.default_sort_columns_to_primary_key():
@@ -315,12 +291,8 @@ def test_offload_sorting_fact(config, schema, data_db):
             options = {
                 "owner_table": schema + "." + OFFLOAD_FACT,
                 "older_than_date": test_constants.SALES_BASED_FACT_HV_1,
-                "offload_partition_columns": offload_sorting_fact_offload1_partition_columns(
-                    backend_api
-                ),
-                "offload_partition_granularity": offload_sorting_fact_offload1_granularity(
-                    backend_api
-                ),
+                "offload_partition_columns": offload_sorting_fact_offload1_partition_columns(backend_api),
+                "offload_partition_granularity": offload_sorting_fact_offload1_granularity(backend_api),
                 "reset_backend_table": True,
                 "create_backend_db": True,
                 "execute": True,
@@ -342,12 +314,8 @@ def test_offload_sorting_fact(config, schema, data_db):
             "owner_table": schema + "." + OFFLOAD_FACT,
             "sort_columns_csv": "channel_id,promo_id",
             "older_than_date": test_constants.SALES_BASED_FACT_HV_1,
-            "offload_partition_columns": offload_sorting_fact_offload1_partition_columns(
-                backend_api
-            ),
-            "offload_partition_granularity": offload_sorting_fact_offload1_granularity(
-                backend_api
-            ),
+            "offload_partition_columns": offload_sorting_fact_offload1_partition_columns(backend_api),
+            "offload_partition_granularity": offload_sorting_fact_offload1_granularity(backend_api),
             "reset_backend_table": True,
             "create_backend_db": True,
             "execute": True,
@@ -463,9 +431,10 @@ def test_offload_sorting_fact(config, schema, data_db):
 def test_offload_sorting_many_pk_cols(config, schema, data_db):
     """Test Offload to BigQuery when there are many primary key columns."""
     id = "test_offload_sorting_many_pk_cols"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         if not sorted_table_supported(backend_api):
@@ -473,9 +442,7 @@ def test_offload_sorting_many_pk_cols(config, schema, data_db):
         if backend_api.max_sort_columns() > 4:
             pytest.skip(f"Skipping {id} due to backend_api.max_sort_columns() > 4")
 
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
         backend_name = convert_backend_identifier_case(config, MANY_PK_DIM)
         sort_cols = [
             "ID",
@@ -495,9 +462,7 @@ def test_offload_sorting_many_pk_cols(config, schema, data_db):
                 schema, MANY_PK_DIM, pk_col_name=",".join(sort_cols)
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, MANY_PK_DIM
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, MANY_PK_DIM),
             ],
         )
 

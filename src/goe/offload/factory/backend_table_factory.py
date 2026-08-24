@@ -16,8 +16,8 @@
 
 from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
-    DBTYPE_IMPALA,
     DBTYPE_HIVE,
+    DBTYPE_IMPALA,
     DBTYPE_SNOWFLAKE,
     DBTYPE_SYNAPSE,
 )
@@ -78,7 +78,7 @@ def backend_table_factory(
             existing_backend_api=existing_backend_api,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_IMPALA:
+    if backend_type == DBTYPE_IMPALA:
         from goe.offload.hadoop.impala_backend_table import BackendImpalaTable
 
         return BackendImpalaTable(
@@ -93,7 +93,7 @@ def backend_table_factory(
             existing_backend_api=existing_backend_api,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_BIGQUERY:
+    if backend_type == DBTYPE_BIGQUERY:
         from goe.offload.bigquery.bigquery_backend_table import BackendBigQueryTable
 
         return BackendBigQueryTable(
@@ -108,7 +108,7 @@ def backend_table_factory(
             existing_backend_api=existing_backend_api,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_SNOWFLAKE:
+    if backend_type == DBTYPE_SNOWFLAKE:
         from goe.offload.snowflake.snowflake_backend_table import BackendSnowflakeTable
 
         return BackendSnowflakeTable(
@@ -123,7 +123,7 @@ def backend_table_factory(
             existing_backend_api=existing_backend_api,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_SYNAPSE:
+    if backend_type == DBTYPE_SYNAPSE:
         from goe.offload.microsoft.synapse_backend_table import BackendSynapseTable
 
         return BackendSynapseTable(
@@ -138,13 +138,10 @@ def backend_table_factory(
             existing_backend_api=existing_backend_api,
             do_not_connect=do_not_connect,
         )
-    else:
-        raise NotImplementedError("Unsupported backend system type: %s" % backend_type)
+    raise NotImplementedError("Unsupported backend system type: %s" % backend_type)
 
 
-def get_backend_table_from_metadata(
-    hybrid_metadata, options, messages, offload_operation=None
-):
+def get_backend_table_from_metadata(hybrid_metadata, options, messages, offload_operation=None):
     return backend_table_factory(
         hybrid_metadata.backend_owner,
         hybrid_metadata.backend_table,

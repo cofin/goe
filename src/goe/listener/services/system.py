@@ -14,15 +14,16 @@
 
 # Standard Library
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 from uuid import NAMESPACE_DNS, uuid3
 
 # Third Party Libraries
 from pydantic import UUID3
 
+from goe.config.orchestration_config import OrchestrationConfig
+
 # GOE
 from goe.goe import version as goe_version
-from goe.config.orchestration_config import OrchestrationConfig
 from goe.listener import utils
 from goe.listener.config import settings
 from goe.offload.offload_messages import OffloadMessages
@@ -37,7 +38,7 @@ from goe.persistence.orchestration_repo_client import (
 logger = logging.getLogger(__name__)
 
 
-class SystemService(object):
+class SystemService:
     """API for accessing metadata about databases"""
 
     def __init__(self):
@@ -45,12 +46,12 @@ class SystemService(object):
         self.messages = OffloadMessages()
 
     @staticmethod
-    def get_repo(
-        config: OrchestrationConfig, messages: OffloadMessages
-    ) -> OrchestrationRepoClientInterface:
+    def get_repo(config: OrchestrationConfig, messages: OffloadMessages) -> OrchestrationRepoClientInterface:
         # TODO We need to find another way of setting dry_run below.
         return orchestration_repo_client_factory(
-            config, messages, dry_run=False  # bool(not config.execute)
+            config,
+            messages,
+            dry_run=False,  # bool(not config.execute)
         )
 
     def generate_listener_group_id(self) -> UUID3:
@@ -78,49 +79,29 @@ class SystemService(object):
     def get_version(self) -> str:
         return goe_version()
 
-    def get_schemas(self) -> List[Dict[str, Union[str, Any]]]:
+    def get_schemas(self) -> list[dict[str, str | Any]]:
         return self.get_repo(self.config, self.messages).get_offloadable_schemas()
 
-    def get_schema_tables(self, schema_name: str) -> List[Dict[str, Union[str, Any]]]:
+    def get_schema_tables(self, schema_name: str) -> list[dict[str, str | Any]]:
         return self.get_repo(self.config, self.messages).get_schema_tables(schema_name)
 
-    def get_table_columns(
-        self, schema_name: str, table_name: str
-    ) -> List[Dict[str, Union[str, Any]]]:
-        return self.get_repo(self.config, self.messages).get_table_columns(
-            schema_name, table_name
-        )
+    def get_table_columns(self, schema_name: str, table_name: str) -> list[dict[str, str | Any]]:
+        return self.get_repo(self.config, self.messages).get_table_columns(schema_name, table_name)
 
-    def get_table_partitions(
-        self, schema_name: str, table_name: str
-    ) -> List[Dict[str, Union[str, Any]]]:
-        return self.get_repo(self.config, self.messages).get_table_partitions(
-            schema_name, table_name
-        )
+    def get_table_partitions(self, schema_name: str, table_name: str) -> list[dict[str, str | Any]]:
+        return self.get_repo(self.config, self.messages).get_table_partitions(schema_name, table_name)
 
-    def get_table_subpartitions(
-        self, schema_name: str, table_name: str
-    ) -> List[Dict[str, Union[str, Any]]]:
-        return self.get_repo(self.config, self.messages).get_table_subpartitions(
-            schema_name, table_name
-        )
+    def get_table_subpartitions(self, schema_name: str, table_name: str) -> list[dict[str, str | Any]]:
+        return self.get_repo(self.config, self.messages).get_table_subpartitions(schema_name, table_name)
 
-    def get_command_executions(self) -> List[Dict[str, Union[str, Any]]]:
+    def get_command_executions(self) -> list[dict[str, str | Any]]:
         return self.get_repo(self.config, self.messages).get_command_executions()
 
-    def get_command_execution(
-        self, execution_id: ExecutionId
-    ) -> Dict[str, Union[str, Any]]:
-        return self.get_repo(self.config, self.messages).get_command_execution(
-            execution_id
-        )
+    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | Any]:
+        return self.get_repo(self.config, self.messages).get_command_execution(execution_id)
 
-    def get_command_execution_steps(
-        self, execution_id: Optional[ExecutionId]
-    ) -> List[Dict[str, Union[str, Any]]]:
-        return self.get_repo(self.config, self.messages).get_command_execution_steps(
-            execution_id
-        )
+    def get_command_execution_steps(self, execution_id: ExecutionId | None) -> list[dict[str, str | Any]]:
+        return self.get_repo(self.config, self.messages).get_command_execution_steps(execution_id)
 
 
 system = SystemService()

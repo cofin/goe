@@ -14,11 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BigQueryLiteral: Format a BigQuery literal based on data type.
-"""
+"""BigQueryLiteral: Format a BigQuery literal based on data type."""
 
-from datetime import date, time
 import logging
+from datetime import date, time
 
 from numpy import datetime64
 
@@ -52,18 +51,17 @@ class BigQueryLiteral(FormatLiteralInterface):
     def _format_data_type_with_prefix(cls, str_val, data_type):
         if data_type == BIGQUERY_TYPE_NUMERIC:
             return "NUMERIC '%s'" % str_val
-        elif data_type == BIGQUERY_TYPE_BIGNUMERIC:
+        if data_type == BIGQUERY_TYPE_BIGNUMERIC:
             return "BIGNUMERIC '%s'" % str_val
-        elif data_type == BIGQUERY_TYPE_DATE:
+        if data_type == BIGQUERY_TYPE_DATE:
             return "DATE '%s'" % str_val[:10]
-        elif data_type == BIGQUERY_TYPE_DATETIME:
+        if data_type == BIGQUERY_TYPE_DATETIME:
             return "DATETIME '%s'" % cls._strip_unused_time_scale(str_val)
-        elif data_type == BIGQUERY_TYPE_TIMESTAMP:
+        if data_type == BIGQUERY_TYPE_TIMESTAMP:
             return "TIMESTAMP '%s'" % str_val
-        elif data_type == BIGQUERY_TYPE_TIME:
+        if data_type == BIGQUERY_TYPE_TIME:
             return "TIME '%s'" % str_val
-        else:
-            return str_val
+        return str_val
 
     @classmethod
     def format_literal(cls, python_value, data_type=None):
@@ -77,51 +75,33 @@ class BigQueryLiteral(FormatLiteralInterface):
 
         if isinstance(python_value, datetime64):
             if data_type and data_type == BIGQUERY_TYPE_TIME:
-                new_py_val = cls._format_data_type_with_prefix(
-                    str(python_value).split("T")[1], data_type
-                )
+                new_py_val = cls._format_data_type_with_prefix(str(python_value).split("T")[1], data_type)
             elif data_type:
-                new_py_val = cls._format_data_type_with_prefix(
-                    str(python_value).replace("T", " "), data_type
-                )
+                new_py_val = cls._format_data_type_with_prefix(str(python_value).replace("T", " "), data_type)
             else:
                 # Assuming DATETIME if no data_type specified
-                new_py_val = "DATETIME '%s'" % cls._strip_unused_time_scale(
-                    str(python_value).replace("T", " ")
-                )
+                new_py_val = "DATETIME '%s'" % cls._strip_unused_time_scale(str(python_value).replace("T", " "))
         elif isinstance(python_value, date):
             if data_type == BIGQUERY_TYPE_DATE:
-                new_py_val = cls._format_data_type_with_prefix(
-                    python_value.strftime("%Y-%m-%d"), data_type
-                )
+                new_py_val = cls._format_data_type_with_prefix(python_value.strftime("%Y-%m-%d"), data_type)
             elif data_type == BIGQUERY_TYPE_TIMESTAMP:
                 new_py_val = cls._format_data_type_with_prefix(
                     python_value.strftime("%Y-%m-%d %H:%M:%S.%f%z"), data_type
                 )
             elif data_type == BIGQUERY_TYPE_TIME:
-                new_py_val = cls._format_data_type_with_prefix(
-                    python_value.strftime("%H:%M:%S.%f"), data_type
-                )
+                new_py_val = cls._format_data_type_with_prefix(python_value.strftime("%H:%M:%S.%f"), data_type)
             elif data_type:
-                new_py_val = cls._format_data_type_with_prefix(
-                    python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type
-                )
+                new_py_val = cls._format_data_type_with_prefix(python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type)
             else:
                 # Assuming DATETIME if no data_type specified
-                new_py_val = "DATETIME '%s'" % python_value.strftime(
-                    "%Y-%m-%d %H:%M:%S.%f"
-                )
+                new_py_val = "DATETIME '%s'" % python_value.strftime("%Y-%m-%d %H:%M:%S.%f")
         elif python_value is None:
             return "NULL"
         elif data_type == BIGQUERY_TYPE_TIME:
             if isinstance(python_value, time):
-                new_py_val = cls._format_data_type_with_prefix(
-                    python_value.strftime("%H:%M:%S.%f"), data_type
-                )
+                new_py_val = cls._format_data_type_with_prefix(python_value.strftime("%H:%M:%S.%f"), data_type)
             else:
-                new_py_val = cls._format_data_type_with_prefix(
-                    str(python_value), data_type
-                )
+                new_py_val = cls._format_data_type_with_prefix(str(python_value), data_type)
         elif data_type in [BIGQUERY_TYPE_NUMERIC, BIGQUERY_TYPE_BIGNUMERIC]:
             new_py_val = cls._format_data_type_with_prefix(str(python_value), data_type)
         elif isinstance(python_value, str):

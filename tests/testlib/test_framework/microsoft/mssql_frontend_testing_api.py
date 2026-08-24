@@ -15,52 +15,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" MSSQLFrontendTestingApi: An extension of (not yet created) FrontendApi used purely for code relating to the setup,
-    processing and verification of integration tests.
+"""MSSQLFrontendTestingApi: An extension of (not yet created) FrontendApi used purely for code relating to the setup,
+processing and verification of integration tests.
 """
 
-import datetime
 import logging
-from typing import Optional, Union
 
-from goe.offload.column_metadata import (
-    CanonicalColumn,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-)
 from goe.offload.microsoft.mssql_column import (
-    MSSQLColumn,
     MSSQL_TYPE_BIGINT,
     MSSQL_TYPE_DATE,
-    MSSQL_TYPE_DATETIMEOFFSET,
     MSSQL_TYPE_DATETIME2,
-    MSSQL_TYPE_VARCHAR,
     MSSQL_TYPE_DECIMAL,
     MSSQL_TYPE_NUMERIC,
+    MSSQL_TYPE_VARCHAR,
+    MSSQLColumn,
 )
 from goe.offload.offload_messages import VERBOSE
 from tests.testlib.test_framework.frontend_testing_api import (
     FrontendTestingApiInterface,
 )
-from tests.testlib.test_framework.test_value_generators import TestDecimal
-
 
 ###############################################################################
 # CONSTANTS
@@ -124,9 +97,7 @@ class MSSQLFrontendTestingApi(FrontendTestingApiInterface):
     def _goe_chars_column_definitions(
         self, ascii_only=False, all_chars_notnull=False, supported_canonical_types=None
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL _goe_chars_column_definitions() not yet implemented"
-        )
+        raise NotImplementedError("MSSQL _goe_chars_column_definitions() not yet implemented")
 
     def _goe_type_mapping_column_definitions(
         self,
@@ -135,9 +106,7 @@ class MSSQLFrontendTestingApi(FrontendTestingApiInterface):
         max_decimal_integral_magnitude,
         filter_column=None,
     ):
-        raise NotImplementedError(
-            "MSSQL _goe_type_mapping_column_definitions() not yet implemented"
-        )
+        raise NotImplementedError("MSSQL _goe_type_mapping_column_definitions() not yet implemented")
 
     def _goe_types_column_definitions(
         self,
@@ -146,9 +115,7 @@ class MSSQLFrontendTestingApi(FrontendTestingApiInterface):
         supported_canonical_types=None,
         include_interval_columns=True,
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL _goe_types_column_definitions() not yet implemented"
-        )
+        raise NotImplementedError("MSSQL _goe_types_column_definitions() not yet implemented")
 
     def _goe_wide_column_definitions(
         self,
@@ -157,43 +124,31 @@ class MSSQLFrontendTestingApi(FrontendTestingApiInterface):
         supported_canonical_types=None,
         backend_max_test_column_count=None,
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL _goe_wide_column_definitions() not yet implemented"
-        )
+        raise NotImplementedError("MSSQL _goe_wide_column_definitions() not yet implemented")
 
-    def _populate_generated_test_table(
-        self, schema, table_name, columns, rows, fastexecute=False
-    ):
-        raise NotImplementedError(
-            "MSSQL _populate_generated_test_table() not yet implemented"
-        )
+    def _populate_generated_test_table(self, schema, table_name, columns, rows, fastexecute=False):
+        raise NotImplementedError("MSSQL _populate_generated_test_table() not yet implemented")
 
     ###########################################################################
     # PUBLIC METHODS
     ###########################################################################
 
     def collect_table_stats_sql_text(self, schema, table_name) -> str:
-        raise NotImplementedError(
-            "MSSQL collect_table_stats_sql_text() not yet implemented"
-        )
+        raise NotImplementedError("MSSQL collect_table_stats_sql_text() not yet implemented")
 
     def remove_table_stats_sql_text(self, schema, table_name) -> str:
-        raise NotImplementedError(
-            "MSSQL remove_table_stats_sql_text() not yet implemented"
-        )
+        raise NotImplementedError("MSSQL remove_table_stats_sql_text() not yet implemented")
 
     def drop_table(self, schema, table_name):
         """Obviously this is dangerous, that's why it is in this TestingApi only."""
         try:
-            return self._db_api.execute_ddl(
-                f"DROP TABLE {schema}.{table_name}", log_level=VERBOSE
-            )
+            return self._db_api.execute_ddl(f"DROP TABLE {schema}.{table_name}", log_level=VERBOSE)
         except Exception as exc:
             if "not exist" in str(exc):
                 # Nothing to drop
                 pass
             else:
-                self._log("Drop table exception: {}".format(str(exc)), detail=VERBOSE)
+                self._log(f"Drop table exception: {exc!s}", detail=VERBOSE)
                 raise
 
     def expected_std_dim_offload_predicates(self):
@@ -259,17 +214,15 @@ class MSSQLFrontendTestingApi(FrontendTestingApiInterface):
         ]
 
     def expected_sales_offload_predicates(self):
-        raise NotImplementedError(
-            "MSSQL expected_sales_offload_predicates() not yet implemented"
-        )
+        raise NotImplementedError("MSSQL expected_sales_offload_predicates() not yet implemented")
 
     def gen_ctas_from_subquery(
         self,
         schema: str,
         table_name: str,
         subquery: str,
-        pk_col_name: Optional[str] = None,
-        table_parallelism: Optional[str] = None,
+        pk_col_name: str | None = None,
+        table_parallelism: str | None = None,
         with_drop: bool = True,
         with_stats_collection: bool = False,
     ) -> list:
@@ -283,9 +236,7 @@ class MSSQLFrontendTestingApi(FrontendTestingApiInterface):
         supported_canonical_types,
         ascii_only=False,
     ):
-        raise NotImplementedError(
-            "MSSQL goe_type_mapping_generated_table_col_specs() not yet implemented"
-        )
+        raise NotImplementedError("MSSQL goe_type_mapping_generated_table_col_specs() not yet implemented")
 
     def run_sql_in_file(self, local_path):
         raise NotImplementedError("MSSQL run_sql_in_file() not yet implemented")
@@ -295,48 +246,38 @@ class MSSQLFrontendTestingApi(FrontendTestingApiInterface):
         schema: str,
         table_name: str,
         maxval_partition: bool = False,
-        extra_pred: Optional[str] = None,
-        degree: Optional[int] = None,
+        extra_pred: str | None = None,
+        degree: int | None = None,
         subpartitions: int = 0,
         enable_row_movement: bool = False,
         noseg_partition: bool = True,
-        part_key_type: Optional[str] = None,
-        time_id_column_name: Optional[str] = None,
-        extra_col_tuples: Optional[list] = None,
+        part_key_type: str | None = None,
+        time_id_column_name: str | None = None,
+        extra_col_tuples: list | None = None,
         simple_partition_names: bool = False,
         with_drop: bool = True,
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL sales_based_fact_create_ddl() pending implementation"
-        )
+        raise NotImplementedError("MSSQL sales_based_fact_create_ddl() pending implementation")
 
     def sales_based_fact_add_partition_ddl(self, schema: str, table_name: str) -> list:
-        raise NotImplementedError(
-            "MSSQL sales_based_fact_add_partition_ddl() pending implementation"
-        )
+        raise NotImplementedError("MSSQL sales_based_fact_add_partition_ddl() pending implementation")
 
     def sales_based_fact_drop_partition_ddl(
-        self, schema: str, table_name: str, hv_string_list: Optional[list] = None
+        self, schema: str, table_name: str, hv_string_list: list | None = None
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL sales_based_fact_drop_partition_ddl() pending implementation"
-        )
+        raise NotImplementedError("MSSQL sales_based_fact_drop_partition_ddl() pending implementation")
 
     def sales_based_fact_truncate_partition_ddl(
         self,
         schema: str,
         table_name: str,
-        hv_string_list: Optional[list] = None,
-        dropping_oldest: Optional[bool] = None,
+        hv_string_list: list | None = None,
+        dropping_oldest: bool | None = None,
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL sales_based_fact_truncate_partition_ddl() pending implementation"
-        )
+        raise NotImplementedError("MSSQL sales_based_fact_truncate_partition_ddl() pending implementation")
 
     def sales_based_fact_hwm_literal(self, sales_literal: str, data_type: str) -> tuple:
-        raise NotImplementedError(
-            "MSSQL sales_based_fact_hwm_literal() pending implementation"
-        )
+        raise NotImplementedError("MSSQL sales_based_fact_hwm_literal() pending implementation")
 
     def sales_based_fact_late_arriving_data_sql(
         self,
@@ -345,70 +286,52 @@ class MSSQLFrontendTestingApi(FrontendTestingApiInterface):
         time_id_literal: str,
         channel_id_literal: int = 1,
     ):
-        raise NotImplementedError(
-            "MSSQL sales_based_fact_late_arriving_data_sql() pending implementation"
-        )
+        raise NotImplementedError("MSSQL sales_based_fact_late_arriving_data_sql() pending implementation")
 
     def sales_based_list_fact_create_ddl(
         self,
         schema: str,
         table_name: str,
         default_partition: bool = False,
-        extra_pred: Optional[str] = None,
-        part_key_type: Optional[str] = None,
+        extra_pred: str | None = None,
+        part_key_type: str | None = None,
         out_of_sequence: bool = False,
         include_older_partition: bool = False,
-        yrmon_column_name: Optional[str] = None,
-        extra_col_tuples: Optional[list] = None,
+        yrmon_column_name: str | None = None,
+        extra_col_tuples: list | None = None,
         with_drop: bool = True,
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL sales_based_list_fact_create_ddl() pending implementation"
-        )
+        raise NotImplementedError("MSSQL sales_based_list_fact_create_ddl() pending implementation")
 
     def sales_based_list_fact_add_partition_ddl(
-        self, schema: str, table_name: str, next_ym_override: Optional[tuple] = None
+        self, schema: str, table_name: str, next_ym_override: tuple | None = None
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL sales_based_list_fact_add_partition_ddl() pending implementation"
-        )
+        raise NotImplementedError("MSSQL sales_based_list_fact_add_partition_ddl() pending implementation")
 
     def sales_based_list_fact_late_arriving_data_sql(
         self, schema: str, table_name: str, time_id_literal: str, yrmon_string: str
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL sales_based_list_fact_late_arriving_data_sql() pending implementation"
-        )
+        raise NotImplementedError("MSSQL sales_based_list_fact_late_arriving_data_sql() pending implementation")
 
-    def sales_based_multi_col_fact_create_ddl(
-        self, schema: str, table_name: str, maxval_partition=False
-    ) -> list:
-        raise NotImplementedError(
-            "MSSQL sales_based_multi_col_fact_create_ddl() not implemented"
-        )
+    def sales_based_multi_col_fact_create_ddl(self, schema: str, table_name: str, maxval_partition=False) -> list:
+        raise NotImplementedError("MSSQL sales_based_multi_col_fact_create_ddl() not implemented")
 
     def sales_based_subpartitioned_fact_ddl(
         self, schema: str, table_name: str, top_level="LIST", rowdependencies=False
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL sales_based_subpartitioned_fact_ddl() not implemented"
-        )
+        raise NotImplementedError("MSSQL sales_based_subpartitioned_fact_ddl() not implemented")
 
     def select_grant_exists(
         self,
         schema: str,
         table_name: str,
         to_user: str,
-        grantable: Optional[bool] = None,
+        grantable: bool | None = None,
     ) -> bool:
         raise NotImplementedError("MSSQL select_grant_exists() not yet implemented")
 
-    def table_row_count_from_stats(
-        self, schema: str, table_name: str
-    ) -> Union[int, None]:
-        raise NotImplementedError(
-            "MSSQL table_row_count_from_stats() not yet implemented"
-        )
+    def table_row_count_from_stats(self, schema: str, table_name: str) -> int | None:
+        raise NotImplementedError("MSSQL table_row_count_from_stats() not yet implemented")
 
     def test_type_canonical_int_8(self) -> str:
         return MSSQL_TYPE_BIGINT
@@ -426,9 +349,7 @@ class MSSQLFrontendTestingApi(FrontendTestingApiInterface):
         return MSSQL_TYPE_DATETIME2
 
     def test_time_zone_query_option(self, tz) -> dict:
-        raise NotImplementedError(
-            "MSSQL test_time_zone_query_option() not yet implemented"
-        )
+        raise NotImplementedError("MSSQL test_time_zone_query_option() not yet implemented")
 
     def unit_test_query_options(self):
         # TODO nj@2021-07-23 If we properly implement MSSQL then we need to fill this out

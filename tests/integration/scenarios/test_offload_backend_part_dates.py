@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 from typing import TYPE_CHECKING
+
+import pytest
 
 from goe.offload import offload_constants
 from goe.offload.offload_functions import (
@@ -27,13 +28,12 @@ from goe.offload.operation.partition_controls import (
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
+from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
     sales_based_fact_assertion,
     synthetic_part_col_name,
 )
-from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.scenario_runner import (
     run_offload,
     run_setup,
@@ -99,35 +99,25 @@ def offload_date_assertion(
     if not backend_column:
         messages.log("offload_date_assertion: Missing column %s" % part_col)
         return False
-    if backend_api.partition_column_requires_synthetic_column(
-        backend_column, granularity
-    ):
+    if backend_api.partition_column_requires_synthetic_column(backend_column, granularity):
         check_part_col = synthetic_part_col_name(granularity, part_col)
-        if not backend_column_exists(
-            backend_api, data_db, backend_name, check_part_col
-        ):
+        if not backend_column_exists(backend_api, data_db, backend_name, check_part_col):
             return False
         synth_column = backend_api.get_column(data_db, backend_name, check_part_col)
         if synth_column.is_string_based():
             # We can check that the synthetic values are of the correct length
             expected_len = {"Y": 4, "M": 7, "D": 10}[granularity]
-            max_len = backend_api.get_max_column_length(
-                data_db, backend_name, check_part_col
-            )
+            max_len = backend_api.get_max_column_length(data_db, backend_name, check_part_col)
             if max_len != expected_len:
                 messages.log("%s != %s" % (max_len, expected_len))
                 return False
     if expected_values or at_least_values:
         num_parts = backend_api.get_table_partition_count(data_db, backend_name)
         if expected_values and num_parts != expected_values:
-            messages.log(
-                "num_parts != expected_values: %s != %s" % (num_parts, expected_values)
-            )
+            messages.log("num_parts != expected_values: %s != %s" % (num_parts, expected_values))
             return False
         if at_least_values and num_parts < at_least_values:
-            messages.log(
-                "num_parts < at_least_values: %s < %s" % (num_parts, at_least_values)
-            )
+            messages.log("num_parts < at_least_values: %s < %s" % (num_parts, at_least_values))
             return False
     return True
 
@@ -160,9 +150,7 @@ def fact_as_date_tests(
     else:
         at_least_backend_partitions = 5
 
-    repo_client = orchestration_repo_client_factory(
-        config, messages, trace_action=f"repo_client({test_id})"
-    )
+    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
 
     # Setup
     run_setup(
@@ -170,12 +158,8 @@ def fact_as_date_tests(
         backend_api,
         config,
         messages,
-        frontend_sqls=frontend_api.sales_based_fact_create_ddl(
-            schema, table_name, simple_partition_names=True
-        ),
-        python_fns=lambda: drop_backend_test_table(
-            config, backend_api, messages, data_db, table_name
-        ),
+        frontend_sqls=frontend_api.sales_based_fact_create_ddl(schema, table_name, simple_partition_names=True),
+        python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, table_name),
     )
 
     # Offload with requested granularity.
@@ -224,28 +208,23 @@ def check_granularity_for_test(
     messages: "OffloadTestMessages",
 ):
     if granularity not in backend_api.supported_date_based_partition_granularities():
-        messages.log(
-            f"Skipping {id} because granulrity {granularity} is not supported in backend"
-        )
-        pytest.skip(
-            f"Skipping {id} because granulrity {granularity} is not supported in backend"
-        )
+        messages.log(f"Skipping {id} because granulrity {granularity} is not supported in backend")
+        pytest.skip(f"Skipping {id} because granulrity {granularity} is not supported in backend")
 
 
 def test_offload_backend_part_fact_as_date_year(config, schema, data_db):
     """Offload a table that is frontend partitioned by a date/time data type. Offload with granularity YEAR in backend."""
     id = "test_offload_backend_part_fact_as_date_year"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         if not backend_api.canonical_date_supported():
             messages.log(f"Skipping {id} because canonical_date_supported() == False")
             pytest.skip(f"Skipping {id} because canonical_date_supported() == False")
 
-        check_granularity_for_test(
-            id, offload_constants.PART_COL_GRANULARITY_YEAR, backend_api, messages
-        )
+        check_granularity_for_test(id, offload_constants.PART_COL_GRANULARITY_YEAR, backend_api, messages)
 
         fact_as_date_tests(
             config,
@@ -263,17 +242,16 @@ def test_offload_backend_part_fact_as_date_year(config, schema, data_db):
 
 def test_offload_backend_part_fact_as_date_month(config, schema, data_db):
     id = "test_offload_backend_part_fact_as_date_month"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         if not backend_api.canonical_date_supported():
             messages.log(f"Skipping {id} because canonical_date_supported() == False")
             pytest.skip(f"Skipping {id} because canonical_date_supported() == False")
 
-        check_granularity_for_test(
-            id, offload_constants.PART_COL_GRANULARITY_MONTH, backend_api, messages
-        )
+        check_granularity_for_test(id, offload_constants.PART_COL_GRANULARITY_MONTH, backend_api, messages)
         fact_as_date_tests(
             config,
             schema,
@@ -290,17 +268,16 @@ def test_offload_backend_part_fact_as_date_month(config, schema, data_db):
 
 def test_offload_backend_part_fact_as_date_day(config, schema, data_db):
     id = "test_offload_backend_part_fact_as_date_day"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         if not backend_api.canonical_date_supported():
             messages.log(f"Skipping {id} because canonical_date_supported() == False")
             pytest.skip(f"Skipping {id} because canonical_date_supported() == False")
 
-        check_granularity_for_test(
-            id, offload_constants.PART_COL_GRANULARITY_DAY, backend_api, messages
-        )
+        check_granularity_for_test(id, offload_constants.PART_COL_GRANULARITY_DAY, backend_api, messages)
         fact_as_date_tests(
             config,
             schema,
@@ -318,17 +295,16 @@ def test_offload_backend_part_fact_as_date_day(config, schema, data_db):
 def test_offload_backend_part_fact_as_tstz_year(config, schema, data_db):
     """Offload a table that is frontend partitioned by a date/time data type. Offload with granularity YEAR in backend."""
     id = "test_offload_backend_part_fact_as_tstz_year"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         if not backend_api.canonical_date_supported():
             messages.log(f"Skipping {id} because canonical_date_supported() == False")
             pytest.skip(f"Skipping {id} because canonical_date_supported() == False")
 
-        check_granularity_for_test(
-            id, offload_constants.PART_COL_GRANULARITY_YEAR, backend_api, messages
-        )
+        check_granularity_for_test(id, offload_constants.PART_COL_GRANULARITY_YEAR, backend_api, messages)
         fact_as_date_tests(
             config,
             schema,
@@ -345,17 +321,16 @@ def test_offload_backend_part_fact_as_tstz_year(config, schema, data_db):
 
 def test_offload_backend_part_fact_as_tstz_month(config, schema, data_db):
     id = "test_offload_backend_part_fact_as_tstz_month"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         if not backend_api.canonical_date_supported():
             messages.log(f"Skipping {id} because canonical_date_supported() == False")
             pytest.skip(f"Skipping {id} because canonical_date_supported() == False")
 
-        check_granularity_for_test(
-            id, offload_constants.PART_COL_GRANULARITY_MONTH, backend_api, messages
-        )
+        check_granularity_for_test(id, offload_constants.PART_COL_GRANULARITY_MONTH, backend_api, messages)
         fact_as_date_tests(
             config,
             schema,
@@ -372,17 +347,16 @@ def test_offload_backend_part_fact_as_tstz_month(config, schema, data_db):
 
 def test_offload_backend_part_fact_as_tstz_day(config, schema, data_db):
     id = "test_offload_backend_part_fact_as_tstz_day"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         if not backend_api.canonical_date_supported():
             messages.log(f"Skipping {id} because canonical_date_supported() == False")
             pytest.skip(f"Skipping {id} because canonical_date_supported() == False")
 
-        check_granularity_for_test(
-            id, offload_constants.PART_COL_GRANULARITY_DAY, backend_api, messages
-        )
+        check_granularity_for_test(id, offload_constants.PART_COL_GRANULARITY_DAY, backend_api, messages)
         fact_as_date_tests(
             config,
             schema,
@@ -400,19 +374,17 @@ def test_offload_backend_part_fact_as_tstz_day(config, schema, data_db):
 def partition_by_string_supported_exception(backend_api, exception_text=None):
     if backend_api.partition_by_string_supported():
         return exception_text
-    else:
-        return PARTITION_BY_STRING_NOT_SUPPORTED_EXCEPTION_TEXT
+    return PARTITION_BY_STRING_NOT_SUPPORTED_EXCEPTION_TEXT
 
 
 def test_offload_backend_part_date_as_str(config, schema, data_db):
     id = "test_offload_backend_part_date_as_str"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
         table_name = FACT_DATE_STR
 
         # Setup
@@ -421,12 +393,8 @@ def test_offload_backend_part_date_as_str(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.sales_based_fact_create_ddl(
-                schema, table_name, simple_partition_names=True
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, table_name
-            ),
+            frontend_sqls=frontend_api.sales_based_fact_create_ddl(schema, table_name, simple_partition_names=True),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, table_name),
         )
         # Offload 1st partition with TIME_ID as a STRING in backend with date based granularity rather than string based.
         # Expect to fail.
@@ -461,9 +429,7 @@ def test_offload_backend_part_date_as_str(config, schema, data_db):
             options,
             config,
             messages,
-            expected_exception_string=partition_by_string_supported_exception(
-                backend_api
-            ),
+            expected_exception_string=partition_by_string_supported_exception(backend_api),
         )
         if not partition_by_string_supported_exception(backend_api):
             assert sales_based_fact_assertion(

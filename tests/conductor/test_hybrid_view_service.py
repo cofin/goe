@@ -12,17 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 from unittest import TestCase, main
 
-import json
-
 from goe.conductor.hybrid_view_service import (
-    HybridViewService,
     JSON_KEY_BACKEND_NUM_ROWS,
-    JSON_KEY_BACKEND_SIZE,
     JSON_KEY_BACKEND_PARTITIONS,
-    JSON_KEY_VALIDATE_STATUS,
+    JSON_KEY_BACKEND_SIZE,
     JSON_KEY_VALIDATE_MESSAGE,
+    JSON_KEY_VALIDATE_STATUS,
+    HybridViewService,
 )
 from goe.offload.offload_constants import DBTYPE_ORACLE, DBTYPE_TERADATA
 from tests.offload.unittest_functions import (
@@ -48,9 +47,7 @@ class TestHybridViewService(TestCase):
             hv2 = "DATE '2011-04-01'"
         else:
             raise NotImplementedError(
-                "Frontend system not implemented for TestHybridViewService: {}".format(
-                    self.orchestration_options.db_type
-                )
+                f"Frontend system not implemented for TestHybridViewService: {self.orchestration_options.db_type}"
             )
         return hv1, hv2
 

@@ -14,65 +14,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BetterImpyla: Cloudera Impyla (0.12) library with a few additional enhancements
+"""BetterImpyla: Cloudera Impyla (0.12) library with a few additional enhancements
 
-    Classes:
+Classes:
 
-        HiveConnection: representation of 'Hive/Impala' db connection
-           - Automatically determines db type: hive/impala. Available with .db_type property
-           - Enhanced execute() routine with 'cursor functions' (to 'add-on' various fetch routines)
-             and choice to return (query) data as either 'list of tuples' or 'list of dictionaries'
+    HiveConnection: representation of 'Hive/Impala' db connection
+       - Automatically determines db type: hive/impala. Available with .db_type property
+       - Enhanced execute() routine with 'cursor functions' (to 'add-on' various fetch routines)
+         and choice to return (query) data as either 'list of tuples' or 'list of dictionaries'
 
-             Provides:
-                 show_databases()
-                 show_tables(database)
-                 show_views(database)
+         Provides:
+             show_databases()
+             show_tables(database)
+             show_views(database)
 
-             Original impyla connection and cursor objects are available
-             as .connection and .cursor properties.
+         Original impyla connection and cursor objects are available
+         as .connection and .cursor properties.
 
-        HiveTable: representation of 'Hive/Impala' database table
-            - Provides additional useful primitives (through parsed DESCRIBE FORMATTED (table) output)
-              table_details()
-              table_columns()
-              partition_columns()
-              table_partitions()
-              table_location()
-            - Suppresses exceptions in non-critical places
-              (i.e. table_partitions() will return None if called on a table w/o partitions)
+    HiveTable: representation of 'Hive/Impala' database table
+        - Provides additional useful primitives (through parsed DESCRIBE FORMATTED (table) output)
+          table_details()
+          table_columns()
+          partition_columns()
+          table_partitions()
+          table_location()
+        - Suppresses exceptions in non-critical places
+          (i.e. table_partitions() will return None if called on a table w/o partitions)
 
-    + Logging throughout
++ Logging throughout
 """
 
+import datetime
 import inspect
 import logging
-import os
 import re
-import datetime
-from numpy import datetime64
 
 from impala.dbapi import connect
 from impala.error import HiveServer2Error
+from numpy import datetime64
 
-from goe.offload.hadoop.hadoop_column import (
-    HADOOP_TYPE_CHAR,
-    HADOOP_TYPE_STRING,
-    HADOOP_TYPE_VARCHAR,
-    HADOOP_TYPE_TINYINT,
-    HADOOP_TYPE_SMALLINT,
-    HADOOP_TYPE_INT,
-    HADOOP_TYPE_BIGINT,
-    HADOOP_TYPE_DECIMAL,
-    HADOOP_TYPE_FLOAT,
-    HADOOP_TYPE_DOUBLE,
-    HADOOP_TYPE_REAL,
-    HADOOP_TYPE_DATE,
-    HADOOP_TYPE_TIMESTAMP,
-    HADOOP_TYPE_BINARY,
-)
-from goe.offload.offload_messages import OffloadMessagesMixin, VERBOSE
-from goe.offload.offload_constants import DBTYPE_HIVE, DBTYPE_IMPALA, DBTYPE_SPARK
-
+from goe.offload.offload_constants import DBTYPE_HIVE, DBTYPE_IMPALA
+from goe.offload.offload_messages import VERBOSE, OffloadMessagesMixin
 from goe.util.hs2_connection import (
     hs2_connection_from_env,
     hs2_cursor_user,
@@ -102,18 +84,16 @@ logger.addHandler(logging.NullHandler())  # Disabling logging by default
 # Size as reported by impala (i.e. show partitions)
 REGEX_IMPALA_SIZE = re.compile(r"^([\d.]+)(\w+)$")
 # Extract SQL 'FROM' contents
-REGEX_FROM_CLAUSE = re.compile(
-    r"^.*FROM\s+(.*?)(WHERE|GROUP BY|ORDER BY|LIMIT|;|$)", re.I
-)
+REGEX_FROM_CLAUSE = re.compile(r"^.*FROM\s+(.*?)(WHERE|GROUP BY|ORDER BY|LIMIT|;|$)", re.IGNORECASE)
 # Split tables in the JOIN
 REGEX_JOIN = re.compile(
     r"(?:INNER\s+JOIN|(LEFT|RIGHT|FULL)\s+OUTER\sJOIN|(LEFT|RIGHT)\s+SEMI\s+JOIN|(LEFT|RIGHT)\s+ANTI\s+JOIN)",
-    re.I,
+    re.IGNORECASE,
 )
 # Parse out table and alias
-REGEX_DB_TABLE = re.compile("^(\S+)\s*(\S+)?\s*(ON\s+)?.*$", re.I)
+REGEX_DB_TABLE = re.compile(r"^(\S+)\s*(\S+)?\s*(ON\s+)?.*$", re.IGNORECASE)
 # Drop 'create view ... as' from view ddl
-REGEX_CREATE_VIEW = re.compile(r"CREATE\s+VIEW\s+.*?\s+AS\s+", re.I)
+REGEX_CREATE_VIEW = re.compile(r"CREATE\s+VIEW\s+.*?\s+AS\s+", re.IGNORECASE)
 # The constant used by HDFS for NULL partition keys
 HDFS_NULL_PART_KEY_CONSTANT = "__HIVE_DEFAULT_PARTITION__"
 
@@ -123,7 +103,7 @@ HDFS_NULL_PART_KEY_CONSTANT = "__HIVE_DEFAULT_PARTITION__"
 ###############################################################################
 
 
-class HiveConnection(OffloadMessagesMixin, object):
+class HiveConnection(OffloadMessagesMixin):
     """Impyla library connection/cursor object with a few enhancements"""
 
     def __init__(self, *args, **kwargs):
@@ -134,21 +114,20 @@ class HiveConnection(OffloadMessagesMixin, object):
         else:
             self._conn, self._port = self._create_new_connection(*args, **kwargs)
 
-        if "db_type" in kwargs and kwargs["db_type"]:
+        if kwargs.get("db_type"):
             self._db_type = kwargs["db_type"]
         else:
             # Extract and determine db type
             self._db_type = hs2_db_type()
 
         self._messages = kwargs["messages"] if "messages" in kwargs else None
-        super(HiveConnection, self).__init__(self._messages, logger)
+        super().__init__(self._messages, logger)
 
         self._cursor = self._conn.cursor(user=hs2_cursor_user())
         self._sql_engine_version = None
 
         logger.debug(
-            "BetterImpyla() object successfully initialized. Port: %s DbType: %s"
-            % (self._port, self._db_type)
+            "BetterImpyla() object successfully initialized. Port: %s DbType: %s" % (self._port, self._db_type)
         )
 
     def __del__(self):
@@ -189,9 +168,7 @@ class HiveConnection(OffloadMessagesMixin, object):
         """
         port = self._extract_port_from_args(*args, **kwargs)
         if not port:
-            raise BetterImpylaException(
-                "Unable to extract port from a list of 'connect' parameters"
-            )
+            raise BetterImpylaException("Unable to extract port from a list of 'connect' parameters")
 
         conn = connect(*args, **kwargs)
 
@@ -207,9 +184,7 @@ class HiveConnection(OffloadMessagesMixin, object):
         # First, try to extract port from impyla directly
         port = self._extract_port_from_args(*args, **kwargs)
         if port:
-            logger.warn(
-                "Extracted port: %d from a list of parameters. May be misleading" % port
-            )
+            logger.warning("Extracted port: %d from a list of parameters. May be misleading" % port)
         else:
             port = self._hack_into_impyla_for_port(conn)
 
@@ -229,11 +204,9 @@ class HiveConnection(OffloadMessagesMixin, object):
 
         try:
             # Hacking into impyla objects to get the port
-            port = (
-                connection.service.client._oprot.trans._TBufferedTransport__trans.port
-            )
+            port = connection.service.client._oprot.trans._TBufferedTransport__trans.port
         except AttributeError as e:
-            logger.warn(
+            logger.warning(
                 "Attribute Error: %s while scanning impyla object for port" % e,
                 exc_info=True,
             )
@@ -255,7 +228,7 @@ class HiveConnection(OffloadMessagesMixin, object):
         if port:
             logger.debug("Extracted port: %d from the list of parameters" % port)
         else:
-            logger.warn("Unable to extract port from the list of parameters")
+            logger.warning("Unable to extract port from the list of parameters")
 
         return port
 
@@ -270,7 +243,7 @@ class HiveConnection(OffloadMessagesMixin, object):
 
         try:
             ret = inspect.getsource(obj)
-        except (IOError, TypeError) as e:
+        except (OSError, TypeError) as e:
             logger.debug("Exception: %s when inspecting the code" % e)
 
         return ret
@@ -329,40 +302,26 @@ class HiveConnection(OffloadMessagesMixin, object):
             logger.debug("Executing impyla command: %s - EXCEPTION: %s" % (cmd, e))
             if suppress_exceptions:
                 return None
-            else:
-                raise BetterImpylaException(str(e))
+            raise BetterImpylaException(str(e))
 
         if cursor_fn:
-            logger.debug(
-                "Executing cursor function: %s" % self._retrieve_source_code(cursor_fn)
-            )
+            logger.debug("Executing cursor function: %s" % self._retrieve_source_code(cursor_fn))
             if as_dict:
-                logger.debug(
-                    "AS_DICT transformation requested for: %s"
-                    % self._retrieve_source_code(cursor_fn)
-                )
+                logger.debug("AS_DICT transformation requested for: %s" % self._retrieve_source_code(cursor_fn))
                 ret = []
                 if self._cursor.description:
                     col_names = [_[0] for _ in self._cursor.description]
                     for rec in cursor_fn(self._cursor):
                         ret.append(dict(list(zip(col_names, rec))))
             else:
-                logger.debug(
-                    "Passthrough requested for: %s"
-                    % self._retrieve_source_code(cursor_fn)
-                )
+                logger.debug("Passthrough requested for: %s" % self._retrieve_source_code(cursor_fn))
                 ret = cursor_fn(self._cursor)
 
-            logger.debug(
-                "Applying cursor function: %s. Result: %s"
-                % (self._retrieve_source_code(cursor_fn), ret)
-            )
+            logger.debug("Applying cursor function: %s. Result: %s" % (self._retrieve_source_code(cursor_fn), ret))
 
         return ret
 
-    def executemany(
-        self, cmds, cursor_fn=None, suppress_exceptions=False, as_dict=False
-    ):
+    def executemany(self, cmds, cursor_fn=None, suppress_exceptions=False, as_dict=False):
         """Executing a list of impyla commands
         with optional follow up 'cursor_fn' function executed on cursor FOR THE LAST COMMAND
 
@@ -391,7 +350,7 @@ class HiveConnection(OffloadMessagesMixin, object):
         """Execute DDL command (has a special symantics in impala"""
         ret = None
 
-        if DBTYPE_IMPALA == self._db_type:
+        if self._db_type == DBTYPE_IMPALA:
             ret = self.executemany(
                 ["SET SYNC_DDL=%s" % sync_ddl, cmd],
                 cursor_fn,
@@ -431,13 +390,13 @@ class HiveConnection(OffloadMessagesMixin, object):
         """Return list of tables for a specific database"""
 
         self._cursor.get_tables(db_name)
-        return [_[2] for _ in self._cursor.fetchall() if "TABLE" == _[3]]
+        return [_[2] for _ in self._cursor.fetchall() if _[3] == "TABLE"]
 
     def show_views(self, db_name):
         """Return list of views for a specific database"""
 
         self._cursor.get_tables(db_name)
-        return [_[2] for _ in self._cursor.fetchall() if "VIEW" == _[3]]
+        return [_[2] for _ in self._cursor.fetchall() if _[3] == "VIEW"]
 
     def sql_engine_version(self, default_value_if_not_found=None):
         """Return the version of the SQL engine we're connecting to"""
@@ -450,10 +409,7 @@ class HiveConnection(OffloadMessagesMixin, object):
             except Exception as e:
                 if self._db_type == DBTYPE_HIVE:
                     # TODO nj@20170214 At some point in the future Hive 2.1 will become a minumum supported version
-                    logger.warn(
-                        "Unable to get version() on Hive (expected in Hive <2.1): %s"
-                        % str(e)
-                    )
+                    logger.warning("Unable to get version() on Hive (expected in Hive <2.1): %s" % str(e))
                 else:
                     # If using Impala then we failed for a genuine reason
                     raise
@@ -461,18 +417,16 @@ class HiveConnection(OffloadMessagesMixin, object):
             if version_text:
                 logger.debug("Version raw text: %s" % version_text)
                 if self._db_type == DBTYPE_IMPALA:
-                    m = re.search(
-                        r"^impalad version (\d+\.\d+\.\d+).*", version_text, re.M | re.I
-                    )
+                    m = re.search(r"^impalad version (\d+\.\d+\.\d+).*", version_text, re.MULTILINE | re.IGNORECASE)
                     self._sql_engine_version = m.group(1) if m else m
                 else:
-                    m = re.search(r"^(\d+\.\d+\.\d+).*", version_text, re.M | re.I)
+                    m = re.search(r"^(\d+\.\d+\.\d+).*", version_text, re.MULTILINE | re.IGNORECASE)
                     self._sql_engine_version = m.group(1) if m else m
 
         return self._sql_engine_version or default_value_if_not_found
 
     def get_hive_parameter(self, param_name):
-        """return <param_name> parameter value"""
+        """Return <param_name> parameter value"""
         sql = "set %s" % param_name
         try:
             param_value = self.execute(sql, lambda c: c.fetchone()[0]).split("=")[1]
@@ -492,7 +446,7 @@ class HiveConnection(OffloadMessagesMixin, object):
 ###############################################################################
 
 
-class HiveTable(object):
+class HiveTable:
     """HiveTable abstraction with a list of useful primitives"""
 
     # Regex for a 'Section header' in DESCRIBE FORMATTED (table) output
@@ -520,32 +474,24 @@ class HiveTable(object):
         self._table_ddl = None
 
     def _show_partition_columns_separately(self, show_separately):
-        """
-        Hive 0.13 changed describe format, adding separate "partition" section
+        """Hive 0.13 changed describe format, adding separate "partition" section
         which does not play nicely with impyla fetch parser
 
         If hive, adding an option to revert to the old format
 
         show_separately must be a boolean
         """
-        if DBTYPE_HIVE == self._hive.db_type:
+        if self._hive.db_type == DBTYPE_HIVE:
             logger.debug("Detected: HIVE. Reverting DESCRIBE to the old format")
-            self._hive.execute(
-                "SET hive.display.partition.cols.separately=%s"
-                % str(show_separately).lower()
-            )
-        elif DBTYPE_IMPALA == self._hive.db_type:
+            self._hive.execute("SET hive.display.partition.cols.separately=%s" % str(show_separately).lower())
+        elif self._hive.db_type == DBTYPE_IMPALA:
             logger.debug("Detected: IMPALA. Accepting current DESCRIBE format")
 
     def _empty_line(self, col_name, data_type, comment):
         """Determine if parsed: col_name, data_type, comment is EMPTY"""
         line_is_empty = False
 
-        if (
-            not col_name
-            and (not data_type or "NULL" == data_type)
-            and (not comment or "NULL" == comment)
-        ):
+        if not col_name and (not data_type or data_type == "NULL") and (not comment or comment == "NULL"):
             line_is_empty = True
 
         return line_is_empty
@@ -574,9 +520,7 @@ class HiveTable(object):
         first_empty_line = True
 
         for col_name, data_type, comment in describe_out:
-            col_name, data_type, comment = self._strip_items(
-                col_name, data_type, comment
-            )
+            col_name, data_type, comment = self._strip_items(col_name, data_type, comment)
             logger.debug("[COLUMNS]: %s" % [col_name, data_type, comment])
             # Skipping "secondary" col_name header
             # # col_name data_type comment
@@ -587,9 +531,8 @@ class HiveTable(object):
                 if first_empty_line:
                     first_empty_line = False
                     continue
-                else:
-                    # We've reached the end of the section
-                    break
+                # We've reached the end of the section
+                break
 
             columns.append((col_name.lower(), data_type.lower(), comment))
 
@@ -631,14 +574,12 @@ class HiveTable(object):
         store_as_tuple = False
 
         for col_name, data_type, comment in describe_formatted:
-            col_name, data_type, comment = self._strip_items(
-                col_name, data_type, comment
-            )
+            col_name, data_type, comment = self._strip_items(col_name, data_type, comment)
             logger.debug("[SECTION]: %s" % [col_name, data_type, comment])
 
             # Skipping "secondary" col_name header
             # # col_name data_type comment
-            if "# col_name" == col_name:
+            if col_name == "# col_name":
                 continue
 
             if self._empty_line(col_name, data_type, comment):
@@ -646,16 +587,13 @@ class HiveTable(object):
                     # Special case processing (notably, for partition info)
                     ignore_empty_line = False
                     continue
-                else:
-                    # We've reached the end of the section
-                    (
-                        sections,
-                        section_header,
-                        section_data,
-                    ) = save_current_section_header(
-                        sections, section_header, section_data
-                    )
-                    continue
+                # We've reached the end of the section
+                (
+                    sections,
+                    section_header,
+                    section_data,
+                ) = save_current_section_header(sections, section_header, section_data)
+                continue
 
             if col_name and not data_type and not comment:
                 # This is a section header
@@ -671,9 +609,7 @@ class HiveTable(object):
 
                 # Some section headers are 'special'
                 if section_header == "partition information":
-                    logger.debug(
-                        "Replacing header: 'partition information' with 'partition columns'"
-                    )
+                    logger.debug("Replacing header: 'partition information' with 'partition columns'")
                     section_header = "partition columns"
                     store_as_tuple = True
                     ignore_empty_line = True
@@ -688,10 +624,7 @@ class HiveTable(object):
             if store_as_tuple:
                 # Special case for partition info
                 data_tuple = (col_name, data_type, comment)
-                logger.debug(
-                    "Identified %s tuple item for section: %s"
-                    % (data_tuple, section_header)
-                )
+                logger.debug("Identified %s tuple item for section: %s" % (data_tuple, section_header))
                 section_data.append(data_tuple)
             else:
                 # Most data items "live" in col_name/data_type
@@ -702,15 +635,12 @@ class HiveTable(object):
                 data_val = (data_val or "").strip()
 
                 logger.debug(
-                    "Identified table detail item %s=%s for section: %s"
-                    % (data_key, data_val, section_header)
+                    "Identified table detail item %s=%s for section: %s" % (data_key, data_val, section_header)
                 )
                 section_data[data_key] = data_val
 
         # Save the last 'section header'
-        sections, _, _ = save_current_section_header(
-            sections, section_header, section_data
-        )
+        sections, _, _ = save_current_section_header(sections, section_header, section_data)
 
         return sections
 
@@ -723,14 +653,10 @@ class HiveTable(object):
         # and does not process the same section >1 times
         table_details = self._parse_sections(iter(describe_formatted))
 
-        is_view = (
-            "VIRTUAL_VIEW" == table_details["detailed table information"]["table type:"]
-        )
-        if is_view and DBTYPE_HIVE == self._hive.db_type:
+        is_view = table_details["detailed table information"]["table type:"] == "VIRTUAL_VIEW"
+        if is_view and self._hive.db_type == DBTYPE_HIVE:
             logger.debug("Attempting to extract original view text for Hive view")
-            original_text = self._extract_original_text_for_hive_view(
-                describe_formatted
-            )
+            original_text = self._extract_original_text_for_hive_view(describe_formatted)
             if original_text:
                 table_details["view information"]["view original text:"] = original_text
 
@@ -744,13 +670,12 @@ class HiveTable(object):
             (
                 i
                 for i in range(len(describe_formatted))
-                if (describe_formatted[i][0] or "").strip().lower()
-                == "view original text:"
+                if (describe_formatted[i][0] or "").strip().lower() == "view original text:"
             ),
             -1,
         )
         if start < 0:
-            logger.warn("Unable to extract original text for Hive view")
+            logger.warning("Unable to extract original text for Hive view")
             return None
 
         (_, original_text, _) = describe_formatted[start]
@@ -775,9 +700,7 @@ class HiveTable(object):
         table_details.update(self._extract_sections(table_name, db_name))
 
         # Fill 'partition columns' if required AND drop them from 'table columns'
-        is_view = (
-            "VIRTUAL_VIEW" == table_details["detailed table information"]["table type:"]
-        )
+        is_view = table_details["detailed table information"]["table type:"] == "VIRTUAL_VIEW"
         if not is_view:
             # Very old versions of impala do NOT differentiate between partition/non-partition columns
             partition_cols = []
@@ -786,22 +709,18 @@ class HiveTable(object):
                 # Only include 'partition columns' key if table is partitioned
                 if partition_cols:
                     table_details["partition columns"] = [
-                        _
-                        for _ in table_details["table columns"]
-                        if _[0] in partition_cols
+                        _ for _ in table_details["table columns"] if _[0] in partition_cols
                     ]
             else:
                 partition_cols = [_[0] for _ in table_details["partition columns"]]
             # Drop 'partition columns' from the list of 'table columns'
-            table_details["table columns"] = [
-                _ for _ in table_details["table columns"] if _[0] not in partition_cols
-            ]
-        elif DBTYPE_HIVE == self._hive.db_type:
+            table_details["table columns"] = [_ for _ in table_details["table columns"] if _[0] not in partition_cols]
+        elif self._hive.db_type == DBTYPE_HIVE:
             # For Hive, forcing creation DDL as expanded view text
             view_ddl = self._extract_table_ddl(table_name, db_name).replace("\n", " ")
-            table_details["view information"][
-                "view expanded text:"
-            ] = REGEX_CREATE_VIEW.sub("", view_ddl, 1).replace(";", "")
+            table_details["view information"]["view expanded text:"] = REGEX_CREATE_VIEW.sub("", view_ddl, 1).replace(
+                ";", ""
+            )
 
         return table_details
 
@@ -811,14 +730,12 @@ class HiveTable(object):
         def extract_impala(table_name, db_name):
             partition_columns = []
 
-            partitions_out, col_headers = self._show_partitions(
-                table_name, db_name, cursor_fn=lambda c: c.fetchone()
-            )
+            partitions_out, col_headers = self._show_partitions(table_name, db_name, cursor_fn=lambda c: c.fetchone())
 
             if partitions_out:
                 for col in col_headers:
                     col_name = col[0]
-                    if "#Rows" == col_name:
+                    if col_name == "#Rows":
                         break
                     partition_columns.append(col_name)
 
@@ -827,9 +744,7 @@ class HiveTable(object):
         def extract_hive(table_name, db_name):
             partition_columns = []
 
-            partitions_out, _ = self._show_partitions(
-                table_name, db_name, cursor_fn=lambda c: c.fetchone()
-            )
+            partitions_out, _ = self._show_partitions(table_name, db_name, cursor_fn=lambda c: c.fetchone())
 
             if partitions_out:
                 first_row = partitions_out
@@ -841,20 +756,16 @@ class HiveTable(object):
             return partition_columns
 
         # _extract_partition_columns() begins here
-        logger.debug(
-            "Extracting partition columns for table: %s.%s" % (db_name, table_name)
-        )
+        logger.debug("Extracting partition columns for table: %s.%s" % (db_name, table_name))
         partition_columns = []
 
         db_type = self._hive.db_type
-        if DBTYPE_HIVE == db_type:
+        if db_type == DBTYPE_HIVE:
             partition_columns = extract_hive(table_name, db_name)
-        elif DBTYPE_IMPALA == db_type:
+        elif db_type == DBTYPE_IMPALA:
             partition_columns = extract_impala(table_name, db_name)
         else:
-            raise BetterImpylaException(
-                "Unrecognized db type: %s while extracting partition columns" % db_type
-            )
+            raise BetterImpylaException("Unrecognized db type: %s while extracting partition columns" % db_type)
 
         return partition_columns
 
@@ -864,9 +775,7 @@ class HiveTable(object):
         I'm reluctant to add this in directly as several thousand DESC FORMATTED calls will
         add significant latency. Therefore this is only currently used on a per partition basis
         """
-        describe_formatted = self._describe_formatted(
-            table_name, db_name, partition_spec=partition_spec
-        )
+        describe_formatted = self._describe_formatted(table_name, db_name, partition_spec=partition_spec)
         partition_details = self._parse_sections(iter(describe_formatted))
         # grab some useful stats and key them to match Impala section names
         location, numrows, numfiles = None, None, None
@@ -875,16 +784,12 @@ class HiveTable(object):
             numrows = partition_prm_section.get("numrows")
             numfiles = partition_prm_section.get("numfiles")
         else:
-            logger.debug(
-                "Missing 'partition parameters' from DESC FORMATTED by partition call"
-            )
+            logger.debug("Missing 'partition parameters' from DESC FORMATTED by partition call")
         partition_info_section = partition_details.get("detailed partition information")
         if partition_info_section:
             location = partition_info_section.get("location")
         else:
-            logger.debug(
-                "Missing 'detailed partition information' from DESC FORMATTED by partition call"
-            )
+            logger.debug("Missing 'detailed partition information' from DESC FORMATTED by partition call")
         return {"Location": location, "#Files": numfiles, "#Rows": numrows}
 
     def _extract_table_partitions(self, table_name, db_name):
@@ -896,33 +801,19 @@ class HiveTable(object):
 
         def extract_partitions_hive(table_name, db_name):
             """Extract partition information from a HIVE table"""
-            logger.debug(
-                "Constructing partitions for HIVE table: %s.%s" % (db_name, table_name)
-            )
-            partitions_out, _ = self._show_partitions(
-                table_name, db_name, cursor_fn=lambda c: c.fetchall()
-            )
-            partitions = {
-                _[0]: {"message": "Hive does not support partition details yet"}
-                for _ in partitions_out
-            }
-            logger.debug(
-                "HIVE Table: %s.%s. Found partitions: %s"
-                % (db_name, table_name, partitions)
-            )
+            logger.debug("Constructing partitions for HIVE table: %s.%s" % (db_name, table_name))
+            partitions_out, _ = self._show_partitions(table_name, db_name, cursor_fn=lambda c: c.fetchall())
+            partitions = {_[0]: {"message": "Hive does not support partition details yet"} for _ in partitions_out}
+            logger.debug("HIVE Table: %s.%s. Found partitions: %s" % (db_name, table_name, partitions))
 
             return partitions
 
         def extract_partitions_impala(table_name, db_name):
             """Extract partition information for IMPALA table"""
-            logger.debug(
-                "Extracting partitions for IMPALA table: %s.%s" % (db_name, table_name)
-            )
+            logger.debug("Extracting partitions for IMPALA table: %s.%s" % (db_name, table_name))
 
             # We only need column names, not their types or comments
-            partition_columns = [
-                _[0] for _ in self.table_details()["partition columns"]
-            ]
+            partition_columns = [_[0] for _ in self.table_details()["partition columns"]]
 
             partitions_out, _ = self._show_partitions(
                 table_name, db_name, cursor_fn=lambda c: c.fetchall(), as_dict=True
@@ -931,15 +822,10 @@ class HiveTable(object):
             for rec in partitions_out:
                 # Extract partition column values
                 p_id_col_values = [rec[_] for _ in partition_columns]
-                p_id = "/".join(
-                    [
-                        "%s=%s" % (p, v)
-                        for p, v in zip(partition_columns, p_id_col_values)
-                    ]
-                )
+                p_id = "/".join(["%s=%s" % (p, v) for p, v in zip(partition_columns, p_id_col_values)])
 
                 # Skip a 'Total' record
-                is_total = any(["TOTAL" == rec[_].upper() for _ in partition_columns])
+                is_total = any([rec[_].upper() == "TOTAL" for _ in partition_columns])
                 if is_total:
                     continue
 
@@ -949,10 +835,7 @@ class HiveTable(object):
 
                 partition_data[p_id] = rec
 
-            logger.debug(
-                "IMPALA Table: %s.%s. Found partitions: %s"
-                % (db_name, table_name, partition_data)
-            )
+            logger.debug("IMPALA Table: %s.%s. Found partitions: %s" % (db_name, table_name, partition_data))
 
             return partition_data
 
@@ -965,14 +848,12 @@ class HiveTable(object):
 
         db_type = self._hive.db_type
 
-        if DBTYPE_HIVE == db_type:
+        if db_type == DBTYPE_HIVE:
             table_partitions = extract_partitions_hive(table_name, db_name)
-        elif DBTYPE_IMPALA == db_type:
+        elif db_type == DBTYPE_IMPALA:
             table_partitions = extract_partitions_impala(table_name, db_name)
         else:
-            raise BetterImpylaException(
-                "Unrecognized db type: %s while extracting partitions" % db_type
-            )
+            raise BetterImpylaException("Unrecognized db type: %s while extracting partitions" % db_type)
 
         return table_partitions
 
@@ -989,16 +870,12 @@ class HiveTable(object):
         sql = "DESCRIBE FORMATTED `%s`.`%s`" % (db_name, table_name)
         if partition_spec:
             formal_partition_spec = self._make_formal_partition_spec(partition_spec)
-            logger.debug(
-                "Restricting describe to partition: %s" % formal_partition_spec
-            )
+            logger.debug("Restricting describe to partition: %s" % formal_partition_spec)
             sql = sql + " PARTITION %s" % formal_partition_spec
 
         describe_formatted = self._hive.execute(sql, lambda c: c.fetchall())
 
-        logger.debug(
-            "Table: %s.%s details: %s" % (db_name, table_name, describe_formatted)
-        )
+        logger.debug("Table: %s.%s details: %s" % (db_name, table_name, describe_formatted))
 
         return describe_formatted
 
@@ -1015,9 +892,7 @@ class HiveTable(object):
         sql = "DESCRIBE `%s`.`%s`" % (db_name, table_name)
         describe_out = self._hive.execute(sql, lambda c: c.fetchall())
 
-        logger.debug(
-            "Table: %s.%s description: %s" % (db_name, table_name, describe_out)
-        )
+        logger.debug("Table: %s.%s description: %s" % (db_name, table_name, describe_out))
 
         return describe_out
 
@@ -1042,9 +917,7 @@ class HiveTable(object):
         sql = "INVALIDATE METADATA `%s`.`%s`" % (db_name, table_name)
         describe_out = self._hive.execute(sql)
 
-    def _show_partitions(
-        self, table_name, db_name, cursor_fn=lambda c: c.fetchall(), as_dict=False
-    ):
+    def _show_partitions(self, table_name, db_name, cursor_fn=lambda c: c.fetchall(), as_dict=False):
         """Execute SHOW PARTITIONS command and return results
         as list of 'output tuples' + 'description' (i.e. query header with column names)
         """
@@ -1053,25 +926,15 @@ class HiveTable(object):
 
         sql = "SHOW PARTITIONS `%s`.`%s`" % (db_name, table_name)
         try:
-            partitions_out = self._hive.execute(
-                sql, cursor_fn=cursor_fn, as_dict=as_dict
-            )
+            partitions_out = self._hive.execute(sql, cursor_fn=cursor_fn, as_dict=as_dict)
             description = self._hive.description
         except (BetterImpylaException, HiveServer2Error) as e:
             e = str(e).lower()
             # Hive/Impala return different exception text
-            if any(
-                _ in e
-                for _ in ("table is not partitioned", "is not a partitioned table")
-            ):
-                logger.debug(
-                    "Table: %s.%s is not partitioned. Returning empty partition list"
-                    % (db_name, table_name)
-                )
+            if any(_ in e for _ in ("table is not partitioned", "is not a partitioned table")):
+                logger.debug("Table: %s.%s is not partitioned. Returning empty partition list" % (db_name, table_name))
 
-        logger.debug(
-            "Table: %s.%s show partitions: %s" % (db_name, table_name, partitions_out)
-        )
+        logger.debug("Table: %s.%s show partitions: %s" % (db_name, table_name, partitions_out))
 
         return partitions_out, description
 
@@ -1085,9 +948,7 @@ class HiveTable(object):
         # DDL may come in multiple chunks
         table_ddl = ""
         for ddl_chunk in table_ddl_raw:
-            if isinstance(ddl_chunk, (list, tuple)) and any(
-                [_ is not None for _ in ddl_chunk]
-            ):
+            if isinstance(ddl_chunk, (list, tuple)) and any([_ is not None for _ in ddl_chunk]):
                 table_ddl += "%s\n" % " ".join(_ for _ in ddl_chunk if _ is not None)
             elif ddl_chunk is not None:
                 table_ddl += "%s\n" % ddl_chunk
@@ -1105,11 +966,7 @@ class HiveTable(object):
         """
 
         def str_value_fn(val):
-            return (
-                (HDFS_NULL_PART_KEY_CONSTANT if self.db_type == DBTYPE_HIVE else "NULL")
-                if val is None
-                else val
-            )
+            return (HDFS_NULL_PART_KEY_CONSTANT if self.db_type == DBTYPE_HIVE else "NULL") if val is None else val
 
         partition_chunks = []
         for part in partition_spec:
@@ -1165,15 +1022,14 @@ class HiveTable(object):
 
     def _is_partition_column_number(self, col_name):
         """Returns True if partition column: 'col' is "integer", False otherwise"""
-        number_pattern = re.compile("int|float|double", re.I)
+        number_pattern = re.compile("int|float|double", re.IGNORECASE)
 
         col_type = self._get_partition_column_type(col_name)
         if number_pattern.search(col_type):
             logger.debug("Column: %s has a number type: %s" % (col_name, col_type))
             return True
-        else:
-            logger.debug("Column: %s has a 'string' type: %s" % (col_name, col_type))
-            return False
+        logger.debug("Column: %s has a 'string' type: %s" % (col_name, col_type))
+        return False
 
     def _get_partition_column_type(self, col_name):
         """Return datatype partition column: 'col_name'
@@ -1188,16 +1044,12 @@ class HiveTable(object):
             name, typ, comment = col
             if col_name == name.lower():
                 col_type = typ
-                logger.debug(
-                    "Determined type: %s for partitioned column: %s"
-                    % (col_type, col_name)
-                )
+                logger.debug("Determined type: %s for partitioned column: %s" % (col_type, col_name))
                 return typ.lower()
 
         if not col_type:
             raise BetterImpylaException(
-                "Cannot find column: %s in partitioned columns for: %s.%s"
-                % (col_name, self._db_name, self._table_name)
+                "Cannot find column: %s in partitioned columns for: %s.%s" % (col_name, self._db_name, self._table_name)
             )
 
     def _parse_dependent_objects_from_view_definition(self, view_definition):
@@ -1224,10 +1076,7 @@ class HiveTable(object):
                     ret.append((db_name, table_name, alias))
 
         if not ret:
-            logger.warn(
-                "Unable to parse view definition: %s for 'dependent objects'"
-                % view_definition
-            )
+            logger.warning("Unable to parse view definition: %s for 'dependent objects'" % view_definition)
         return ret
 
     ###########################################################################
@@ -1260,10 +1109,7 @@ class HiveTable(object):
 
     def invalidate(self):
         """Invalidate caches (causes re-query of hive/impala on next command)"""
-        logger.debug(
-            "Invalidating current data for table: %s.%s"
-            % (self._db_name, self._table_name)
-        )
+        logger.debug("Invalidating current data for table: %s.%s" % (self._db_name, self._table_name))
 
         self._table_details = None
         self._table_partitions = None
@@ -1275,16 +1121,14 @@ class HiveTable(object):
         partition_spec only used on Impala, ignored on Hive
         partition_spec = [(partition_col 1 name, value), (partition col 2 name, value), ...]
         """
-        if DBTYPE_IMPALA == self.db_type:
-            self._refresh(
-                self._table_name, self._db_name, partition_spec=partition_spec
-            )
+        if self.db_type == DBTYPE_IMPALA:
+            self._refresh(self._table_name, self._db_name, partition_spec=partition_spec)
         else:
             self._repair(self._table_name, self._db_name)
 
     def invalidate_metadata(self):
         """'Invalidate' table metadata (noop in Hive)"""
-        if DBTYPE_IMPALA == self.db_type:
+        if self.db_type == DBTYPE_IMPALA:
             self._invalidate_metadata(self._table_name, self._db_name)
         else:
             self._repair(self._table_name, self._db_name)
@@ -1292,9 +1136,7 @@ class HiveTable(object):
     def table_details(self):
         """Return table 'details' (parsed DESCRIBE FORMATTED output)"""
         if not self._table_details:
-            self._table_details = self._extract_table_details(
-                self._table_name, self._db_name
-            )
+            self._table_details = self._extract_table_details(self._table_name, self._db_name)
         return self._table_details
 
     def exists(self):
@@ -1308,10 +1150,9 @@ class HiveTable(object):
 
         if object_type in ("VIRTUAL_VIEW"):
             return True
-        elif object_type in ("MANAGED_TABLE", "EXTERNAL_TABLE"):
+        if object_type in ("MANAGED_TABLE", "EXTERNAL_TABLE"):
             return False
-        else:
-            raise BetterImpylaException("Unable to parse object type")
+        raise BetterImpylaException("Unable to parse object type")
 
     def create_time(self):
         """Return  create time for Impala tables, otherwise None
@@ -1354,9 +1195,7 @@ class HiveTable(object):
     def view_definition(self):
         """Return 'view text' if self._table_name is a VIEW, None otherwise"""
         if not self.is_view():
-            logger.warn(
-                "Object: %s.%s is NOT a view" % (self._db_name, self._table_name)
-            )
+            logger.warning("Object: %s.%s is NOT a view" % (self._db_name, self._table_name))
             return None
 
         table_details = self.table_details()
@@ -1383,14 +1222,11 @@ class HiveTable(object):
         Representing "on disk" layout
         """
         if not self._table_partitions:
-            self._table_partitions = self._extract_table_partitions(
-                self._table_name, self._db_name
-            )
+            self._table_partitions = self._extract_table_partitions(self._table_name, self._db_name)
 
         if as_spec:
             return [self._partition_str_to_spec(_) for _ in self._table_partitions]
-        else:
-            return self._table_partitions
+        return self._table_partitions
 
     def table_columns(self, as_dict=False):
         """Return table columns as list of either:
@@ -1425,9 +1261,7 @@ class HiveTable(object):
         """
         table_details = self.table_details()
         if "partition columns" not in table_details:
-            logger.debug(
-                "Table: %s.%s is not partitioned" % (self._db_name, self._table_name)
-            )
+            logger.debug("Table: %s.%s is not partitioned" % (self._db_name, self._table_name))
             return None
 
         partition_columns = table_details["partition columns"]
@@ -1445,8 +1279,7 @@ class HiveTable(object):
         """Return table (hdfs/s3 etc) location"""
         if "location" in self.table_details()["detailed table information"]:
             return self.table_details()["detailed table information"]["location"]
-        else:
-            return None
+        return None
 
     def table_ddl(self, terminate_sql=True):
         """Return table DDL"""
@@ -1460,9 +1293,7 @@ class HiveTable(object):
                 if terminate_sql:
                     self._table_ddl += ";"
             else:
-                self._table_ddl = self._extract_table_ddl(
-                    self._table_name, self._db_name, terminate_sql=terminate_sql
-                )
+                self._table_ddl = self._extract_table_ddl(self._table_name, self._db_name, terminate_sql=terminate_sql)
         table_ddl = self._table_ddl
 
         return table_ddl
@@ -1494,14 +1325,10 @@ class HiveTable(object):
         if partition_str in table_partitions:
             partition_details = table_partitions[partition_str]
             if self._hive.db_type == DBTYPE_HIVE:
-                more_details = self._extract_hive_table_partition(
-                    self._table_name, self._db_name, partition_spec
-                )
+                more_details = self._extract_hive_table_partition(self._table_name, self._db_name, partition_spec)
                 partition_details.update(more_details)
         else:
-            logger.warn(
-                "Unable to find partition: %s when looking for details" % partition_spec
-            )
+            logger.warning("Unable to find partition: %s when looking for details" % partition_spec)
 
         return partition_details
 
@@ -1516,10 +1343,7 @@ class HiveTable(object):
             if "Location" in partition_details:
                 partition_location = partition_details["Location"]
             else:
-                logger.warn(
-                    "Unable to find 'location' in details for partition: %s"
-                    % partition_spec
-                )
+                logger.warning("Unable to find 'location' in details for partition: %s" % partition_spec)
 
         return partition_location
 
@@ -1532,16 +1356,10 @@ class HiveTable(object):
 
         current_location = self.partition_location(partition_spec)
         if not current_location:
-            logger.warn(
-                "Unable to find current location for partition: %s. Does it exist ?"
-                % partition_spec
-            )
+            logger.warning("Unable to find current location for partition: %s. Does it exist ?" % partition_spec)
             return False
-        elif current_location == new_location:
-            logger.warn(
-                "Partition: %s is already located at: %s"
-                % (partition_spec, new_location)
-            )
+        if current_location == new_location:
+            logger.warning("Partition: %s is already located at: %s" % (partition_spec, new_location))
             return True
 
         sql = "ALTER TABLE %s.%s PARTITION %s SET LOCATION '%s'" % (
@@ -1565,15 +1383,11 @@ class HiveTable(object):
         """
         assert partition_spec
 
-        logger.debug(
-            "Creating partition: %s for table: %s.%s"
-            % (partition_spec, self._db_name, self._table_name)
-        )
+        logger.debug("Creating partition: %s for table: %s.%s" % (partition_spec, self._db_name, self._table_name))
 
         if self.partition_exists(partition_spec):
-            logger.warn(
-                "Partition: %s already exists for table: %s.%s"
-                % (partition_spec, self._db_name, self._table_name)
+            logger.warning(
+                "Partition: %s already exists for table: %s.%s" % (partition_spec, self._db_name, self._table_name)
             )
             return False
 
@@ -1602,15 +1416,11 @@ class HiveTable(object):
         """
         assert partition_spec
 
-        logger.debug(
-            "Dropping partition: %s for table: %s.%s"
-            % (partition_spec, self._db_name, self._table_name)
-        )
+        logger.debug("Dropping partition: %s for table: %s.%s" % (partition_spec, self._db_name, self._table_name))
 
         if not self.partition_exists(partition_spec):
-            logger.warn(
-                "Partition: %s does NOT exists for table: %s.%s"
-                % (partition_spec, self._db_name, self._table_name)
+            logger.warning(
+                "Partition: %s does NOT exists for table: %s.%s" % (partition_spec, self._db_name, self._table_name)
             )
             return False
 
@@ -1630,25 +1440,20 @@ class HiveTable(object):
 
         (Only impala for now)
         """
-        logger.debug(
-            "Computing statistics for table: %s.%s" % (self._db_name, self._table_name)
-        )
+        logger.debug("Computing statistics for table: %s.%s" % (self._db_name, self._table_name))
 
-        if DBTYPE_IMPALA == self._hive._db_type:
+        if self._hive._db_type == DBTYPE_IMPALA:
             sql = "COMPUTE STATS %s.%s" % (self._db_name, self._table_name)
             self._hive.execute_ddl(sql)
         else:
-            logger.warn(
-                "Statistics collection is NOT yet supported for db type: %s"
-                % self._hive.db_type
-            )
+            logger.warning("Statistics collection is NOT yet supported for db type: %s" % self._hive.db_type)
 
     def make_formal_partition_spec(self, partition_spec):
-        """expose _make_formal_partition_spec"""
+        """Expose _make_formal_partition_spec"""
         return self._make_formal_partition_spec(partition_spec)
 
     def make_partition_str(self, partition_spec):
-        """expose _make_partition_str"""
+        """Expose _make_partition_str"""
         return self._make_partition_str(partition_spec)
 
 
@@ -1670,20 +1475,18 @@ def from_impala_size(size_str):
         raise BetterImpylaException("Unable to parse impala 'size': %s" % size_str)
     size_d, size_e = float(match_size.group(1)), match_size.group(2).upper()
 
-    if "B" == size_e:
+    if size_e == "B":
         pass
-    elif "KB" == size_e:
+    elif size_e == "KB":
         size_d *= 1024
-    elif "MB" == size_e:
+    elif size_e == "MB":
         size_d *= 1024 * 1024
-    elif "GB" == size_e:
+    elif size_e == "GB":
         size_d *= 1024 * 1024 * 1024
-    elif "TB" == size_e:
+    elif size_e == "TB":
         size_d *= 1024 * 1024 * 1024 * 1024
     else:
-        raise BetterImpylaException(
-            "Unrecognized 'exponent': %s in impala 'size': %s" % (size_e, size_str)
-        )
+        raise BetterImpylaException("Unrecognized 'exponent': %s in impala 'size': %s" % (size_e, size_str))
 
     if size_d:
         size_d = round(size_d)

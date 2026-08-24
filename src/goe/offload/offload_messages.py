@@ -12,28 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" OffloadMessages: Library for handling messages
-"""
+"""OffloadMessages: Library for handling messages"""
 
 # Standard Library
 import logging
 import os
 import sys
 import traceback
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 # Third Party Libraries
 import orjson
 
 # GOE
-from goe.orchestration import orchestration_constants
+from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.command_steps import STEP_TITLES, step_title
 from goe.util.goe_log_fh import GOELogFileHandle
 from goe.util.misc_functions import standard_log_name
 from goe.util.redis_tools import cache
-from goe.orchestration import command_steps
 
 if TYPE_CHECKING:
     # GOE
@@ -83,8 +82,7 @@ logger.addHandler(logging.NullHandler())
 
 
 def serialize_object(obj) -> str:
-    """
-    Encodes json with the optimized ORJSON package
+    """Encodes json with the optimized ORJSON package
 
     orjson.dumps returns bytearray, so you can't pass it directly as json_serializer
     """
@@ -94,7 +92,7 @@ def serialize_object(obj) -> str:
     ).decode()
 
 
-class OffloadMessages(object):
+class OffloadMessages:
     """Class for logging, storing & reporting messages in Offload & Present"""
 
     def __init__(
@@ -110,8 +108,7 @@ class OffloadMessages(object):
         command_type=None,
         cache_enabled: bool = False,
     ):
-        """
-        Client for Offload logging that also provides step instrumentation, repo logging and Console updates.
+        """Client for Offload logging that also provides step instrumentation, repo logging and Console updates.
 
         log_fh: Allows init of the log using an existing file handle for integration with existing tools, e.g.: Offload.
                 For stand-alone use the init_log method makes more sense.
@@ -120,9 +117,7 @@ class OffloadMessages(object):
         """
         logger.info("OffloadMessages setup")
         if command_type:
-            assert (
-                command_type in orchestration_constants.ALL_COMMAND_CODES
-            ), f"Unknown command type: {command_type}"
+            assert command_type in orchestration_constants.ALL_COMMAND_CODES, f"Unknown command type: {command_type}"
 
         self.messages = {"notices": [], "warnings": [], "events": []}
         self.steps = {}
@@ -227,13 +222,8 @@ class OffloadMessages(object):
         if ansi and color_name:
             if type(color_name) not in (list, tuple):
                 color_name = [color_name]
-            return (
-                "".join([COLORS.get(cn, "") for cn in color_name])
-                + str(txt)  # noqa: W503
-                + COLORS.get("none")  # noqa: W503
-            )
-        else:
-            return txt
+            return "".join([COLORS.get(cn, "") for cn in color_name]) + str(txt) + COLORS.get("none")
+        return txt
 
     def init_log(self, log_dir, log_name):
         assert log_dir and log_name
@@ -335,16 +325,14 @@ class OffloadMessages(object):
                     sys.stdout.flush()
                 except OSError as exc:
                     # Writing to screen is non-essential, if we lost stdout we are still logging to file.
-                    fh_log("Disabling STDOUT logging due to: {}".format(str(exc)))
+                    fh_log(f"Disabling STDOUT logging due to: {exc!s}")
                     self._stdout_in_error = True
 
         if self._log_fh:
             fh_log(line)
         if self._detail == QUIET:
             stdout_log(".")
-        elif (detail is None or detail <= self._detail) and (
-            self._detail != SUPPRESS_STDOUT
-        ):
+        elif (detail is None or detail <= self._detail) and (self._detail != SUPPRESS_STDOUT):
             line = self.ansi_wrap(line, ansi_code, self._ansi)
             stdout_log(line)
         if self.cache_enabled and not self._redis_in_error:
@@ -359,7 +347,7 @@ class OffloadMessages(object):
                     ttl=timedelta(hours=48),
                 )
             except Exception as exc:
-                fh_log("Disabling Redis integration due to: {}".format(str(exc)))
+                fh_log(f"Disabling Redis integration due to: {exc!s}")
                 self._redis_in_error = True
 
     def info(self, line, detail=NORMAL, ansi_code=None):
@@ -404,18 +392,17 @@ class OffloadMessages(object):
             self.log(ts.strftime("%c"), detail=detail, ansi_code=ansi_code)
         return ts
 
-    def offload_step(  # noqa: C901
+    def offload_step(
         self,
         step_constant: str,
         step_fn: Callable,
         execute=True,
         optional=False,
-        command_type: Optional[str] = None,
+        command_type: str | None = None,
         mandatory_step=False,
         record_step_delta=True,
     ) -> Any:
-        """
-        Produce nicely formatted offload step output with elapsed time and return the value of step_fn().
+        """Produce nicely formatted offload step output with elapsed time and return the value of step_fn().
 
         step_constant: an ID identifying the step in the repo.
         step_fn: The function to call for the step. Any return value is passed back though this method.
@@ -454,15 +441,11 @@ class OffloadMessages(object):
 
         assert step_constant in STEP_TITLES, f"Unknown step constant: {step_constant}"
         if command_type:
-            assert (
-                command_type in orchestration_constants.ALL_COMMAND_CODES
-            ), f"Unknown command type: {command_type}"
+            assert command_type in orchestration_constants.ALL_COMMAND_CODES, f"Unknown command type: {command_type}"
 
         parent_command_type = command_type or self._command_type
         if step_repo_logging(parent_command_type):
-            assert (
-                self._repo_client
-            ), f"Repository client must be initialized for command type: {parent_command_type}"
+            assert self._repo_client, f"Repository client must be initialized for command type: {parent_command_type}"
 
         title = step_title(step_constant)
 
@@ -473,23 +456,17 @@ class OffloadMessages(object):
         step_id = step_title_to_step_id(title)
         if self._skip and step_id in self._skip:
             if mandatory_step:
-                raise OffloadMessagesException(
-                    'Step "%s" is mandatory and cannot be skipped' % title
-                )
+                raise OffloadMessagesException('Step "%s" is mandatory and cannot be skipped' % title)
             self.log("skipped")
             return None
 
         if step_repo_logging(parent_command_type):
-            csid = self._repo_client.start_command_step(
-                self.execution_id, parent_command_type, step_constant
-            )
+            csid = self._repo_client.start_command_step(self.execution_id, parent_command_type, step_constant)
         else:
             csid = None
 
         if step_id == self._error_before_step:
-            raise OffloadMessagesForcedException(
-                "%s before step: %s" % (FORCED_EXCEPTION_TEXT, title)
-            )
+            raise OffloadMessagesForcedException("%s before step: %s" % (FORCED_EXCEPTION_TEXT, title))
 
         try:
             step_results = step_fn()
@@ -503,9 +480,7 @@ class OffloadMessages(object):
                 self.step_no_delta(title)
 
             if step_repo_logging(parent_command_type):
-                self._repo_client.end_command_step(
-                    csid, orchestration_constants.COMMAND_SUCCESS
-                )
+                self._repo_client.end_command_step(csid, orchestration_constants.COMMAND_SUCCESS)
 
             return step_results
         except Exception as exc:
@@ -528,9 +503,7 @@ class OffloadMessages(object):
                 raise
         finally:
             if step_id == self._error_after_step:
-                raise OffloadMessagesForcedException(
-                    "%s after step: %s" % (FORCED_EXCEPTION_TEXT, title)
-                )
+                raise OffloadMessagesForcedException("%s after step: %s" % (FORCED_EXCEPTION_TEXT, title))
 
     def set_execution_id(self, execution_id):
         self.execution_id = execution_id
@@ -540,8 +513,8 @@ class OffloadMessages(object):
         skip=None,
         error_before_step=None,
         error_after_step=None,
-        repo_client: "Optional[OrchestrationRepoClientInterface]" = None,
-        command_type: Optional[str] = None,
+        repo_client: "OrchestrationRepoClientInterface | None" = None,
+        command_type: str | None = None,
     ):
         """Cache some operational attributes that can be used by offload_step().
         error_before_step and error_after_step are for test purposes, they cache a step name before or after
@@ -585,9 +558,7 @@ class OffloadMessages(object):
         if time_delta is None:
             return
         if step in self.steps:
-            self.steps[step]["seconds"] = (
-                self.steps[step]["seconds"] + time_delta.total_seconds()
-            )
+            self.steps[step]["seconds"] = self.steps[step]["seconds"] + time_delta.total_seconds()
             self.steps[step]["count"] += 1
         else:
             self.steps[step] = {"seconds": time_delta.total_seconds(), "count": 1}
@@ -608,9 +579,7 @@ class OffloadMessages(object):
         step_format = "{0: <" + str(step_width) + "} {1: >9} {2: >7}"
         self.log(step_format.format("Step", "Seconds", "Percent"), detail=detail)
         for i, (step_key, step_dict) in enumerate(
-            sorted(
-                iter(self.steps.items()), key=lambda x: x[1]["seconds"], reverse=True
-            )
+            sorted(iter(self.steps.items()), key=lambda x: x[1]["seconds"], reverse=True)
         ):
             if i >= topn:
                 break
@@ -619,7 +588,7 @@ class OffloadMessages(object):
                 step_format.format(
                     step_key,
                     "{:9.0f}".format(step_dict["seconds"]),
-                    "{:5.1%}".format(ratio),
+                    f"{ratio:5.1%}",
                 ),
                 detail=detail,
             )
@@ -667,21 +636,18 @@ class OffloadMessagesMixin:
             if messages and isinstance(messages, OffloadMessages):
                 logger.debug("Setting: %s call to use 'messages'" % marker)
                 return messages_func()
-            elif logger and isinstance(ext_logger, logging.Logger):
+            if logger and isinstance(ext_logger, logging.Logger):
                 logger.debug("Setting: %s call to use 'logger'" % marker)
                 return logger_func()
-            else:
-                logger.debug("Setting: %s call to EMPTY" % marker)
-                return lambda x: None
+            logger.debug("Setting: %s call to EMPTY" % marker)
+            return lambda x: None
 
         self.warn = set_func(
             "warn",
             lambda: partial(messages.warning, ansi_code="red"),
             lambda: ext_logger.warn,
         )
-        self.notice = set_func(
-            "notice", lambda: messages.notice, lambda: ext_logger.info
-        )
+        self.notice = set_func("notice", lambda: messages.notice, lambda: ext_logger.info)
         self.log = set_func("log", lambda: messages.log, lambda: ext_logger.info)
         self.log_normal = set_func(
             "log_normal",
@@ -704,5 +670,4 @@ def step_title_to_step_id(step_title):
     """Helper function to share logic between this module and goe.py"""
     if step_title:
         return step_title.replace(" ", "_").lower()
-    else:
-        return None
+    return None

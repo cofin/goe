@@ -14,13 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" SynapseColumn: Synapse implementation of ColumnMetadataInterface
-"""
+"""SynapseColumn: Synapse implementation of ColumnMetadataInterface"""
 
 from goe.offload.column_metadata import (
-    ColumnMetadataInterface,
     CANONICAL_CHAR_SEMANTICS_CHAR,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
+    ColumnMetadataInterface,
 )
 
 ###############################################################################
@@ -80,7 +79,7 @@ class SynapseColumn(ColumnMetadataInterface):
         char_semantics=None,
         collation=None,
     ):
-        super(SynapseColumn, self).__init__(
+        super().__init__(
             name,
             data_type,
             data_length=data_length,
@@ -104,11 +103,10 @@ class SynapseColumn(ColumnMetadataInterface):
                     self.data_precision,
                     self.data_scale,
                 )
-            elif self.data_precision:
+            if self.data_precision:
                 return "%s(%s)" % (self.data_type, self.data_precision)
-            else:
-                return self.data_type
-        elif self.data_type in [
+            return self.data_type
+        if self.data_type in [
             SYNAPSE_TYPE_CHAR,
             SYNAPSE_TYPE_VARCHAR,
             SYNAPSE_TYPE_BINARY,
@@ -117,26 +115,21 @@ class SynapseColumn(ColumnMetadataInterface):
             SYNAPSE_TYPE_NVARCHAR,
         ]:
             if (
-                self.data_type
-                in [SYNAPSE_TYPE_VARCHAR, SYNAPSE_TYPE_VARBINARY, SYNAPSE_TYPE_NVARCHAR]
+                self.data_type in [SYNAPSE_TYPE_VARCHAR, SYNAPSE_TYPE_VARBINARY, SYNAPSE_TYPE_NVARCHAR]
                 and not self.data_length
             ):
                 return "%s(%s)" % (self.data_type, SYNAPSE_TYPE_MAX_TOKEN)
-            elif self.char_length and self.char_semantics in [
+            if self.char_length and self.char_semantics in [
                 CANONICAL_CHAR_SEMANTICS_CHAR,
                 CANONICAL_CHAR_SEMANTICS_UNICODE,
             ]:
                 return "%s(%s)" % (self.data_type, self.char_length)
-            elif self.data_length:
+            if self.data_length:
                 return "%s(%s)" % (self.data_type, self.data_length)
-            else:
-                return self.data_type
-        elif (
-            self.is_date_based() or self.data_type == SYNAPSE_TYPE_TIME
-        ) and self.data_scale is not None:
-            return "%s(%s)" % (self.data_type, self.data_scale)
-        else:
             return self.data_type
+        if (self.is_date_based() or self.data_type == SYNAPSE_TYPE_TIME) and self.data_scale is not None:
+            return "%s(%s)" % (self.data_type, self.data_scale)
+        return self.data_type
 
     def has_time_element(self):
         """Does the column data contain a time"""
@@ -214,7 +207,5 @@ class SynapseColumn(ColumnMetadataInterface):
     def valid_for_offload_predicate(self):
         """Is the column valid for use in an Offload Predicate"""
         return bool(
-            self.is_number_based()
-            or (self.is_date_based() and not self.is_time_zone_based())
-            or self.is_string_based()
+            self.is_number_based() or (self.is_date_based() and not self.is_time_zone_based()) or self.is_string_based()
         )

@@ -14,20 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" SchemaSyncProcessor: Library for processing Schema Sync operations
-"""
+"""SchemaSyncProcessor: Library for processing Schema Sync operations"""
 
 from typing import TYPE_CHECKING
 
-from goe.goe import log
 from goe.config.orchestration_config import OrchestrationConfig
+from goe.goe import log
 from goe.schema_sync.schema_sync_constants import (
     ADD_BACKEND_COLUMN,
-    PRESENT_TABLE,
     ADD_ORACLE_COLUMN,
 )
-from goe.util.misc_functions import double_quote_sandwich
 from goe.schema_sync.steps import step_builder
+from goe.util.misc_functions import double_quote_sandwich
 
 if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages
@@ -44,7 +42,7 @@ class SchemaSyncProcessorException(Exception):
     pass
 
 
-class SchemaSyncProcessor(object):
+class SchemaSyncProcessor:
     """Class for processing change steps (vectors) created by SchemaSyncAnalyzer"""
 
     def __init__(
@@ -66,10 +64,7 @@ class SchemaSyncProcessor(object):
         )
 
     def process_changes(self, table_owner, table_name, change, cmd_file):
-        log(
-            "Process changes: %s.%s"
-            % (double_quote_sandwich(table_owner), double_quote_sandwich(table_name))
-        )
+        log("Process changes: %s.%s" % (double_quote_sandwich(table_owner), double_quote_sandwich(table_name)))
 
         table_exception = None
         table_commands = []

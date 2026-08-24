@@ -22,7 +22,6 @@ from goe.offload.offload_functions import (
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
 from tests.integration.scenarios.assertion_functions import standard_dimension_assertion
 from tests.integration.scenarios.scenario_runner import (
     run_offload,
@@ -40,7 +39,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 OFFLOAD_DIM = "STORY_SYNPSE_HASH_DIM"
 
@@ -62,14 +60,10 @@ def data_db(schema, config):
     return data_db
 
 
-def synapse_distribution_assertion(
-    backend_api, messages, data_db, backend_name, expected_distribution
-):
+def synapse_distribution_assertion(backend_api, messages, data_db, backend_name, expected_distribution):
     table_distribution = backend_api.table_distribution(data_db, backend_name)
     if table_distribution != expected_distribution:
-        messages.log(
-            f"table_distribution({data_db}, {backend_name}) {table_distribution} != {expected_distribution}"
-        )
+        messages.log(f"table_distribution({data_db}, {backend_name}) {table_distribution} != {expected_distribution}")
         return False
     return True
 
@@ -83,13 +77,12 @@ def test_offload_hash_column_synapse(config, schema, data_db):
     if config.target != offload_constants.DBTYPE_SYNAPSE:
         pytest.skip(f"Skipping {id} for backend: {config.target}")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -97,13 +90,9 @@ def test_offload_hash_column_synapse(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, OFFLOAD_DIM
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, OFFLOAD_DIM),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, OFFLOAD_DIM
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, OFFLOAD_DIM),
             ],
         )
 
@@ -131,9 +120,7 @@ def test_offload_hash_column_synapse(config, schema, data_db):
             bucket_column="NULL",
             offload_messages=offload_messages,
         )
-        assert synapse_distribution_assertion(
-            backend_api, messages, data_db, OFFLOAD_DIM, "ROUND_ROBIN"
-        )
+        assert synapse_distribution_assertion(backend_api, messages, data_db, OFFLOAD_DIM, "ROUND_ROBIN")
 
         # Offload the dimension with --bucket-hash-column and high threshold, expect HASH.
         options = {
@@ -159,9 +146,7 @@ def test_offload_hash_column_synapse(config, schema, data_db):
             bucket_column="PROD_ID",
             offload_messages=offload_messages,
         )
-        assert synapse_distribution_assertion(
-            backend_api, messages, data_db, OFFLOAD_DIM, "HASH"
-        )
+        assert synapse_distribution_assertion(backend_api, messages, data_db, OFFLOAD_DIM, "HASH")
 
         # Offload the dimension without --bucket-hash-column and low threshold, expect HASH.
         options = {
@@ -186,6 +171,4 @@ def test_offload_hash_column_synapse(config, schema, data_db):
             bucket_column="PROD_ID",
             offload_messages=offload_messages,
         )
-        assert synapse_distribution_assertion(
-            backend_api, messages, data_db, OFFLOAD_DIM, "HASH"
-        )
+        assert synapse_distribution_assertion(backend_api, messages, data_db, OFFLOAD_DIM, "HASH")

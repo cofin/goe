@@ -12,15 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import pytest
-from unittest.mock import Mock
 
 import goe.config.config_validation_functions as module_under_test
 from goe.offload import offload_constants
-
 from tests.unit.test_functions import (
-    build_mock_options,
     FAKE_ORACLE_BQ_ENV,
+    build_mock_options,
 )
 
 
@@ -44,18 +43,14 @@ def bq_config():
         ("a.b", False),
     ],
 )
-def test_normalise_bigquery_options_google_dataproc_batches_version(
-    bq_config, input: str, expected_status: bool
-):
+def test_normalise_bigquery_options_google_dataproc_batches_version(bq_config, input: str, expected_status: bool):
     bq_config.backend_distribution = offload_constants.BACKEND_DISTRO_GCP
     bq_config.google_dataproc_batches_version = input
     if expected_status:
         module_under_test.normalise_bigquery_options(bq_config), f"For input: {input}"
     else:
         with pytest.raises(Exception) as _:
-            module_under_test.normalise_bigquery_options(
-                bq_config
-            ), f"For input: {input}"
+            module_under_test.normalise_bigquery_options(bq_config), f"For input: {input}"
 
 
 @pytest.mark.parametrize(
@@ -73,15 +68,11 @@ def test_normalise_bigquery_options_google_dataproc_batches_version(
         (".h", False),
     ],
 )
-def test_normalise_bigquery_options_google_dataproc_batches_ttl(
-    bq_config, input: str, expected_status: bool
-):
+def test_normalise_bigquery_options_google_dataproc_batches_ttl(bq_config, input: str, expected_status: bool):
     bq_config.backend_distribution = offload_constants.BACKEND_DISTRO_GCP
     bq_config.google_dataproc_batches_ttl = input
     if expected_status:
         module_under_test.normalise_bigquery_options(bq_config), f"For input: {input}"
     else:
         with pytest.raises(Exception) as _:
-            module_under_test.normalise_bigquery_options(
-                bq_config
-            ), f"For input: {input}"
+            module_under_test.normalise_bigquery_options(bq_config), f"For input: {input}"

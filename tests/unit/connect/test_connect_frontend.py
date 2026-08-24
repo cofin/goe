@@ -15,8 +15,8 @@
 import pytest
 
 from goe.connect.connect_frontend import (
-    _oracle_version_supported,
     GOE_MINIMUM_ORACLE_VERSION,
+    _oracle_version_supported,
 )
 
 

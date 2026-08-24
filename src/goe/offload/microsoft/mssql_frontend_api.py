@@ -22,7 +22,7 @@ Implements abstract methods from FrontendApiInterface.
 import logging
 from datetime import datetime
 from textwrap import dedent
-from typing import Any, Dict, List, Union
+from typing import Any
 
 # Third Party Libraries
 import pymssql
@@ -61,9 +61,7 @@ MSSQL_MAX_TABLE_NAME_LENGTH = 128
 ###########################################################################
 
 
-def setup_mssql_session(
-    server, port, database, username, password, appname=FRONTEND_TRACE_MODULE
-):
+def setup_mssql_session(server, port, database, username, password, appname=FRONTEND_TRACE_MODULE):
     """Take a set of connection properties and return a SQL Server connection"""
     assert server
     assert port
@@ -107,7 +105,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
         trace_action=None,
     ):
         """Standard CONSTRUCTOR"""
-        super(MSSQLFrontendApi, self).__init__(
+        super().__init__(
             connection_options,
             frontend_type,
             messages,
@@ -153,9 +151,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
                 self._log("Exception closing cursor:\n%s" % str(exc), detail=VVERBOSE)
 
     def _connect(self):
-        server, port, database = extract_connection_details_from_dsn(
-            self._connection_options.rdbms_dsn
-        )
+        server, port, database = extract_connection_details_from_dsn(self._connection_options.rdbms_dsn)
         self._db_conn = setup_mssql_session(
             server,
             port,
@@ -174,29 +170,22 @@ class MSSQLFrontendApi(FrontendApiInterface):
     ) -> str:
         """This is missing a lot compared to the backend Synapse equivalent, lots of scope for improvement."""
         if table_properties:
-            raise NotImplementedError(
-                f"Create table properties pending implementation: {table_properties}"
-            )
+            raise NotImplementedError(f"Create table properties pending implementation: {table_properties}")
 
         col_projection = self._create_table_columns_clause_common(column_list)
 
         if partition_column_names:
-            raise NotImplementedError(
-                "Create table partitioning pending implementation"
-            )
+            raise NotImplementedError("Create table partitioning pending implementation")
 
-        sql = (
-            dedent(
-                """\
+        sql = dedent(
+            """\
             CREATE TABLE %(owner_table)s (
             %(col_projection)s
             )"""
-            )
-            % {
-                "owner_table": self.enclose_object_reference(schema, table_name),
-                "col_projection": col_projection,
-            }
-        )
+        ) % {
+            "owner_table": self.enclose_object_reference(schema, table_name),
+            "col_projection": col_projection,
+        }
         return sql
 
     def _disconnect(self, force=False):
@@ -227,21 +216,15 @@ class MSSQLFrontendApi(FrontendApiInterface):
         assert sql
         assert isinstance(sql, (str, list))
         self._open_cursor()
-        run_opts = (
-            []
-        )  # self._execute_session_options(query_options, log_level=log_level)
+        run_opts = []  # self._execute_session_options(query_options, log_level=log_level)
         run_sqls = []
         sqls = [sql] if isinstance(sql, str) else sql
         for i, run_sql in enumerate(sqls):
-            self._log_or_not(
-                "%s SQL: %s" % (self._sql_engine_name, run_sql), log_level=log_level
-            )
+            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, run_sql), log_level=log_level)
             run_sqls.append(run_sql)
             if not self._dry_run:
                 if query_params:
-                    self._db_curs.execute(
-                        run_sql, self._to_native_query_params(query_params)
-                    )
+                    self._db_curs.execute(run_sql, self._to_native_query_params(query_params))
                 else:
                     self._db_curs.execute(run_sql)
         self._close_cursor()
@@ -269,9 +252,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
             return None
 
         if fetch_action == FETCH_ACTION_CURSOR:
-            raise NotImplementedError(
-                "_execute_query_fetch_x() by FETCH_ACTION_CURSOR is not supported on MSSQL"
-            )
+            raise NotImplementedError("_execute_query_fetch_x() by FETCH_ACTION_CURSOR is not supported on MSSQL")
 
         t1 = datetime.now().replace(microsecond=0)
 
@@ -279,9 +260,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
         try:
             # TODO Do we have session options on MSSQL? Need to implement here if so.
             # self._execute_session_options(query_options, log_level=log_level)
-            self._log_or_not(
-                "%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level
-            )
+            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
             if query_params:
                 self._db_curs.execute(sql, self._to_native_query_params(query_params))
             else:
@@ -325,9 +304,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
         batch_size=None,
         param_inputsizes=None,
     ):
-        raise NotImplementedError(
-            "_fast_executemany_dml() is not implemented for MSSQL"
-        )
+        raise NotImplementedError("_fast_executemany_dml() is not implemented for MSSQL")
 
     def _frontend_capabilities(self):
         return MSSQL_FRONTEND_CAPABILITIES
@@ -364,20 +341,12 @@ class MSSQLFrontendApi(FrontendApiInterface):
     def close(self, force=False):
         self._disconnect(force=force)
 
-    def agg_validate_sample_column_names(
-        self, schema, table_name, num_required: int = 5
-    ) -> list:
-        raise NotImplementedError(
-            "MSSQL agg_validate_sample_column_names() not implemented."
-        )
+    def agg_validate_sample_column_names(self, schema, table_name, num_required: int = 5) -> list:
+        raise NotImplementedError("MSSQL agg_validate_sample_column_names() not implemented.")
 
-    def create_new_connection(
-        self, user_name, user_password, trace_action_override=None
-    ):
+    def create_new_connection(self, user_name, user_password, trace_action_override=None):
         self._debug("Making new connection with user %s" % user_name)
-        server, port, database = extract_connection_details_from_dsn(
-            self._connection_options.rdbms_dsn
-        )
+        server, port, database = extract_connection_details_from_dsn(self._connection_options.rdbms_dsn)
         client = setup_mssql_session(server, port, database, user_name, user_password)
         # client.autocommit = True
         return client
@@ -429,7 +398,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
 
     def get_columns(self, schema, table_name):
         # TODO: byte_length - is this the same as Oracle query: CHARACTER_MAXIMUM_LENGTH / CHARACTER_OCTET_LENGTH
-        # TODO: hidden_column - do we have the concept of hidden_columns in MSSQL? If not remove from MSSQLColumn.from_mssql # noqa: E501
+        # TODO: hidden_column - do we have the concept of hidden_columns in MSSQL? If not remove from MSSQLColumn.from_mssql
         q = """
                     SELECT column_name
                     ,      ordinal_position                                 AS column_id
@@ -461,17 +430,13 @@ class MSSQLFrontendApi(FrontendApiInterface):
     def get_db_unique_name(self) -> str:
         return self._connection_options.rdbms_dsn.split("=")[1]
 
-    def get_distinct_column_values(
-        self, schema, table_name, column_names, partition_name=None, order_results=False
-    ):
+    def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
         assert schema and table_name
         assert column_names
         if isinstance(column_names, str):
             column_names = [column_names]
         projection = ",".join([self.enclose_identifier(_) for _ in column_names])
-        order_clause = (  # noqa: F841
-            " ORDER BY {}".format(projection) if order_results else ""
-        )
+        order_clause = f" ORDER BY {projection}" if order_results else ""
 
         raise NotImplementedError("MSSQL get_distinct_column_values not implemented.")
 
@@ -492,22 +457,14 @@ class MSSQLFrontendApi(FrontendApiInterface):
     def get_command_step_codes(self) -> list:
         raise NotImplementedError("MSSQL get_command_step_codes is not implemented.")
 
-    def get_command_executions(self) -> List[Dict[str, Union[str, Any]]]:
+    def get_command_executions(self) -> list[dict[str, str | Any]]:
         raise NotImplementedError("MSSQL get_command_executions is not implemented.")
 
-    def get_command_execution(
-        self, execution_id: ExecutionId
-    ) -> Dict[str, Union[str, Any]]:
-        raise NotImplementedError(
-            "MSSQL get_command_execution_status is not implemented."
-        )
+    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | Any]:
+        raise NotImplementedError("MSSQL get_command_execution_status is not implemented.")
 
-    def get_command_execution_steps(
-        self, execution_id: ExecutionId
-    ) -> List[Dict[str, Union[str, Any]]]:
-        raise NotImplementedError(
-            "MSSQL get_command_execution_steps is not implemented."
-        )
+    def get_command_execution_steps(self, execution_id: ExecutionId) -> list[dict[str, str | Any]]:
+        raise NotImplementedError("MSSQL get_command_execution_steps is not implemented.")
 
     def get_partition_column_names(self, schema, table_name, conv_fn=None):
         raise NotImplementedError("MSSQL get_partition_column_names not implemented.")
@@ -548,9 +505,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
         raise NotImplementedError("MSSQL get_session_user not implemented.")
 
     def get_subpartition_column_names(self, schema, table_name, conv_fn=None):
-        raise NotImplementedError(
-            "MSSQL get_subpartition_column_names not implemented."
-        )
+        raise NotImplementedError("MSSQL get_subpartition_column_names not implemented.")
 
     def get_subpartition_columns(self, schema, table_name):
         raise NotImplementedError("MSSQL get_subpartition_columns not implemented.")
@@ -575,7 +530,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
         Assumption here on limited testing is that output is always in KB and suffixed as such. This might not be true
         SP_SPACEUSED is not valid for Azure Serverless SQL Pools
         """
-        q = 'SP_SPACEUSED "{schema}.{table}"'.format(schema=schema, table=table_name)
+        q = f'SP_SPACEUSED "{schema}.{table_name}"'
         rows = self.execute_query_fetch_all(q, query_params=(schema, table_name))
         return (int(rows[0][3].replace("KB", "")) * 1024) if rows else None
 
@@ -599,13 +554,10 @@ class MSSQLFrontendApi(FrontendApiInterface):
         if query_parallelism:
             assert isinstance(query_parallelism, int)
             return "MAXDOP %s" % query_parallelism
-        else:
-            return ""
+        return ""
 
     def split_partition_high_value_string(self, hv_string):
-        raise NotImplementedError(
-            "MSSQL split_partition_high_value_string not implemented."
-        )
+        raise NotImplementedError("MSSQL split_partition_high_value_string not implemented.")
 
     def schema_exists(self, schema) -> bool:
         sql = dedent(
@@ -614,9 +566,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
                      FROM information_schema.schemata
                      WHERE schema_name = '%s'"""
         )
-        row = self.execute_query_fetch_one(
-            sql, query_params=(schema,), log_level=VVERBOSE
-        )
+        row = self.execute_query_fetch_one(sql, query_params=(schema,), log_level=VVERBOSE)
         return bool(row)
 
     def table_exists(self, schema, table_name) -> bool:
@@ -628,9 +578,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
                      AND table_schema = '%s'
                      AND table_name = '%s'"""
         )
-        row = self.execute_query_fetch_one(
-            sql, query_params=(schema, table_name), log_level=VVERBOSE
-        )
+        row = self.execute_query_fetch_one(sql, query_params=(schema, table_name), log_level=VVERBOSE)
         return bool(row)
 
     def to_frontend_literal(self, py_val, data_type=None) -> str:
@@ -649,7 +597,5 @@ class MSSQLFrontendApi(FrontendApiInterface):
                      AND table_schema = '%s'
                      AND table_name = '%s'"""
         )
-        row = self.execute_query_fetch_one(
-            sql, query_params=(schema, view_name), log_level=VVERBOSE
-        )
+        row = self.execute_query_fetch_one(sql, query_params=(schema, view_name), log_level=VVERBOSE)
         return bool(row)

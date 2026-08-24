@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # Copyright 2016 The GOE Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,13 +18,13 @@ import logging
 # Third Party Libraries
 from anyio import Path, open_file
 from fastapi import APIRouter
+from goelib_contrib.asyncer import asyncify, run_and_detach
 from pydantic import UUID4
 from starlette import status
 
 # GOE
 from goe.listener import exceptions, schemas, services, utils
 from goe.orchestration.execution_id import ExecutionId
-from goelib_contrib.asyncer import asyncify, run_and_detach
 
 logger = logging.getLogger(__name__)
 # Disabling logging by default
@@ -67,9 +65,7 @@ async def get_command_executions(include_steps: bool = False):
             command_execution.update(
                 {
                     "steps": steps.get(
-                        ExecutionId.from_bytes(
-                            command_execution["execution_id"]
-                        ).as_str(),
+                        ExecutionId.from_bytes(command_execution["execution_id"]).as_str(),
                         [],
                     )
                 }
@@ -96,16 +92,12 @@ async def get_command_execution(execution_id: UUID4, include_steps: bool = False
     """
 
     execution_identifier = ExecutionId.from_uuid(execution_id)
-    command_execution = await asyncify(services.system.get_command_execution)(
-        execution_identifier
-    )
+    command_execution = await asyncify(services.system.get_command_execution)(execution_identifier)
     if not command_execution:
         raise exceptions.CommandExecutionNotFound(execution_id)
 
     if include_steps:
-        steps = await asyncify(services.system.get_command_execution_steps)(
-            execution_identifier
-        )
+        steps = await asyncify(services.system.get_command_execution_steps)(execution_identifier)
         if steps:
             command_execution.update({"steps": steps})
     return command_execution
@@ -129,9 +121,7 @@ async def get_command_execution_log(execution_id: UUID4):
     """
 
     execution_identifier = ExecutionId.from_uuid(execution_id)
-    command_execution = await asyncify(services.system.get_command_execution)(
-        execution_identifier
-    )
+    command_execution = await asyncify(services.system.get_command_execution)(execution_identifier)
     if not command_execution:
         raise exceptions.CommandExecutionNotFound(execution_id)
 
@@ -177,7 +167,7 @@ def execute_offload_command(parameters: schemas.OffloadOptions):
     utils.orchestrate.check_for_running_command(parameters.owner_table)
     execution_identifier = ExecutionId()
 
-    logger.info(f"Submitting offload: {str(execution_identifier)}")
+    logger.info(f"Submitting offload: {execution_identifier!s}")
     run_and_detach(services.orchestration_runner.offload)(
         params=parameters.dict(exclude_unset=True), execution_id=execution_identifier
     )

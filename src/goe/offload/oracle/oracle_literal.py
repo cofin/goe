@@ -14,21 +14,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" OracleLiteral: Format an Oracle literal based on data type.
-"""
+"""OracleLiteral: Format an Oracle literal based on data type."""
 
-from datetime import date
 import logging
+from datetime import date
 
 from numpy import datetime64
 
+from goe.offload.format_literal import FormatLiteralInterface
 from goe.offload.oracle.oracle_column import (
+    ORACLE_TIMESTAMP_RE,
     ORACLE_TYPE_DATE,
     ORACLE_TYPE_TIMESTAMP,
-    ORACLE_TIMESTAMP_RE,
     ORACLE_TYPE_TIMESTAMP_TZ,
 )
-from goe.offload.format_literal import FormatLiteralInterface
 
 ###########################################################################
 # GLOBAL FUNCTIONS
@@ -54,7 +53,7 @@ class OracleLiteral(FormatLiteralInterface):
                 # This is date only
                 adjusted_str += " 00:00:00"
             return "DATE' %s'" % adjusted_str
-        elif data_type == ORACLE_TYPE_TIMESTAMP or ORACLE_TIMESTAMP_RE.match(data_type):
+        if data_type == ORACLE_TYPE_TIMESTAMP or ORACLE_TIMESTAMP_RE.match(data_type):
             m = ORACLE_TIMESTAMP_RE.match(data_type)
             ts_ff = int(m.group(1)) if m else 9
             adjusted_str = str_val
@@ -70,8 +69,7 @@ class OracleLiteral(FormatLiteralInterface):
                 cls._strip_unused_time_scale(adjusted_str),
                 fmt,
             )
-        else:
-            return str_val
+        return str_val
 
     @classmethod
     def format_literal(cls, python_value, data_type=None):
@@ -82,42 +80,26 @@ class OracleLiteral(FormatLiteralInterface):
         logger.debug("For backend datatype: %s" % data_type)
         if isinstance(python_value, datetime64):
             if data_type:
-                new_py_val = cls._format_data_type(
-                    str(python_value).replace("T", " "), data_type
-                )
+                new_py_val = cls._format_data_type(str(python_value).replace("T", " "), data_type)
             elif len(str(python_value)) <= 19:
                 # Assuming DATE based on string length
-                new_py_val = cls._format_data_type(
-                    str(python_value).replace("T", " "), ORACLE_TYPE_DATE
-                )
+                new_py_val = cls._format_data_type(str(python_value).replace("T", " "), ORACLE_TYPE_DATE)
             else:
                 # Assuming TIMESTAMP if no data_type specified
-                new_py_val = cls._format_data_type(
-                    str(python_value).replace("T", " "), ORACLE_TYPE_TIMESTAMP
-                )
+                new_py_val = cls._format_data_type(str(python_value).replace("T", " "), ORACLE_TYPE_TIMESTAMP)
         elif isinstance(python_value, date):
             if data_type == ORACLE_TYPE_DATE:
-                new_py_val = cls._format_data_type(
-                    python_value.strftime("%Y-%m-%d %H:%M:%S"), data_type
-                )
+                new_py_val = cls._format_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S"), data_type)
             elif data_type == ORACLE_TYPE_TIMESTAMP_TZ:
-                new_py_val = cls._format_data_type(
-                    python_value.strftime("%Y-%m-%d %H:%M:%S.%f%z"), data_type
-                )
+                new_py_val = cls._format_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S.%f%z"), data_type)
             elif data_type:
-                new_py_val = cls._format_data_type(
-                    python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type
-                )
+                new_py_val = cls._format_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type)
             elif len(str(python_value)) <= 19:
                 # Assuming DATE based on string length
-                new_py_val = cls._format_data_type(
-                    python_value.strftime("%Y-%m-%d %H:%M:%S"), ORACLE_TYPE_DATE
-                )
+                new_py_val = cls._format_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S"), ORACLE_TYPE_DATE)
             else:
                 # Assuming TIMESTAMP if no data_type specified
-                new_py_val = cls._format_data_type(
-                    python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), ORACLE_TYPE_TIMESTAMP
-                )
+                new_py_val = cls._format_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), ORACLE_TYPE_TIMESTAMP)
         elif isinstance(python_value, str):
             new_py_val = "'%s'" % python_value
         elif python_value is None:

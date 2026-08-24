@@ -18,11 +18,11 @@ from typing import TYPE_CHECKING
 
 from pyarrow import parquet
 
-from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.column_metadata import SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE
+from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.offload_constants import (
-    DBTYPE_ORACLE,
     DBTYPE_BIGQUERY,
+    DBTYPE_ORACLE,
     PART_COL_GRANULARITY_DAY,
     PART_COL_GRANULARITY_MONTH,
     TOTAL_ROWS_OFFLOADED_LOG_TEXT,
@@ -39,20 +39,19 @@ from goe.offload.offload_transport_rdbms_api import (
 )
 from goe.offload.oracle.oracle_column import ORACLE_TYPE_TIMESTAMP
 from goe.util.misc_functions import get_temp_path
-
 from tests.integration.scenarios.scenario_constants import (
+    OFFLOAD_PATTERN_90_10,
     OFFLOAD_PATTERN_100_0,
     OFFLOAD_PATTERN_100_10,
-    OFFLOAD_PATTERN_90_10,
 )
 from tests.testlib.test_framework import test_functions
 
 if TYPE_CHECKING:
+    from goe.config.orchestration_config import OrchestrationConfig
+    from goe.offload.offload_messages import OffloadMessages
     from goe.persistence.orchestration_repo_client import (
         OrchestrationRepoClientInterface,
     )
-    from goe.offload.offload_messages import OffloadMessages
-    from goe.config.orchestration_config import OrchestrationConfig
     from testlib.test_framework.backend_testing_api import BackendTestingApiInterface
     from testlib.test_framework.frontend_testing_api import FrontendTestingApiInterface
     from testlib.test_framework.offload_test_messages import OffloadTestMessages
@@ -64,14 +63,9 @@ def hint_text_in_log(
     parallelism: int,
 ):
     if config.db_type == DBTYPE_ORACLE:
-        hint = (
-            "NO_PARALLEL"
-            if parallelism in (0, 1)
-            else "PARALLEL({})".format(str(parallelism))
-        )
+        hint = "NO_PARALLEL" if parallelism in (0, 1) else f"PARALLEL({parallelism!s})"
         return bool(test_functions.get_line_from_log(offload_messages, hint))
-    else:
-        return False
+    return False
 
 
 def text_in_log(
@@ -81,14 +75,8 @@ def text_in_log(
     search_from_text="",
 ) -> bool:
     # Do not log search_text below because that is a sure fire way to break the check.
-    test_messages.log(
-        f'text_in_log(">8 snip 8<", "{search_from_text}")', detail=VERBOSE
-    )
-    return bool(
-        test_functions.get_line_from_log(
-            offload_messages, search_text, search_from_text=search_from_text
-        )
-    )
+    test_messages.log(f'text_in_log(">8 snip 8<", "{search_from_text}")', detail=VERBOSE)
+    return bool(test_functions.get_line_from_log(offload_messages, search_text, search_from_text=search_from_text))
 
 
 def text_in_events(
@@ -100,9 +88,7 @@ def text_in_events(
     return test_functions.text_in_events(offload_messages, message_token)
 
 
-def text_in_messages(
-    offload_messages: "OffloadMessages", log_text, test_messages: "OffloadTestMessages"
-) -> bool:
+def text_in_messages(offload_messages: "OffloadMessages", log_text, test_messages: "OffloadTestMessages") -> bool:
     test_messages.log(f"text_in_messages({log_text})", detail=VERBOSE)
     return test_functions.text_in_messages(offload_messages, log_text)
 
@@ -121,9 +107,7 @@ def messages_step_executions(
 def get_offload_row_count_from_log(offload_messages, test_messages):
     """Search test log forwards from the "test_name" we are processing and find the offload row count"""
     test_messages.log("get_offload_row_count_from_log()", detail=VERBOSE)
-    matched_line = test_functions.get_line_from_log(
-        offload_messages, TOTAL_ROWS_OFFLOADED_LOG_TEXT
-    )
+    matched_line = test_functions.get_line_from_log(offload_messages, TOTAL_ROWS_OFFLOADED_LOG_TEXT)
     test_messages.log("matched_line: %s" % matched_line)
     rows = int(matched_line.split()[-1]) if matched_line else None
     return rows
@@ -140,16 +124,14 @@ def backend_column_exists(
 ):
     owner, table_name = convert_backend_identifier_case(config, owner, table_name)
     messages.log(
-        "backend_column_exists: %s.%s.%s %s"
-        % (owner, table_name, search_column, search_type),
+        "backend_column_exists: %s.%s.%s %s" % (owner, table_name, search_column, search_type),
         VERBOSE,
     )
     if search_type:
 
         def search_fn(col):
             return bool(
-                col.name.upper() == search_column.upper()
-                and search_type.upper() in col.format_data_type().upper()
+                col.name.upper() == search_column.upper() and search_type.upper() in col.format_data_type().upper()
             )
 
     else:
@@ -157,9 +139,7 @@ def backend_column_exists(
         def search_fn(col):
             return bool(col.name.upper() == search_column.upper())
 
-    matches = len(
-        [col for col in backend_api.get_columns(owner, table_name) if search_fn(col)]
-    )
+    matches = len([col for col in backend_api.get_columns(owner, table_name) if search_fn(col)])
     return bool(matches == 1)
 
 
@@ -205,8 +185,7 @@ def frontend_column_exists(
     char_length=None,
 ) -> bool:
     messages.log(
-        "frontend_column_exists: %s.%s.%s %s"
-        % (owner, table_name, search_column, search_type),
+        "frontend_column_exists: %s.%s.%s %s" % (owner, table_name, search_column, search_type),
         VERBOSE,
     )
 
@@ -239,9 +218,7 @@ def frontend_column_exists(
     def data_length_test(c) -> bool:
         status = bool(data_length is None or data_length == c.data_length)
         if not status:
-            messages.log(
-                f"data_length_test({data_length} != {c.data_length})", detail=VERBOSE
-            )
+            messages.log(f"data_length_test({data_length} != {c.data_length})", detail=VERBOSE)
         return status
 
     def data_precision_test(c) -> bool:
@@ -256,17 +233,13 @@ def frontend_column_exists(
     def data_scale_test(c) -> bool:
         status = bool(data_scale is None or data_scale == c.data_scale)
         if not status:
-            messages.log(
-                f"data_scale_test({data_scale} != {c.data_scale})", detail=VERBOSE
-            )
+            messages.log(f"data_scale_test({data_scale} != {c.data_scale})", detail=VERBOSE)
         return status
 
     def char_length_test(c) -> bool:
         status = bool(char_length is None or char_length == c.char_length)
         if not status:
-            messages.log(
-                f"char_length_test({char_length} != {c.char_length})", detail=VERBOSE
-            )
+            messages.log(f"char_length_test({char_length} != {c.char_length})", detail=VERBOSE)
         return status
 
     def search_fn(col) -> bool:
@@ -311,27 +284,17 @@ def check_metadata(
             metadata_value = getattr(metadata, metadata_name)
             if check_value == "NULL" and metadata_value is None:
                 messages.log("%s is None" % metadata_name, detail=VERBOSE)
-            elif (
-                not case_sensitive
-                and str(metadata_value).upper() != check_value.upper()
-            ):
-                messages.log(
-                    "%s (%s) != %s"
-                    % (metadata_name, str(metadata_value).upper(), check_value.upper())
-                )
+            elif not case_sensitive and str(metadata_value).upper() != check_value.upper():
+                messages.log("%s (%s) != %s" % (metadata_name, str(metadata_value).upper(), check_value.upper()))
                 return False
             elif case_sensitive and str(metadata_value) != check_value:
-                messages.log(
-                    "%s (%s) != %s" % (metadata_name, metadata_value, check_value)
-                )
+                messages.log("%s (%s) != %s" % (metadata_name, metadata_value, check_value))
                 return False
             else:
                 messages.log("%s == %s" % (metadata_name, check_value), detail=VERBOSE)
         return True
 
-    metadata = metadata_override or repo_client.get_offload_metadata(
-        frontend_owner, frontend_name
-    )
+    metadata = metadata_override or repo_client.get_offload_metadata(frontend_owner, frontend_name)
     if not metadata:
         messages.log("No metadata for %s.%s" % (frontend_owner, frontend_name))
         return False
@@ -349,19 +312,13 @@ def check_metadata(
         return False
     if not check_item(metadata, offload_sort_columns, "offload_sort_columns"):
         return False
-    if not check_item(
-        metadata, offload_partition_functions, "offload_partition_functions"
-    ):
+    if not check_item(metadata, offload_partition_functions, "offload_partition_functions"):
         return False
     if not check_item(metadata, incremental_range, "incremental_range"):
         return False
-    if not check_item(
-        metadata, incremental_predicate_type, "incremental_predicate_type"
-    ):
+    if not check_item(metadata, incremental_predicate_type, "incremental_predicate_type"):
         return False
-    if not check_item(
-        metadata, incremental_predicate_value, "incremental_predicate_value"
-    ):
+    if not check_item(metadata, incremental_predicate_value, "incremental_predicate_value"):
         return False
     if check_fn:
         messages.log("Checking metadata by fn", detail=VERBOSE)
@@ -393,9 +350,7 @@ def parquet_file_is_compressed(dfs_client, staged_file):
     try:
         parquet_file = parquet.ParquetFile(tmp_file)
         metadata = parquet_file.metadata.to_dict()
-        compression = [
-            _["compression"].upper() for _ in metadata["row_groups"].pop()["columns"]
-        ]
+        compression = [_["compression"].upper() for _ in metadata["row_groups"].pop()["columns"]]
         return bool("SNAPPY" in compression)
     finally:
         os.remove(tmp_file)
@@ -409,9 +364,7 @@ def load_table_is_compressed(db_name, table_name, config, dfs_client, messages):
       3) Should really decode Avro and find a way to parse metadata in the file -
          I cheated and just look for the codec name as a string inside another string.
     """
-    messages.log(
-        "load_table_is_compressed(%s, %s)" % (db_name, table_name), detail=VERBOSE
-    )
+    messages.log("load_table_is_compressed(%s, %s)" % (db_name, table_name), detail=VERBOSE)
     backend_table = backend_table_factory(
         db_name,
         table_name,
@@ -435,8 +388,7 @@ def load_table_is_compressed(db_name, table_name, config, dfs_client, messages):
     staged_file = new_files.pop()
     if staged_file.endswith(".parquet") or staged_file.endswith(".parq"):
         return parquet_file_is_compressed(dfs_client, staged_file)
-    else:
-        return avro_file_is_compressed(dfs_client, staged_file)
+    return avro_file_is_compressed(dfs_client, staged_file)
 
 
 def offload_rowsource_split_type_assertion(
@@ -446,9 +398,7 @@ def offload_rowsource_split_type_assertion(
 ):
     search = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT + split_type
     if not text_in_log(offload_messages, search, test_messages):
-        test_messages.log(
-            f"offload_rowsource_split_type_assertion failed, did not find: {search}"
-        )
+        test_messages.log(f"offload_rowsource_split_type_assertion failed, did not find: {search}")
         return False
     return True
 
@@ -467,9 +417,7 @@ def synthetic_part_col_name(
         granularity = ("{:0%sd}" % synthetic_partition_digits).format(int(granularity))
     if partition_function:
         granularity = "U0"
-    return (
-        SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE % (granularity, source_col_name)
-    ).upper()
+    return (SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE % (granularity, source_col_name)).upper()
 
 
 def date_goe_part_column_name(backend_api, source_col_name, granularity_override=None):
@@ -479,13 +427,8 @@ def date_goe_part_column_name(backend_api, source_col_name, granularity_override
     function is a single place to hold this short-sighted logic.
     """
     if backend_api and backend_api.backend_type() == DBTYPE_BIGQUERY:
-        return synthetic_part_col_name(
-            granularity_override or PART_COL_GRANULARITY_DAY, source_col_name
-        )
-    else:
-        return synthetic_part_col_name(
-            granularity_override or PART_COL_GRANULARITY_MONTH, source_col_name
-        )
+        return synthetic_part_col_name(granularity_override or PART_COL_GRANULARITY_DAY, source_col_name)
+    return synthetic_part_col_name(granularity_override or PART_COL_GRANULARITY_MONTH, source_col_name)
 
 
 def standard_dimension_assertion(
@@ -505,9 +448,7 @@ def standard_dimension_assertion(
 ) -> bool:
     data_db = backend_db or data_db
     backend_table = backend_table or table_name
-    data_db, backend_table = convert_backend_identifier_case(
-        config, data_db, backend_table
-    )
+    data_db, backend_table = convert_backend_identifier_case(config, data_db, backend_table)
 
     if not check_metadata(
         schema,
@@ -526,15 +467,11 @@ def standard_dimension_assertion(
         messages.log("backend_table_exists() == False")
         return False
 
-    if offload_messages and text_in_messages(
-        offload_messages, MISSING_ROWS_IMPORTED_WARNING, messages
-    ):
+    if offload_messages and text_in_messages(offload_messages, MISSING_ROWS_IMPORTED_WARNING, messages):
         return False
 
     if split_type and offload_messages:
-        if not offload_rowsource_split_type_assertion(
-            offload_messages, split_type, messages
-        ):
+        if not offload_rowsource_split_type_assertion(offload_messages, split_type, messages):
             return False
 
     return True
@@ -567,16 +504,12 @@ def sales_based_fact_assertion(
 ) -> bool:
     data_db = backend_db or data_db
     backend_table = backend_table or table_name
-    data_db, backend_table = convert_backend_identifier_case(
-        config, data_db, backend_table
-    )
+    data_db, backend_table = convert_backend_identifier_case(config, data_db, backend_table)
 
     if not incremental_key_type and incremental_key == "TIME_ID":
         incremental_key_type = frontend_api.test_type_canonical_date()
 
-    hwm_literal, meta_check_literal, _ = frontend_api.sales_based_fact_hwm_literal(
-        hwm_literal, incremental_key_type
-    )
+    hwm_literal, meta_check_literal, _ = frontend_api.sales_based_fact_hwm_literal(hwm_literal, incremental_key_type)
 
     if offload_pattern == OFFLOAD_PATTERN_90_10:
         offload_type = OFFLOAD_TYPE_INCREMENTAL
@@ -633,10 +566,7 @@ def sales_based_fact_assertion(
         messages.log("check_metadata(%s.%s) == False" % (schema, table_name))
         return False
 
-    if (
-        synthetic_partition_column_name
-        and backend_api.synthetic_partitioning_supported()
-    ):
+    if synthetic_partition_column_name and backend_api.synthetic_partitioning_supported():
         if not backend_column_exists(
             config,
             backend_api,
@@ -647,15 +577,11 @@ def sales_based_fact_assertion(
         ):
             return False
 
-    if offload_messages and text_in_messages(
-        offload_messages, MISSING_ROWS_IMPORTED_WARNING, messages
-    ):
+    if offload_messages and text_in_messages(offload_messages, MISSING_ROWS_IMPORTED_WARNING, messages):
         return False
 
     if split_type and offload_messages:
-        if not offload_rowsource_split_type_assertion(
-            offload_messages, split_type, messages
-        ):
+        if not offload_rowsource_split_type_assertion(offload_messages, split_type, messages):
             return False
 
     return True

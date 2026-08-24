@@ -15,7 +15,7 @@
 # Standard Library
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Third Party Libraries
 from pydantic import validator
@@ -34,31 +34,29 @@ FRONTEND_DIR: Path = Path(APP_DIR / "web")
 class ListenerSettings(BaseSettings):
     """Listener Configuration Object"""
 
-    global_config: OrchestrationConfig = OrchestrationConfig.as_defaults(
-        do_not_connect=True
-    )
+    global_config: OrchestrationConfig = OrchestrationConfig.as_defaults(do_not_connect=True)
 
     host: str = global_config.listener_host or "0.0.0.0"
     port: int = global_config.listener_port or 8085
     http_workers: int = 2
     reload: bool = False
     static_url: str = "/"
-    static_path: Optional[str]
+    static_path: str | None
     background_workers: int = 2
-    shared_token: Optional[SecretStr] = global_config.listener_shared_token
+    shared_token: SecretStr | None = global_config.listener_shared_token
     gunicorn_conf: str = str(Path(CONFIG_DIR / "gunicorn.conf.py"))
-    certfile: Optional[str] = None
-    keyfile: Optional[str] = None
-    ssl_enabled: Optional[bool] = False
+    certfile: str | None = None
+    keyfile: str | None = None
+    ssl_enabled: bool | None = False
     heartbeat_interval: int = global_config.listener_heartbeat_interval or 30
-    redis_host: Optional[str] = global_config.listener_redis_host
+    redis_host: str | None = global_config.listener_redis_host
     redis_port: int = global_config.listener_redis_port or 6379
     redis_db: int = global_config.listener_redis_db or 0
-    redis_username: Optional[str] = global_config.listener_redis_username
-    redis_password: Optional[SecretStr] = global_config.listener_redis_password
-    redis_ssl: Optional[bool] = global_config.listener_redis_use_ssl
-    redis_ssl_cert: Optional[str] = global_config.listener_redis_ssl_cert
-    redis_use_sentinel: Optional[bool] = False
+    redis_username: str | None = global_config.listener_redis_username
+    redis_password: SecretStr | None = global_config.listener_redis_password
+    redis_ssl: bool | None = global_config.listener_redis_use_ssl
+    redis_ssl_cert: str | None = global_config.listener_redis_ssl_cert
+    redis_use_sentinel: bool | None = False
     redis_sentinel_master: str = "goe-listener"
 
     @property
@@ -77,8 +75,8 @@ class ListenerSettings(BaseSettings):
     @validator("static_path", pre=True)
     def assemble_static_path(
         cls,
-        value: Optional[str],
-        values: Dict[str, Any],
+        value: str | None,
+        values: dict[str, Any],
     ) -> str:
         """Parses a list of origins"""
         if value:
@@ -97,8 +95,7 @@ class ListenerSettings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_app_settings() -> ListenerSettings:
-    """
-    Cache app settings
+    """Cache app settings
 
     This function returns a configured instance of settings.
 

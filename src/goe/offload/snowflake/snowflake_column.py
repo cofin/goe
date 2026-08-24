@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-"""
+""" """
+
 from goe.offload.column_metadata import (
-    ColumnMetadataInterface,
     CANONICAL_CHAR_SEMANTICS_CHAR,
+    ColumnMetadataInterface,
 )
 
 SNOWFLAKE_TYPE_BINARY = "BINARY"
@@ -50,7 +50,7 @@ class SnowflakeColumn(ColumnMetadataInterface):
     ):
         if data_length and char_length is None:
             char_length = data_length
-        super(SnowflakeColumn, self).__init__(
+        super().__init__(
             name,
             data_type,
             data_length=data_length,
@@ -72,26 +72,20 @@ class SnowflakeColumn(ColumnMetadataInterface):
                     self.data_precision,
                     self.data_scale,
                 )
-            elif self.data_precision:
+            if self.data_precision:
                 return "%s(%s)" % (self.data_type, self.data_precision)
-            else:
-                return self.data_type
-        elif self.data_type == SNOWFLAKE_TYPE_TEXT:
+            return self.data_type
+        if self.data_type == SNOWFLAKE_TYPE_TEXT:
             if self.char_length:
                 return "%s(%s)" % (self.data_type, self.char_length)
-            else:
-                return self.data_type
-        elif self.data_type == SNOWFLAKE_TYPE_BINARY:
+            return self.data_type
+        if self.data_type == SNOWFLAKE_TYPE_BINARY:
             if self.data_length:
                 return "%s(%s)" % (self.data_type, self.data_length)
-            else:
-                return self.data_type
-        elif (
-            self.is_date_based() or self.data_type == SNOWFLAKE_TYPE_TIME
-        ) and self.data_scale is not None:
-            return "%s(%s)" % (self.data_type, self.data_scale)
-        else:
             return self.data_type
+        if (self.is_date_based() or self.data_type == SNOWFLAKE_TYPE_TIME) and self.data_scale is not None:
+            return "%s(%s)" % (self.data_type, self.data_scale)
+        return self.data_type
 
     def has_time_element(self):
         """Does the column data contain a time"""
@@ -141,21 +135,11 @@ class SnowflakeColumn(ColumnMetadataInterface):
         If TEXT with no length is used to specify a column we get a default of TEXT_LENGTH_UPPER_LIMIT. Assuming
         this means unbound and not that the user specifically expected data of this size.
         """
-        if (
-            self.data_type == SNOWFLAKE_TYPE_TEXT
-            and self.data_length == TEXT_LENGTH_UPPER_LIMIT
-        ):
+        if self.data_type == SNOWFLAKE_TYPE_TEXT and self.data_length == TEXT_LENGTH_UPPER_LIMIT:
             return True
-        else:
-            return bool(
-                self.is_string_based()
-                and self.data_length is None
-                and self.char_length is None
-            )
+        return bool(self.is_string_based() and self.data_length is None and self.char_length is None)
 
     def valid_for_offload_predicate(self):
         return bool(
-            self.is_number_based()
-            or (self.is_date_based() and not self.is_time_zone_based())
-            or self.is_string_based()
+            self.is_number_based() or (self.is_date_based() and not self.is_time_zone_based()) or self.is_string_based()
         )

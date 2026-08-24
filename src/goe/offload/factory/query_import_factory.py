@@ -22,9 +22,7 @@ from goe.util.avro_encoder import AvroEncoder
 from goe.util.parquet_encoder import ParquetEncoder
 
 
-def query_import_factory(
-    staging_file, messages, compression=False, base64_columns=None
-):
+def query_import_factory(staging_file, messages, compression=False, base64_columns=None):
     if staging_file.file_format == FILE_STORAGE_FORMAT_AVRO:
         return AvroEncoder(
             staging_file.get_file_schema_json(),
@@ -32,14 +30,11 @@ def query_import_factory(
             compression=compression,
             base64_columns=base64_columns,
         )
-    elif staging_file.file_format == FILE_STORAGE_FORMAT_PARQUET:
+    if staging_file.file_format == FILE_STORAGE_FORMAT_PARQUET:
         return ParquetEncoder(
             staging_file.get_file_schema_json(as_string=False),
             messages,
             compression=compression,
             base64_columns=base64_columns,
         )
-    else:
-        raise NotImplementedError(
-            "Unsupported file format: %s" % staging_file.file_format
-        )
+    raise NotImplementedError("Unsupported file format: %s" % staging_file.file_format)

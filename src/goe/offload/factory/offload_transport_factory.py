@@ -14,16 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.offload_messages import VVERBOSE
 from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
     OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
+    OFFLOAD_TRANSPORT_METHOD_SQOOP,
+    OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
 )
 
 
@@ -40,9 +40,7 @@ def offload_transport_factory(
     if offload_transport_method == OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT:
         from goe.offload.offload_transport import OffloadTransportQueryImport
 
-        messages.log(
-            "Data transport method: OffloadTransportQueryImport", detail=VVERBOSE
-        )
+        messages.log("Data transport method: OffloadTransportQueryImport", detail=VVERBOSE)
         return OffloadTransportQueryImport(
             offload_source_table,
             offload_target_table,
@@ -51,14 +49,12 @@ def offload_transport_factory(
             messages,
             dfs_client,
         )
-    elif offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SQOOP:
+    if offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SQOOP:
         from goe.offload.hadoop.sqoop_offload_transport import (
             OffloadTransportStandardSqoop,
         )
 
-        messages.log(
-            "Data transport method: OffloadTransportStandardSqoop", detail=VVERBOSE
-        )
+        messages.log("Data transport method: OffloadTransportStandardSqoop", detail=VVERBOSE)
         return OffloadTransportStandardSqoop(
             offload_source_table,
             offload_target_table,
@@ -67,14 +63,12 @@ def offload_transport_factory(
             messages,
             dfs_client,
         )
-    elif offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY:
+    if offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY:
         from goe.offload.hadoop.sqoop_offload_transport import (
             OffloadTransportSqoopByQuery,
         )
 
-        messages.log(
-            "Data transport method: OffloadTransportSqoopByQuery", detail=VVERBOSE
-        )
+        messages.log("Data transport method: OffloadTransportSqoopByQuery", detail=VVERBOSE)
         return OffloadTransportSqoopByQuery(
             offload_source_table,
             offload_target_table,
@@ -83,12 +77,10 @@ def offload_transport_factory(
             messages,
             dfs_client,
         )
-    elif offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT:
+    if offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT:
         from goe.offload.offload_transport import OffloadTransportSparkThrift
 
-        messages.log(
-            "Data transport method: OffloadTransportSparkThrift", detail=VVERBOSE
-        )
+        messages.log("Data transport method: OffloadTransportSparkThrift", detail=VVERBOSE)
         return OffloadTransportSparkThrift(
             offload_source_table,
             offload_target_table,
@@ -97,12 +89,10 @@ def offload_transport_factory(
             messages,
             dfs_client,
         )
-    elif offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT:
+    if offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT:
         from goe.offload.offload_transport import OffloadTransportSparkSubmit
 
-        messages.log(
-            "Data transport method: OffloadTransportSparkSubmit", detail=VVERBOSE
-        )
+        messages.log("Data transport method: OffloadTransportSparkSubmit", detail=VVERBOSE)
         return OffloadTransportSparkSubmit(
             offload_source_table,
             offload_target_table,
@@ -111,7 +101,7 @@ def offload_transport_factory(
             messages,
             dfs_client,
         )
-    elif offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD:
+    if offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD:
         from goe.offload.spark.dataproc_offload_transport import (
             OffloadTransportSparkDataprocGcloud,
         )
@@ -128,14 +118,12 @@ def offload_transport_factory(
             messages,
             dfs_client,
         )
-    elif offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD:
+    if offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD:
         from goe.offload.spark.dataproc_offload_transport import (
             OffloadTransportSparkBatchesGcloud,
         )
 
-        messages.log(
-            "Data transport method: OffloadTransportSparkBatchesGcloud", detail=VVERBOSE
-        )
+        messages.log("Data transport method: OffloadTransportSparkBatchesGcloud", detail=VVERBOSE)
         return OffloadTransportSparkBatchesGcloud(
             offload_source_table,
             offload_target_table,
@@ -144,12 +132,10 @@ def offload_transport_factory(
             messages,
             dfs_client,
         )
-    elif offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY:
+    if offload_transport_method == OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY:
         from goe.offload.spark.livy_offload_transport import OffloadTransportSparkLivy
 
-        messages.log(
-            "Data transport method: OffloadTransportSparkLivy", detail=VVERBOSE
-        )
+        messages.log("Data transport method: OffloadTransportSparkLivy", detail=VVERBOSE)
         return OffloadTransportSparkLivy(
             offload_source_table,
             offload_target_table,
@@ -158,10 +144,7 @@ def offload_transport_factory(
             messages,
             dfs_client,
         )
-    else:
-        raise NotImplementedError(
-            "Offload transport method not implemented: %s" % offload_transport_method
-        )
+    raise NotImplementedError("Offload transport method not implemented: %s" % offload_transport_method)
 
 
 def spark_thrift_jdbc_connectivity_checker(offload_options, messages):

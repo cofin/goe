@@ -12,18 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import datetime
-from optparse import SUPPRESS_HELP
 import os
 import subprocess
 import sys
 import traceback
-from typing import Optional
-
+from datetime import datetime
 from getpass import getuser
+from optparse import SUPPRESS_HELP
 
-from goe.config.orchestration_config import OrchestrationConfig
 from goe.config import config_file, orchestration_defaults
+from goe.config.orchestration_config import OrchestrationConfig
 from goe.connect.connect_backend import (
     is_hadoop_environment,
     run_backend_tests,
@@ -51,6 +49,7 @@ from goe.connect.connect_transport import (
 )
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.goe import (
+    OptionValueError,
     get_common_options,
     get_log_fh,
     get_log_fh_name,
@@ -58,9 +57,8 @@ from goe.goe import (
     init_log,
     log_command_line,
     log_timestamp,
-    version,
-    OptionValueError,
     verbose,
+    version,
 )
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_transport_functions import ssh_cmd_prefix
@@ -85,7 +83,7 @@ class ConnectException(Exception):
 
 def test_ssh(orchestration_config):
     def normalise_host_list(list_of_hosts):
-        """ensure no CSVs or empty values"""
+        """Ensure no CSVs or empty values"""
         expanded_list = []
         [expanded_list.extend(_.split(",")) if _ else [] for _ in list_of_hosts]
         return set(expanded_list)
@@ -112,9 +110,7 @@ def test_ssh(orchestration_config):
                 test_name = "%s (HIVE_SERVER_HOST): password-less ssh" % host
             test_header(test_name)
             if host == "localhost" and ssh_user == getuser():
-                detail(
-                    "Skipping SSH test because user is current user and host is localhost"
-                )
+                detail("Skipping SSH test because user is current user and host is localhost")
                 continue
 
             cmd = ssh_cmd_prefix(ssh_user, host=host) + [
@@ -132,7 +128,7 @@ def test_ssh(orchestration_config):
         raise
 
 
-def _os_release_file_exists() -> Optional[str]:
+def _os_release_file_exists() -> str | None:
     existing_files = [_ for _ in OS_RELEASE_FILES if os.path.isfile(_)]
     return existing_files[0] if existing_files else None
 
@@ -142,14 +138,13 @@ def _os_version_from_file_content(os_release_file: str, file_content: str) -> st
         os_ver = file_content.splitlines()
         os_ver = "%s (%s)" % (os_ver[:1][0], ", ".join([o for o in os_ver[1:]]))
         return os_ver
-    elif os_release_file == OS_RELEASE_FILE_DEBIAN:
+    if os_release_file == OS_RELEASE_FILE_DEBIAN:
         os_ver = file_content.splitlines()
         tokens = os_ver[0].split("=")
         os_ver = tokens[0] if len(tokens) == 1 else " ".join(tokens[1:])
         os_ver = unsurround(os_ver, '"')
         return os_ver
-    else:
-        return file_content
+    return file_content
 
 
 def _os_version_from_file(os_release_file: str) -> str:
@@ -204,9 +199,7 @@ def get_environment_file_name(orchestration_config):
         backend_id = "hadoop"
     else:
         backend_id = orchestration_config.target.lower()
-    return "-".join(
-        [frontend_id, backend_id, config_file.CONFIG_FILE_NAME + ".template"]
-    )
+    return "-".join([frontend_id, backend_id, config_file.CONFIG_FILE_NAME + ".template"])
 
 
 def get_template_file_path(orchestration_config):
@@ -248,10 +241,7 @@ def test_listener(orchestration_config):
     # https://github.com/gluent/goe/issues/109
     return
     test_header(test_name)
-    if (
-        not orchestration_config.listener_host
-        and orchestration_config.listener_port is None
-    ):
+    if not orchestration_config.listener_host and orchestration_config.listener_port is None:
         detail(f"{orchestration_constants.PRODUCT_NAME_GEL} not configured")
         success(test_name)
         return
@@ -263,10 +253,7 @@ def test_listener(orchestration_config):
         # Check Listener is up.
         if ping_listener(orchestration_config):
             detail(
-                "Listener ping successful: {}:{}".format(
-                    orchestration_config.listener_host,
-                    orchestration_config.listener_port,
-                )
+                f"Listener ping successful: {orchestration_config.listener_host}:{orchestration_config.listener_port}"
             )
         else:
             detail("Listener ping unsuccessful")
@@ -287,10 +274,7 @@ def test_listener(orchestration_config):
             cache = RedisClient.connect()
             if cache.ping():
                 detail(
-                    "Listener cache found: {}:{}".format(
-                        orchestration_defaults.listener_redis_host_default(),
-                        orchestration_defaults.listener_redis_port_default(),
-                    )
+                    f"Listener cache found: {orchestration_defaults.listener_redis_host_default()}:{orchestration_defaults.listener_redis_port_default()}"
                 )
                 success(test_name)
             else:
@@ -321,16 +305,14 @@ def check_offload_env(environment_file, template_file):
 
     try:
         configuration = dict_from_environment_file(environment_file)
-    except IOError:
+    except OSError:
         debug(traceback.format_exc())
         # If offload.env does not exist then we need to abort because the OFFLOAD_HOME is in bad shape
-        raise ConnectException(
-            "Unable to access environment file: %s" % environment_file
-        )
+        raise ConnectException("Unable to access environment file: %s" % environment_file)
 
     try:
         template = dict_from_environment_file(template_file)
-    except IOError:
+    except OSError:
         debug(traceback.format_exc())
         failure(test_name, "Unable to access template file: %s" % template_file)
         return
@@ -347,10 +329,7 @@ def check_offload_env(environment_file, template_file):
     left = os.path.basename(template_file)
     right = os.path.basename(environment_file)
     test_name = "%s vs %s" % (left, right)
-    test_hint = (
-        "Use ./connect --upgrade-environment-file to copy missing configuration from %s to %s"
-        % (left, right)
-    )
+    test_hint = "Use ./connect --upgrade-environment-file to copy missing configuration from %s to %s" % (left, right)
 
     test_header(test_name)
     if set(template.keys()) - set(configuration.keys()):
@@ -409,9 +388,7 @@ def check_environment(options, orchestration_config):
 
     if orchestration_config.use_ssl:
         if orchestration_config.ca_cert:
-            detail(
-                "Using SSL with authority certificate %s" % orchestration_config.ca_cert
-            )
+            detail("Using SSL with authority certificate %s" % orchestration_config.ca_cert)
         else:
             detail("Using SSL without certificate")
 
@@ -510,10 +487,7 @@ def connect():
 
         orchestration_config = get_config_with_connect_overrides(options)
 
-        if (
-            is_hadoop_environment(orchestration_config)
-            and not orchestration_config.hadoop_host
-        ):
+        if is_hadoop_environment(orchestration_config) and not orchestration_config.hadoop_host:
             raise OptionValueError("HIVE_SERVER_HOST is mandatory")
 
         # We need the original host CSV for comprehensive checking later

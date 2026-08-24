@@ -17,10 +17,10 @@
 from typing import TYPE_CHECKING
 
 from goe.filesystem.goe_dfs import (
+    AZURE_OFFLOAD_FS_SCHEMES,
     OFFLOAD_FS_SCHEME_GS,
     OFFLOAD_FS_SCHEME_S3,
     OFFLOAD_FS_SCHEME_S3A,
-    AZURE_OFFLOAD_FS_SCHEMES,
 )
 from goe.offload.offload_constants import HADOOP_BASED_BACKEND_DISTRIBUTIONS
 
@@ -53,19 +53,18 @@ def get_dfs_from_options(
                 db_path_suffix=config.hdfs_db_path_suffix,
                 hdfs_data=config.hdfs_data,
             )
-        else:
-            from goe.filesystem.cli_hdfs import CliHdfs
+        from goe.filesystem.cli_hdfs import CliHdfs
 
-            return CliHdfs(
-                config.hdfs_host,
-                config.hadoop_ssh_user,
-                dry_run=dry_run,
-                messages=messages,
-                do_not_connect=do_not_connect,
-                db_path_suffix=config.hdfs_db_path_suffix,
-                hdfs_data=config.hdfs_data,
-            )
-    elif config.offload_fs_scheme == OFFLOAD_FS_SCHEME_GS:
+        return CliHdfs(
+            config.hdfs_host,
+            config.hadoop_ssh_user,
+            dry_run=dry_run,
+            messages=messages,
+            do_not_connect=do_not_connect,
+            db_path_suffix=config.hdfs_db_path_suffix,
+            hdfs_data=config.hdfs_data,
+        )
+    if config.offload_fs_scheme == OFFLOAD_FS_SCHEME_GS:
         from goe.filesystem.goe_gcs import GOEGcs
 
         return GOEGcs(
@@ -74,7 +73,7 @@ def get_dfs_from_options(
             do_not_connect=do_not_connect,
             db_path_suffix=config.hdfs_db_path_suffix,
         )
-    elif config.offload_fs_scheme in (
+    if config.offload_fs_scheme in (
         OFFLOAD_FS_SCHEME_S3,
         OFFLOAD_FS_SCHEME_S3A,
     ):
@@ -86,7 +85,7 @@ def get_dfs_from_options(
             do_not_connect=do_not_connect,
             db_path_suffix=config.hdfs_db_path_suffix,
         )
-    elif config.offload_fs_scheme in AZURE_OFFLOAD_FS_SCHEMES:
+    if config.offload_fs_scheme in AZURE_OFFLOAD_FS_SCHEMES:
         from goe.filesystem.goe_azure import GOEAzure
 
         return GOEAzure(
@@ -98,13 +97,8 @@ def get_dfs_from_options(
             do_not_connect=do_not_connect,
             db_path_suffix=config.hdfs_db_path_suffix,
         )
-    else:
-        if config.offload_fs_scheme:
-            raise NotImplementedError(
-                "Backend system/scheme has not been implemented: %s/%s"
-                % (config.target, config.offload_fs_scheme)
-            )
-        else:
-            raise NotImplementedError(
-                "Backend system has not been implemented: %s" % config.target
-            )
+    if config.offload_fs_scheme:
+        raise NotImplementedError(
+            "Backend system/scheme has not been implemented: %s/%s" % (config.target, config.offload_fs_scheme)
+        )
+    raise NotImplementedError("Backend system has not been implemented: %s" % config.target)

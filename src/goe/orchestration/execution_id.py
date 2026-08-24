@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-ExecutionId: Simple class allowing an Orchestration execution id to be generated and converted from/to str/bytes.
+"""ExecutionId: Simple class allowing an Orchestration execution id to be generated and converted from/to str/bytes.
 Unit tests in TestOrchestrationRepoClient.
 """
 
@@ -31,8 +30,7 @@ from pydantic import UUID4
 
 @dataclass
 class ExecutionId:
-    """
-    Simple class allowing an Orchestration execution id to be generated and converted from/to str/bytes.
+    """Simple class allowing an Orchestration execution id to be generated and converted from/to str/bytes.
 
     Create a new id:
         i = ExecutionId()
@@ -64,19 +62,17 @@ class ExecutionId:
     def _bytes_as_uuid(b):
         if b is None:
             return None
-        else:
-            assert isinstance(b, bytes)
-            assert len(b) == 16
-            return uuid.UUID(bytes=b)
+        assert isinstance(b, bytes)
+        assert len(b) == 16
+        return uuid.UUID(bytes=b)
 
     @staticmethod
     def _str_as_uuid(s):
         if s is None:
             return None
-        else:
-            assert isinstance(s, str)
-            assert len(s) == 36, "len(str) ({}) != 36".format(len(s))
-            return uuid.UUID(s)
+        assert isinstance(s, str)
+        assert len(s) == 36, f"len(str) ({len(s)}) != 36"
+        return uuid.UUID(s)
 
     @staticmethod
     def _new_id():

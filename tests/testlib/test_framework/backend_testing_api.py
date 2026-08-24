@@ -19,22 +19,19 @@
 processing and verification of integration tests.
 """
 
-from abc import ABCMeta, abstractmethod
 import logging
 import subprocess
-from subprocess import PIPE, STDOUT
 import sys
+from abc import ABCMeta, abstractmethod
+from subprocess import PIPE, STDOUT
 
 from goe.offload.column_metadata import (
-    CanonicalColumn,
-    match_table_column,
-    GOE_TYPE_DATE,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
-    GOE_TYPE_VARIABLE_STRING,
+    match_table_column,
 )
 from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
@@ -120,8 +117,7 @@ def subproc_cmd(cmd, opts, messages, cwd=None, env=None, execute=True):
             sys.stdout.write(output)
 
         return cmd_returncode, output
-    else:
-        return 0, ""
+    return 0, ""
 
 
 logger = logging.getLogger(__name__)
@@ -195,9 +191,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         date_based = [_ for _ in list_of_columns if _.is_date_based()]
         if date_based:
             return date_based[0]
-        raise BackendTestingApiException(
-            "No source column found for test partitioned table"
-        )
+        raise BackendTestingApiException("No source column found for test partitioned table")
 
     def _goe_type_mapping_column_name(self, *args, uppercase=True):
         """The case of columns is not particularly important, GOE will maintain either.
@@ -248,13 +242,9 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         if self._db_api.exists(db_name, table_name):
             columns = self.get_columns(db_name, table_name)
             if null_ne_empty_str and [
-                _
-                for _ in columns
-                if _.name.lower() == column_name.lower() and _.is_string_based()
+                _ for _ in columns if _.name.lower() == column_name.lower() and _.is_string_based()
             ]:
-                empty_string_clause = " AND %s != ''" % self.enclose_identifier(
-                    column_name
-                )
+                empty_string_clause = " AND %s != ''" % self.enclose_identifier(column_name)
 
         sql = self._select_single_non_null_value_sql_template() % (
             project_expression,
@@ -366,9 +356,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
                 test_constants.PARTITION_FUNCTION_TEST_FROM_STRING,
             ]
         for udf_name in udfs:
-            return_type, argument_type, udf_body = self._define_test_partition_function(
-                udf_name
-            )
+            return_type, argument_type, udf_body = self._define_test_partition_function(udf_name)
             if udf_body:
                 self.create_udf(
                     db_name,
@@ -437,9 +425,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         return self._db_api.default_sort_columns_to_primary_key()
 
     def default_storage_compression(self, storage_compression, storage_format):
-        return self._db_api.default_storage_compression(
-            storage_compression, storage_format
-        )
+        return self._db_api.default_storage_compression(storage_compression, storage_format)
 
     def default_storage_format(self):
         return self._db_api.default_storage_format()
@@ -463,13 +449,9 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         return self._db_api.enclose_object_reference(db_name, object_name)
 
     def execute_ddl(self, sql, sync=None, query_options=None, log_level=VERBOSE):
-        return self._db_api.execute_ddl(
-            sql, sync=sync, query_options=query_options, log_level=log_level
-        )
+        return self._db_api.execute_ddl(sql, sync=sync, query_options=query_options, log_level=log_level)
 
-    def execute_query_fetch_all(
-        self, sql, query_options=None, log_level=None, query_params=None
-    ):
+    def execute_query_fetch_all(self, sql, query_options=None, log_level=None, query_params=None):
         return self._db_api.execute_query_fetch_all(
             sql,
             query_options=query_options,
@@ -477,9 +459,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
             query_params=query_params,
         )
 
-    def execute_query_fetch_one(
-        self, sql, query_options=None, log_level=None, query_params=None
-    ):
+    def execute_query_fetch_one(self, sql, query_options=None, log_level=None, query_params=None):
         return self._db_api.execute_query_fetch_one(
             sql,
             query_options=query_options,
@@ -502,10 +482,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
     def gen_default_numeric_column(self, column_name, data_scale=None):
         if data_scale is None:
             return self._db_api.gen_default_numeric_column(column_name)
-        else:
-            return self._db_api.gen_default_numeric_column(
-                column_name, data_scale=data_scale
-            )
+        return self._db_api.gen_default_numeric_column(column_name, data_scale=data_scale)
 
     def get_column(self, db_name, table_name, column_name):
         return self._db_api.get_column(db_name, table_name, column_name)
@@ -519,9 +496,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
     def get_partition_columns(self, db_name, table_name):
         return self._db_api.get_partition_columns(db_name, table_name)
 
-    def get_distinct_column_values(
-        self, db_name, table_name, column_name_list, order_results=False
-    ):
+    def get_distinct_column_values(self, db_name, table_name, column_name_list, order_results=False):
         return self._db_api.get_distinct_column_values(
             db_name, table_name, column_name_list, order_results=order_results
         )
@@ -551,9 +526,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         return self._db_api.get_non_synthetic_columns(db_name, table_name)
 
     def get_table_and_partition_stats(self, db_name, table_name, as_dict=False):
-        return self._db_api.get_table_and_partition_stats(
-            db_name, table_name, as_dict=as_dict
-        )
+        return self._db_api.get_table_and_partition_stats(db_name, table_name, as_dict=as_dict)
 
     def get_table_location(self, db_name, table_name):
         return self._db_api.get_table_location(db_name, table_name)
@@ -562,9 +535,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         return self._db_api.get_table_partition_count(db_name, table_name)
 
     def get_table_row_count(self, db_name, table_name, filter_clause=None):
-        return self._db_api.get_table_row_count(
-            db_name, table_name, filter_clause=filter_clause
-        )
+        return self._db_api.get_table_row_count(db_name, table_name, filter_clause=filter_clause)
 
     def get_table_sort_columns(self, db_name, table_name):
         return self._db_api.get_table_sort_columns(db_name, table_name)
@@ -613,9 +584,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         return self._db_api.is_valid_staging_format(staging_format)
 
     def is_valid_storage_compression(self, storage_compression, storage_format):
-        return self._db_api.is_valid_storage_compression(
-            storage_compression, storage_format
-        )
+        return self._db_api.is_valid_storage_compression(storage_compression, storage_format)
 
     def is_valid_storage_format(self, storage_format):
         return self._db_api.is_valid_storage_format(storage_format)
@@ -624,14 +593,10 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         return self._db_api.is_view(db_name, view_name)
 
     def list_databases(self, db_name_filter=None, case_sensitive=True):
-        return self._db_api.list_databases(
-            db_name_filter=db_name_filter, case_sensitive=case_sensitive
-        )
+        return self._db_api.list_databases(db_name_filter=db_name_filter, case_sensitive=case_sensitive)
 
     def list_tables(self, db_name, table_name_filter=None, case_sensitive=True):
-        return self._db_api.list_tables(
-            db_name, table_name_filter=table_name_filter, case_sensitive=case_sensitive
-        )
+        return self._db_api.list_tables(db_name, table_name_filter=table_name_filter, case_sensitive=case_sensitive)
 
     def load_db_transport_supported(self):
         return self._db_api.load_db_transport_supported()
@@ -664,7 +629,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         """Used to limit the columns in frontend table GOE_WIDE. Synapse has an override.
         None means there's no specific limit, i.e. we'll leave it up to the frontend.
         """
-        return None
+        return
 
     def min_datetime_value(self):
         return self._db_api.min_datetime_value()
@@ -691,9 +656,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         return self._db_api.partition_by_string_supported()
 
     def partition_column_requires_synthetic_column(self, backend_column, granularity):
-        return self._db_api.partition_column_requires_synthetic_column(
-            backend_column, granularity
-        )
+        return self._db_api.partition_column_requires_synthetic_column(backend_column, granularity)
 
     def schema_evolution_supported(self):
         return self._db_api.schema_evolution_supported()
@@ -744,10 +707,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
     def story_test_table_extra_col_setup(self):
         """Return story_test_table_extra_col_info so it can be passed into create_table()."""
         extra_col_info = self.story_test_table_extra_col_info()
-        return [
-            (col_attribs["sql_expression"], col_name)
-            for col_name, col_attribs in extra_col_info.items()
-        ]
+        return [(col_attribs["sql_expression"], col_name) for col_name, col_attribs in extra_col_info.items()]
 
     def table_distribution(self, db_name, table_name):
         return self._db_api.table_distribution(db_name, table_name)
@@ -755,9 +715,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
     def to_backend_literal(self, py_val, data_type=None):
         return self._db_api.to_backend_literal(py_val, data_type=data_type)
 
-    def unit_test_single_row_sql_text(
-        self, db_name, table_name, column_name, row_limit=None, where_clause=None
-    ):
+    def unit_test_single_row_sql_text(self, db_name, table_name, column_name, row_limit=None, where_clause=None):
         """Simple SQL query text. Individual backends may override this if they have different syntax."""
         db_table = self.enclose_object_reference(db_name, table_name)
         where_clause = where_clause or ""
@@ -872,15 +830,11 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def expected_backend_column(
-        self, canonical_column, override_used=None, decimal_padding_digits=None
-    ):
+    def expected_backend_column(self, canonical_column, override_used=None, decimal_padding_digits=None):
         """Returns a backend column object that we might expect to see based on canonical_column"""
 
     @abstractmethod
-    def expected_backend_precision_scale(
-        self, canonical_column, decimal_padding_digits=None
-    ):
+    def expected_backend_precision_scale(self, canonical_column, decimal_padding_digits=None):
         """For a decimal canonical column return a tuple of expected precision/scale.
         Returning None means no check is required, for example for non-decimal columns.
         """
@@ -888,6 +842,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
     @abstractmethod
     def expected_canonical_to_backend_type_map(self, override_used=False):
         """Returns a dict mapping canonical data types to expected backend types.
+
         Returns:
             {'canonical-type-1': 'backend-type-1',
              'canonical-type-n': 'backend-type-n'}
@@ -908,9 +863,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def partition_has_stats(
-        self, db_name, table_name, partition_tuples, colstats=False
-    ):
+    def partition_has_stats(self, db_name, table_name, partition_tuples, colstats=False):
         pass
 
     @abstractmethod
@@ -918,9 +871,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def select_single_non_null_value(
-        self, db_name, table_name, column_name, project_expression
-    ):
+    def select_single_non_null_value(self, db_name, table_name, column_name, project_expression):
         """This is used in testing but all backends need to consciously decide whether to support it or not
         The parameters are simply put together to construct a query like:
             SELECT project_expression FROM db_name.table_name WHERE column_name IS NOT NULL

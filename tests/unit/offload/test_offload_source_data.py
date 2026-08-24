@@ -18,16 +18,15 @@ from goe.offload.bigquery.bigquery_backend_table import BackendBigQueryTable
 from goe.offload.offload_constants import DBTYPE_BIGQUERY
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_source_data import (
-    OffloadSourceDataIpaRange,
     OFFLOAD_SOURCE_CLIENT_OFFLOAD,
+    OffloadSourceDataIpaRange,
     OffloadSourcePartitions,
 )
-
 from tests.unit.test_functions import (
-    build_mock_options,
-    build_mock_offload_operation,
-    build_fake_oracle_table,
     FAKE_ORACLE_BQ_ENV,
+    build_fake_oracle_table,
+    build_mock_offload_operation,
+    build_mock_options,
 )
 
 
@@ -100,14 +99,10 @@ def test_partition_chunking(
         messages,
         OFFLOAD_SOURCE_CLIENT_OFFLOAD,
     )
-    partitions_to_offload = OffloadSourcePartitions.from_source_table(
-        oracle_table, True
-    )
+    partitions_to_offload = OffloadSourcePartitions.from_source_table(oracle_table, True)
     client._override_partitions_to_offload(partitions_to_offload)
     chunks = list(client.get_partitions_to_offload_chunks())
-    assert (
-        len(chunks) == expected_chunks
-    ), f"Partition chunk count should be {expected_chunks}, not {len(chunks)}"
+    assert len(chunks) == expected_chunks, f"Partition chunk count should be {expected_chunks}, not {len(chunks)}"
     # Ensure all partitions are in the to-offload and remaining lists.
     total_p_count = sum(_[0].count() for _ in chunks)
     assert total_p_count == 4, f"Total partition count should be 4, not {total_p_count}"

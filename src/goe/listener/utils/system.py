@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # Copyright 2016 The GOE Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Utility library.
-"""
+"""Utility library."""
 
 # Standard Library
 import fcntl
@@ -31,7 +27,7 @@ def get_interface_ip(ifname):
         fcntl.ioctl(
             s.fileno(),
             0x8915,  # SIOCGIFADDR
-            struct.pack("256s", bytes(ifname[:15], "utf-8"))
+            struct.pack("256s", bytes(ifname[:15], "utf-8")),
             # Python 2.7: remove the second argument for the bytes call
         )[20:24]
     )
@@ -55,7 +51,7 @@ def get_lan_ip():
             try:
                 ip = get_interface_ip(ifname)
                 break
-            except IOError:
+            except OSError:
                 pass
     return ip
 

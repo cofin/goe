@@ -14,7 +14,6 @@
 
 from unittest import main
 
-from goe.exceptions import OffloadException
 from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.offload.offload_constants import DBTYPE_SPARK
 from goe.offload.offload_functions import (
@@ -110,9 +109,7 @@ class TestCurrentBackendApi(TestBackendApi):
             self.config,
             frontend_api,
             messages,
-            frontend_api.sales_based_fact_create_ddl(
-                self.schema, self.part_table, simple_partition_names=True
-            ),
+            frontend_api.sales_based_fact_create_ddl(self.schema, self.part_table, simple_partition_names=True),
         )
         if not run_offload(
             {
@@ -138,7 +135,7 @@ class TestConnectedSparkBackendApi(TestBackendApi):
         self.connect_to_backend = True
         self.config = self._build_current_options()
         if self._thrift_configured(self.config):
-            super(TestConnectedSparkBackendApi, self).setUp()
+            super().setUp()
 
     def _thrift_configured(self, orchestration_options):
         return bool(

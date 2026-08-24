@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Functions for validating backend partition controls in Offload
-"""
+"""Functions for validating backend partition controls in Offload"""
 
-from optparse import OptionValueError
 import re
+from optparse import OptionValueError
 
 from goe.offload.column_metadata import (
     ColumnPartitionInfo,
@@ -44,22 +43,12 @@ class OffloadPartitionControlsException(Exception):
 MISSING_PARTITION_GRANULARITY_EXCEPTION_TEXT = (
     "Partition granularity (--partition-granularity) mandatory for column/data type"
 )
-OFFLOAD_CHUNK_COLUMN_PART_COL_EXCEPTION_TEXT = (
-    "Unknown partition column supplied as --offload-chunk-column"
-)
-PARTITION_BY_STRING_NOT_SUPPORTED_EXCEPTION_TEXT = (
-    "String columns cannot be used to partition the backend table"
-)
-PARTITION_BY_STRING_PARTITION_FUNCTION_SUFFIX = (
-    " without corresponding partition functions"
-)
+OFFLOAD_CHUNK_COLUMN_PART_COL_EXCEPTION_TEXT = "Unknown partition column supplied as --offload-chunk-column"
+PARTITION_BY_STRING_NOT_SUPPORTED_EXCEPTION_TEXT = "String columns cannot be used to partition the backend table"
+PARTITION_BY_STRING_PARTITION_FUNCTION_SUFFIX = " without corresponding partition functions"
 PARTITION_FUNCTIONS_ELEMENT_EXCEPTION_TEXT = "elements to match partition columns"
-PARTITION_FUNCTIONS_NOT_SUPPORTED_EXCEPTION_TEXT = (
-    "Offload partition functions are not supported"
-)
-TOO_MANY_BACKEND_PART_COLS_EXCEPTION_TEXT = (
-    "Too many partition columns for backend system"
-)
+PARTITION_FUNCTIONS_NOT_SUPPORTED_EXCEPTION_TEXT = "Offload partition functions are not supported"
+TOO_MANY_BACKEND_PART_COLS_EXCEPTION_TEXT = "Too many partition columns for backend system"
 
 
 def empty_strings_to_none(list_of_strings):
@@ -93,30 +82,18 @@ def default_offload_partition_columns_from_rdbms(
         )
         return []
     return_cols = [
-        _.name
-        for _ in rdbms_partition_columns
-        if _.data_type not in (ORACLE_TYPE_INTERVAL_DS, ORACLE_TYPE_INTERVAL_YM)
+        _.name for _ in rdbms_partition_columns if _.data_type not in (ORACLE_TYPE_INTERVAL_DS, ORACLE_TYPE_INTERVAL_YM)
     ]
     if rdbms_partition_columns and [
-        _
-        for _ in rdbms_partition_columns
-        if _.data_type in (ORACLE_TYPE_INTERVAL_DS, ORACLE_TYPE_INTERVAL_YM)
+        _ for _ in rdbms_partition_columns if _.data_type in (ORACLE_TYPE_INTERVAL_DS, ORACLE_TYPE_INTERVAL_YM)
     ]:
         seed_notice("INTERVAL", return_cols, messages)
-    if (
-        not backend_table.partition_by_string_supported()
-        and return_cols
-        and not offload_partition_functions
-    ):
+    if not backend_table.partition_by_string_supported() and return_cols and not offload_partition_functions:
         # If offload_partition_functions are being specified then we cannot reject string partitioning just yet.
         # If a function is being used on the string column its type may change to a supported type.
-        return_cols = [
-            _.name for _ in rdbms_partition_columns if not _.is_string_based()
-        ]
+        return_cols = [_.name for _ in rdbms_partition_columns if not _.is_string_based()]
         pf_text = (
-            PARTITION_BY_STRING_PARTITION_FUNCTION_SUFFIX
-            if backend_table.goe_partition_functions_supported()
-            else ""
+            PARTITION_BY_STRING_PARTITION_FUNCTION_SUFFIX if backend_table.goe_partition_functions_supported() else ""
         )
         if [_ for _ in rdbms_partition_columns if _.is_string_based()]:
             seed_notice("Character-based", return_cols, messages, middle_text=pf_text)
@@ -185,30 +162,17 @@ def offload_options_to_partition_info(
         assert isinstance(offload_partition_granularity, list)
 
     partition_info = None
-    partition_column_match = case_insensitive_in(
-        rdbms_column.name, offload_partition_columns
-    )
+    partition_column_match = case_insensitive_in(rdbms_column.name, offload_partition_columns)
     if partition_column_match and backend_table.partition_by_column_supported():
         position = offload_partition_columns.index(partition_column_match)
         if rdbms_column.is_date_based():
             digits = 1
-        elif (
-            rdbms_column.is_number_based()
-            and not backend_table.synthetic_partition_numbers_are_string()
-        ):
+        elif rdbms_column.is_number_based() and not backend_table.synthetic_partition_numbers_are_string():
             digits = None
         else:
             digits = synthetic_partition_digits
-        granularity = (
-            offload_partition_granularity[position]
-            if offload_partition_granularity
-            else None
-        )
-        partition_function = (
-            offload_partition_functions[position]
-            if offload_partition_functions
-            else None
-        )
+        granularity = offload_partition_granularity[position] if offload_partition_granularity else None
+        partition_function = offload_partition_functions[position] if offload_partition_functions else None
         partition_info = ColumnPartitionInfo(
             position=position,
             source_column_name=rdbms_column.name,
@@ -221,9 +185,7 @@ def offload_options_to_partition_info(
     return partition_info
 
 
-def offloading_date_as_string(
-    rdbms_column, backend_column, variable_string_columns_csv
-):
+def offloading_date_as_string(rdbms_column, backend_column, variable_string_columns_csv):
     """Return True if we are offloading an RDBMS date to a backend string"""
     if rdbms_column.is_date_based():
         if backend_column:
@@ -264,18 +226,11 @@ def validate_offload_partition_columns(
         )
 
     if offload_chunk_column:
-        if not [
-            pcol
-            for pcol in (new_partition_columns or [])
-            if pcol.upper() == offload_chunk_column
-        ]:
-            raise OptionValueError(
-                "%s: %s"
-                % (OFFLOAD_CHUNK_COLUMN_PART_COL_EXCEPTION_TEXT, offload_chunk_column)
-            )
+        if not [pcol for pcol in (new_partition_columns or []) if pcol.upper() == offload_chunk_column]:
+            raise OptionValueError("%s: %s" % (OFFLOAD_CHUNK_COLUMN_PART_COL_EXCEPTION_TEXT, offload_chunk_column))
 
     if not new_partition_columns:
-        return
+        return None
 
     if len(new_partition_columns) > backend_table.max_partition_columns():
         raise OffloadPartitionControlsException(
@@ -297,18 +252,13 @@ def validate_offload_partition_functions(
     Returns a normalised value for offload_partition_functions, e.g. it may comes in as a string and leave as a list
     """
     if offload_partition_columns:
-        assert isinstance(
-            offload_partition_columns, list
-        ), "Type {} is not list".format(type(offload_partition_columns))
+        assert isinstance(offload_partition_columns, list), f"Type {type(offload_partition_columns)} is not list"
     if offload_partition_functions:
-        assert isinstance(
-            offload_partition_functions, (str, list)
-        ), "Type {} is not str or list".format(type(offload_partition_functions))
+        assert isinstance(offload_partition_functions, (str, list)), (
+            f"Type {type(offload_partition_functions)} is not str or list"
+        )
 
-    if (
-        offload_partition_functions
-        and not backend_table.goe_partition_functions_supported()
-    ):
+    if offload_partition_functions and not backend_table.goe_partition_functions_supported():
         raise OffloadPartitionControlsException(
             "%s on %s"
             % (
@@ -324,7 +274,7 @@ def validate_offload_partition_functions(
                 detail=VVERBOSE,
             )
         return []
-    elif not offload_partition_functions:
+    if not offload_partition_functions:
         return [None for _ in range(len(offload_partition_columns))]
 
     if isinstance(offload_partition_functions, str):
@@ -400,30 +350,22 @@ def validate_offload_partition_granularity(
 
     # Validate/default granularity list contents
     new_partition_granularity = []
-    for col_name, granularity, part_fn in zip(
-        offload_partition_columns, granularity_list, offload_partition_functions
-    ):
+    for col_name, granularity, part_fn in zip(offload_partition_columns, granularity_list, offload_partition_functions):
         rdbms_col = match_table_column(col_name, rdbms_columns)
         if not rdbms_col:
-            raise OffloadPartitionControlsException(
-                "Offload partitioning column not found: %s" % col_name
-            )
+            raise OffloadPartitionControlsException("Offload partitioning column not found: %s" % col_name)
         backend_column = match_table_column(col_name, backend_columns or [])
 
         date_as_string = False
         if not part_fn:
             # If there's a partition function we don't yet know what data type the backend column will be
-            date_as_string = offloading_date_as_string(
-                rdbms_col, backend_column, variable_string_columns_csv
-            )
+            date_as_string = offloading_date_as_string(rdbms_col, backend_column, variable_string_columns_csv)
             pf_text = (
                 PARTITION_BY_STRING_PARTITION_FUNCTION_SUFFIX
                 if backend_table.goe_partition_functions_supported()
                 else ""
             )
-            if (
-                rdbms_col.is_string_based() or date_as_string
-            ) and not backend_table.partition_by_string_supported():
+            if (rdbms_col.is_string_based() or date_as_string) and not backend_table.partition_by_string_supported():
                 raise OffloadPartitionControlsException(
                     "%s%s: %s"
                     % (
@@ -460,9 +402,7 @@ def validate_offload_partition_granularity(
             if not date_as_string:
                 granularity = backend_table.default_date_based_partition_granularity()
 
-        if not granularity and (
-            backend_table.partition_function_requires_granularity() or not part_fn
-        ):
+        if not granularity and (backend_table.partition_function_requires_granularity() or not part_fn):
             raise OffloadPartitionControlsException(
                 "%s: %s/%s%s"
                 % (
@@ -476,17 +416,16 @@ def validate_offload_partition_granularity(
         # Check that specified granularity matches the column data type
         if (
             rdbms_col.is_date_based()
-            and granularity
-            not in backend_table.supported_date_based_partition_granularities()
+            and granularity not in backend_table.supported_date_based_partition_granularities()
             and not date_as_string
         ):
             raise OffloadPartitionControlsException(
                 "Partition granularity %s not valid for column/data type: %s/%s"
                 % (granularity, rdbms_col.name, rdbms_col.data_type)
             )
-        elif (
-            rdbms_col.is_number_based() or rdbms_col.is_string_based() or date_as_string
-        ) and not re.search(r"^\d+$", granularity):
+        if (rdbms_col.is_number_based() or rdbms_col.is_string_based() or date_as_string) and not re.search(
+            r"^\d+$", granularity
+        ):
             raise OffloadPartitionControlsException(
                 "Partition granularity %s not valid for column/data type: %s/%s"
                 % (granularity, rdbms_col.name, rdbms_col.data_type)
@@ -503,15 +442,11 @@ def part_cols_have_matching_synthetic_expression(left_part_col, right_part_col):
     """
     if not left_part_col or not right_part_col:
         return False
-    if not is_synthetic_partition_column(
-        left_part_col
-    ) or not is_synthetic_partition_column(right_part_col):
+    if not is_synthetic_partition_column(left_part_col) or not is_synthetic_partition_column(right_part_col):
         return False
     # We have partition columns on both sides of the join clause, check for detail match...
     return bool(
-        left_part_col.partition_info.granularity
-        == right_part_col.partition_info.granularity
+        left_part_col.partition_info.granularity == right_part_col.partition_info.granularity
         and left_part_col.partition_info.digits == right_part_col.partition_info.digits
-        and left_part_col.partition_info.function
-        == right_part_col.partition_info.function
+        and left_part_col.partition_info.function == right_part_col.partition_info.function
     )

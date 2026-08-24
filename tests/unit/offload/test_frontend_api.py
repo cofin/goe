@@ -19,11 +19,10 @@
 """
 
 from datetime import datetime
-from unittest import TestCase, main
-import unittest.mock as mock
+from unittest import TestCase, main, mock
 
-from numpy import datetime64
 import oracledb as cxo
+from numpy import datetime64
 
 from goe.offload.column_metadata import ColumnMetadataInterface
 from goe.offload.factory.frontend_api_factory import frontend_api_factory
@@ -38,18 +37,18 @@ from tests.testlib.test_framework.factory.frontend_testing_api_factory import (
     frontend_testing_api_factory,
 )
 from tests.unit.test_functions import (
-    build_mock_options,
-    optional_sql_server_dependency_exception,
-    optional_teradata_dependency_exception,
     FAKE_MSSQL_ENV,
     FAKE_ORACLE_ENV,
     FAKE_TERADATA_ENV,
+    build_mock_options,
+    optional_sql_server_dependency_exception,
+    optional_teradata_dependency_exception,
 )
 
 
 class TestFrontendApi(TestCase):
     def __init__(self, *args, **kwargs):
-        super(TestFrontendApi, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.test_api = None
         self.config = None
@@ -92,15 +91,9 @@ class TestFrontendApi(TestCase):
 
     def _test_create_table(self):
         column_list = [
-            self.api.gen_column_object(
-                "col1", data_type=self.test_api.test_type_canonical_int_8()
-            ),
-            self.api.gen_column_object(
-                "col2", data_type=self.test_api.test_type_canonical_date()
-            ),
-            self.api.gen_column_object(
-                "col3", data_type=self.api.generic_string_data_type()
-            ),
+            self.api.gen_column_object("col1", data_type=self.test_api.test_type_canonical_int_8()),
+            self.api.gen_column_object("col2", data_type=self.test_api.test_type_canonical_date()),
+            self.api.gen_column_object("col3", data_type=self.api.generic_string_data_type()),
         ]
         self.api.create_table(self.db, "new_table", column_list)
 
@@ -117,18 +110,14 @@ class TestFrontendApi(TestCase):
     def _test_execute_ddl(self):
         # Make a call without executing just to shake down Python logic
         self.assertIsInstance(
-            self.api.execute_ddl(
-                "DDL ON A TABLE", query_options=self.test_api.unit_test_query_options()
-            ),
+            self.api.execute_ddl("DDL ON A TABLE", query_options=self.test_api.unit_test_query_options()),
             list,
         )
 
     def _test_execute_dml(self):
         # Make a call without executing just to shake down Python logic
         self.assertIsInstance(
-            self.api.execute_dml(
-                "DML ON A TABLE", query_options=self.test_api.unit_test_query_options()
-            ),
+            self.api.execute_dml("DML ON A TABLE", query_options=self.test_api.unit_test_query_options()),
             list,
         )
 
@@ -141,23 +130,15 @@ class TestFrontendApi(TestCase):
             rows = self.api.execute_query_fetch_all(sql, as_dict=True)
             self.assertIsInstance(rows, list)
             self.assertIsInstance(rows[0], dict)
-            self.assertIsInstance(
-                self.api.execute_query_fetch_all(sql, time_sql=True), list
-            )
+            self.assertIsInstance(self.api.execute_query_fetch_all(sql, time_sql=True), list)
 
     def _test_execute_query_fetch_one(self):
         if self.connect_to_frontend:
             sql = "SELECT COUNT(*) C FROM %s.%s" % (self.db, self.table)
             self.assertIsInstance(self.api.execute_query_fetch_one(sql), (list, tuple))
-            self.assertIsInstance(
-                self.api.execute_query_fetch_one(sql, as_dict=True), (dict)
-            )
+            self.assertIsInstance(self.api.execute_query_fetch_one(sql, as_dict=True), (dict))
             if self.api.parameterized_queries_supported():
-                num_columns = [
-                    _
-                    for _ in self.api.get_columns(self.db, self.table)
-                    if _.is_number_based()
-                ]
+                num_columns = [_ for _ in self.api.get_columns(self.db, self.table) if _.is_number_based()]
                 self.assertTrue(bool(num_columns))
                 column_name = num_columns[0].name
                 params = [QueryParameter("num_value", 42)]
@@ -219,14 +200,10 @@ class TestFrontendApi(TestCase):
     def _test_get_distinct_column_values(self):
         if self.connect_to_frontend:
             column_list = self.api.get_columns(self.db, self.table)
-            rows = self.api.get_distinct_column_values(
-                self.db, self.table, column_list[0].name, order_results=False
-            )
+            rows = self.api.get_distinct_column_values(self.db, self.table, column_list[0].name, order_results=False)
             self.assertIsInstance(rows, list)
             self.assertGreater(len(rows), 0)
-            rows = self.api.get_distinct_column_values(
-                self.db, self.table, column_list[0].name, order_results=True
-            )
+            rows = self.api.get_distinct_column_values(self.db, self.table, column_list[0].name, order_results=True)
             self.assertIsInstance(rows, list)
             self.assertGreater(len(rows), 0)
 
@@ -254,9 +231,7 @@ class TestFrontendApi(TestCase):
     def _test_get_table_ddl(self):
         if self.connect_to_frontend:
             self.assertIsInstance(self.api.get_table_ddl(self.db, self.table), str)
-            self.assertIsInstance(
-                self.api.get_table_ddl(self.db, self.table, as_list=True), list
-            )
+            self.assertIsInstance(self.api.get_table_ddl(self.db, self.table, as_list=True), list)
 
     def _test_get_table_row_count(self):
         if self.connect_to_frontend:
@@ -283,34 +258,20 @@ class TestFrontendApi(TestCase):
             self.assertIsNotNone(literal)
             if self.connect_to_frontend:
                 if self.db_type == DBTYPE_ORACLE:
-                    self.assertIsNotNone(
-                        self.api.execute_query_fetch_one(
-                            "SELECT %s FROM dual" % literal
-                        )
-                    )
+                    self.assertIsNotNone(self.api.execute_query_fetch_one("SELECT %s FROM dual" % literal))
                 else:
-                    self.assertIsNotNone(
-                        self.api.execute_query_fetch_one("SELECT %s" % literal)
-                    )
+                    self.assertIsNotNone(self.api.execute_query_fetch_one("SELECT %s" % literal))
 
-        literal = self.api.to_frontend_literal(
-            int(123456), self.test_api.test_type_canonical_int_8()
-        )
+        literal = self.api.to_frontend_literal(123456, self.test_api.test_type_canonical_int_8())
         self.assertIn("123456", str(literal))
         test_by_select(literal)
-        literal = self.api.to_frontend_literal(
-            float(1.23), self.test_api.test_type_canonical_decimal()
-        )
+        literal = self.api.to_frontend_literal(1.23, self.test_api.test_type_canonical_decimal())
         self.assertIn("1.23", str(literal))
         test_by_select(literal)
-        literal = self.api.to_frontend_literal(
-            int(12345678901234567), self.test_api.test_type_canonical_decimal()
-        )
+        literal = self.api.to_frontend_literal(12345678901234567, self.test_api.test_type_canonical_decimal())
         self.assertIn("12345678901234567", str(literal))
         test_by_select(literal)
-        literal = self.api.to_frontend_literal(
-            datetime.now(), self.test_api.test_type_canonical_timestamp()
-        )
+        literal = self.api.to_frontend_literal(datetime.now(), self.test_api.test_type_canonical_timestamp())
         test_by_select(literal)
         literal = self.api.to_frontend_literal(
             datetime64(datetime.now()), self.test_api.test_type_canonical_timestamp()

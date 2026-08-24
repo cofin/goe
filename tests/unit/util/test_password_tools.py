@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestPasswordTools: Unit test library to test PasswordTools functionality
-"""
+"""TestPasswordTools: Unit test library to test PasswordTools functionality"""
+
 import os
 from unittest import TestCase, main
 

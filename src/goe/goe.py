@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import sys
-from copy import copy
-from datetime import datetime, timedelta
 import json
 import logging
+import os
 import os.path
-from optparse import OptionParser, Option, OptionValueError, SUPPRESS_HELP
 import re
+import sys
 import traceback
-from typing import Union, TYPE_CHECKING
+from copy import copy
+from datetime import datetime, timedelta
+from optparse import SUPPRESS_HELP, Option, OptionParser, OptionValueError
+from typing import TYPE_CHECKING
 
 import orjson
 
@@ -30,70 +30,34 @@ from goe.config import option_descriptions, orchestration_defaults
 from goe.config.config_validation_functions import normalise_size_option
 from goe.exceptions import OffloadException, OffloadOptionError
 from goe.filesystem.goe_dfs import (
-    get_scheme_from_location_uri,
     OFFLOAD_FS_SCHEME_INHERIT,
+    get_scheme_from_location_uri,
 )
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
-
 from goe.offload import offload_constants
-from goe.offload.backend_api import IMPALA_SHUFFLE_HINT, IMPALA_NOSHUFFLE_HINT
-from goe.offload.factory.backend_api_factory import backend_api_factory
-from goe.offload.factory.backend_table_factory import (
-    backend_table_factory,
-    get_backend_table_from_metadata,
-)
-from goe.offload.factory.offload_transport_factory import offload_transport_factory
+from goe.offload.backend_api import IMPALA_NOSHUFFLE_HINT, IMPALA_SHUFFLE_HINT
 from goe.offload.column_metadata import (
-    invalid_column_list_message,
-    match_table_column,
-    is_synthetic_partition_column,
-    valid_column_list,
-    GOE_TYPE_DECIMAL,
     GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
     GOE_TYPE_DOUBLE,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
-    GOE_TYPE_VARIABLE_STRING,
     GOE_TYPE_TIMESTAMP_TZ,
+    GOE_TYPE_VARIABLE_STRING,
+    invalid_column_list_message,
+    is_synthetic_partition_column,
+    match_table_column,
+    valid_column_list,
 )
-from goe.offload.offload_functions import convert_backend_identifier_case, data_db_name
-from goe.offload.operation.ddl_file import normalise_ddl_file
-from goe.offload.offload_source_data import (
-    get_offload_type_for_config,
-    OFFLOAD_SOURCE_CLIENT_OFFLOAD,
+from goe.offload.factory.backend_api_factory import backend_api_factory
+from goe.offload.factory.backend_table_factory import (
+    backend_table_factory,
+    get_backend_table_from_metadata,
 )
-from goe.offload.offload_source_table import (
-    OffloadSourceTableInterface,
-    OFFLOAD_PARTITION_TYPE_RANGE,
-    OFFLOAD_PARTITION_TYPE_LIST,
-)
-from goe.offload.offload_messages import (
-    OffloadMessages,
-    VERBOSE,
-    VVERBOSE,
-)
-from goe.offload.offload_metadata_functions import gen_and_save_offload_metadata
-from goe.offload.offload_validation import (
-    BackendCountValidator,
-    CrossDbValidator,
-    build_verification_clauses,
-)
-from goe.offload.offload_transport import (
-    choose_offload_transport_method,
-    validate_offload_transport_method,
-)
-from goe.offload.operation.data_type_controls import (
-    DECIMAL_COL_TYPE_SYNTAX_TEMPLATE,
-    canonical_columns_from_columns_csv,
-    offload_source_to_canonical_mappings,
-)
-from goe.offload.operation.table_structure_checks import check_table_structure
-from goe.offload.operation.transport import (
-    offload_data_to_target,
-)
+from goe.offload.factory.offload_transport_factory import offload_transport_factory
 from goe.offload.offload import (
     active_data_append_options,
     create_ddl_file_step,
@@ -102,10 +66,41 @@ from goe.offload.offload import (
     get_current_offload_hv,
     get_offload_data_manager,
     get_prior_offloaded_hv,
+    normalise_less_than_options,
     offload_backend_db_message,
     offload_type_force_effects,
-    normalise_less_than_options,
 )
+from goe.offload.offload_functions import convert_backend_identifier_case, data_db_name
+from goe.offload.offload_messages import (
+    VERBOSE,
+    VVERBOSE,
+    OffloadMessages,
+)
+from goe.offload.offload_metadata_functions import gen_and_save_offload_metadata
+from goe.offload.offload_source_data import (
+    OFFLOAD_SOURCE_CLIENT_OFFLOAD,
+    get_offload_type_for_config,
+)
+from goe.offload.offload_source_table import (
+    OFFLOAD_PARTITION_TYPE_LIST,
+    OFFLOAD_PARTITION_TYPE_RANGE,
+    OffloadSourceTableInterface,
+)
+from goe.offload.offload_transport import (
+    choose_offload_transport_method,
+    validate_offload_transport_method,
+)
+from goe.offload.offload_validation import (
+    BackendCountValidator,
+    CrossDbValidator,
+    build_verification_clauses,
+)
+from goe.offload.operation.data_type_controls import (
+    DECIMAL_COL_TYPE_SYNTAX_TEMPLATE,
+    canonical_columns_from_columns_csv,
+    offload_source_to_canonical_mappings,
+)
+from goe.offload.operation.ddl_file import normalise_ddl_file
 from goe.offload.operation.partition_controls import (
     derive_partition_digits,
     offload_options_to_partition_info,
@@ -113,30 +108,33 @@ from goe.offload.operation.partition_controls import (
     validate_offload_partition_functions,
     validate_offload_partition_granularity,
 )
+from goe.offload.operation.sort_columns import sort_columns_csv_to_sort_columns
+from goe.offload.operation.table_structure_checks import check_table_structure
+from goe.offload.operation.transport import (
+    offload_data_to_target,
+)
 from goe.offload.option_validation import (
-    check_opt_is_posint,
     check_ipa_predicate_type_option_conflicts,
+    check_opt_is_posint,
     normalise_data_sampling_options,
     normalise_offload_predicate_options,
     normalise_stats_options,
     normalise_verify_options,
 )
-from goe.offload.operation.sort_columns import sort_columns_csv_to_sort_columns
 from goe.orchestration import command_steps
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
 from goe.persistence.orchestration_metadata import (
-    OrchestrationMetadata,
-    INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE_AND_PREDICATE,
+    INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE,
+    OrchestrationMetadata,
 )
-
 from goe.util.goe_log_fh import GOELogFileHandle
 from goe.util.misc_functions import (
     all_int_chars,
@@ -159,16 +157,10 @@ OFFLOAD_PATTERN_100_0, OFFLOAD_PATTERN_90_10, OFFLOAD_PATTERN_100_10 = list(rang
 OFFLOAD_OP_NAME = "offload"
 
 # Used in test to identify specific warnings
-HYBRID_SCHEMA_STEPS_DUE_TO_HWM_CHANGE_MESSAGE_TEXT = (
-    "Including post transport steps due to HWM change"
-)
-NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE = (
-    "NLS_LANG value %s missing character set delimiter (.)"
-)
+HYBRID_SCHEMA_STEPS_DUE_TO_HWM_CHANGE_MESSAGE_TEXT = "Including post transport steps due to HWM change"
+NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE = "NLS_LANG value %s missing character set delimiter (.)"
 OFFLOAD_STATS_COPY_EXCEPTION_TEXT = "Invalid --offload-stats value"
-RETAINING_PARTITITON_FUNCTIONS_MESSAGE_TEXT = (
-    "Retaining partition functions from backend target"
-)
+RETAINING_PARTITITON_FUNCTIONS_MESSAGE_TEXT = "Retaining partition functions from backend target"
 
 # Config that you might expect to be different from one offload to the next
 EXPECTED_OFFLOAD_ARGS = [
@@ -274,8 +266,7 @@ def ansi(line, ansi_code):
 
 
 def serialize_object(obj) -> str:
-    """
-    Encodes json with the optimized ORJSON package
+    """Encodes json with the optimized ORJSON package
 
     orjson.dumps returns bytearray, so you can't pass it directly as json_serializer
     """
@@ -298,12 +289,7 @@ def log(line, detail=normal, ansi_code=None, redis_publish=True):
         sys.stdout.write((line or "") + "\n")
         sys.stdout.flush()
 
-    if (
-        redis_publish
-        and orchestration_defaults.cache_enabled()
-        and not redis_in_error
-        and redis_execution_id
-    ):
+    if redis_publish and orchestration_defaults.cache_enabled() and not redis_in_error and redis_execution_id:
         try:
             cache = RedisClient.connect()
             msg = {
@@ -315,7 +301,7 @@ def log(line, detail=normal, ansi_code=None, redis_publish=True):
                 ttl=timedelta(hours=48),
             )
         except Exception as exc:
-            fh_log("Disabling Redis integration due to: {}".format(str(exc)))
+            fh_log(f"Disabling Redis integration due to: {exc!s}")
             redis_in_error = True
 
     if not log_fh:
@@ -327,9 +313,7 @@ def log(line, detail=normal, ansi_code=None, redis_publish=True):
     elif options.quiet:
         stdout_log(".")
     elif (
-        detail == normal
-        or (detail <= verbose and options.verbose)
-        or (detail <= vverbose and options.vverbose)
+        detail == normal or (detail <= verbose and options.verbose) or (detail <= vverbose and options.vverbose)
     ) and not suppress_stdout_override:
         line = ansi(line, ansi_code)
         stdout_log(line)
@@ -379,7 +363,7 @@ FROM  (
       )
 """
         return ora_single_item_query(opts, sql)
-    elif opts.db_type == offload_constants.DBTYPE_MSSQL:
+    if opts.db_type == offload_constants.DBTYPE_MSSQL:
         try:
             return opts.rdbms_dsn.split("=")[1]
         except Exception:
@@ -400,7 +384,7 @@ FROM  (
       )
 """
         return ora_single_item_query(opts, sql, ora_conn)
-    elif opts.db_type == offload_constants.DBTYPE_MSSQL:
+    if opts.db_type == offload_constants.DBTYPE_MSSQL:
         try:
             return opts.rdbms_dsn.split("=")[1]
         except:
@@ -435,16 +419,11 @@ def check_and_set_nls_lang(opts, messages=None):
             set_nls_lang_default(opts)
             if messages:
                 messages.warning(
-                    'NLS_LANG not specified in environment, setting to "%s"'
-                    % os.environ["NLS_LANG"],
+                    'NLS_LANG not specified in environment, setting to "%s"' % os.environ["NLS_LANG"],
                     ansi_code="red",
                 )
-        else:
-            if not nls_lang_has_charset():
-                raise OffloadException(
-                    NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE
-                    % os.environ["NLS_LANG"]
-                )
+        elif not nls_lang_has_charset():
+            raise OffloadException(NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE % os.environ["NLS_LANG"])
 
 
 def silent_close(something_that_closes):
@@ -468,9 +447,7 @@ def get_offload_type(
     """Wrapper for get_offload_type_for_config that caters for speculative retrievals of offload_type
     Used when deciding whether to auto-enable subpartition offloads
     """
-    ipa_options_specified = active_data_append_options(
-        hybrid_operation, partition_type=partition_type
-    )
+    ipa_options_specified = active_data_append_options(hybrid_operation, partition_type=partition_type)
     messages.debug("ipa_options_specified: %s" % str(ipa_options_specified))
     offload_type, _ = get_offload_type_for_config(
         owner,
@@ -516,25 +493,14 @@ def oracle_offload_transport_connection(config_options):
     )
 
 
-def incremental_offload_partition_overrides(
-    offload_operation, existing_part_digits, messages
-):
-    if (
-        existing_part_digits
-        and existing_part_digits != offload_operation.synthetic_partition_digits
-    ):
+def incremental_offload_partition_overrides(offload_operation, existing_part_digits, messages):
+    if existing_part_digits and existing_part_digits != offload_operation.synthetic_partition_digits:
         offload_operation.synthetic_partition_digits = existing_part_digits
-        messages.notice(
-            "Retaining partition digits from backend target (ignoring --partition-digits)"
-        )
+        messages.notice("Retaining partition digits from backend target (ignoring --partition-digits)")
     if offload_operation.offload_partition_columns:
-        messages.notice(
-            "Retaining partition column scheme from backend target (ignoring --partition-columns)"
-        )
+        messages.notice("Retaining partition column scheme from backend target (ignoring --partition-columns)")
     if offload_operation.offload_partition_functions:
-        messages.notice(
-            f"{RETAINING_PARTITITON_FUNCTIONS_MESSAGE_TEXT} (ignoring --partition-functions)"
-        )
+        messages.notice(f"{RETAINING_PARTITITON_FUNCTIONS_MESSAGE_TEXT} (ignoring --partition-functions)")
 
 
 def verify_offload_by_backend_count(
@@ -559,8 +525,7 @@ def verify_offload_by_backend_count(
         dry_run=bool(not offload_operation.execute),
     )
     bind_predicates = bool(
-        ipa_predicate_type
-        in [INCREMENTAL_PREDICATE_TYPE_RANGE, INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE]
+        ipa_predicate_type in [INCREMENTAL_PREDICATE_TYPE_RANGE, INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE]
     )
     frontend_filters, query_binds = build_verification_clauses(
         offload_source_table,
@@ -619,8 +584,7 @@ def verify_row_count_by_aggs(
     )
 
     bind_predicates = bool(
-        ipa_predicate_type
-        in [INCREMENTAL_PREDICATE_TYPE_RANGE, INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE]
+        ipa_predicate_type in [INCREMENTAL_PREDICATE_TYPE_RANGE, INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE]
     )
     frontend_filters, query_binds = build_verification_clauses(
         offload_source_table,
@@ -666,9 +630,7 @@ def offload_data_verification(
     prior_hvs = None
     if source_data_client.is_partition_append_capable():
         # Let's add query boundary conditions
-        offloading_open_ended_partition = (
-            source_data_client.offloading_open_ended_partition()
-        )
+        offloading_open_ended_partition = source_data_client.offloading_open_ended_partition()
         if source_data_client.get_partition_append_predicate_type() in [
             INCREMENTAL_PREDICATE_TYPE_RANGE,
             INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
@@ -690,9 +652,7 @@ def offload_data_verification(
                 detail=VVERBOSE,
             )
         else:
-            new_hv_tuple = get_current_offload_hv(
-                offload_source_table, source_data_client, offload_operation, messages
-            )
+            new_hv_tuple = get_current_offload_hv(offload_source_table, source_data_client, offload_operation, messages)
             if new_hv_tuple:
                 new_hvs = new_hv_tuple[1]
 
@@ -753,9 +713,7 @@ def offload_data_verification(
             raise OffloadException("Source and target mismatch")
 
 
-def normalise_column_transformations(
-    column_transformation_list, offload_cols=None, backend_cols=None
-):
+def normalise_column_transformations(column_transformation_list, offload_cols=None, backend_cols=None):
     # custom_transformations = {transformation: num_params}
     custom_transformations = {
         "encrypt": 0,
@@ -774,8 +732,7 @@ def normalise_column_transformations(
     if isinstance(column_transformation_list, dict):
         # when called on metadata we will be working from a dict
         column_transformation_list = [
-            "%s:%s" % (col, column_transformation_list[col])
-            for col in column_transformation_list
+            "%s:%s" % (col, column_transformation_list[col]) for col in column_transformation_list
         ]
 
     for ct in column_transformation_list:
@@ -790,10 +747,8 @@ def normalise_column_transformations(
         transformation = m.group(2).lower()
         param_str = m.group(3)
 
-        if not transformation.lower() in custom_transformations:
-            raise OffloadOptionError(
-                "Unknown transformation for column %s: %s" % (cname, transformation)
-            )
+        if transformation.lower() not in custom_transformations:
+            raise OffloadOptionError("Unknown transformation for column %s: %s" % (cname, transformation))
 
         if offload_cols:
             match_col = match_table_column(cname, offload_cols)
@@ -803,13 +758,9 @@ def normalise_column_transformations(
         if not match_col:
             raise OffloadOptionError("Unknown column in transformation: %s" % cname)
 
-        if (
-            transformation in ["translate", "regexp_replace"]
-            and not match_col.is_string_based()
-        ):
+        if transformation in ["translate", "regexp_replace"] and not match_col.is_string_based():
             raise OffloadOptionError(
-                'Transformation "%s" not valid for %s column'
-                % (transformation, match_col.data_type.upper())
+                'Transformation "%s" not valid for %s column' % (transformation, match_col.data_type.upper())
             )
 
         trans_params = []
@@ -819,14 +770,9 @@ def normalise_column_transformations(
             trans_params = csv_split(param_str)
 
         if custom_transformations[transformation] != len(trans_params):
-            raise OffloadOptionError(
-                'Malformed transformation parameters "%s" for column "%s"'
-                % (param_str, cname)
-            )
+            raise OffloadOptionError('Malformed transformation parameters "%s" for column "%s"' % (param_str, cname))
 
-        column_transformations.update(
-            {cname: {"transformation": transformation, "params": trans_params}}
-        )
+        column_transformations.update({cname: {"transformation": transformation, "params": trans_params}})
 
     return column_transformations
 
@@ -837,9 +783,7 @@ def bool_option_from_string(opt_name, opt_val):
 
 def normalise_owner_table_options(options):
     if not options.owner_table or len(options.owner_table.split(".")) != 2:
-        raise OffloadOptionError(
-            "Option -t or --table required in form SCHEMA.TABLENAME"
-        )
+        raise OffloadOptionError("Option -t or --table required in form SCHEMA.TABLENAME")
 
     options.owner, options.table_name = options.owner_table.split(".")
 
@@ -851,9 +795,7 @@ def normalise_owner_table_options(options):
         options.base_owner_name = options.owner_table
 
     if len(options.target_owner_name.split(".")) != 2:
-        raise OffloadOptionError(
-            "Option --target-name required in form SCHEMA.TABLENAME"
-        )
+        raise OffloadOptionError("Option --target-name required in form SCHEMA.TABLENAME")
 
     options.target_owner, options.target_name = options.target_owner_name.split(".")
     options.base_owner, options.base_name = options.base_owner_name.upper().split(".")
@@ -895,9 +837,7 @@ def normalise_insert_select_options(opts):
     if opts.impala_insert_hint:
         opts.impala_insert_hint = opts.impala_insert_hint.upper()
         if opts.impala_insert_hint not in [IMPALA_SHUFFLE_HINT, IMPALA_NOSHUFFLE_HINT]:
-            raise OffloadOptionError(
-                "Invalid value for --impala-insert-hint: %s" % opts.impala_insert_hint
-            )
+            raise OffloadOptionError("Invalid value for --impala-insert-hint: %s" % opts.impala_insert_hint)
 
     if opts.offload_chunk_column:
         opts.offload_chunk_column = opts.offload_chunk_column.upper()
@@ -954,18 +894,14 @@ def normalise_offload_transport_user_options(options):
 
     if hasattr(options, "offload_transport_validation_polling_interval"):
         if isinstance(options.offload_transport_validation_polling_interval, str) and (
-            re.search(
-                r"^[\d\.]+$", options.offload_transport_validation_polling_interval
-            )
+            re.search(r"^[\d\.]+$", options.offload_transport_validation_polling_interval)
             or options.offload_transport_validation_polling_interval
             == str(offload_constants.OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED)
         ):
             options.offload_transport_validation_polling_interval = float(
                 options.offload_transport_validation_polling_interval
             )
-        elif not isinstance(
-            options.offload_transport_validation_polling_interval, (int, float)
-        ):
+        elif not isinstance(options.offload_transport_validation_polling_interval, (int, float)):
             raise OffloadOptionError(
                 'Invalid value "%s" for --offload-transport-validation-polling-interval'
                 % options.offload_transport_validation_polling_interval
@@ -975,13 +911,7 @@ def normalise_offload_transport_user_options(options):
 
 
 def valid_canonical_decimal_spec(prec, spec, max_decimal_precision, max_decimal_scale):
-    if (
-        prec < 1
-        or prec > max_decimal_precision
-        or spec < 0
-        or spec > max_decimal_scale
-        or spec > prec
-    ):
+    if prec < 1 or prec > max_decimal_precision or spec < 0 or spec > max_decimal_scale or spec > prec:
         return False
     return True
 
@@ -1009,9 +939,7 @@ def normalise_options(options, normalise_owner_table=True):
             offload_constants.LOG_LEVEL_DETAIL,
             offload_constants.LOG_LEVEL_DEBUG,
         ]:
-            raise OptionValueError(
-                "Invalid value for LOG_LEVEL: %s" % options.log_level
-            )
+            raise OptionValueError("Invalid value for LOG_LEVEL: %s" % options.log_level)
 
     if options.reset_backend_table and options.reuse_backend_table:
         raise OptionValueError(
@@ -1048,9 +976,7 @@ def normalise_options(options, normalise_owner_table=True):
 
     normalise_less_than_options(options, exc_cls=OffloadOptionError)
 
-    options.offload_type = option_is_in_list(
-        options, "offload_type", "--offload-type", ["FULL", "INCREMENTAL"]
-    )
+    options.offload_type = option_is_in_list(options, "offload_type", "--offload-type", ["FULL", "INCREMENTAL"])
     options.ipa_predicate_type = option_is_in_list(
         options,
         "ipa_predicate_type",
@@ -1079,9 +1005,7 @@ def normalise_options(options, normalise_owner_table=True):
             % options.ipa_predicate_type
         )
 
-    options.skip = (
-        options.skip if type(options.skip) is list else options.skip.lower().split(",")
-    )
+    options.skip = options.skip if type(options.skip) is list else options.skip.lower().split(",")
 
     if options.offload_partition_lower_value and not all_int_chars(
         options.offload_partition_lower_value, allow_negative=True
@@ -1111,33 +1035,25 @@ def verify_json_option(option_name, option_value):
         try:
             properties = json.loads(option_value)
 
-            invalid_props = [
-                k for k, v in properties.items() if type(v) not in (str, int, float)
-            ]
+            invalid_props = [k for k, v in properties.items() if type(v) not in (str, int, float)]
             if invalid_props:
                 [
                     log(
-                        "Invalid property value for key/value pair: %s: %s"
-                        % (k, properties[k]),
+                        "Invalid property value for key/value pair: %s: %s" % (k, properties[k]),
                         detail=vverbose,
                     )
                     for k in invalid_props
                 ]
                 raise OffloadOptionError(
-                    "Invalid property value in %s for keys: %s"
-                    % (option_name, str(invalid_props))
+                    "Invalid property value in %s for keys: %s" % (option_name, str(invalid_props))
                 )
         except ValueError as ve:
             log(traceback.format_exc(), vverbose)
-            raise OffloadOptionError(
-                "Invalid JSON value for %s: %s" % (option_name, str(ve))
-            )
+            raise OffloadOptionError("Invalid JSON value for %s: %s" % (option_name, str(ve)))
 
 
 def version():
-    with open(
-        os.path.join(os.environ.get("OFFLOAD_HOME"), "version_build")
-    ) as version_file:
+    with open(os.path.join(os.environ.get("OFFLOAD_HOME"), "version_build")) as version_file:
         return version_file.read().strip()
 
 
@@ -1151,8 +1067,7 @@ def version_abort(check_version, frontend_api):
     match, v_goe, v_ora = comp_ver_check(frontend_api)
     if check_version and not match and ".dev" not in v_goe:
         return True, v_goe, v_ora
-    else:
-        return False, v_goe, v_ora
+    return False, v_goe, v_ora
 
 
 def strict_version_ready(version_string):
@@ -1182,7 +1097,7 @@ def init_log(log_name):
             "format": "%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         }
-        if "FILE" == options.dev_log.upper():
+        if options.dev_log.upper() == "FILE":
             dev_log_name = os.path.join(options.log_path, "dev_%s" % current_log_name)
             logging_params["filename"] = dev_log_name
         logging.basicConfig(**logging_params)
@@ -1202,7 +1117,7 @@ def init(options_i):
         sys.exit(0)
 
 
-def init_redis_execution_id(execution_id: Union[str, ExecutionId]):
+def init_redis_execution_id(execution_id: str | ExecutionId):
     global redis_execution_id
     redis_execution_id = str(execution_id)
 
@@ -1211,32 +1126,26 @@ def get_default_location_fs_scheme(offload_target_table):
     """Return the fs scheme (e.g. hdfs or s3a) from the tables default location"""
     if offload_target_table.get_default_location():
         return get_scheme_from_location_uri(offload_target_table.get_default_location())
-    else:
-        return None
+    return None
 
 
 def normalise_storage_options(options, backend_api):
-    options.storage_format = (
-        options.storage_format or backend_api.default_storage_format()
-    )
+    options.storage_format = options.storage_format or backend_api.default_storage_format()
     if not backend_api.is_valid_storage_format(options.storage_format):
         raise OffloadException(
-            "--storage-format value is not valid with %s: %s"
-            % (backend_api.backend_db_name(), options.storage_format)
+            "--storage-format value is not valid with %s: %s" % (backend_api.backend_db_name(), options.storage_format)
         )
     options.storage_compression = backend_api.default_storage_compression(
         options.storage_compression, options.storage_format
     )
-    if not backend_api.is_valid_storage_compression(
-        options.storage_compression, options.storage_format
-    ):
+    if not backend_api.is_valid_storage_compression(options.storage_compression, options.storage_format):
         raise OffloadException(
             "--storage-format value is not valid with %s: %s"
             % (backend_api.backend_db_name(), options.storage_compression)
         )
 
 
-class BaseOperation(object):
+class BaseOperation:
     """Over time OffloadOperation and PresentOperation are converging. Too risky at the moment
     to completely merge them, using this base class to centralise some code.
     """
@@ -1265,11 +1174,8 @@ class BaseOperation(object):
         self.goe_version = strict_version_ready(version())
         self._existing_metadata = None
 
-        self.offload_stats_method = (
-            self.offload_stats_method
-            or orchestration_defaults.offload_stats_method_default(
-                operation_name=operation_name
-            )
+        self.offload_stats_method = self.offload_stats_method or orchestration_defaults.offload_stats_method_default(
+            operation_name=operation_name
         )
         if self.offload_stats_method:
             self.offload_stats_method = self.offload_stats_method.upper()
@@ -1283,12 +1189,8 @@ class BaseOperation(object):
             do_not_connect=True,
         )
 
-        if (
-            self.offload_stats_method == offload_constants.OFFLOAD_STATS_METHOD_COPY
-            and not (
-                backend_api.table_stats_get_supported()
-                and backend_api.table_stats_set_supported()
-            )
+        if self.offload_stats_method == offload_constants.OFFLOAD_STATS_METHOD_COPY and not (
+            backend_api.table_stats_get_supported() and backend_api.table_stats_set_supported()
         ):
             raise OptionValueError(
                 "%s for %s backend: %s"
@@ -1299,13 +1201,8 @@ class BaseOperation(object):
                 )
             )
 
-        if (
-            self.offload_stats_method == offload_constants.OFFLOAD_STATS_METHOD_COPY
-            and self.offload_predicate
-        ):
-            messages.warning(
-                "Offload stats method COPY in incompatible with predicate-based offload"
-            )
+        if self.offload_stats_method == offload_constants.OFFLOAD_STATS_METHOD_COPY and self.offload_predicate:
+            messages.warning("Offload stats method COPY in incompatible with predicate-based offload")
             self.offload_stats_method = offload_constants.OFFLOAD_STATS_METHOD_NATIVE
 
         self._hash_distribution_threshold = config.hash_distribution_threshold
@@ -1317,17 +1214,13 @@ class BaseOperation(object):
             exc_cls=OptionValueError,
         )
 
-        self.max_offload_chunk_count = check_opt_is_posint(
-            "--max-offload-chunk-count", self.max_offload_chunk_count
-        )
+        self.max_offload_chunk_count = check_opt_is_posint("--max-offload-chunk-count", self.max_offload_chunk_count)
         if (self.max_offload_chunk_count < 1) or (self.max_offload_chunk_count > 1000):
             raise OptionValueError(
                 "Option MAX_OFFLOAD_CHUNK_COUNT/--max-offload-chunk-count must be between 1 and 1000"
             )
 
-        self.sort_columns_csv = (
-            self.sort_columns_csv.upper() if self.sort_columns_csv else None
-        )
+        self.sort_columns_csv = self.sort_columns_csv.upper() if self.sort_columns_csv else None
         self.sort_columns = None
 
         normalise_less_than_options(self)
@@ -1339,12 +1232,8 @@ class BaseOperation(object):
         if repo_client:
             self._repo_client = repo_client
 
-        self.partition_names_csv = (
-            self.partition_names_csv.upper() if self.partition_names_csv else None
-        )
-        self.partition_names = (
-            self.partition_names_csv.split(",") if self.partition_names_csv else []
-        )
+        self.partition_names_csv = self.partition_names_csv.upper() if self.partition_names_csv else None
+        self.partition_names = self.partition_names_csv.split(",") if self.partition_names_csv else []
 
     ###########################################################################
     # PRIVATE METHODS
@@ -1416,23 +1305,17 @@ class BaseOperation(object):
                 )
             )
         if self.decimal_columns_csv_list:
-            assert type(self.decimal_columns_csv_list) is list, "%s is not list" % type(
-                self.decimal_columns_csv_list
-            )
-            assert (
-                type(self.decimal_columns_type_list) is list
-            ), "%s is not list" % type(self.decimal_columns_type_list)
-            if not self.decimal_columns_type_list or len(
-                self.decimal_columns_csv_list
-            ) != len(self.decimal_columns_type_list):
+            assert type(self.decimal_columns_csv_list) is list, "%s is not list" % type(self.decimal_columns_csv_list)
+            assert type(self.decimal_columns_type_list) is list, "%s is not list" % type(self.decimal_columns_type_list)
+            if not self.decimal_columns_type_list or len(self.decimal_columns_csv_list) != len(
+                self.decimal_columns_type_list
+            ):
                 log(
-                    "--decimal-columns unbalanced list: %s"
-                    % str(self.decimal_columns_csv_list),
+                    "--decimal-columns unbalanced list: %s" % str(self.decimal_columns_csv_list),
                     detail=vverbose,
                 )
                 log(
-                    "--decimal-columns-type unbalanced list: %s"
-                    % str(self.decimal_columns_type_list),
+                    "--decimal-columns-type unbalanced list: %s" % str(self.decimal_columns_type_list),
                     detail=vverbose,
                 )
                 raise OffloadException(
@@ -1442,27 +1325,17 @@ class BaseOperation(object):
                         len(self.decimal_columns_type_list or []),
                     )
                 )
-            for col_csv, spec_csv in zip(
-                self.decimal_columns_csv_list, self.decimal_columns_type_list
-            ):
-                if len(spec_csv.split(",")) != 2 or not re.match(
-                    r"^([1-9][0-9]?)\s*,\s*([0-9][0-9]?)$", spec_csv
-                ):
+            for col_csv, spec_csv in zip(self.decimal_columns_csv_list, self.decimal_columns_type_list):
+                if len(spec_csv.split(",")) != 2 or not re.match(r"^([1-9][0-9]?)\s*,\s*([0-9][0-9]?)$", spec_csv):
                     raise OffloadException(
                         "--decimal-columns-type "
-                        + DECIMAL_COL_TYPE_SYNTAX_TEMPLATE.format(
-                            p=max_decimal_precision, s=max_decimal_scale
-                        )
+                        + DECIMAL_COL_TYPE_SYNTAX_TEMPLATE.format(p=max_decimal_precision, s=max_decimal_scale)
                     )
                 spec = [int(num) for num in spec_csv.split(",")]
-                if not valid_canonical_decimal_spec(
-                    spec[0], spec[1], max_decimal_precision, max_decimal_scale
-                ):
+                if not valid_canonical_decimal_spec(spec[0], spec[1], max_decimal_precision, max_decimal_scale):
                     raise OffloadException(
                         "--decimal-columns-type "
-                        + DECIMAL_COL_TYPE_SYNTAX_TEMPLATE.format(
-                            p=max_decimal_precision, s=max_decimal_scale
-                        )
+                        + DECIMAL_COL_TYPE_SYNTAX_TEMPLATE.format(p=max_decimal_precision, s=max_decimal_scale)
                     )
                 if spec[0] > backend_table.max_decimal_precision():
                     raise OffloadException(
@@ -1530,12 +1403,8 @@ class BaseOperation(object):
     def override_bucket_hash_col(self, new_bucket_hash_col, messages):
         """Pass messages as None to suppress any warnings/notices"""
         upper_or_none = lambda x: x.upper() if x else x
-        if self.bucket_hash_col and upper_or_none(new_bucket_hash_col) != upper_or_none(
-            self.bucket_hash_col
-        ):
-            messages.notice(
-                "Retaining bucket hash column from original offload (ignoring --bucket-hash-column)"
-            )
+        if self.bucket_hash_col and upper_or_none(new_bucket_hash_col) != upper_or_none(self.bucket_hash_col):
+            messages.notice("Retaining bucket hash column from original offload (ignoring --bucket-hash-column)")
         self.bucket_hash_col = upper_or_none(new_bucket_hash_col)
 
     def validate_bucket_hash_col(
@@ -1551,24 +1420,16 @@ class BaseOperation(object):
 
         if self.bucket_hash_col and self.bucket_hash_col.upper() not in column_names:
             raise OffloadException(
-                "Column specified for --bucket-hash-column does not exist: %s"
-                % self.bucket_hash_col.upper()
+                "Column specified for --bucket-hash-column does not exist: %s" % self.bucket_hash_col.upper()
             )
 
         if not self.bucket_hash_col:
             if rdbms_table:
                 size = (
-                    rdbms_table.get_max_partition_size()
-                    if rdbms_table.is_partitioned()
-                    else rdbms_table.size_in_bytes
+                    rdbms_table.get_max_partition_size() if rdbms_table.is_partitioned() else rdbms_table.size_in_bytes
                 )
-                if (
-                    bucket_hash_column_supported
-                    and (size or 0) >= self._hash_distribution_threshold
-                ):
-                    self.bucket_hash_col = self.default_bucket_hash_col(
-                        rdbms_table, messages
-                    )
+                if bucket_hash_column_supported and (size or 0) >= self._hash_distribution_threshold:
+                    self.bucket_hash_col = self.default_bucket_hash_col(rdbms_table, messages)
                     if not self.bucket_hash_col:
                         raise OffloadException(
                             "Unable to select a default bucket hash column, table cannot be offloaded"
@@ -1585,9 +1446,7 @@ class BaseOperation(object):
                 self.owner, self.table_name, client=self.repo_client
             )
         elif force:
-            return OrchestrationMetadata.from_name(
-                self.owner, self.table_name, client=self.repo_client
-            )
+            return OrchestrationMetadata.from_name(self.owner, self.table_name, client=self.repo_client)
         return self._existing_metadata
 
     def reset_hybrid_metadata(self, new_metadata):
@@ -1605,31 +1464,23 @@ class BaseOperation(object):
 
     def set_bucket_info_from_metadata(self, existing_metadata, messages):
         if existing_metadata:
-            self.override_bucket_hash_col(
-                existing_metadata.offload_bucket_column, messages
-            )
+            self.override_bucket_hash_col(existing_metadata.offload_bucket_column, messages)
         else:
             self.bucket_hash_col = None
 
     def set_offload_partition_functions_from_metadata(self, existing_metadata):
         if existing_metadata and existing_metadata.offload_partition_functions:
-            self.offload_partition_functions = csv_split(
-                existing_metadata.offload_partition_functions
-            )
+            self.offload_partition_functions = csv_split(existing_metadata.offload_partition_functions)
         else:
             self.offload_partition_functions = None
 
     def set_offload_partition_functions(self, offload_partition_functions_override):
         if isinstance(offload_partition_functions_override, str):
-            self.offload_partition_functions = csv_split(
-                offload_partition_functions_override
-            )
+            self.offload_partition_functions = csv_split(offload_partition_functions_override)
         else:
             self.offload_partition_functions = offload_partition_functions_override
 
-    def defaults_for_fresh_offload(
-        self, offload_source_table, offload_options, messages, offload_target_table
-    ):
+    def defaults_for_fresh_offload(self, offload_source_table, offload_options, messages, offload_target_table):
         self.validate_partition_columns(
             offload_source_table.partition_columns,
             offload_source_table.columns,
@@ -1667,8 +1518,7 @@ class BaseOperation(object):
             if offload_target_table.has_rows():
                 # If the table has rows but no metadata then we need to abort.
                 raise OffloadException(
-                    offload_constants.MISSING_METADATA_EXCEPTION_TEMPLATE
-                    % (self.owner, self.table_name)
+                    offload_constants.MISSING_METADATA_EXCEPTION_TEMPLATE % (self.owner, self.table_name)
                 )
             # If the table is empty then we allow the offload to continue.
             messages.log(
@@ -1680,25 +1530,16 @@ class BaseOperation(object):
         self.set_bucket_info_from_metadata(existing_metadata, messages)
 
         if not self.offload_predicate or (
-            self.offload_predicate
-            and self.ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST
+            self.offload_predicate and self.ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST
         ):
             # Only with --offload-predicate can we transition between INCREMENTAL_PREDICATE_TYPEs
-            if (
-                self.ipa_predicate_type
-                and self.ipa_predicate_type
-                != existing_metadata.incremental_predicate_type
-            ):
+            if self.ipa_predicate_type and self.ipa_predicate_type != existing_metadata.incremental_predicate_type:
                 # We are overwriting user input with value from metadata
-                raise OffloadException(
-                    offload_constants.IPA_PREDICATE_TYPE_CHANGE_EXCEPTION_TEXT
-                )
+                raise OffloadException(offload_constants.IPA_PREDICATE_TYPE_CHANGE_EXCEPTION_TEXT)
             self.ipa_predicate_type = existing_metadata.incremental_predicate_type
 
         self.pre_offload_hybrid_metadata = existing_metadata
-        self.offload_by_subpartition = bool(
-            existing_metadata and existing_metadata.is_subpartition_offload()
-        )
+        self.offload_by_subpartition = bool(existing_metadata and existing_metadata.is_subpartition_offload())
         self.set_offload_partition_functions_from_metadata(existing_metadata)
         return existing_metadata
 
@@ -1707,45 +1548,26 @@ class BaseOperation(object):
         set one without the other. We do some defaulting here, then subpartition work
         and finally validate ipa_predicate_type makes sense.
         """
-        if (
-            not self.ipa_predicate_type
-            and not self.offload_predicate
-            and not self.offload_by_subpartition
-        ):
-            rpa_opts_set = active_data_append_options(
-                self, partition_type=OFFLOAD_PARTITION_TYPE_RANGE
-            )
-            lpa_opts_set = active_data_append_options(
-                self, partition_type=OFFLOAD_PARTITION_TYPE_LIST
-            )
-            if (
-                offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_LIST
-                and lpa_opts_set
-            ):
+        if not self.ipa_predicate_type and not self.offload_predicate and not self.offload_by_subpartition:
+            rpa_opts_set = active_data_append_options(self, partition_type=OFFLOAD_PARTITION_TYPE_RANGE)
+            lpa_opts_set = active_data_append_options(self, partition_type=OFFLOAD_PARTITION_TYPE_LIST)
+            if offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_LIST and lpa_opts_set:
                 self.ipa_predicate_type = INCREMENTAL_PREDICATE_TYPE_LIST
                 messages.log(
                     "Defaulting INCREMENTAL_PREDICATE_TYPE=%s due to options: %s"
                     % (self.ipa_predicate_type, lpa_opts_set),
                     detail=VVERBOSE,
                 )
-            elif (
-                offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_LIST
-                and rpa_opts_set
-            ):
-                unsupported_range_types = (
-                    offload_source_table.unsupported_partition_data_types(
-                        partition_type_override=OFFLOAD_PARTITION_TYPE_RANGE
-                    )
+            elif offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_LIST and rpa_opts_set:
+                unsupported_range_types = offload_source_table.unsupported_partition_data_types(
+                    partition_type_override=OFFLOAD_PARTITION_TYPE_RANGE
                 )
                 if unsupported_range_types:
                     messages.debug(
                         "default_ipa_predicate_type for LIST has unsupported_range_types: %s"
                         % str(unsupported_range_types)
                     )
-                if (
-                    not unsupported_range_types
-                    or not offload_source_table.offload_by_subpartition_capable()
-                ):
+                if not unsupported_range_types or not offload_source_table.offload_by_subpartition_capable():
                     self.ipa_predicate_type = INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE
                     messages.log(
                         "Defaulting INCREMENTAL_PREDICATE_TYPE=%s due to options: %s"
@@ -1753,13 +1575,8 @@ class BaseOperation(object):
                         detail=VVERBOSE,
                     )
                     # No subpartition complications so use check_ipa_predicate_type_option_conflicts to throw exception
-                    check_ipa_predicate_type_option_conflicts(
-                        self, rdbms_table=offload_source_table
-                    )
-            elif (
-                offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_RANGE
-                and rpa_opts_set
-            ):
+                    check_ipa_predicate_type_option_conflicts(self, rdbms_table=offload_source_table)
+            elif offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_RANGE and rpa_opts_set:
                 self.ipa_predicate_type = INCREMENTAL_PREDICATE_TYPE_RANGE
                 messages.log(
                     "Defaulting INCREMENTAL_PREDICATE_TYPE=%s due to options: %s"
@@ -1813,19 +1630,15 @@ class BaseOperation(object):
 
         if self.offload_partition_columns:
             messages.notice(
-                "Partitioning backend table by: %s"
-                % ",".join(self.offload_partition_columns),
+                "Partitioning backend table by: %s" % ",".join(self.offload_partition_columns),
                 detail=VERBOSE,
             )
             messages.log(
-                "Partition granularities: %s"
-                % ",".join(self.offload_partition_granularity),
+                "Partition granularities: %s" % ",".join(self.offload_partition_granularity),
                 detail=VVERBOSE,
             )
 
-    def set_partition_info_on_canonical_columns(
-        self, canonical_columns, rdbms_columns, backend_table
-    ):
+    def set_partition_info_on_canonical_columns(self, canonical_columns, rdbms_columns, backend_table):
         def get_partition_info(rdbms_column):
             return offload_options_to_partition_info(
                 self.offload_partition_columns,
@@ -1864,8 +1677,7 @@ class BaseOperation(object):
         ]
         if (
             self.ipa_predicate_type != INCREMENTAL_PREDICATE_TYPE_PREDICATE
-            and (offload_source_table.partition_type, self.ipa_predicate_type)
-            not in valid_combinations
+            and (offload_source_table.partition_type, self.ipa_predicate_type) not in valid_combinations
         ):
             raise OffloadException(
                 "%s: %s/%s"
@@ -1876,14 +1688,11 @@ class BaseOperation(object):
                 )
             )
 
-        check_ipa_predicate_type_option_conflicts(
-            self, rdbms_table=offload_source_table
-        )
+        check_ipa_predicate_type_option_conflicts(self, rdbms_table=offload_source_table)
 
         if (
             self.pre_offload_hybrid_metadata
-            and self.pre_offload_hybrid_metadata.incremental_predicate_type
-            != self.ipa_predicate_type
+            and self.pre_offload_hybrid_metadata.incremental_predicate_type != self.ipa_predicate_type
         ):
             # This is an incremental append offload with a modified user requested predicate type.
             # We can validate the user requested transition is valid, valid_combinations in list of pairs below:
@@ -1936,9 +1745,7 @@ class BaseOperation(object):
                 )
             )
 
-    def validate_offload_by_subpartition(
-        self, offload_source_table, messages, hybrid_metadata
-    ):
+    def validate_offload_by_subpartition(self, offload_source_table, messages, hybrid_metadata):
         """Method to be used for an offload to auto switch on offload_by_subpartition if sensible
         or validate correct use of --offload-by-subpartition when manually enabled.
         For IPA offloads we pickup the value from metadata and ignore user input.
@@ -1946,9 +1753,7 @@ class BaseOperation(object):
         allow_auto_enable = True
         if hybrid_metadata:
             allow_auto_enable = False
-            self.offload_by_subpartition = bool(
-                hybrid_metadata and hybrid_metadata.is_subpartition_offload()
-            )
+            self.offload_by_subpartition = bool(hybrid_metadata and hybrid_metadata.is_subpartition_offload())
             if self.offload_by_subpartition:
                 messages.log(
                     "Retaining --offload-by-subpartition from offloaded table",
@@ -1971,16 +1776,10 @@ class BaseOperation(object):
                     # If this is a fresh offload then we need to default ipa_predicate_type based on subpartition level
                     self.default_ipa_predicate_type(offload_source_table, messages)
             else:
-                messages.warning(
-                    "Ignoring --offload-by-subpartition because partition scheme is unsupported"
-                )
+                messages.warning("Ignoring --offload-by-subpartition because partition scheme is unsupported")
                 self.offload_by_subpartition = False
-        elif allow_auto_enable and offload_source_table.offload_by_subpartition_capable(
-            valid_for_auto_enable=True
-        ):
-            messages.debug(
-                "Auto enable of offload_by_subpartition is True, checking details..."
-            )
+        elif allow_auto_enable and offload_source_table.offload_by_subpartition_capable(valid_for_auto_enable=True):
+            messages.debug("Auto enable of offload_by_subpartition is True, checking details...")
             # the table is capable of supporting offload_by_subpartition, now we need to check the operation makes sense
             incr_append_capable = True
             offload_type = get_offload_type(
@@ -2008,8 +1807,7 @@ class BaseOperation(object):
                 self.ipa_predicate_type = None
             else:
                 messages.log(
-                    "Leaving --offload-by-subpartition=false due to OFFLOAD_TYPE: %s"
-                    % offload_type,
+                    "Leaving --offload-by-subpartition=false due to OFFLOAD_TYPE: %s" % offload_type,
                     detail=VVERBOSE,
                 )
 
@@ -2042,11 +1840,7 @@ class BaseOperation(object):
 
         try:
             if not backend_api.sorted_table_supported():
-                if (
-                    self.sort_columns_csv
-                    and self.sort_columns_csv
-                    != offload_constants.SORT_COLUMNS_NO_CHANGE
-                ):
+                if self.sort_columns_csv and self.sort_columns_csv != offload_constants.SORT_COLUMNS_NO_CHANGE:
                     # Only warn the user if they input a specific value
                     messages.warning(
                         "Ignoring --sort-columns in %s version %s"
@@ -2086,9 +1880,7 @@ class OffloadOperation(BaseOperation):
         **kwargs,
     ):
         unexpected_keys = [k for k in kwargs if k not in EXPECTED_OFFLOAD_ARGS]
-        assert not unexpected_keys, (
-            "Unexpected OffloadOperation keys: %s" % unexpected_keys
-        )
+        assert not unexpected_keys, "Unexpected OffloadOperation keys: %s" % unexpected_keys
         vars(self).update(kwargs)
 
         BaseOperation.__init__(
@@ -2130,10 +1922,7 @@ class OffloadOperation(BaseOperation):
 
         if len(source_table.get_primary_key_columns()) == 1:
             return_hash_col = source_table.get_primary_key_columns()[0]
-            messages.notice(
-                "Using primary key singleton %s as --bucket-hash-column"
-                % return_hash_col.upper()
-            )
+            messages.notice("Using primary key singleton %s as --bucket-hash-column" % return_hash_col.upper())
         elif source_table.stats_num_rows:
             return_hash_col = source_table.get_hash_bucket_candidate()
             if return_hash_col:
@@ -2291,9 +2080,7 @@ class OffloadOperation(BaseOperation):
         max_hybrid_name_length=None,
     ):
         unexpected_keys = [k for k in operation_dict if k not in EXPECTED_OFFLOAD_ARGS]
-        assert not unexpected_keys, (
-            "Unexpected OffloadOperation keys: %s" % unexpected_keys
-        )
+        assert not unexpected_keys, "Unexpected OffloadOperation keys: %s" % unexpected_keys
         return OffloadOperation(
             config,
             messages,
@@ -2329,9 +2116,7 @@ class OffloadOperation(BaseOperation):
                 "data_sample_parallelism",
                 orchestration_defaults.data_sample_parallelism_default(),
             ),
-            data_sample_pct=operation_dict.get(
-                "data_sample_pct", orchestration_defaults.data_sample_pct_default()
-            ),
+            data_sample_pct=operation_dict.get("data_sample_pct", orchestration_defaults.data_sample_pct_default()),
             date_columns_csv=operation_dict.get("date_columns_csv"),
             ddl_file=operation_dict.get("ddl_file"),
             decimal_columns_csv_list=operation_dict.get("decimal_columns_csv_list"),
@@ -2344,9 +2129,7 @@ class OffloadOperation(BaseOperation):
             equal_to_values=operation_dict.get("equal_to_values"),
             error_after_step=operation_dict.get("error_after_step"),
             error_before_step=operation_dict.get("error_before_step"),
-            execute=operation_dict.get(
-                "execute", orchestration_defaults.execute_default()
-            ),
+            execute=operation_dict.get("execute", orchestration_defaults.execute_default()),
             force=operation_dict.get("force", orchestration_defaults.force_default()),
             hive_column_stats=operation_dict.get(
                 "hive_column_stats", orchestration_defaults.hive_column_stats_default()
@@ -2379,23 +2162,13 @@ class OffloadOperation(BaseOperation):
             offload_fs_prefix=operation_dict.get("offload_fs_prefix"),
             offload_fs_scheme=operation_dict.get("offload_fs_scheme"),
             offload_partition_columns=operation_dict.get("offload_partition_columns"),
-            offload_partition_functions=operation_dict.get(
-                "offload_partition_functions"
-            ),
-            offload_partition_granularity=operation_dict.get(
-                "offload_partition_granularity"
-            ),
-            offload_partition_lower_value=operation_dict.get(
-                "offload_partition_lower_value"
-            ),
-            offload_partition_upper_value=operation_dict.get(
-                "offload_partition_upper_value"
-            ),
+            offload_partition_functions=operation_dict.get("offload_partition_functions"),
+            offload_partition_granularity=operation_dict.get("offload_partition_granularity"),
+            offload_partition_lower_value=operation_dict.get("offload_partition_lower_value"),
+            offload_partition_upper_value=operation_dict.get("offload_partition_upper_value"),
             offload_stats_method=operation_dict.get(
                 "offload_stats_method",
-                orchestration_defaults.offload_stats_method_default(
-                    operation_name=OFFLOAD_OP_NAME
-                ),
+                orchestration_defaults.offload_stats_method_default(operation_name=OFFLOAD_OP_NAME),
             ),
             offload_transport_consistent_read=operation_dict.get(
                 "offload_transport_consistent_read",
@@ -2408,12 +2181,8 @@ class OffloadOperation(BaseOperation):
                 "offload_transport_fetch_size",
                 orchestration_defaults.offload_transport_fetch_size_default(),
             ),
-            offload_transport_jvm_overrides=operation_dict.get(
-                "offload_transport_jvm_overrides"
-            ),
-            offload_transport_queue_name=operation_dict.get(
-                "offload_transport_queue_name"
-            ),
+            offload_transport_jvm_overrides=operation_dict.get("offload_transport_jvm_overrides"),
+            offload_transport_queue_name=operation_dict.get("offload_transport_queue_name"),
             offload_transport_parallelism=operation_dict.get(
                 "offload_transport_parallelism",
                 orchestration_defaults.offload_transport_parallelism_default(),
@@ -2454,29 +2223,19 @@ class OffloadOperation(BaseOperation):
             reset_hybrid_view=operation_dict.get("reset_hybrid_view", False),
             reuse_backend_table=operation_dict.get("reuse_backend_table", False),
             skip=operation_dict.get("skip", orchestration_defaults.skip_default()),
-            sort_columns_csv=operation_dict.get(
-                "sort_columns_csv", orchestration_defaults.sort_columns_default()
-            ),
+            sort_columns_csv=operation_dict.get("sort_columns_csv", orchestration_defaults.sort_columns_default()),
             sqoop_additional_options=operation_dict.get(
                 "sqoop_additional_options",
                 orchestration_defaults.sqoop_additional_options_default(),
             ),
-            sqoop_mapreduce_map_memory_mb=operation_dict.get(
-                "sqoop_mapreduce_map_memory_mb"
-            ),
-            sqoop_mapreduce_map_java_opts=operation_dict.get(
-                "sqoop_mapreduce_map_java_opts"
-            ),
-            storage_format=operation_dict.get(
-                "storage_format", orchestration_defaults.storage_format_default()
-            ),
+            sqoop_mapreduce_map_memory_mb=operation_dict.get("sqoop_mapreduce_map_memory_mb"),
+            sqoop_mapreduce_map_java_opts=operation_dict.get("sqoop_mapreduce_map_java_opts"),
+            storage_format=operation_dict.get("storage_format", orchestration_defaults.storage_format_default()),
             storage_compression=operation_dict.get(
                 "storage_compression",
                 orchestration_defaults.storage_compression_default(),
             ),
-            suppress_stdout=operation_dict.get(
-                "suppress_stdout", orchestration_defaults.suppress_stdout_default()
-            ),
+            suppress_stdout=operation_dict.get("suppress_stdout", orchestration_defaults.suppress_stdout_default()),
             synthetic_partition_digits=operation_dict.get(
                 "synthetic_partition_digits",
                 orchestration_defaults.synthetic_partition_digits_default(),
@@ -2484,32 +2243,22 @@ class OffloadOperation(BaseOperation):
             target_owner_name=operation_dict.get("target_owner_name"),
             timestamp_tz_columns_csv=operation_dict.get("timestamp_tz_columns_csv"),
             unicode_string_columns_csv=operation_dict.get("unicode_string_columns_csv"),
-            variable_string_columns_csv=operation_dict.get(
-                "variable_string_columns_csv"
-            ),
-            ver_check=operation_dict.get(
-                "ver_check", orchestration_defaults.ver_check_default()
-            ),
+            variable_string_columns_csv=operation_dict.get("variable_string_columns_csv"),
+            ver_check=operation_dict.get("ver_check", orchestration_defaults.ver_check_default()),
             verify_parallelism=operation_dict.get(
                 "verify_parallelism",
                 orchestration_defaults.verify_parallelism_default(),
             ),
-            verify_row_count=operation_dict.get(
-                "verify_row_count", orchestration_defaults.verify_row_count_default()
-            ),
+            verify_row_count=operation_dict.get("verify_row_count", orchestration_defaults.verify_row_count_default()),
         )
 
 
-def canonical_to_rdbms_mappings(
-    canonical_columns: list, rdbms_table: OffloadSourceTableInterface
-):
+def canonical_to_rdbms_mappings(canonical_columns: list, rdbms_table: OffloadSourceTableInterface):
     """Take intermediate canonical columns and translate them into RDBMS columns
     rdbms_table: An rdbms table object that offers from_canonical_column()
     """
     assert canonical_columns
-    assert valid_column_list(canonical_columns), invalid_column_list_message(
-        canonical_columns
-    )
+    assert valid_column_list(canonical_columns), invalid_column_list_message(canonical_columns)
     assert rdbms_table
     assert isinstance(rdbms_table, OffloadSourceTableInterface)
 
@@ -2538,16 +2287,12 @@ def offload_operation_logic(
     """
 
     if offload_operation.reset_backend_table and not offload_operation.force:
-        messages.log(
-            "Enabling force mode based on --reset-backend-table", detail=VVERBOSE
-        )
+        messages.log("Enabling force mode based on --reset-backend-table", detail=VVERBOSE)
         offload_operation.force = True
 
     # Cache some source data attributes in offload_operation to carry through rest of offload logic
     offload_operation.offload_type = source_data_client.get_offload_type()
-    offload_operation.hwm_in_hybrid_view = (
-        source_data_client.pred_for_90_10_in_hybrid_view()
-    )
+    offload_operation.hwm_in_hybrid_view = source_data_client.pred_for_90_10_in_hybrid_view()
     incr_append_capable = source_data_client.is_incremental_append_capable()
 
     if existing_metadata:
@@ -2586,20 +2331,14 @@ def offload_operation_logic(
         canonical_columns = offload_operation.set_partition_info_on_canonical_columns(
             canonical_columns, offload_source_table.columns, offload_target_table
         )
-        backend_columns = offload_target_table.convert_canonical_columns_to_backend(
-            canonical_columns
-        )
+        backend_columns = offload_target_table.convert_canonical_columns_to_backend(canonical_columns)
 
         offload_target_table.set_columns(backend_columns)
     else:
         # The backend table already exists therefore some options should be ignored/defaulted
         existing_part_digits = derive_partition_digits(offload_target_table)
-        incremental_offload_partition_overrides(
-            offload_operation, existing_part_digits, messages
-        )
-        offload_operation.unicode_string_columns_csv = (
-            offload_target_table.derive_unicode_string_columns(as_csv=True)
-        )
+        incremental_offload_partition_overrides(offload_operation, existing_part_digits, messages)
+        offload_operation.unicode_string_columns_csv = offload_target_table.derive_unicode_string_columns(as_csv=True)
 
         if incr_append_capable:
             if offload_operation.gen_canonical_overrides(
@@ -2611,9 +2350,7 @@ def offload_operation_logic(
                 )
 
             if offload_operation.not_null_columns_csv:
-                messages.notice(
-                    "Retaining NOT NULL columns from original offload (ignoring --not-null-columns)"
-                )
+                messages.notice("Retaining NOT NULL columns from original offload (ignoring --not-null-columns)")
 
             if (
                 offload_options.offload_fs_scheme
@@ -2645,11 +2382,7 @@ def offload_operation_logic(
             messages=messages,
         )
 
-    if (
-        offload_target_table.exists()
-        and offload_target_table.has_rows()
-        and not offload_operation.reset_backend_table
-    ):
+    if offload_target_table.exists() and offload_target_table.has_rows() and not offload_operation.reset_backend_table:
         if incr_append_capable:
             if source_data_client.nothing_to_offload():
                 return False
@@ -2674,16 +2407,10 @@ def offload_table(
     global execution_id
 
     if offload_options.db_type == offload_constants.DBTYPE_ORACLE:
-        abort, v_goe, v_ora = version_abort(
-            offload_operation.ver_check, offload_source_table.get_frontend_api()
-        )
+        abort, v_goe, v_ora = version_abort(offload_operation.ver_check, offload_source_table.get_frontend_api())
         if abort:
             raise OffloadException(
-                "Mismatch between Oracle component version ("
-                + v_ora
-                + ") and binary version ("
-                + v_goe
-                + ")"
+                "Mismatch between Oracle component version (" + v_ora + ") and binary version (" + v_goe + ")"
             )
 
     if offload_options.target != offload_constants.DBTYPE_BIGQUERY:
@@ -2701,9 +2428,7 @@ def offload_table(
     offload_options.check_backend_support(offload_target_table.get_backend_api())
     repo_client = offload_operation.repo_client
 
-    if offload_target_table.identifier_contains_invalid_characters(
-        offload_operation.target_owner_name.split(".")[0]
-    ):
+    if offload_target_table.identifier_contains_invalid_characters(offload_operation.target_owner_name.split(".")[0]):
         messages.warning(
             "Unsupported character(s) %s in Oracle schema name. Use --target-name to specify a compatible backend database name."
             % offload_target_table.identifier_contains_invalid_characters(
@@ -2715,8 +2440,7 @@ def offload_table(
 
     if not offload_source_table.columns:
         messages.log(
-            "No columns found for table: %s.%s"
-            % (offload_source_table.owner, offload_source_table.table_name)
+            "No columns found for table: %s.%s" % (offload_source_table.owner, offload_source_table.table_name)
         )
         return False
 
@@ -2748,20 +2472,14 @@ def offload_table(
     if offload_target_table.exists() and not offload_operation.reset_backend_table:
         # We need to pickup defaults for an existing table here,
         # BEFORE we start looking for data to offload (get_offload_data_manager()).
-        existing_metadata = offload_operation.defaults_for_existing_table(
-            offload_target_table, messages
-        )
+        existing_metadata = offload_operation.defaults_for_existing_table(offload_target_table, messages)
         check_table_structure(offload_source_table, offload_target_table, messages)
-        offload_target_table.refresh_operational_settings(
-            offload_operation, rdbms_columns=offload_source_table.columns
-        )
+        offload_target_table.refresh_operational_settings(offload_operation, rdbms_columns=offload_source_table.columns)
 
     # Call validate_offload_by_subpartition early so we can switch it on before any partition related information is requested.
     # The ipa_predicate_type checks are intertwined with offload_by_subpartition.
     offload_operation.default_ipa_predicate_type(offload_source_table, messages)
-    offload_operation.validate_offload_by_subpartition(
-        offload_source_table, messages, existing_metadata
-    )
+    offload_operation.validate_offload_by_subpartition(offload_source_table, messages, existing_metadata)
     offload_operation.validate_ipa_predicate_type(offload_source_table)
 
     if not offload_target_table.is_valid_staging_format():
@@ -2789,15 +2507,11 @@ def offload_table(
     )
 
     # Write ipa_predicate_type back to operation in case the source_data_client has defined a new one.
-    offload_operation.ipa_predicate_type = (
-        source_data_client.get_partition_append_predicate_type()
-    )
+    offload_operation.ipa_predicate_type = source_data_client.get_partition_append_predicate_type()
 
     # source_data_client may modify offload-predicate provided as input, this variable contains those
     # changes for transport and verification.
-    offload_operation.inflight_offload_predicate = (
-        source_data_client.get_inflight_offload_predicate()
-    )
+    offload_operation.inflight_offload_predicate = source_data_client.get_inflight_offload_predicate()
 
     # We need to set defaults for a fresh offload here, AFTER get_offload_data_manager() has decided what type
     # of offload we'll do. This happens inside offload_operation_logic().
@@ -2815,9 +2529,7 @@ def offload_table(
     offload_operation.offload_transport_method = choose_offload_transport_method(
         offload_operation, offload_source_table, offload_options, messages
     )
-    dfs_client = get_dfs_from_options(
-        offload_options, messages, dry_run=(not offload_operation.execute)
-    )
+    dfs_client = get_dfs_from_options(offload_options, messages, dry_run=(not offload_operation.execute))
 
     # For a fresh offload we may have tuned offload_operation attributes
     offload_target_table.refresh_operational_settings(
@@ -2828,9 +2540,7 @@ def offload_table(
     if offload_operation.ddl_file:
         # For DDL file creation we need to drop out early, before we concern
         # ourselves with database creation or table drop commands.
-        create_ddl_file_step(
-            offload_target_table, offload_operation, offload_options, messages
-        )
+        create_ddl_file_step(offload_target_table, offload_operation, offload_options, messages)
         return True
 
     if offload_operation.create_backend_db:
@@ -2870,9 +2580,7 @@ def offload_table(
         offload_source_table.columns,
         data_transport_client.get_staging_file().get_staging_columns(),
     )
-    offload_target_table.setup_staging_area_step(
-        data_transport_client.get_staging_file()
-    )
+    offload_target_table.setup_staging_area_step(data_transport_client.get_staging_file())
 
     rows_offloaded = offload_data_to_target(
         data_transport_client,
@@ -2884,8 +2592,7 @@ def offload_table(
         messages,
     )
     messages.log(
-        "%s: %s"
-        % (offload_constants.TOTAL_ROWS_OFFLOADED_LOG_TEXT, str(rows_offloaded)),
+        "%s: %s" % (offload_constants.TOTAL_ROWS_OFFLOADED_LOG_TEXT, str(rows_offloaded)),
         detail=VVERBOSE,
     )
 
@@ -2919,16 +2626,12 @@ def offload_table(
                 source_data_client,
             )
         else:
-            messages.log(
-                "Skipped data verification, no data was transferred", detail=VERBOSE
-            )
+            messages.log("Skipped data verification, no data was transferred", detail=VERBOSE)
 
     return True
 
 
-def get_offload_target_table(
-    offload_operation, offload_options, messages, metadata_override=None
-):
+def get_offload_target_table(offload_operation, offload_options, messages, metadata_override=None):
     check_and_set_nls_lang(offload_options, messages)
     existing_metadata = metadata_override or offload_operation.get_hybrid_metadata()
     if existing_metadata:
@@ -2943,16 +2646,13 @@ def get_offload_target_table(
             offload_operation.target_name,
         ):
             messages.log(
-                "Re-using backend table name from metadata: %s.%s"
-                % (backend_table.db_name, backend_table.table_name),
+                "Re-using backend table name from metadata: %s.%s" % (backend_table.db_name, backend_table.table_name),
                 detail=VVERBOSE,
             )
 
     else:
         db_name = data_db_name(offload_operation.target_owner, offload_options)
-        db_name, table_name = convert_backend_identifier_case(
-            offload_options, db_name, offload_operation.target_name
-        )
+        db_name, table_name = convert_backend_identifier_case(offload_options, db_name, offload_operation.target_name)
         if (db_name, table_name) != (
             offload_operation.target_owner,
             offload_operation.target_name,
@@ -3319,9 +3019,7 @@ def get_options(usage=None, operation_name=None):
     opt.add_option(
         "--offload-stats",
         dest="offload_stats_method",
-        default=orchestration_defaults.offload_stats_method_default(
-            operation_name=operation_name
-        ),
+        default=orchestration_defaults.offload_stats_method_default(operation_name=operation_name),
         help=(
             "NATIVE|HISTORY|COPY|NONE. Method used to manage backend table stats during an Offload. NATIVE is the default. "
             "HISTORY will gather stats on all partitions without stats "

@@ -15,8 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TeradataFrontendTestingApi: An extension of (not yet created) FrontendApi used purely for code relating to the setup,
-    processing and verification of integration tests.
+"""TeradataFrontendTestingApi: An extension of (not yet created) FrontendApi used purely for code relating to the setup,
+processing and verification of integration tests.
 """
 
 import datetime
@@ -24,7 +24,8 @@ import logging
 import os
 import random
 from textwrap import dedent
-from typing import Optional, Union
+
+from pyodbc import SQL_WVARCHAR
 
 from goe.offload.column_metadata import (
     CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -77,7 +78,11 @@ from goe.offload.teradata.teradata_column import (
 from goe.offload.teradata.teradata_frontend_api import (
     teradata_get_primary_partition_expression,
 )
-from pyodbc import SQL_WVARCHAR
+from tests.testlib.setup import gen_test_data
+from tests.testlib.test_framework.frontend_testing_api import (
+    FrontendTestingApiException,
+    FrontendTestingApiInterface,
+)
 from tests.testlib.test_framework.test_constants import (
     SALES_BASED_FACT_HV_1,
     SALES_BASED_FACT_HV_2,
@@ -103,11 +108,6 @@ from tests.testlib.test_framework.test_constants import (
     SALES_BASED_LIST_HV_7,
     SALES_BASED_LIST_PRE_HV,
     UNICODE_NAME_TOKEN,
-)
-from tests.testlib.setup import gen_test_data
-from tests.testlib.test_framework.frontend_testing_api import (
-    FrontendTestingApiException,
-    FrontendTestingApiInterface,
 )
 from tests.testlib.test_framework.test_functions import goe_wide_max_columns
 from tests.testlib.test_framework.test_value_generators import TestDecimal
@@ -194,7 +194,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 notnull=all_chars_notnull,
                 no_newlines=no_newlines,
             )
-        elif column.data_type == TERADATA_TYPE_CHAR:
+        if column.data_type == TERADATA_TYPE_CHAR:
             return gen_test_data.gen_char(
                 row_index,
                 column.char_length or column.data_length,
@@ -204,7 +204,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 notnull=all_chars_notnull,
                 no_newlines=no_newlines,
             )
-        elif column.data_type in (TERADATA_TYPE_NUMBER, TERADATA_TYPE_DECIMAL):
+        if column.data_type in (TERADATA_TYPE_NUMBER, TERADATA_TYPE_DECIMAL):
             return gen_test_data.gen_number(
                 row_index,
                 precision=column.data_precision,
@@ -212,63 +212,37 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 from_list=from_list,
                 ordered=ordered,
             )
-        elif column.data_type == TERADATA_TYPE_BYTEINT:
-            return gen_test_data.gen_int(
-                row_index, precision=2, from_list=from_list, ordered=ordered
-            )
-        elif column.data_type == TERADATA_TYPE_SMALLINT:
-            return gen_test_data.gen_int(
-                row_index, precision=4, from_list=from_list, ordered=ordered
-            )
-        elif column.data_type == TERADATA_TYPE_INTEGER:
-            return gen_test_data.gen_int(
-                row_index, precision=9, from_list=from_list, ordered=ordered
-            )
-        elif column.data_type == TERADATA_TYPE_BIGINT:
-            return gen_test_data.gen_int(
-                row_index, precision=18, from_list=from_list, ordered=ordered
-            )
-        elif column.data_type == TERADATA_TYPE_DATE:
-            return gen_test_data.gen_date(
-                row_index, from_list=from_list, ordered=ordered
-            )
-        elif column.data_type in [TERADATA_TYPE_TIMESTAMP, TERADATA_TYPE_TIMESTAMP_TZ]:
-            return gen_test_data.gen_timestamp(
-                row_index, scale=column.data_scale, from_list=from_list, ordered=ordered
-            )
-        elif column.data_type in [TERADATA_TYPE_TIME, TERADATA_TYPE_TIME_TZ]:
-            return gen_test_data.gen_time(
-                row_index, scale=column.data_scale, from_list=from_list, ordered=ordered
-            )
-        elif column.data_type == TERADATA_TYPE_INTERVAL_YM:
+        if column.data_type == TERADATA_TYPE_BYTEINT:
+            return gen_test_data.gen_int(row_index, precision=2, from_list=from_list, ordered=ordered)
+        if column.data_type == TERADATA_TYPE_SMALLINT:
+            return gen_test_data.gen_int(row_index, precision=4, from_list=from_list, ordered=ordered)
+        if column.data_type == TERADATA_TYPE_INTEGER:
+            return gen_test_data.gen_int(row_index, precision=9, from_list=from_list, ordered=ordered)
+        if column.data_type == TERADATA_TYPE_BIGINT:
+            return gen_test_data.gen_int(row_index, precision=18, from_list=from_list, ordered=ordered)
+        if column.data_type == TERADATA_TYPE_DATE:
+            return gen_test_data.gen_date(row_index, from_list=from_list, ordered=ordered)
+        if column.data_type in [TERADATA_TYPE_TIMESTAMP, TERADATA_TYPE_TIMESTAMP_TZ]:
+            return gen_test_data.gen_timestamp(row_index, scale=column.data_scale, from_list=from_list, ordered=ordered)
+        if column.data_type in [TERADATA_TYPE_TIME, TERADATA_TYPE_TIME_TZ]:
+            return gen_test_data.gen_time(row_index, scale=column.data_scale, from_list=from_list, ordered=ordered)
+        if column.data_type == TERADATA_TYPE_INTERVAL_YM:
             return gen_test_data.gen_interval_ym(precision=column.data_precision)
-        elif column.data_type == TERADATA_TYPE_INTERVAL_DS:
-            return gen_test_data.gen_interval_ds(
-                precision=column.data_precision, scale=column.data_scale
-            )
-        elif column.data_type == TERADATA_TYPE_DOUBLE:
-            return gen_test_data.gen_float(
-                row_index, from_list=from_list, allow_nan=allow_nan, allow_inf=allow_inf
-            )
-        elif column.data_type == TERADATA_TYPE_CLOB:
-            return gen_test_data.gen_varchar(
-                row_index, 100, from_list=from_list, no_newlines=no_newlines
-            )
-        elif column.data_type == TERADATA_TYPE_BLOB:
-            return gen_test_data.gen_varchar(
-                row_index, 100, from_list=from_list, no_newlines=no_newlines
-            )
-        elif column.data_type in (TERADATA_TYPE_BYTE, TERADATA_TYPE_VARBYTE):
+        if column.data_type == TERADATA_TYPE_INTERVAL_DS:
+            return gen_test_data.gen_interval_ds(precision=column.data_precision, scale=column.data_scale)
+        if column.data_type == TERADATA_TYPE_DOUBLE:
+            return gen_test_data.gen_float(row_index, from_list=from_list, allow_nan=allow_nan, allow_inf=allow_inf)
+        if column.data_type == TERADATA_TYPE_CLOB:
+            return gen_test_data.gen_varchar(row_index, 100, from_list=from_list, no_newlines=no_newlines)
+        if column.data_type == TERADATA_TYPE_BLOB:
+            return gen_test_data.gen_varchar(row_index, 100, from_list=from_list, no_newlines=no_newlines)
+        if column.data_type in (TERADATA_TYPE_BYTE, TERADATA_TYPE_VARBYTE):
             if column.data_length == 16:
                 return gen_test_data.gen_uuid(row_index)
-            elif column.data_length:
+            if column.data_length:
                 return gen_test_data.gen_bytes(row_index, column.data_length)
-            else:
-                return gen_test_data.gen_bytes(row_index, 2000)
-        else:
-            self._log(
-                f"Attempt to generate data for unsupported RDBMS type: {column.data_type}"
-            )
+            return gen_test_data.gen_bytes(row_index, 2000)
+        self._log(f"Attempt to generate data for unsupported RDBMS type: {column.data_type}")
 
     def _goe_chars_column_definitions(
         self, ascii_only=False, all_chars_notnull=False, supported_canonical_types=None
@@ -318,12 +292,8 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         max_precision = min(max_backend_precision, 38)
         all_columns = {
             name(TERADATA_TYPE_BIGINT): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_BIGINT), TERADATA_TYPE_BIGINT
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_BIGINT), GOE_TYPE_INTEGER_8
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_BIGINT), TERADATA_TYPE_BIGINT),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_BIGINT), GOE_TYPE_INTEGER_8),
             },
             name(TERADATA_TYPE_BIGINT, GOE_TYPE_INTEGER_4): {
                 "column": TeradataColumn(
@@ -342,26 +312,16 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             },
             name(TERADATA_TYPE_BLOB): {
                 "column": TeradataColumn(name(TERADATA_TYPE_BLOB), TERADATA_TYPE_BLOB),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_BLOB), GOE_TYPE_LARGE_BINARY
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_BLOB), GOE_TYPE_LARGE_BINARY),
                 "literals": ["lob-a", "lob-b", "lob-c"],
             },
             name(TERADATA_TYPE_BYTE): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_BYTE), TERADATA_TYPE_BYTE, data_length=30
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_BYTE), GOE_TYPE_BINARY
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_BYTE), TERADATA_TYPE_BYTE, data_length=30),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_BYTE), GOE_TYPE_BINARY),
             },
             name(TERADATA_TYPE_BYTEINT): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_BYTEINT), TERADATA_TYPE_BYTEINT
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_BYTEINT), GOE_TYPE_INTEGER_1
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_BYTEINT), TERADATA_TYPE_BYTEINT),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_BYTEINT), GOE_TYPE_INTEGER_1),
             },
             name(TERADATA_TYPE_BYTEINT, GOE_TYPE_INTEGER_2): {
                 "column": TeradataColumn(
@@ -374,9 +334,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 ),
             },
             name(TERADATA_TYPE_CHAR, "3"): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_CHAR, "3"), TERADATA_TYPE_CHAR, data_length=3
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_CHAR, "3"), TERADATA_TYPE_CHAR, data_length=3),
                 "expected_canonical_column": CanonicalColumn(
                     name(TERADATA_TYPE_CHAR, "3"),
                     GOE_TYPE_FIXED_STRING,
@@ -396,19 +354,13 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     GOE_TYPE_FIXED_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
                 ),
-                "offload_options": {
-                    "unicode_string_columns_csv": name(
-                        TERADATA_TYPE_CHAR, "3", UNICODE_NAME_TOKEN
-                    )
-                },
+                "offload_options": {"unicode_string_columns_csv": name(TERADATA_TYPE_CHAR, "3", UNICODE_NAME_TOKEN)},
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
             name(TERADATA_TYPE_CLOB): {
                 "column": TeradataColumn(name(TERADATA_TYPE_CLOB), TERADATA_TYPE_CLOB),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_CLOB), GOE_TYPE_LARGE_STRING
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_CLOB), GOE_TYPE_LARGE_STRING),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
                 # Keep row size small for mapping table
@@ -424,11 +376,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     GOE_TYPE_LARGE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
                 ),
-                "offload_options": {
-                    "unicode_string_columns_csv": name(
-                        TERADATA_TYPE_CLOB, UNICODE_NAME_TOKEN
-                    )
-                },
+                "offload_options": {"unicode_string_columns_csv": name(TERADATA_TYPE_CLOB, UNICODE_NAME_TOKEN)},
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
                 # Keep row size small for mapping table
@@ -436,9 +384,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             },
             name(TERADATA_TYPE_DATE): {
                 "column": TeradataColumn(name(TERADATA_TYPE_DATE), TERADATA_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_DATE), GOE_TYPE_DATE
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_DATE), GOE_TYPE_DATE),
             },
             name(TERADATA_TYPE_DATE, GOE_TYPE_VARIABLE_STRING): {
                 "column": TeradataColumn(
@@ -449,19 +395,11 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_DATE, GOE_TYPE_VARIABLE_STRING),
                     GOE_TYPE_VARIABLE_STRING,
                 ),
-                "offload_options": {
-                    "variable_string_columns_csv": name(
-                        TERADATA_TYPE_DATE, GOE_TYPE_VARIABLE_STRING
-                    )
-                },
+                "offload_options": {"variable_string_columns_csv": name(TERADATA_TYPE_DATE, GOE_TYPE_VARIABLE_STRING)},
             },
             name(TERADATA_TYPE_DECIMAL): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_DECIMAL), TERADATA_TYPE_DECIMAL
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_DECIMAL), GOE_TYPE_INTEGER_4
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_DECIMAL), TERADATA_TYPE_DECIMAL),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_DECIMAL), GOE_TYPE_INTEGER_4),
                 # Naked DECIMAL defaults to DECIMAL(5,0) so we expect INT4 and insert suitable data below.
                 "literals": [
                     TestDecimal.min(5, 0),
@@ -478,11 +416,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_DECIMAL, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "offload_options": {
-                    "integer_1_columns_csv": name(
-                        TERADATA_TYPE_DECIMAL, GOE_TYPE_INTEGER_1
-                    )
-                },
+                "offload_options": {"integer_1_columns_csv": name(TERADATA_TYPE_DECIMAL, GOE_TYPE_INTEGER_1)},
                 "literals": [
                     TestDecimal.min(2),
                     TestDecimal.rnd(2),
@@ -498,11 +432,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_DECIMAL, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
-                "offload_options": {
-                    "integer_2_columns_csv": name(
-                        TERADATA_TYPE_DECIMAL, GOE_TYPE_INTEGER_2
-                    )
-                },
+                "offload_options": {"integer_2_columns_csv": name(TERADATA_TYPE_DECIMAL, GOE_TYPE_INTEGER_2)},
                 "literals": [
                     TestDecimal.min(4),
                     TestDecimal.rnd(4),
@@ -518,11 +448,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_DECIMAL, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_4,
                 ),
-                "offload_options": {
-                    "integer_4_columns_csv": name(
-                        TERADATA_TYPE_DECIMAL, GOE_TYPE_INTEGER_4
-                    )
-                },
+                "offload_options": {"integer_4_columns_csv": name(TERADATA_TYPE_DECIMAL, GOE_TYPE_INTEGER_4)},
                 "literals": [
                     TestDecimal.min(5),
                     TestDecimal.rnd(5),
@@ -538,9 +464,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 "expected_canonical_column": CanonicalColumn(
                     name(TERADATA_TYPE_DECIMAL, GOE_TYPE_DOUBLE), GOE_TYPE_DOUBLE
                 ),
-                "offload_options": {
-                    "double_columns_csv": name(TERADATA_TYPE_DECIMAL, GOE_TYPE_DOUBLE)
-                },
+                "offload_options": {"double_columns_csv": name(TERADATA_TYPE_DECIMAL, GOE_TYPE_DOUBLE)},
                 "literals": [1.5, 2.5, 3.5],
             },
             name(TERADATA_TYPE_DECIMAL, "2"): {
@@ -550,9 +474,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_DECIMAL, "2"), GOE_TYPE_INTEGER_1
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_DECIMAL, "2"), GOE_TYPE_INTEGER_1),
             },
             name(TERADATA_TYPE_DECIMAL, "4"): {
                 "column": TeradataColumn(
@@ -561,9 +483,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_DECIMAL, "4"), GOE_TYPE_INTEGER_2
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_DECIMAL, "4"), GOE_TYPE_INTEGER_2),
             },
             name(TERADATA_TYPE_DECIMAL, "9"): {
                 "column": TeradataColumn(
@@ -572,9 +492,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_DECIMAL, "9"), GOE_TYPE_INTEGER_4
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_DECIMAL, "9"), GOE_TYPE_INTEGER_4),
             },
             name(TERADATA_TYPE_DECIMAL, "18"): {
                 "column": TeradataColumn(
@@ -583,9 +501,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_DECIMAL, "18"), GOE_TYPE_INTEGER_8
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_DECIMAL, "18"), GOE_TYPE_INTEGER_8),
             },
             name(TERADATA_TYPE_DECIMAL, "19"): {
                 "column": TeradataColumn(
@@ -659,20 +575,12 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(TERADATA_TYPE_DOUBLE): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_DOUBLE), TERADATA_TYPE_DOUBLE
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_DOUBLE), GOE_TYPE_DOUBLE
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_DOUBLE), TERADATA_TYPE_DOUBLE),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_DOUBLE), GOE_TYPE_DOUBLE),
             },
             name(TERADATA_TYPE_INTEGER): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_INTEGER), TERADATA_TYPE_INTEGER
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_INTEGER), GOE_TYPE_INTEGER_4
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_INTEGER), TERADATA_TYPE_INTEGER),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_INTEGER), GOE_TYPE_INTEGER_4),
             },
             name(TERADATA_TYPE_INTEGER, GOE_TYPE_INTEGER_2): {
                 "column": TeradataColumn(
@@ -683,11 +591,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_INTEGER, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
-                "offload_options": {
-                    "integer_2_columns_csv": name(
-                        TERADATA_TYPE_INTEGER, GOE_TYPE_INTEGER_2
-                    )
-                },
+                "offload_options": {"integer_2_columns_csv": name(TERADATA_TYPE_INTEGER, GOE_TYPE_INTEGER_2)},
                 "literals": [
                     TestDecimal.min(4),
                     TestDecimal.rnd(4),
@@ -701,9 +605,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=4,
                     data_scale=6,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_INTERVAL_DS), GOE_TYPE_INTERVAL_DS
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_INTERVAL_DS), GOE_TYPE_INTERVAL_DS),
             },
             name(TERADATA_TYPE_INTERVAL_YM): {
                 "column": TeradataColumn(
@@ -711,17 +613,11 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     TERADATA_TYPE_INTERVAL_YM,
                     data_precision=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_INTERVAL_YM), GOE_TYPE_INTERVAL_YM
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_INTERVAL_YM), GOE_TYPE_INTERVAL_YM),
             },
             name(TERADATA_TYPE_NUMBER): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_NUMBER), TERADATA_TYPE_NUMBER
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_NUMBER), GOE_TYPE_DECIMAL
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_NUMBER), TERADATA_TYPE_NUMBER),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_NUMBER), GOE_TYPE_DECIMAL),
             },
             name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_1): {
                 "column": TeradataColumn(
@@ -732,11 +628,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "offload_options": {
-                    "integer_1_columns_csv": name(
-                        TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_1
-                    )
-                },
+                "offload_options": {"integer_1_columns_csv": name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_1)},
                 "literals": [
                     TestDecimal.min(2),
                     TestDecimal.rnd(2),
@@ -752,11 +644,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
-                "offload_options": {
-                    "integer_2_columns_csv": name(
-                        TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_2
-                    )
-                },
+                "offload_options": {"integer_2_columns_csv": name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_2)},
                 "literals": [
                     TestDecimal.min(4),
                     TestDecimal.rnd(4),
@@ -772,11 +660,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_4,
                 ),
-                "offload_options": {
-                    "integer_4_columns_csv": name(
-                        TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_4
-                    )
-                },
+                "offload_options": {"integer_4_columns_csv": name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_4)},
                 "literals": [
                     TestDecimal.min(9),
                     TestDecimal.rnd(9),
@@ -792,11 +676,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_8,
                 ),
-                "offload_options": {
-                    "integer_8_columns_csv": name(
-                        TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_8
-                    )
-                },
+                "offload_options": {"integer_8_columns_csv": name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_8)},
                 "literals": [
                     TestDecimal.min(18),
                     TestDecimal.rnd(18),
@@ -812,11 +692,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_38,
                 ),
-                "offload_options": {
-                    "integer_38_columns_csv": name(
-                        TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_38
-                    )
-                },
+                "offload_options": {"integer_38_columns_csv": name(TERADATA_TYPE_NUMBER, GOE_TYPE_INTEGER_38)},
                 # 'test' imposes a max precision of 35, I think due to shortcomings of cx-Oracle.
                 # We impose the same limit here to ensure no loss of value accuracy.
                 "literals": [
@@ -826,15 +702,11 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(TERADATA_TYPE_NUMBER, GOE_TYPE_DOUBLE): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_NUMBER, GOE_TYPE_DOUBLE), TERADATA_TYPE_NUMBER
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_NUMBER, GOE_TYPE_DOUBLE), TERADATA_TYPE_NUMBER),
                 "expected_canonical_column": CanonicalColumn(
                     name(TERADATA_TYPE_NUMBER, GOE_TYPE_DOUBLE), GOE_TYPE_DOUBLE
                 ),
-                "offload_options": {
-                    "double_columns_csv": name(TERADATA_TYPE_NUMBER, GOE_TYPE_DOUBLE)
-                },
+                "offload_options": {"double_columns_csv": name(TERADATA_TYPE_NUMBER, GOE_TYPE_DOUBLE)},
                 "literals": [1.5, 2.5, 3.5],
             },
             name(TERADATA_TYPE_NUMBER, "2"): {
@@ -844,9 +716,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_NUMBER, "2"), GOE_TYPE_INTEGER_1
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_NUMBER, "2"), GOE_TYPE_INTEGER_1),
             },
             name(TERADATA_TYPE_NUMBER, "4"): {
                 "column": TeradataColumn(
@@ -855,9 +725,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_NUMBER, "4"), GOE_TYPE_INTEGER_2
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_NUMBER, "4"), GOE_TYPE_INTEGER_2),
             },
             name(TERADATA_TYPE_NUMBER, "9"): {
                 "column": TeradataColumn(
@@ -866,9 +734,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_NUMBER, "9"), GOE_TYPE_INTEGER_4
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_NUMBER, "9"), GOE_TYPE_INTEGER_4),
             },
             name(TERADATA_TYPE_NUMBER, "18"): {
                 "column": TeradataColumn(
@@ -877,9 +743,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_NUMBER, "18"), GOE_TYPE_INTEGER_8
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_NUMBER, "18"), GOE_TYPE_INTEGER_8),
             },
             name(TERADATA_TYPE_NUMBER, "19"): {
                 "column": TeradataColumn(
@@ -932,9 +796,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     data_scale=3,
                 ),
                 "offload_options": {
-                    "decimal_columns_csv_list": [
-                        name(TERADATA_TYPE_NUMBER, GOE_TYPE_DECIMAL, "10", "3")
-                    ],
+                    "decimal_columns_csv_list": [name(TERADATA_TYPE_NUMBER, GOE_TYPE_DECIMAL, "10", "3")],
                     "decimal_columns_type_list": ["10,3"],
                 },
                 "literals": [
@@ -976,12 +838,8 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(TERADATA_TYPE_SMALLINT): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_SMALLINT), TERADATA_TYPE_SMALLINT
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_SMALLINT), GOE_TYPE_INTEGER_4
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_SMALLINT), TERADATA_TYPE_SMALLINT),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_SMALLINT), GOE_TYPE_INTEGER_4),
             },
             name(TERADATA_TYPE_SMALLINT, GOE_TYPE_INTEGER_4): {
                 "column": TeradataColumn(
@@ -992,11 +850,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_SMALLINT, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_4,
                 ),
-                "offload_options": {
-                    "integer_4_columns_csv": name(
-                        TERADATA_TYPE_SMALLINT, GOE_TYPE_INTEGER_4
-                    )
-                },
+                "offload_options": {"integer_4_columns_csv": name(TERADATA_TYPE_SMALLINT, GOE_TYPE_INTEGER_4)},
                 "literals": [
                     TestDecimal.min(4),
                     TestDecimal.rnd(4),
@@ -1005,17 +859,11 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             },
             name(TERADATA_TYPE_TIME): {
                 "column": TeradataColumn(name(TERADATA_TYPE_TIME), TERADATA_TYPE_TIME),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_TIME), GOE_TYPE_TIME
-                ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_TIME), GOE_TYPE_TIME),
             },
             name(TERADATA_TYPE_TIMESTAMP): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_TIMESTAMP), TERADATA_TYPE_TIMESTAMP
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_TIMESTAMP), GOE_TYPE_TIMESTAMP
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_TIMESTAMP), TERADATA_TYPE_TIMESTAMP),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_TIMESTAMP), GOE_TYPE_TIMESTAMP),
             },
             name(TERADATA_TYPE_TIMESTAMP, GOE_TYPE_DATE): {
                 "column": TeradataColumn(
@@ -1025,9 +873,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 "expected_canonical_column": CanonicalColumn(
                     name(TERADATA_TYPE_TIMESTAMP, GOE_TYPE_DATE), GOE_TYPE_DATE
                 ),
-                "offload_options": {
-                    "date_columns_csv": name(TERADATA_TYPE_TIMESTAMP, GOE_TYPE_DATE)
-                },
+                "offload_options": {"date_columns_csv": name(TERADATA_TYPE_TIMESTAMP, GOE_TYPE_DATE)},
                 # Including 1970-01-01 because Python datetime64 understands this as False due to being Unix epoch.
                 "literals": [
                     datetime.datetime(1970, 1, 1),
@@ -1045,11 +891,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ),
                     GOE_TYPE_TIMESTAMP_TZ,
                 ),
-                "offload_options": {
-                    "timestamp_tz_columns_csv": name(
-                        TERADATA_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ
-                    )
-                },
+                "offload_options": {"timestamp_tz_columns_csv": name(TERADATA_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ)},
             },
             name(TERADATA_TYPE_TIMESTAMP, GOE_TYPE_VARIABLE_STRING): {
                 "column": TeradataColumn(
@@ -1061,34 +903,20 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     GOE_TYPE_VARIABLE_STRING,
                 ),
                 "offload_options": {
-                    "variable_string_columns_csv": name(
-                        TERADATA_TYPE_TIMESTAMP, GOE_TYPE_VARIABLE_STRING
-                    )
+                    "variable_string_columns_csv": name(TERADATA_TYPE_TIMESTAMP, GOE_TYPE_VARIABLE_STRING)
                 },
             },
             name(TERADATA_TYPE_TIMESTAMP_TZ): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_TIMESTAMP_TZ), TERADATA_TYPE_TIMESTAMP_TZ
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_TIMESTAMP_TZ), GOE_TYPE_TIMESTAMP_TZ
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_TIMESTAMP_TZ), TERADATA_TYPE_TIMESTAMP_TZ),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_TIMESTAMP_TZ), GOE_TYPE_TIMESTAMP_TZ),
             },
             name(TERADATA_TYPE_VARBYTE): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_VARBYTE), TERADATA_TYPE_VARBYTE, data_length=30
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_VARBYTE), GOE_TYPE_BINARY
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_VARBYTE), TERADATA_TYPE_VARBYTE, data_length=30),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_VARBYTE), GOE_TYPE_BINARY),
             },
             name(TERADATA_TYPE_VARCHAR): {
-                "column": TeradataColumn(
-                    name(TERADATA_TYPE_VARCHAR), TERADATA_TYPE_VARCHAR, data_length=30
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(TERADATA_TYPE_VARCHAR), GOE_TYPE_VARIABLE_STRING
-                ),
+                "column": TeradataColumn(name(TERADATA_TYPE_VARCHAR), TERADATA_TYPE_VARCHAR, data_length=30),
+                "expected_canonical_column": CanonicalColumn(name(TERADATA_TYPE_VARCHAR), GOE_TYPE_VARIABLE_STRING),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
@@ -1102,19 +930,14 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     name(TERADATA_TYPE_VARCHAR, UNICODE_NAME_TOKEN),
                     GOE_TYPE_VARIABLE_STRING,
                 ),
-                "offload_options": {
-                    "unicode_string_columns_csv": name(
-                        TERADATA_TYPE_VARCHAR, UNICODE_NAME_TOKEN
-                    )
-                },
+                "offload_options": {"unicode_string_columns_csv": name(TERADATA_TYPE_VARCHAR, UNICODE_NAME_TOKEN)},
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
         }
         if filter_column:
             return all_columns[filter_column]
-        else:
-            return all_columns
+        return all_columns
 
     def _goe_types_column_definitions(
         self,
@@ -1139,9 +962,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 "notnull": all_chars_notnull,
             },
             {
-                "column": TeradataColumn(
-                    name(), TERADATA_TYPE_VARCHAR, data_length=1100
-                ),
+                "column": TeradataColumn(name(), TERADATA_TYPE_VARCHAR, data_length=1100),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
@@ -1155,11 +976,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             # TODO there may be more intervals to add to this list as we continue implementation
             column_list.extend(
                 [
-                    {
-                        "column": TeradataColumn(
-                            name(), TERADATA_TYPE_INTERVAL_YM, data_precision=4
-                        )
-                    },
+                    {"column": TeradataColumn(name(), TERADATA_TYPE_INTERVAL_YM, data_precision=4)},
                     {
                         "column": TeradataColumn(
                             name(),
@@ -1177,25 +994,13 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 {"column": TeradataColumn(name(), TERADATA_TYPE_INTEGER)},
                 {"column": TeradataColumn(name(), TERADATA_TYPE_BIGINT)},
                 {"column": TeradataColumn(name(), TERADATA_TYPE_NUMBER)},
-                {
-                    "column": TeradataColumn(
-                        name(), TERADATA_TYPE_NUMBER, data_precision=38
-                    )
-                },
+                {"column": TeradataColumn(name(), TERADATA_TYPE_NUMBER, data_precision=38)},
                 {"column": TeradataColumn(name(), TERADATA_TYPE_DECIMAL)},
-                {
-                    "column": TeradataColumn(
-                        name(), TERADATA_TYPE_DECIMAL, data_precision=38
-                    )
-                },
+                {"column": TeradataColumn(name(), TERADATA_TYPE_DECIMAL, data_precision=38)},
                 {"column": TeradataColumn(name(), TERADATA_TYPE_DOUBLE)},
                 {"column": TeradataColumn(name(), TERADATA_TYPE_BYTE, data_length=16)},
                 {"column": TeradataColumn(name(), TERADATA_TYPE_BYTE, data_length=100)},
-                {
-                    "column": TeradataColumn(
-                        name(), TERADATA_TYPE_VARBYTE, data_length=100
-                    )
-                },
+                {"column": TeradataColumn(name(), TERADATA_TYPE_VARBYTE, data_length=100)},
                 {
                     "column": TeradataColumn(name(), TERADATA_TYPE_CLOB),
                     "ascii_only": ascii_only,
@@ -1207,9 +1012,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     "notnull": all_chars_notnull,
                 },
                 {
-                    "column": TeradataColumn(
-                        name(), TERADATA_TYPE_NUMBER, data_precision=1
-                    ),
+                    "column": TeradataColumn(name(), TERADATA_TYPE_NUMBER, data_precision=1),
                     "column_spec_extra_clause": "AS (MOD(id,10)) VIRTUAL",
                 },
             ]
@@ -1233,10 +1036,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             return col_name
 
         column_list = [{"column": self._id_column(), "ordered": True}]
-        column_list.extend(
-            {"column": TeradataColumn(name(), TERADATA_TYPE_NUMBER, data_precision=9)}
-            for _ in range(5)
-        )
+        column_list.extend({"column": TeradataColumn(name(), TERADATA_TYPE_NUMBER, data_precision=9)} for _ in range(5))
         column_list.extend(
             {
                 "column": TeradataColumn(name(), TERADATA_TYPE_VARCHAR, data_length=10),
@@ -1245,39 +1045,22 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             }
             for _ in range(5)
         )
-        column_list.extend(
-            {"column": TeradataColumn(name(), TERADATA_TYPE_DATE)} for _ in range(5)
-        )
-        column_list.extend(
-            {"column": TeradataColumn(name(), TERADATA_TYPE_TIMESTAMP, data_scale=0)}
-            for _ in range(5)
-        )
+        column_list.extend({"column": TeradataColumn(name(), TERADATA_TYPE_DATE)} for _ in range(5))
+        column_list.extend({"column": TeradataColumn(name(), TERADATA_TYPE_TIMESTAMP, data_scale=0)} for _ in range(5))
 
-        extra_column_count = (
-            goe_wide_max_columns(self, backend_max_test_column_count) - 20
-        )
+        extra_column_count = goe_wide_max_columns(self, backend_max_test_column_count) - 20
 
         extra_cols = [
             random.choice(
                 [
+                    {"column": TeradataColumn("no-name", TERADATA_TYPE_NUMBER, data_precision=9)},
                     {
-                        "column": TeradataColumn(
-                            "no-name", TERADATA_TYPE_NUMBER, data_precision=9
-                        )
-                    },
-                    {
-                        "column": TeradataColumn(
-                            "no-name", TERADATA_TYPE_VARCHAR, data_length=10
-                        ),
+                        "column": TeradataColumn("no-name", TERADATA_TYPE_VARCHAR, data_length=10),
                         "ascii_only": ascii_only,
                         "notnull": all_chars_notnull,
                     },
                     {"column": TeradataColumn("no-name", TERADATA_TYPE_DATE)},
-                    {
-                        "column": TeradataColumn(
-                            "no-name", TERADATA_TYPE_TIMESTAMP, data_scale=0
-                        )
-                    },
+                    {"column": TeradataColumn("no-name", TERADATA_TYPE_TIMESTAMP, data_scale=0)},
                 ]
             )
             for _ in range(extra_column_count)
@@ -1291,9 +1074,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
     def _id_column(self):
         return TeradataColumn("ID", TERADATA_TYPE_BIGINT)
 
-    def _populate_generated_test_table(
-        self, schema, table_name, columns, rows, fastexecute=True
-    ):
+    def _populate_generated_test_table(self, schema, table_name, columns, rows, fastexecute=True):
         column_list = [_["column"] for _ in columns]
         sql = "INSERT INTO %s (%s) VALUES (%s);" % (
             self._db_api.enclose_object_reference(schema, table_name),
@@ -1330,9 +1111,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 TERADATA_TYPE_BYTE,
             ]
             inputsizes = []
-            if any(
-                map(lambda x: x["column"].data_type in inputsize_datatypes, columns)
-            ):
+            if any(map(lambda x: x["column"].data_type in inputsize_datatypes, columns)):
                 for i, col in enumerate(columns):
                     if col["column"].data_type in inputsize_datatypes:
                         # Get the max size from the data list
@@ -1344,9 +1123,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                     else:
                         inputsize = None
                     inputsizes.append(inputsize)
-            self._db_api.fast_executemany_dml(
-                sql, query_params=query_params, param_inputsizes=inputsizes
-            )
+            self._db_api.fast_executemany_dml(sql, query_params=query_params, param_inputsizes=inputsizes)
         else:
             self._db_api.executemany_dml(sql, query_params=query_params)
 
@@ -1360,15 +1137,13 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
     def drop_table(self, schema, table_name):
         """Obviously this is dangerous, that's why it is in this TestingApi only."""
         try:
-            return self._db_api.execute_ddl(
-                f"DROP TABLE {schema}.{table_name}", log_level=VERBOSE
-            )
+            return self._db_api.execute_ddl(f"DROP TABLE {schema}.{table_name}", log_level=VERBOSE)
         except Exception as exc:
             if "42S02" in str(exc):
                 # Nothing to drop
                 pass
             else:
-                self._log("Drop table exception: {}".format(str(exc)), detail=VERBOSE)
+                self._log(f"Drop table exception: {exc!s}", detail=VERBOSE)
                 raise
 
     def expected_std_dim_offload_predicates(self):
@@ -1467,8 +1242,8 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         schema: str,
         table_name: str,
         subquery: str,
-        pk_col_name: Optional[str] = None,
-        table_parallelism: Optional[str] = None,
+        pk_col_name: str | None = None,
+        table_parallelism: str | None = None,
         with_drop: bool = True,
         with_stats_collection: bool = False,
     ) -> list:
@@ -1497,14 +1272,8 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             ctas += f" UNIQUE PRIMARY INDEX ({pk_col_name})"
         sqls.append(ctas)
         if pk_col_name:
-            sqls.append(
-                "ALTER TABLE %(schema)s.%(table_name)s ADD %(pk_col_name)s NOT NULL"
-                % params
-            )
-            sqls.append(
-                "ALTER TABLE %(schema)s.%(table_name)s ADD PRIMARY KEY (%(pk_col_name)s)"
-                % params
-            )
+            sqls.append("ALTER TABLE %(schema)s.%(table_name)s ADD %(pk_col_name)s NOT NULL" % params)
+            sqls.append("ALTER TABLE %(schema)s.%(table_name)s ADD PRIMARY KEY (%(pk_col_name)s)" % params)
         if with_stats_collection:
             sqls.append(self.collect_table_stats_sql_text(schema, table_name))
         return sqls
@@ -1518,9 +1287,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         ascii_only=False,
     ):
         """This is not required for non-Oracle builds"""
-        raise NotImplementedError(
-            "Teradata goe_type_mapping_generated_table_col_specs() not yet implemented"
-        )
+        raise NotImplementedError("Teradata goe_type_mapping_generated_table_col_specs() not yet implemented")
 
     def remove_table_stats_sql_text(self, schema, table_name) -> str:
         return f"DROP STATISTICS ON {schema}.{table_name}"
@@ -1529,9 +1296,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         self._log(f"Running {local_path}")
         file_contents = open(local_path).read()
         # This is a bit primitive and assumes there are no semi colons within strings
-        ddls = [
-            _.replace("\n", " ").strip() for _ in file_contents.split(";") if _.strip()
-        ]
+        ddls = [_.replace("\n", " ").strip() for _ in file_contents.split(";") if _.strip()]
         for ddl in ddls:
             self._db_api.execute_ddl(ddl)
         # No trailing commit because we have enabled autocommit on Teradata
@@ -1560,14 +1325,14 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         schema: str,
         table_name: str,
         maxval_partition: bool = False,
-        extra_pred: Optional[str] = None,
-        degree: Optional[str] = None,
+        extra_pred: str | None = None,
+        degree: str | None = None,
         subpartitions: int = 0,
         enable_row_movement: bool = False,
         noseg_partition: bool = True,
-        part_key_type: Optional[str] = None,
-        time_id_column_name: Optional[str] = None,
-        extra_col_tuples: Optional[list] = None,
+        part_key_type: str | None = None,
+        time_id_column_name: str | None = None,
+        extra_col_tuples: list | None = None,
         simple_partition_names: bool = False,
         with_drop: bool = True,
         range_start_literal_override=None,
@@ -1584,16 +1349,12 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             TERADATA_TYPE_VARCHAR,
             TERADATA_TYPE_DATE,
             TERADATA_TYPE_TIMESTAMP,
-        ], (
-            "Unsupported part_key_type: %s" % part_key_type
-        )
+        ], "Unsupported part_key_type: %s" % part_key_type
 
         extra_pred = extra_pred or ""
         extra_cols = ""
         if extra_col_tuples:
-            extra_cols = "," + ",".join(
-                "{} AS {}".format(_[0], _[1]) for _ in extra_col_tuples
-            )
+            extra_cols = "," + ",".join(f"{_[0]} AS {_[1]}" for _ in extra_col_tuples)
         time_id_alias = time_id_column_name or "time_id".upper()
 
         sql_params = {
@@ -1610,16 +1371,8 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
 
         if part_key_type in (TERADATA_TYPE_NUMBER, TERADATA_TYPE_BIGINT):
             part_literal_template1 = part_literal_template2 = """%s"""
-            part_literal_hv1 = (
-                SALES_BASED_FACT_PRE_LOWER_NUM
-                if noseg_partition
-                else SALES_BASED_FACT_PRE_HV_NUM
-            )
-            part_literal_hv2 = (
-                SALES_BASED_FACT_HV_5_END_NUM
-                if maxval_partition
-                else SALES_BASED_FACT_HV_6_END_NUM
-            )
+            part_literal_hv1 = SALES_BASED_FACT_PRE_LOWER_NUM if noseg_partition else SALES_BASED_FACT_PRE_HV_NUM
+            part_literal_hv2 = SALES_BASED_FACT_HV_5_END_NUM if maxval_partition else SALES_BASED_FACT_HV_6_END_NUM
             sql_params.update(
                 {
                     "time_id_expr": "CAST(TO_CHAR(time_id,'YYYYMMDD') AS INTEGER)",
@@ -1628,16 +1381,8 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             )
         elif part_key_type == TERADATA_TYPE_DATE:
             part_literal_template1 = part_literal_template2 = """DATE '%s'"""
-            part_literal_hv1 = (
-                SALES_BASED_FACT_PRE_LOWER
-                if noseg_partition
-                else SALES_BASED_FACT_PRE_HV
-            )
-            part_literal_hv2 = (
-                SALES_BASED_FACT_HV_5_END
-                if maxval_partition
-                else SALES_BASED_FACT_HV_6_END
-            )
+            part_literal_hv1 = SALES_BASED_FACT_PRE_LOWER if noseg_partition else SALES_BASED_FACT_PRE_HV
+            part_literal_hv2 = SALES_BASED_FACT_HV_5_END if maxval_partition else SALES_BASED_FACT_HV_6_END
             sql_params.update(
                 {
                     "time_id_expr": "time_id",
@@ -1646,16 +1391,8 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         elif part_key_type == TERADATA_TYPE_TIMESTAMP:
             part_literal_template1 = """TIMESTAMP '%s 00:00:00+00:00'"""
             part_literal_template2 = """TIMESTAMP '%s 23:59:59+00:00'"""
-            part_literal_hv1 = (
-                SALES_BASED_FACT_PRE_LOWER
-                if noseg_partition
-                else SALES_BASED_FACT_PRE_HV
-            )
-            part_literal_hv2 = (
-                SALES_BASED_FACT_HV_5_END
-                if maxval_partition
-                else SALES_BASED_FACT_HV_6_END
-            )
+            part_literal_hv1 = SALES_BASED_FACT_PRE_LOWER if noseg_partition else SALES_BASED_FACT_PRE_HV
+            part_literal_hv2 = SALES_BASED_FACT_HV_5_END if maxval_partition else SALES_BASED_FACT_HV_6_END
             sql_params.update(
                 {
                     "time_id_expr": "CAST(time_id AS TIMESTAMP(0))",
@@ -1664,16 +1401,8 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         else:
             # VC
             part_literal_template1 = part_literal_template2 = """'%s'"""
-            part_literal_hv1 = (
-                SALES_BASED_FACT_PRE_LOWER_NUM
-                if noseg_partition
-                else SALES_BASED_FACT_PRE_HV_NUM
-            )
-            part_literal_hv2 = (
-                SALES_BASED_FACT_HV_5_END_NUM
-                if maxval_partition
-                else SALES_BASED_FACT_HV_6_END_NUM
-            )
+            part_literal_hv1 = SALES_BASED_FACT_PRE_LOWER_NUM if noseg_partition else SALES_BASED_FACT_PRE_HV_NUM
+            part_literal_hv2 = SALES_BASED_FACT_HV_5_END_NUM if maxval_partition else SALES_BASED_FACT_HV_6_END_NUM
             sql_params.update({"time_id_expr": "TO_CHAR(time_id,'YYYYMMDD')"})
 
         part_literal_hv1 = range_start_literal_override or part_literal_hv1
@@ -1685,9 +1414,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             }
         )
 
-        raise Exception(
-            "This function has not been implemented, we need a Teradata row generator"
-        )
+        raise Exception("This function has not been implemented, we need a Teradata row generator")
         # TODO Maybe this will help: https://stackoverflow.com/questions/67131817/create-row-level-data-from-a-range-in-teradata
         create_ddl = (
             dedent(
@@ -1762,15 +1489,13 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         schema: str,
         table_name: str,
         hv_string_list: list,
-        dropping_oldest: Optional[bool] = None,
+        dropping_oldest: bool | None = None,
     ) -> list:
         if not dropping_oldest:
             raise NotImplementedError("Drop partition is not valid on Teradata")
         partitions = self.frontend_table_partition_list(schema, table_name)
         if not partitions:
-            raise FrontendTestingApiException(
-                f"No partitions found: {schema}.{table_name}"
-            )
+            raise FrontendTestingApiException(f"No partitions found: {schema}.{table_name}")
 
         last_drop_partition = None
         # partitions are newest to oldest but we need them oldest to newest for this code.
@@ -1781,9 +1506,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
                 # This is the first partition after the range we are dropping
                 break
         if not last_drop_partition:
-            raise FrontendTestingApiException(
-                f"Cannot identify end of DROP range, list: {partitions}"
-            )
+            raise FrontendTestingApiException(f"Cannot identify end of DROP range, list: {partitions}")
         if "TIMESTAMP" in last_drop_partition.high_values_csv:
             # TODO This is a workaround for Teradata MVP. SALES TIME_IDs have no time part and scale=0.
             #      Teradata is being picky about a trailing .0 on RANGE_N literal so remove it here.
@@ -1794,30 +1517,21 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         else:
             range_end_hv = last_drop_partition.high_values_csv + "-1"
 
-        part_expr = teradata_get_primary_partition_expression(
-            schema, table_name, self._db_api
-        )
+        part_expr = teradata_get_primary_partition_expression(schema, table_name, self._db_api)
         range_start_hv = part_expr.ranges.pop()[0]
-        sql = """ALTER TABLE {}.{} MODIFY
-        DROP RANGE BETWEEN {} AND {} EACH INTERVAL '1' MONTH
-        WITH DELETE""".format(
-            schema, table_name, range_start_hv, range_end_hv
-        )
+        sql = f"""ALTER TABLE {schema}.{table_name} MODIFY
+        DROP RANGE BETWEEN {range_start_hv} AND {range_end_hv} EACH INTERVAL '1' MONTH
+        WITH DELETE"""
         return [sql]
 
     def sales_based_fact_truncate_partition_ddl(
-        self, schema: str, table_name: str, hv_string_list: Optional[list] = None
+        self, schema: str, table_name: str, hv_string_list: list | None = None
     ) -> list:
         # Truncate partition on Teradata is just a delete
         partition_names = [
-            _.partition_name
-            for _ in self.frontend_table_partition_list(
-                schema, table_name, hv_string_list
-            )
+            _.partition_name for _ in self.frontend_table_partition_list(schema, table_name, hv_string_list)
         ]
-        sql = """DELETE {}.{} WHERE partition#l1 IN ({})""".format(
-            schema, table_name, ",".join(partition_names)
-        )
+        sql = """DELETE {}.{} WHERE partition#l1 IN ({})""".format(schema, table_name, ",".join(partition_names))
         return [sql]
 
     def sales_based_fact_late_arriving_data_sql(
@@ -1843,12 +1557,12 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         schema: str,
         table_name: str,
         default_partition: bool = False,
-        extra_pred: Optional[str] = None,
-        part_key_type: Optional[str] = None,
+        extra_pred: str | None = None,
+        part_key_type: str | None = None,
         out_of_sequence: bool = False,
         include_older_partition: bool = False,
-        yrmon_column_name: Optional[str] = None,
-        extra_col_tuples: Optional[list] = None,
+        yrmon_column_name: str | None = None,
+        extra_col_tuples: list | None = None,
         with_drop: bool = True,
     ) -> list:
         if extra_col_tuples:
@@ -1862,17 +1576,13 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             TERADATA_TYPE_VARCHAR,
             TERADATA_TYPE_DATE,
             TERADATA_TYPE_TIMESTAMP,
-        ], (
-            "Unsupported part_key_type: %s" % part_key_type
-        )
+        ], "Unsupported part_key_type: %s" % part_key_type
 
         extra_pred = extra_pred or ""
         yrmon = (yrmon_column_name or "yrmon").upper()
         extra_cols = ""
         if extra_col_tuples:
-            extra_cols = "," + ",".join(
-                "{} AS {}".format(_[0], _[1]) for _ in extra_col_tuples
-            )
+            extra_cols = "," + ",".join(f"{_[0]} AS {_[1]}" for _ in extra_col_tuples)
 
         params = {
             "schema": schema,
@@ -1905,9 +1615,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             )
 
         if part_key_type == TERADATA_TYPE_NUMBER:
-            params.update(
-                {"chr": "", "yrmon_expr": "TO_NUMBER(TO_CHAR(time_id,'YYYYMM'))"}
-            )
+            params.update({"chr": "", "yrmon_expr": "TO_NUMBER(TO_CHAR(time_id,'YYYYMM'))"})
         elif part_key_type == TERADATA_TYPE_DATE:
             params.update(
                 {
@@ -1982,11 +1690,9 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         return sqls
 
     def sales_based_list_fact_add_partition_ddl(
-        self, schema: str, table_name: str, next_ym_override: Optional[tuple] = None
+        self, schema: str, table_name: str, next_ym_override: tuple | None = None
     ) -> list:
-        raise NotImplementedError(
-            "Teradata sales_based_list_fact_add_partition_ddl() pending implementation"
-        )
+        raise NotImplementedError("Teradata sales_based_list_fact_add_partition_ddl() pending implementation")
 
     def sales_based_list_fact_late_arriving_data_sql(
         self, schema: str, table_name: str, time_id_literal: str, yrmon_string: str
@@ -2005,30 +1711,23 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         }
         return [ins]
 
-    def sales_based_multi_col_fact_create_ddl(
-        self, schema: str, table_name: str, maxval_partition=False
-    ) -> list:
-        raise NotImplementedError(
-            "Teradata sales_based_multi_col_fact_create_ddl() not implemented"
-        )
+    def sales_based_multi_col_fact_create_ddl(self, schema: str, table_name: str, maxval_partition=False) -> list:
+        raise NotImplementedError("Teradata sales_based_multi_col_fact_create_ddl() not implemented")
 
     def sales_based_subpartitioned_fact_ddl(
         self, schema: str, table_name: str, top_level="LIST", rowdependencies=False
     ) -> list:
-        raise NotImplementedError(
-            "Teradata sales_based_subpartitioned_fact_ddl() not implemented"
-        )
+        raise NotImplementedError("Teradata sales_based_subpartitioned_fact_ddl() not implemented")
 
     def select_grant_exists(
         self,
         schema: str,
         table_name: str,
         to_user: str,
-        grantable: Optional[bool] = None,
+        grantable: bool | None = None,
     ) -> bool:
         self._log(
-            "select_grant_exists(%s, %s, %s, %s)"
-            % (schema, table_name, to_user, grantable),
+            "select_grant_exists(%s, %s, %s, %s)" % (schema, table_name, to_user, grantable),
             detail=VERBOSE,
         )
         q = """SELECT GrantAuthority
@@ -2040,26 +1739,23 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         row = self._db_api.execute_query_fetch_one(q, [schema, table_name, to_user])
         if not row:
             return False
-        elif grantable is None:
+        if grantable is None:
             return True
         if grantable:
             return bool(row[0] == "YES")
-        else:
-            return bool(row[0] == "NO")
+        return bool(row[0] == "NO")
 
     def standard_dimension_frontend_ddl(
         self,
         schema: str,
         table_name: str,
-        extra_col_tuples: Optional[list] = None,
+        extra_col_tuples: list | None = None,
         empty: bool = False,
         pk_col_name: str = None,
     ) -> list:
         extra_cols = ""
         if extra_col_tuples:
-            extra_cols = "," + ",".join(
-                "{} AS {}".format(_[0], _[1]) for _ in extra_col_tuples
-            )
+            extra_cols = "," + ",".join(f"{_[0]} AS {_[1]}" for _ in extra_col_tuples)
         if empty:
             subquery = dedent(
                 f"""\
@@ -2117,12 +1813,8 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
             with_stats_collection=True,
         )
 
-    def table_row_count_from_stats(
-        self, schema: str, table_name: str
-    ) -> Union[int, None]:
-        raise NotImplementedError(
-            "Teradata table_row_count_from_stats() not implemented"
-        )
+    def table_row_count_from_stats(self, schema: str, table_name: str) -> int | None:
+        raise NotImplementedError("Teradata table_row_count_from_stats() not implemented")
 
     def test_type_canonical_int_8(self) -> str:
         return TERADATA_TYPE_BIGINT
@@ -2140,9 +1832,7 @@ class TeradataFrontendTestingApi(FrontendTestingApiInterface):
         return TERADATA_TYPE_TIMESTAMP
 
     def test_time_zone_query_option(self, tz) -> dict:
-        raise NotImplementedError(
-            "Teradata test_time_zone_query_option() not implemented"
-        )
+        raise NotImplementedError("Teradata test_time_zone_query_option() not implemented")
 
     def unit_test_query_options(self):
         return None

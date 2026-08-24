@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from abc import ABCMeta, abstractmethod
 import base64
+from abc import ABCMeta, abstractmethod
+
+from goe.offload.offload_messages import VVERBOSE
 from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_BLOB,
     ORACLE_TYPE_CLOB,
     ORACLE_TYPE_NCLOB,
 )
-from goe.offload.offload_messages import VVERBOSE
-
 
 ###############################################################################
 # CONSTANTS
@@ -66,8 +66,7 @@ class QueryImportInterface(metaclass=ABCMeta):
         if rdbms_data_type in self._source_data_types_requiring_read:
             # BLOB should not undergo any character conversion therefore avoiding write_utf8
             return lambda x: base64.b64encode(x.read())
-        else:
-            return lambda x: base64.b64encode(x)
+        return lambda x: base64.b64encode(x)
 
     def _get_encode_read_fn(self):
         return lambda x: x.read()
@@ -79,14 +78,12 @@ class QueryImportInterface(metaclass=ABCMeta):
         return lambda x: str(x) + " UTC"
 
     def _strip_trailing_dot(self, strval):
-        return strval[:-1] if strval.endswith(".") else strval
+        return strval.removesuffix(".")
 
     ###########################################################################
     # PUBLIC METHODS
     ###########################################################################
 
     @abstractmethod
-    def write_from_cursor(
-        self, local_output_path, extraction_cursor, source_columns, fetch_size=None
-    ):
+    def write_from_cursor(self, local_output_path, extraction_cursor, source_columns, fetch_size=None):
         """fetch_size optional because not all frontends take a parameter to fetchmany()."""

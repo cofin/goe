@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # Copyright 2016 The GOE Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +13,13 @@
 # limitations under the License.
 
 """Redis client class utility."""
+
 # Standard Library
 import logging
 
 # import os
 from datetime import timedelta
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 # Third Party Libraries
 import redis
@@ -34,7 +33,7 @@ from goe.config import orchestration_defaults
 # This is useful when you are outside of an event loop and need to use the redis convenience functions
 
 
-class RedisClient(object):
+class RedisClient:
     """Redis client utility.
 
     Utility class for handling Redis database connection and operations.
@@ -60,7 +59,7 @@ class RedisClient(object):
     connection_kwargs: dict = {}
 
     @classmethod
-    def connect(cls, redis_connection_kwargs: Dict[str, Any] = {}):
+    def connect(cls, redis_connection_kwargs: dict[str, Any] = {}):
         """Create Redis client session object instance.
 
         Based on configuration create either Redis client or Redis Sentinel.
@@ -74,7 +73,7 @@ class RedisClient(object):
         return cls
 
     @classmethod
-    def get_client(cls, redis_connection_kwargs: Dict[str, Any] = {}):
+    def get_client(cls, redis_connection_kwargs: dict[str, Any] = {}):
         """Create Redis client session object instance.
 
         Based on configuration create either Redis client or Redis Sentinel.
@@ -90,9 +89,7 @@ class RedisClient(object):
         redis_db = orchestration_defaults.listener_redis_db_default()
         redis_use_ssl = orchestration_defaults.listener_redis_use_ssl_default()
         # redis_ssl_cert = os.environ.get("OFFLOAD_LISTENER_REDIS_CERT", None)
-        redis_use_sentinel = (
-            orchestration_defaults.listener_redis_use_sentinel_default()
-        )
+        redis_use_sentinel = orchestration_defaults.listener_redis_use_sentinel_default()
 
         if cls.redis_client is None:
             cls.logger.debug("Initializing Redis client.")
@@ -117,9 +114,7 @@ class RedisClient(object):
                 cls.redis_client = sentinel.master_for("goe-console")
             else:
                 proto = "rediss" if redis_use_ssl else "redis"
-                cls.base_redis_init_kwargs.update(
-                    {**cls.connection_kwargs, **redis_connection_kwargs}
-                )
+                cls.base_redis_init_kwargs.update({**cls.connection_kwargs, **redis_connection_kwargs})
                 cls.redis_client = redis.from_url(
                     f"{proto}://{redis_host:s}:{redis_port}/{redis_db}",
                     **cls.base_redis_init_kwargs,
@@ -157,7 +152,7 @@ class RedisClient(object):
             return False
 
     @classmethod
-    def set(cls, key: str, value: str, ttl: Optional[Union[int, timedelta]]):
+    def set(cls, key: str, value: str, ttl: int | timedelta | None):
         """Execute Redis SET command.
 
         Set key to hold the string value. If key already holds a value, it is
@@ -177,9 +172,7 @@ class RedisClient(object):
         """
         redis_client = cls.redis_client
 
-        cls.logger.debug(
-            f"Executing Redis SET command, key: {key}, value: {value} with TTL: {ttl}"
-        )
+        cls.logger.debug(f"Executing Redis SET command, key: {key}, value: {value} with TTL: {ttl}")
         try:
             redis_client.set(key, value, ex=ttl)
         except RedisError as exc:
@@ -205,9 +198,7 @@ class RedisClient(object):
         """
         redis_client = cls.redis_client
 
-        cls.logger.debug(
-            f"Executing Redis SCAN command, match: {match}, count: {count}"
-        )
+        cls.logger.debug(f"Executing Redis SCAN command, match: {match}, count: {count}")
         try:
             return redis_client.scan(match=match, count=count)
         except RedisError as exc:
@@ -248,7 +239,7 @@ class RedisClient(object):
             raise exc
 
     @classmethod
-    def rpush(cls, key: str, value: str, ttl: Optional[Union[int, timedelta]] = None):
+    def rpush(cls, key: str, value: str, ttl: int | timedelta | None = None):
         """Execute Redis RPUSH command.
 
         Insert all the specified values at the tail of the list stored at key.
@@ -344,7 +335,7 @@ class RedisClient(object):
             raise exc
 
     @classmethod
-    def mget(cls, keys: List[str]):
+    def mget(cls, keys: list[str]):
         """Execute Redis MGET command.
 
         Get the value of keys. If the keys do not exist the special value None
@@ -411,7 +402,7 @@ class RedisClient(object):
             raise exc
 
     @classmethod
-    def expire(cls, key: str, ttl: Union[int, timedelta]):
+    def expire(cls, key: str, ttl: int | timedelta):
         """Execute Redis EXPIRE command.
 
         Sets the TTL for a key.

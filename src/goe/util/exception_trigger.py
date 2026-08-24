@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Constants and global function for triggering exceptions in Orchestration commands for test purposes.
-"""
+"""Constants and global function for triggering exceptions in Orchestration commands for test purposes."""
 
 
 class ForcedOrchestrationException(Exception):
@@ -47,6 +46,4 @@ def trigger_exception(token, orchestration_config):
     else:
         error_on_token = orchestration_config.error_on_token
     if token and token == error_on_token:
-        raise ForcedOrchestrationException(
-            f"{EXCEPTION_TRIGGERED_TEXT}: {error_on_token}"
-        )
+        raise ForcedOrchestrationException(f"{EXCEPTION_TRIGGERED_TEXT}: {error_on_token}")

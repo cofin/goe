@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" AvroColumn: Avro implementation of ColumnMetadataInterface
-"""
+"""AvroColumn: Avro implementation of ColumnMetadataInterface"""
 
 from goe.offload.column_metadata import ColumnMetadataInterface
 
@@ -54,7 +53,7 @@ class StagingAvroColumn(ColumnMetadataInterface):
         safe_mapping=True,
         char_semantics=None,
     ):
-        super(StagingAvroColumn, self).__init__(
+        super().__init__(
             name,
             data_type,
             data_length,
@@ -73,25 +72,18 @@ class StagingAvroColumn(ColumnMetadataInterface):
     def has_time_element(self):
         """Does the column data contain a time"""
         # We should not need to this for a staging column
-        raise NotImplementedError(
-            "has_time_element() is not applicable to a StagingAvroColumn"
-        )
+        raise NotImplementedError("has_time_element() is not applicable to a StagingAvroColumn")
 
     def is_binary(self):
         return bool(self.data_type == AVRO_TYPE_BYTES)
 
     def is_nan_capable(self):
         # We should not need to this for a staging column
-        raise NotImplementedError(
-            "is_nan_capable() is not applicable to a StagingAvroColumn"
-        )
+        raise NotImplementedError("is_nan_capable() is not applicable to a StagingAvroColumn")
 
     def is_number_based(self):
         """Is the column numeric in class"""
-        return bool(
-            self.data_type
-            in (AVRO_TYPE_DOUBLE, AVRO_TYPE_FLOAT, AVRO_TYPE_INT, AVRO_TYPE_LONG)
-        )
+        return bool(self.data_type in (AVRO_TYPE_DOUBLE, AVRO_TYPE_FLOAT, AVRO_TYPE_INT, AVRO_TYPE_LONG))
 
     def is_date_based(self):
         """Is the column date in class"""

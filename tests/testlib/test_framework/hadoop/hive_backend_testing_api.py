@@ -15,40 +15,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Hive implementation of BackendTestingApi: An extension of BackendApi used purely for code relating to the setup,
-    processing and verification of integration tests.
+"""Hive implementation of BackendTestingApi: An extension of BackendApi used purely for code relating to the setup,
+processing and verification of integration tests.
 """
 
 import logging
 
 from goe.offload.column_metadata import (
-    CanonicalColumn,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_VARIABLE_STRING,
     GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_FLOAT,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
+    GOE_TYPE_INTERVAL_DS,
+    GOE_TYPE_INTERVAL_YM,
+    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_LARGE_STRING,
     GOE_TYPE_TIME,
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_VARIABLE_STRING,
+    CanonicalColumn,
 )
 from goe.offload.hadoop.hadoop_backend_api import (
     hive_enable_dynamic_partitions_for_insert_sqls,
 )
 from goe.offload.hadoop.hadoop_column import (
-    HadoopColumn,
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_BINARY,
     HADOOP_TYPE_BOOLEAN,
@@ -61,13 +60,13 @@ from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_STRING,
     HADOOP_TYPE_TIMESTAMP,
     HADOOP_TYPE_TINYINT,
+    HadoopColumn,
 )
 from goe.offload.offload_messages import NORMAL, VVERBOSE
 from tests.testlib.test_framework.hadoop.hadoop_backend_testing_api import (
     BackendHadoopTestingApi,
     BackendTestingApiException,
 )
-
 
 ###############################################################################
 # CONSTANTS
@@ -102,7 +101,7 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendHiveTestingApi, self).__init__(
+        super().__init__(
             connection_options,
             backend_type,
             messages,
@@ -119,9 +118,7 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
         return None, False
 
     def _define_test_partition_function(self, udf_name):
-        raise NotImplementedError(
-            "_define_test_partition_function() not implemented for Hive"
-        )
+        raise NotImplementedError("_define_test_partition_function() not implemented for Hive")
 
     def _goe_type_mapping_column_definitions(self, filter_column=None):
         """Returns a dict of dicts defining columns for GOE_BACKEND_TYPE_MAPPING test table.
@@ -131,18 +128,12 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
         def name(*args):
             return self._goe_type_mapping_column_name(*args)
 
-        all_columns = super(
-            BackendHiveTestingApi, self
-        )._goe_type_mapping_column_definitions(filter_column=filter_column)
+        all_columns = super()._goe_type_mapping_column_definitions(filter_column=filter_column)
         all_columns.update(
             {
                 name(HADOOP_TYPE_BINARY): {
-                    "column": HadoopColumn(
-                        name(HADOOP_TYPE_BINARY), HADOOP_TYPE_BINARY
-                    ),
-                    "expected_canonical_column": CanonicalColumn(
-                        name(HADOOP_TYPE_BINARY), GOE_TYPE_BINARY
-                    ),
+                    "column": HadoopColumn(name(HADOOP_TYPE_BINARY), HADOOP_TYPE_BINARY),
+                    "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_BINARY), GOE_TYPE_BINARY),
                 },
                 name(HADOOP_TYPE_BINARY, GOE_TYPE_LARGE_BINARY): {
                     "column": HadoopColumn(
@@ -153,11 +144,7 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
                         name(HADOOP_TYPE_BINARY, GOE_TYPE_LARGE_BINARY),
                         GOE_TYPE_LARGE_BINARY,
                     ),
-                    "present_options": {
-                        "large_binary_columns_csv": name(
-                            HADOOP_TYPE_BINARY, GOE_TYPE_LARGE_BINARY
-                        )
-                    },
+                    "present_options": {"large_binary_columns_csv": name(HADOOP_TYPE_BINARY, GOE_TYPE_LARGE_BINARY)},
                 },
             }
         )
@@ -166,17 +153,14 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
             del all_columns[name(HADOOP_TYPE_DATE)]
         if filter_column:
             return all_columns[filter_column]
-        else:
-            return all_columns
+        return all_columns
 
     ###########################################################################
     # PUBLIC METHODS
     ###########################################################################
 
     def backend_test_type_canonical_time(self):
-        raise NotImplementedError(
-            "backend_test_type_canonical_time() is not implemented for Hive"
-        )
+        raise NotImplementedError("backend_test_type_canonical_time() is not implemented for Hive")
 
     def create_backend_offload_location(self, goe_user=None):
         """Create HDFS_HOME and HDFS_DATA for Hive"""
@@ -213,9 +197,7 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
             row_limit=row_limit,
         )
         if compute_stats is not None:
-            query_options = {
-                "hive.stats.autogather": "true" if compute_stats else "false"
-            }
+            query_options = {"hive.stats.autogather": "true" if compute_stats else "false"}
         return self.execute_ddl(sql, query_options=query_options)
 
     def drop_column(self, db_name, table_name, column_name, sync=None):
@@ -229,45 +211,29 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
         tmp_table_name = table_name + "_drop_test_tmp"
         orig_table_ddl = self._db_api.get_table_ddl(db_name, table_name, as_list=True)
         # remove the column from the DDL and stitch it together as a string
-        create_tmp_ddl = "\n".join(
-            _ for _ in orig_table_ddl if column_name.lower() not in _.lower()
-        )
+        create_tmp_ddl = "\n".join(_ for _ in orig_table_ddl if column_name.lower() not in _.lower())
 
         # switch the table name
         def find_and_replace_owner_table(owner_table):
             if owner_table in create_tmp_ddl:
-                return create_tmp_ddl.replace(
-                    owner_table, db_name + "." + tmp_table_name
-                )
-            else:
-                return None
+                return create_tmp_ddl.replace(owner_table, db_name + "." + tmp_table_name)
+            return None
 
-        new_create_tmp_ddl = find_and_replace_owner_table(
-            self.enclose_identifier(db_name + "." + table_name)
-        )
+        new_create_tmp_ddl = find_and_replace_owner_table(self.enclose_identifier(db_name + "." + table_name))
         if not new_create_tmp_ddl:
             new_create_tmp_ddl = find_and_replace_owner_table(
-                self.enclose_identifier(db_name)
-                + "."
-                + self.enclose_identifier(table_name)
+                self.enclose_identifier(db_name) + "." + self.enclose_identifier(table_name)
             )
         if not new_create_tmp_ddl:
-            new_create_tmp_ddl = find_and_replace_owner_table(
-                db_name + "." + table_name
-            )
+            new_create_tmp_ddl = find_and_replace_owner_table(db_name + "." + table_name)
         if not new_create_tmp_ddl:
             raise BackendTestingApiException(
-                "Cannot match original table name %s.%s in DDL: %s"
-                % (db_name, table_name, create_tmp_ddl)
+                "Cannot match original table name %s.%s in DDL: %s" % (db_name, table_name, create_tmp_ddl)
             )
         # replace any table name entry in a filesystem location
-        new_create_tmp_ddl = new_create_tmp_ddl.replace(
-            "/" + table_name, "/" + tmp_table_name
-        )
+        new_create_tmp_ddl = new_create_tmp_ddl.replace("/" + table_name, "/" + tmp_table_name)
 
-        new_create_tmp_ddl = self._get_create_table_ddl_remove_spark_props(
-            new_create_tmp_ddl
-        )
+        new_create_tmp_ddl = self._get_create_table_ddl_remove_spark_props(new_create_tmp_ddl)
 
         orig_cols = self.get_columns(db_name, table_name)
         part_col_list = self._db_api.get_partition_columns(db_name, table_name)
@@ -275,10 +241,7 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
         self._debug("Extracted partition columns: %s" % str(part_col_names))
         # Omit the dropped column and partition columns
         new_cols = [
-            _.name
-            for _ in orig_cols
-            if column_name.lower() != _.name.lower()
-            and _.name.lower() not in part_col_names
+            _.name for _ in orig_cols if column_name.lower() != _.name.lower() and _.name.lower() not in part_col_names
         ]
         self._debug("Reduced columns to: %s" % str(new_cols))
 
@@ -296,17 +259,11 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
             )
         )
         executed_sqls.extend(self.drop_table(db_name, table_name))
-        executed_sqls.extend(
-            self._db_api.rename_table(db_name, tmp_table_name, db_name, table_name)
-        )
+        executed_sqls.extend(self._db_api.rename_table(db_name, tmp_table_name, db_name, table_name))
         return executed_sqls
 
     def expected_canonical_to_backend_type_map(self, override_used=None):
-        bigint_override = (
-            HADOOP_TYPE_BIGINT
-            if "integer_8_columns_csv" in (override_used or {})
-            else None
-        )
+        bigint_override = HADOOP_TYPE_BIGINT if "integer_8_columns_csv" in (override_used or {}) else None
         return {
             GOE_TYPE_FIXED_STRING: HADOOP_TYPE_STRING,
             GOE_TYPE_LARGE_STRING: HADOOP_TYPE_STRING,
@@ -352,16 +309,10 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
         )
         query_options = hive_enable_dynamic_partitions_for_insert_sqls(as_dict=True)
         if compute_stats is not None:
-            query_options.update(
-                {"hive.stats.autogather": "true" if compute_stats else "false"}
-            )
-        return self.execute_ddl(
-            insert_sql, query_options=query_options, log_level=NORMAL
-        )
+            query_options.update({"hive.stats.autogather": "true" if compute_stats else "false"})
+        return self.execute_ddl(insert_sql, query_options=query_options, log_level=NORMAL)
 
-    def partition_has_stats(
-        self, db_name, table_name, partition_tuples, colstats=False
-    ):
+    def partition_has_stats(self, db_name, table_name, partition_tuples, colstats=False):
         """This code was moved from test suite, I don't fully understand the logic hence not put in
         BackendApi. If we come to need this functionality in production code then we should
         make this a wrapper for a fully understood version.
@@ -369,34 +320,26 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
         """
         assert db_name and table_name
         assert partition_tuples
-        assert isinstance(partition_tuples, list) and isinstance(
-            partition_tuples[0], (tuple, list)
-        )
+        assert isinstance(partition_tuples, list) and isinstance(partition_tuples[0], (tuple, list))
         partition = self._db_api.format_hadoop_partition_clause(partition_tuples)
         self._debug("Testing partition has stats: %s" % partition)
-        _, part_stats, col_stats = self._db_api.get_table_and_partition_stats(
-            db_name, table_name, as_dict=False
-        )
+        _, part_stats, col_stats = self._db_api.get_table_and_partition_stats(db_name, table_name, as_dict=False)
         if colstats:
             self._log("Checking column stats in: %s" % str(col_stats), detail=VVERBOSE)
             part_stat = [
                 part[2]
                 for part in col_stats
-                if part[0].replace('"', "").replace(",", "/")
-                == partition.replace('"', "")
+                if part[0].replace('"', "").replace(",", "/") == partition.replace('"', "")
             ]
             if part_stat:
                 if part_stat[0] > -1:
                     return True
         else:
-            self._log(
-                "Checking partition stats in: %s" % str(part_stats), detail=VVERBOSE
-            )
+            self._log("Checking partition stats in: %s" % str(part_stats), detail=VVERBOSE)
             part_stat = [
                 part[1]
                 for part in part_stats
-                if part[0].replace('"', "").replace(",", "/")
-                == partition.replace('"', "")
+                if part[0].replace('"', "").replace(",", "/") == partition.replace('"', "")
             ]
             if part_stat:
                 if part_stat[0] > -1:
@@ -406,17 +349,11 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
     def sql_median_expression(self, db_name, table_name, column_name):
         column = self.get_column(db_name, table_name, column_name)
         if column.is_string_based():
-            return (
-                "CHR(PERCENTILE(CAST(ASCII(%s) AS BIGINT), 0.5))"
-                % self.enclose_identifier(column_name)
-            )
-        elif column.is_date_based():
+            return "CHR(PERCENTILE(CAST(ASCII(%s) AS BIGINT), 0.5))" % self.enclose_identifier(column_name)
+        if column.is_date_based():
             # There is no function we can use so just accept the first value
             return column_name
-        else:
-            return "PERCENTILE(CAST(%s AS BIGINT), 0.5)" % self.enclose_identifier(
-                column_name
-            )
+        return "PERCENTILE(CAST(%s AS BIGINT), 0.5)" % self.enclose_identifier(column_name)
 
     def unit_test_query_options(self):
         return {"hive.compute.query.using.stats": "false"}

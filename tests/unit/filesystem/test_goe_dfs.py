@@ -12,18 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestGOEDfs: Unit test library to test API for all supported backend filesystems.
-    This focuses on API calls that do not need to connect to the system.
-    Because there is no connection we can fake any backend and test basic functionality.
+"""TestGOEDfs: Unit test library to test API for all supported backend filesystems.
+This focuses on API calls that do not need to connect to the system.
+Because there is no connection we can fake any backend and test basic functionality.
 """
+
 import logging
 from unittest import TestCase, main
 
-from tests.unit.test_functions import optional_hadoop_dependency_exception
 from goe.filesystem.cli_hdfs import CliHdfs
 from goe.filesystem.goe_azure import GOEAzure
 from goe.filesystem.goe_gcs import GOEGcs
 from goe.filesystem.goe_s3 import GOES3
+from tests.unit.test_functions import optional_hadoop_dependency_exception
 
 try:
     from goe.filesystem.web_hdfs import WebHdfs
@@ -34,12 +35,12 @@ except ModuleNotFoundError as e:
         raise
 
 from goe.filesystem.goe_dfs import (
-    GOEDfsException,
-    gen_fs_uri,
-    uri_component_split,
     DFS_TYPE_DIRECTORY,
     DFS_TYPE_FILE,
     UNSUPPORTED_URI_SCHEME_EXCEPTION_TEXT,
+    GOEDfsException,
+    gen_fs_uri,
+    uri_component_split,
 )
 from goe.offload.offload_messages import OffloadMessages
 
@@ -63,7 +64,7 @@ class TestGOEDfs(TestCase):
     """
 
     def __init__(self, *args, **kwargs):
-        super(TestGOEDfs, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.options = None
         self.some_dir = None
@@ -97,9 +98,7 @@ class TestGOEDfs(TestCase):
                     )
                 )
                 self.assertFalse(
-                    self.api.container_exists(
-                        self.options.offload_fs_scheme, "this-is-defo-not-a-container"
-                    )
+                    self.api.container_exists(self.options.offload_fs_scheme, "this-is-defo-not-a-container")
                 )
         except NotImplementedError:
             pass
@@ -171,9 +170,7 @@ class TestGOEDfs(TestCase):
             self.assertIsInstance(uri, str)
             self.assertEqual(uri, expected_uri)
 
-        check_gen_fs_uri(
-            "s3a://bucket/some-path", "some-path", scheme="s3a", container="bucket"
-        )
+        check_gen_fs_uri("s3a://bucket/some-path", "some-path", scheme="s3a", container="bucket")
         check_gen_fs_uri(
             "gs://dev-bucket/some-path/dev-name/db_load/my-table",
             "some-path/dev-name",
@@ -205,9 +202,7 @@ class TestGOEDfs(TestCase):
         )
 
     def _test_uri_component_split(self):
-        def check_uri_component_split(
-            path, expected_scheme, expected_container, expected_path
-        ):
+        def check_uri_component_split(path, expected_scheme, expected_container, expected_path):
             parts = uri_component_split(path)
             self.assertIsInstance(parts, tuple)
             self.assertEqual(len(parts), 3)
@@ -215,12 +210,8 @@ class TestGOEDfs(TestCase):
             self.assertEqual(parts[1], expected_container)
             self.assertEqual(parts[2], expected_path)
 
-        check_uri_component_split(
-            "s3a://bucket/some-path/some-file", "s3a", "bucket", "/some-path/some-file"
-        )
-        check_uri_component_split(
-            "gs://bucket/some-path/some-file", "gs", "bucket", "/some-path/some-file"
-        )
+        check_uri_component_split("s3a://bucket/some-path/some-file", "s3a", "bucket", "/some-path/some-file")
+        check_uri_component_split("gs://bucket/some-path/some-file", "gs", "bucket", "/some-path/some-file")
         check_uri_component_split(
             "hdfs://host:123/some-path/some-file",
             "hdfs",
@@ -233,25 +224,17 @@ class TestGOEDfs(TestCase):
             "ha-nameservice",
             "/some-path/some-file",
         )
-        check_uri_component_split(
-            "hdfs:///some-path/some-file", "hdfs", "", "/some-path/some-file"
-        )
-        check_uri_component_split(
-            "/some-path/some-file", "", "", "/some-path/some-file"
-        )
+        check_uri_component_split("hdfs:///some-path/some-file", "hdfs", "", "/some-path/some-file")
+        check_uri_component_split("/some-path/some-file", "", "", "/some-path/some-file")
         try:
             # Expect exception
-            check_uri_component_split(
-                "not-a-scheme://bucket/some-path/some-file", "", "", ""
-            )
+            check_uri_component_split("not-a-scheme://bucket/some-path/some-file", "", "", "")
         except GOEDfsException as exc:
             if UNSUPPORTED_URI_SCHEME_EXCEPTION_TEXT in str(exc):
                 pass
             else:
                 raise
-        check_uri_component_split(
-            "://bucket/some-path/some-file", "", "", "://bucket/some-path/some-file"
-        )
+        check_uri_component_split("://bucket/some-path/some-file", "", "", "://bucket/some-path/some-file")
 
     def _test_write(self):
         self.api.write(self.some_file, "some-contents-for-a-file")
@@ -290,7 +273,7 @@ class TestWebHdfs(TestGOEDfs):
     """
 
     def __init__(self, *args, **kwargs):
-        super(TestWebHdfs, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.some_dir = "hdfs://some-path"
         self.some_file = "hdfs://some-path/a-file"
@@ -320,7 +303,7 @@ class TestWebHdfs(TestGOEDfs):
 
 class TestCliHdfs(TestGOEDfs):
     def __init__(self, *args, **kwargs):
-        super(TestCliHdfs, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.some_dir = "hdfs://some-path"
         self.some_file = "hdfs://some-path/a-file"
@@ -328,9 +311,7 @@ class TestCliHdfs(TestGOEDfs):
 
     def setUp(self):
         messages = OffloadMessages()
-        self.api = CliHdfs(
-            "a-host", "a-user", dry_run=True, messages=messages, do_not_connect=True
-        )
+        self.api = CliHdfs("a-host", "a-user", dry_run=True, messages=messages, do_not_connect=True)
 
     def test_all(self):
         self._run_all_tests()
@@ -343,7 +324,7 @@ class TestCliHdfs(TestGOEDfs):
 
 class TestGOEGcs(TestGOEDfs):
     def __init__(self, *args, **kwargs):
-        super(TestGOEGcs, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.some_dir = "gs://a-bucket/some-path"
         self.some_file = "gs://a-bucket/some-path/a-file"
@@ -364,7 +345,7 @@ class TestGOEGcs(TestGOEDfs):
 
 class TestGOES3(TestGOEDfs):
     def __init__(self, *args, **kwargs):
-        super(TestGOES3, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.some_dir = "s3://a-bucket/some-path"
         self.some_file = "s3://a-bucket/some-path/a-file"
@@ -385,7 +366,7 @@ class TestGOES3(TestGOEDfs):
 
 class TestGOEAzure(TestGOEDfs):
     def __init__(self, *args, **kwargs):
-        super(TestGOEAzure, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.some_dir = "wasb://a-bucket/some-path"
         self.some_file = "wasb://a-bucket/some-path/a-file"

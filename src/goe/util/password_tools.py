@@ -14,16 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Password management
-"""
+"""Password management"""
 
 import logging
 import os
 from base64 import b64decode
-from cryptography.hazmat.primitives import padding, serialization
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import padding, serialization
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 ###############################################################################
 # EXCEPTIONS
@@ -46,7 +45,7 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())  # Disabling logging by default
 
 
-class PasswordTools(object):
+class PasswordTools:
     """Password management methods
     Limited logging as don't want anything incriminating in log files.
     """
@@ -99,16 +98,10 @@ class PasswordTools(object):
                 p_key = serialization.load_pem_private_key(
                     reader.read(), password=passphrase, backend=default_backend()
                 )
-        except IOError as exc:
-            raise PasswordToolsException(
-                "PEM file does not exist or is not readable: %s\n%s"
-                % (pem_file, str(exc))
-            )
+        except OSError as exc:
+            raise PasswordToolsException("PEM file does not exist or is not readable: %s\n%s" % (pem_file, str(exc)))
         except Exception as exc:
-            raise PasswordToolsException(
-                "Unable to load private key from PEM file: %s\n%s"
-                % (pem_file, str(exc))
-            )
+            raise PasswordToolsException("Unable to load private key from PEM file: %s\n%s" % (pem_file, str(exc)))
 
         pkb = p_key.private_bytes(
             encoding=serialization.Encoding.DER,
@@ -122,9 +115,7 @@ class PasswordTools(object):
     # PUBLIC ROUTINES
     ###########################################################################
 
-    def get_password_key_from_key_file(
-        self, password_key_file=None, ignore_absent_keyfile=False
-    ):
+    def get_password_key_from_key_file(self, password_key_file=None, ignore_absent_keyfile=False):
         """Get the contents of the file pointed to by PASSWORD_KEY_FILE
         No-op if PASSWORD_KEY_FILE is not set
         """
@@ -136,23 +127,19 @@ class PasswordTools(object):
         password_key_file = password_key_file.strip()
 
         try:
-            with open(password_key_file, "r") as fh:
+            with open(password_key_file) as fh:
                 goe_key = fh.read().strip("\r\n")
-        except IOError as exc:
+        except OSError as exc:
             if "No such file or directory" in str(exc):
                 if ignore_absent_keyfile:
                     goe_key = None
                 else:
-                    raise PasswordToolsException(
-                        "Decryption string is not base64 encoded"
-                    )
+                    raise PasswordToolsException("Decryption string is not base64 encoded")
             else:
                 raise
 
         if not goe_key:
-            raise PasswordToolsException(
-                "No password key retrieved from key file: %s" % password_key_file
-            )
+            raise PasswordToolsException("No password key retrieved from key file: %s" % password_key_file)
         return goe_key
 
     def encrypt(self, clear_text, goe_key=None):
@@ -171,9 +158,7 @@ class PasswordTools(object):
 
         # CBC (Cipher Block Chaining) requires padding
         padder = padding.PKCS7(128).padder()  # 128 bit
-        clear_bytes = (
-            clear_text if isinstance(clear_text, bytes) else clear_text.encode()
-        )
+        clear_bytes = clear_text if isinstance(clear_text, bytes) else clear_text.encode()
         padded_text = padder.update(clear_bytes) + padder.finalize()
         encryptor = cipher.encryptor()
         enc_text = encryptor.update(padded_text) + encryptor.finalize()
@@ -207,13 +192,9 @@ class PasswordTools(object):
         try:
             decode_text = b64decode(enc_text)
         except Exception as exc:
-            if any(
-                _ in str(exc)
-                for _ in ["Invalid base64-encoded string", "Incorrect padding"]
-            ):
+            if any(_ in str(exc) for _ in ["Invalid base64-encoded string", "Incorrect padding"]):
                 raise PasswordToolsException("Decryption string is not base64 encoded")
-            else:
-                raise
+            raise
         return self.decrypt(decode_text, goe_key=goe_key)
 
     def get_private_key_from_pkcs8_pem_file(self, pem_file, passphrase=None):
@@ -230,8 +211,9 @@ class PasswordTools(object):
 
 if __name__ == "__main__":
     import sys
-    from goe.util.misc_functions import set_goelib_logging
     from base64 import b64encode
+
+    from goe.util.misc_functions import set_goelib_logging
 
     log_level = sys.argv[-1:][0].upper()
     if log_level not in ("DEBUG", "INFO", "WARNING", "CRITICAL", "ERROR"):

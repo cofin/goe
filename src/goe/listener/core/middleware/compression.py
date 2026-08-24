@@ -31,7 +31,7 @@ class BrotliMode:
     font = MODE_FONT
 
 
-class CompressionMiddleware:  # noqa: WPS230
+class CompressionMiddleware:
     """Compression middleware public interface.
 
     Returns Brotli compressed responses or GZIP compressed as a fallback
@@ -49,8 +49,7 @@ class CompressionMiddleware:  # noqa: WPS230
         minimum_size: int = 400,
         gzip_fallback: bool = True,
     ) -> None:
-        """
-        Arguments.
+        """Arguments.
         mode: The compression mode can be:
             generic, text (*default*. Used for UTF-8 format text input)
             or font (for WOFF 2.0).
@@ -94,7 +93,7 @@ class CompressionMiddleware:  # noqa: WPS230
         await self.app(scope, receive, send)
 
 
-class GZipResponder:  # noqa: WPS230
+class GZipResponder:
     def __init__(self, app: ASGIApp, minimum_size: int, compresslevel: int = 9) -> None:
         self.app = app
         self.minimum_size = minimum_size
@@ -102,9 +101,7 @@ class GZipResponder:  # noqa: WPS230
         self.initial_message: Message = {}
         self.started = False
         self.gzip_buffer = io.BytesIO()
-        self.gzip_file = gzip.GzipFile(
-            mode="wb", fileobj=self.gzip_buffer, compresslevel=compresslevel
-        )
+        self.gzip_file = gzip.GzipFile(mode="wb", fileobj=self.gzip_buffer, compresslevel=compresslevel)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         self.send = send
@@ -124,7 +121,7 @@ class GZipResponder:  # noqa: WPS230
                 # Don't apply GZip to small outgoing responses.
                 await self.send(self.initial_message)
                 await self.send(message)
-            elif not more_body:  # noqa: WPS504
+            elif not more_body:
                 # Standard GZip response.
                 body = self._set_response_body(body, more_body)
 
@@ -141,7 +138,7 @@ class GZipResponder:  # noqa: WPS230
                 headers = MutableHeaders(raw=self.initial_message["headers"])
                 headers["Content-Encoding"] = "gzip"
                 headers.add_vary_header("Accept-Encoding")
-                del headers["Content-Length"]  # noqa: WPS420
+                del headers["Content-Length"]
 
                 message["body"] = self._set_response_body(body, more_body)
                 await self.send(self.initial_message)
@@ -177,7 +174,7 @@ class GZipResponder:  # noqa: WPS230
         return value
 
 
-class BrotliResponder:  # noqa: WPS230
+class BrotliResponder:
     """Brotli Interface."""
 
     def __init__(
@@ -198,9 +195,7 @@ class BrotliResponder:  # noqa: WPS230
         self.send = unattached_send
         self.initial_message = {}
         self.started = False
-        self.br_file = Compressor(
-            quality=self.quality, mode=self.mode, lgwin=self.lgwin, lgblock=self.lgblock
-        )
+        self.br_file = Compressor(quality=self.quality, mode=self.mode, lgwin=self.lgwin, lgblock=self.lgblock)
         self.br_buffer = io.BytesIO()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -223,7 +218,7 @@ class BrotliResponder:  # noqa: WPS230
                 await self.send(self.initial_message)
                 await self.send(message)
 
-            elif not more_body:  # noqa: WPS504
+            elif not more_body:
                 # Standard Brotli response.
                 body = self._process(body) + self.br_file.finish()
                 headers = MutableHeaders(raw=self.initial_message["headers"])
@@ -239,7 +234,7 @@ class BrotliResponder:  # noqa: WPS230
                 headers = MutableHeaders(raw=self.initial_message["headers"])
                 headers["Content-Encoding"] = "br"
                 headers.add_vary_header("Accept-Encoding")
-                del headers["Content-Length"]  # noqa: WPS420
+                del headers["Content-Length"]
                 self.br_buffer.write(self._process(body) + self.br_file.flush())
                 message["body"] = self._set_response_body(body, more_body)
                 self.br_buffer.seek(0)
@@ -275,7 +270,7 @@ class BrotliResponder:  # noqa: WPS230
         # Check # [0x1f, 0x8b, 0x08] is the header for a gzip file.
         if body == b"" and more_body:
             return body
-        elif body in (b"null"):
+        if body in (b"null"):
             return body.replace(b"null", b"")
         return self.br_buffer.getvalue()
 

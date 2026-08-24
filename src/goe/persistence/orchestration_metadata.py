@@ -14,11 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" OrchestrationMetadata: Object containing orchestration metadata for a single hybrid object.
-"""
+"""OrchestrationMetadata: Object containing orchestration metadata for a single hybrid object."""
 
 import logging
-from typing import Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 from goe.offload.predicate_offload import GenericPredicate
 from goe.persistence.factory.orchestration_repo_client_factory import (
@@ -126,15 +125,14 @@ def add_missing_metadata_keys(metadata_dict):
 def build_client(connection_options=None, messages=None, client=None, dry_run=False):
     if client:
         return client
-    else:
-        assert connection_options
-        assert messages
-        return orchestration_repo_client_factory(
-            connection_options,
-            messages,
-            dry_run=dry_run,
-            trace_action="repo_client(OrchestrationMetadata)",
-        )
+    assert connection_options
+    assert messages
+    return orchestration_repo_client_factory(
+        connection_options,
+        messages,
+        dry_run=dry_run,
+        trace_action="repo_client(OrchestrationMetadata)",
+    )
 
 
 def hwm_column_names_from_predicates(offload_predicates):
@@ -193,9 +191,7 @@ class OrchestrationMetadata:
         logger.debug("Instantiating OrchestrationMetadata from metadata")
         assert isinstance(metadata, (dict, OrchestrationMetadata))
         if client:
-            self._client = build_client(
-                connection_options, messages, client, dry_run=dry_run
-            )
+            self._client = build_client(connection_options, messages, client, dry_run=dry_run)
         else:
             # We'll be lazy with client and only create it if we need it
             self._client = None
@@ -217,9 +213,7 @@ class OrchestrationMetadata:
         dry_run=False,
     ):
         """Instantiate a metadata object by owner/name"""
-        logger.debug(
-            f"Instantiating OrchestrationMetadata from name: {frontend_owner}.{frontend_name}"
-        )
+        logger.debug(f"Instantiating OrchestrationMetadata from name: {frontend_owner}.{frontend_name}")
         client = build_client(connection_options, messages, client, dry_run=dry_run)
         metadata = client.get_offload_metadata(frontend_owner, frontend_name)
         if metadata:
@@ -230,13 +224,10 @@ class OrchestrationMetadata:
                 client=client,
                 dry_run=dry_run,
             )
-        else:
-            return None
+        return None
 
     @staticmethod
-    def from_attributes(
-        connection_options=None, messages=None, client=None, dry_run=False, **kwargs
-    ):
+    def from_attributes(connection_options=None, messages=None, client=None, dry_run=False, **kwargs):
         """Instantiate a metadata object from a set of attributes"""
         logger.debug("Instantiating OrchestrationMetadata from attributes")
         metadata_dict = {}
@@ -264,9 +255,7 @@ class OrchestrationMetadata:
 
     def _get_client(self) -> "OrchestrationRepoClientInterface":
         if not self._client:
-            self._client = build_client(
-                self._connection_options, self._messages, None, dry_run=self._dry_run
-            )
+            self._client = build_client(self._connection_options, self._messages, None, dry_run=self._dry_run)
         return self._client
 
     ###########################################################################
@@ -282,9 +271,7 @@ class OrchestrationMetadata:
 
     def drop(self):
         """Persist metadata"""
-        self._get_client().drop_offload_metadata(
-            self.offloaded_owner, self.offloaded_table
-        )
+        self._get_client().drop_offload_metadata(self.offloaded_owner, self.offloaded_table)
 
     def save(self):
         """Persist metadata"""
@@ -298,8 +285,7 @@ class OrchestrationMetadata:
             # We've converted from DSL to GenericPredicate and back again just in case formatting changes, we want to
             # let GenericPredicate.dsl return a consistent format.
             return [GenericPredicate(_).dsl for _ in self.incremental_predicate_value]
-        else:
-            return [GenericPredicate(_) for _ in self.incremental_predicate_value]
+        return [GenericPredicate(_) for _ in self.incremental_predicate_value]
 
     def hwm_column_names(self) -> list:
         """Look at metadata and return a unique list of column names in the hybrid view HWM predicate
@@ -308,16 +294,12 @@ class OrchestrationMetadata:
         """
         if not self.is_hwm_in_hybrid_view():
             return []
-        inc_keys = (
-            csv_split(self.incremental_key.upper()) if self.incremental_key else []
-        )
-        pred_cols = hwm_column_names_from_predicates(
-            self.decode_incremental_predicate_values()
-        )
+        inc_keys = csv_split(self.incremental_key.upper()) if self.incremental_key else []
+        pred_cols = hwm_column_names_from_predicates(self.decode_incremental_predicate_values())
         inc_keys = sorted(list(set(inc_keys + pred_cols)))
         return inc_keys
 
-    def incremental_data_append_feature(self) -> Optional[str]:
+    def incremental_data_append_feature(self) -> str | None:
         """Return the feature name for an INCREMENTAL_PREDICATE_TYPE"""
         if not self._metadata:
             return None
@@ -325,25 +307,18 @@ class OrchestrationMetadata:
         ida_features = []
         if self.incremental_range:
             ida_features.append(self.incremental_range.title())
-        if (
-            self.incremental_predicate_type
-            in INCREMENTAL_PREDICATE_TYPES_WITH_PREDICATE_IN_HV
-        ):
+        if self.incremental_predicate_type in INCREMENTAL_PREDICATE_TYPES_WITH_PREDICATE_IN_HV:
             ida_features.append("Predicate")
 
         if ida_features:
             return " and ".join(ida_features) + "-Based Offload"
-        else:
-            return "Full Offload"
+        return "Full Offload"
 
     def is_hwm_in_hybrid_view(self) -> bool:
         """Look at metadata and return True if we expect the hybrid view to contain a UNION ALL.
         i.e. 90/10 or 100/10.
         """
-        return bool(
-            (self.incremental_key and self.incremental_high_value)
-            or self.incremental_predicate_value
-        )
+        return bool((self.incremental_key and self.incremental_high_value) or self.incremental_predicate_value)
 
     def is_subpartition_offload(self) -> bool:
         """Does metadata indicate this is a subpartition offloaded table. Returns True or False"""

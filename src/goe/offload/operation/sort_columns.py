@@ -14,23 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" sort_columns: Library of functions used in GOE to process sort column controls
-"""
+"""sort_columns: Library of functions used in GOE to process sort column controls"""
 
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from goe.offload.column_metadata import match_table_column
 from goe.offload import offload_constants
+from goe.offload.column_metadata import match_table_column
 from goe.offload.offload_functions import expand_columns_csv
 from goe.offload.offload_messages import VVERBOSE
 from goe.offload.offload_metadata_functions import offload_sort_columns_to_csv
 from goe.util.misc_functions import csv_split
 
 if TYPE_CHECKING:
-    from goe.persistence.orchestration_metadata import OrchestrationMetadata
     from goe.offload.backend_api import BackendApiInterface
     from goe.offload.offload_messages import OffloadMessages
     from goe.offload.offload_source_table import OffloadSourceTableInterface
+    from goe.persistence.orchestration_metadata import OrchestrationMetadata
 
 
 class OffloadSortColumnsException(Exception):
@@ -42,9 +41,7 @@ class OffloadSortColumnsException(Exception):
 ###############################################################################
 
 SORT_COLUMN_INVALID_EXCEPTION_TEXT = "Column is not valid for backend sorting"
-SORT_COLUMN_MAX_EXCEEDED_EXCEPTION_TEXT = (
-    "Too many sort columns specified for backend system"
-)
+SORT_COLUMN_MAX_EXCEEDED_EXCEPTION_TEXT = "Too many sort columns specified for backend system"
 SORT_COLUMN_NO_MODIFY_EXCEPTION_TEXT = "Changing column sorting is not supported"
 UNKNOWN_SORT_COLUMN_EXCEPTION_TEXT = "Unknown columns specified for backend sorting"
 
@@ -68,14 +65,10 @@ def validate_sort_columns_exist(sort_columns: list, rdbms_column_names: list):
     assert isinstance(rdbms_column_names, list)
     bad_cols = list(set(sort_columns) - set(rdbms_column_names))
     if bad_cols:
-        raise OffloadSortColumnsException(
-            "%s: %s" % (UNKNOWN_SORT_COLUMN_EXCEPTION_TEXT, bad_cols)
-        )
+        raise OffloadSortColumnsException("%s: %s" % (UNKNOWN_SORT_COLUMN_EXCEPTION_TEXT, bad_cols))
 
 
-def validate_sort_column_types(
-    sort_columns: list, backend_cols: list, backend_api: "BackendApiInterface"
-):
+def validate_sort_column_types(sort_columns: list, backend_cols: list, backend_api: "BackendApiInterface"):
     assert isinstance(sort_columns, list)
     assert isinstance(backend_cols, list)
     for sort_col in sort_columns:
@@ -98,7 +91,7 @@ def sort_columns_csv_to_sort_columns(
     backend_cols: list,
     backend_api: "BackendApiInterface",
     messages: "OffloadMessages",
-) -> Optional[list]:
+) -> list | None:
     assert isinstance(sort_columns_csv, (str, type(None)))
     sort_columns = None
     rdbms_column_names = offload_source_table.get_column_names()
@@ -116,15 +109,13 @@ def sort_columns_csv_to_sort_columns(
             if backend_api.default_sort_columns_to_primary_key():
                 sort_columns = offload_source_table.get_primary_key_columns()
                 # Ensure we don't have too many sort columns.
-                sort_columns = sort_columns[:backend_api.max_sort_columns()]
+                sort_columns = sort_columns[: backend_api.max_sort_columns()]
     elif sort_columns_csv == offload_constants.SORT_COLUMNS_NONE:
         # The user requested no sorting.
         sort_columns = None
     elif sort_columns_csv:
         # The user gave us a list so use that and ensure all stated SORT BY columns exist.
-        sort_columns = expand_columns_csv(
-            sort_columns_csv, rdbms_column_names, retain_non_matching_names=True
-        )
+        sort_columns = expand_columns_csv(sort_columns_csv, rdbms_column_names, retain_non_matching_names=True)
         validate_sort_columns_exist(sort_columns, rdbms_column_names)
         validate_sort_column_types(sort_columns, backend_cols, backend_api)
         if hybrid_metadata and hybrid_metadata.offload_sort_columns:
@@ -144,15 +135,11 @@ def sort_columns_csv_to_sort_columns(
     return sort_columns
 
 
-def sort_columns_have_changed(
-    offload_source_table: "OffloadSourceTableInterface", offload_operation
-):
+def sort_columns_have_changed(offload_source_table: "OffloadSourceTableInterface", offload_operation):
     if not offload_source_table.sorted_table_supported():
         return False
     existing_metadata = offload_operation.pre_offload_hybrid_metadata
-    prior_sort_columns = (
-        existing_metadata.offload_sort_columns if existing_metadata else None
-    )
+    prior_sort_columns = existing_metadata.offload_sort_columns if existing_metadata else None
     new_sort_columns = offload_sort_columns_to_csv(offload_operation.sort_columns)
     return bool(prior_sort_columns != new_sort_columns)
 

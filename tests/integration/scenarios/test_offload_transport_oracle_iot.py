@@ -22,11 +22,10 @@ from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
-from goe.offload.offload_messages import VVERBOSE
 from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
-    OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SQOOP,
     is_query_import_available,
@@ -43,7 +42,6 @@ from goe.offload.offload_transport_rdbms_api import (
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
 from tests.integration.scenarios.assertion_functions import standard_dimension_assertion
 from tests.integration.scenarios.scenario_runner import (
     run_offload,
@@ -61,7 +59,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api,
     get_test_messages_ctx,
 )
-
 
 BATCHES_NUM_DIM = "OT_IOT_NUM_BATCHES_DIM"
 BATCHES_STR_DIM = "OT_IOT_STR_BATCHES_DIM"
@@ -149,9 +146,7 @@ def iot_num_dim_tests(
 ):
     frontend_api = get_frontend_testing_api(config, messages, trace_action=test_id)
     backend_api = get_backend_testing_api(config, messages)
-    repo_client = orchestration_repo_client_factory(
-        config, messages, trace_action=f"repo_client({test_id})"
-    )
+    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
 
     # Setup
     run_setup(
@@ -161,9 +156,7 @@ def iot_num_dim_tests(
         messages,
         frontend_sqls=gen_num_dim_table_ddl(frontend_api, schema, table_name),
         python_fns=[
-            lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, table_name
-            ),
+            lambda: drop_backend_test_table(config, backend_api, messages, data_db, table_name),
         ],
     )
 
@@ -205,9 +198,7 @@ def iot_str_dim_tests(
 ):
     frontend_api = get_frontend_testing_api(config, messages, trace_action=test_id)
     backend_api = get_backend_testing_api(config, messages)
-    repo_client = orchestration_repo_client_factory(
-        config, messages, trace_action=f"repo_client({test_id})"
-    )
+    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
 
     # Setup
     run_setup(
@@ -217,9 +208,7 @@ def iot_str_dim_tests(
         messages,
         frontend_sqls=gen_str_dim_table_ddl(frontend_api, schema, table_name),
         python_fns=[
-            lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, table_name
-            ),
+            lambda: drop_backend_test_table(config, backend_api, messages, data_db, table_name),
         ],
     )
 
@@ -261,9 +250,7 @@ def iot_ts_dim_tests(
 ):
     frontend_api = get_frontend_testing_api(config, messages, trace_action=test_id)
     backend_api = get_backend_testing_api(config, messages)
-    repo_client = orchestration_repo_client_factory(
-        config, messages, trace_action=f"repo_client({test_id})"
-    )
+    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
 
     # Setup
     run_setup(
@@ -273,9 +260,7 @@ def iot_ts_dim_tests(
         messages,
         frontend_sqls=gen_ts_dim_table_ddl(frontend_api, schema, table_name),
         python_fns=[
-            lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, table_name
-            ),
+            lambda: drop_backend_test_table(config, backend_api, messages, data_db, table_name),
         ],
     )
 
@@ -308,9 +293,7 @@ def iot_ts_dim_tests(
 #
 # IOT with NUMBER PK
 #
-def test_offload_transport_oracle_iot_num_qi(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_num_qi(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Query Import."""
     id = "test_offload_transport_oracle_iot_num_qi"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -332,9 +315,7 @@ def test_offload_transport_oracle_iot_num_qi(
         )
 
 
-def test_offload_transport_oracle_iot_num_dataproc_cluster(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_num_dataproc_cluster(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Managed Spark."""
     id = "test_offload_transport_oracle_iot_num_dataproc_cluster"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -356,9 +337,7 @@ def test_offload_transport_oracle_iot_num_dataproc_cluster(
         )
 
 
-def test_offload_transport_oracle_iot_num_dataproc_batches(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_num_dataproc_batches(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Managed Spark Batches."""
     id = "test_offload_transport_oracle_iot_num_dataproc_batches"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -380,9 +359,7 @@ def test_offload_transport_oracle_iot_num_dataproc_batches(
         )
 
 
-def test_offload_transport_oracle_iot_num_spark_submit(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_num_spark_submit(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Spark Submit."""
     id = "test_offload_transport_oracle_iot_num_spark_submit"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -404,9 +381,7 @@ def test_offload_transport_oracle_iot_num_spark_submit(
         )
 
 
-def test_offload_transport_oracle_iot_num_sqoop(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_num_sqoop(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Sqoop."""
     id = "test_offload_transport_oracle_iot_num_sqoop"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -431,9 +406,7 @@ def test_offload_transport_oracle_iot_num_sqoop(
 #
 # IOT with TIMESTAMP PK
 #
-def test_offload_transport_oracle_iot_ts_dataproc_cluster(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_ts_dataproc_cluster(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Managed Spark."""
     id = "test_offload_transport_oracle_iot_ts_dataproc_cluster"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -455,9 +428,7 @@ def test_offload_transport_oracle_iot_ts_dataproc_cluster(
         )
 
 
-def test_offload_transport_oracle_iot_ts_dataproc_batches(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_ts_dataproc_batches(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Managed Spark serverless."""
     id = "test_offload_transport_oracle_iot_ts_dataproc_batches"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -479,9 +450,7 @@ def test_offload_transport_oracle_iot_ts_dataproc_batches(
         )
 
 
-def test_offload_transport_oracle_iot_ts_spark_submit(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_ts_spark_submit(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Spark Submit."""
     id = "test_offload_transport_oracle_iot_ts_spark_submit"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -503,9 +472,7 @@ def test_offload_transport_oracle_iot_ts_spark_submit(
         )
 
 
-def test_offload_transport_oracle_iot_ts_sqoop(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_ts_sqoop(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Sqoop."""
     id = "test_offload_transport_oracle_iot_ts_sqoop"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -530,9 +497,7 @@ def test_offload_transport_oracle_iot_ts_sqoop(
 #
 # IOT with STRING PK
 #
-def test_offload_transport_oracle_iot_str_dataproc_cluster(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_str_dataproc_cluster(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Managed Spark."""
     id = "test_offload_transport_oracle_iot_str_dataproc_cluster"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -554,9 +519,7 @@ def test_offload_transport_oracle_iot_str_dataproc_cluster(
         )
 
 
-def test_offload_transport_oracle_iot_str_dataproc_batches(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_str_dataproc_batches(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Managed Spark serverless."""
     id = "test_offload_transport_oracle_iot_str_dataproc_batches"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -578,9 +541,7 @@ def test_offload_transport_oracle_iot_str_dataproc_batches(
         )
 
 
-def test_offload_transport_oracle_iot_str_spark_submit(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_str_spark_submit(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Spark Submit."""
     id = "test_offload_transport_oracle_iot_str_spark_submit"
     if config.db_type != offload_constants.DBTYPE_ORACLE:
@@ -602,9 +563,7 @@ def test_offload_transport_oracle_iot_str_spark_submit(
         )
 
 
-def test_offload_transport_oracle_iot_str_sqoop(
-    config: OrchestrationConfig, schema: str, data_db: str
-):
+def test_offload_transport_oracle_iot_str_sqoop(config: OrchestrationConfig, schema: str, data_db: str):
     """Test IOT offload with Sqoop."""
     id = "test_offload_transport_oracle_iot_str_sqoop"
     if config.db_type != offload_constants.DBTYPE_ORACLE:

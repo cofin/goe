@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" ImpalaLiteral: Format an Impala literal based on data type.
-"""
+"""ImpalaLiteral: Format an Impala literal based on data type."""
 
-from datetime import date
 import logging
+from datetime import date
 
 from numpy import datetime64
 

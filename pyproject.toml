@@ -214,63 +214,57 @@ target-version = "py310"
 [tool.ruff.lint]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 fixable = ["ALL"]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "RUF", # ruff-specific rules
+]
 ignore = [
-    "A003",    # Class attribute shadowing a python builtin
-    "ANN101",  # Missing type annotation for self in method
-    "ANN102",  # Missing type annotation for cls in classmethod
-    "ANN401",  # Dynamically typed expressions (typing.Any) are disallowed
-    "ARG001",  # Unused function argument
-    "ARG002",  # Unused method argument
+    "E203",    # Whitespace before ':'
+    "E501",    # Line too long (handled by formatter)
+    "E712",    # Avoid equality comparisons to False/True
+    "E721",    # Use is and is not for type comparisons
+    "E722",    # Do not use bare except
+    "E731",    # Do not assign a lambda expression
+    "E741",    # Ambiguous variable name
+    "B006",    # Do not use mutable data structures for argument defaults
+    "B007",    # Loop control variable not used within loop body
     "B008",    # Do not perform function call in argument defaults
     "B010",    # Do not call setattr with a constant attribute value
+    "B012",    # `break` inside `finally` blocks
+    "B017",    # Do not assert blind exception
+    "B018",    # Found useless expression
+    "B020",    # Loop control variable overrides iterable it iterates
+    "B023",    # Function definition does not bind loop variable
     "B027",    # Allow non-abstract empty methods in abstract base classes
-    "C901",    # Complexity
-    "COM812",  # Missing trailing comma
-    "D100",    # Missing docstring in public module
-    "D101",    # Missing docstring in public class
-    "D102",    # Missing docstring in public method
-    "D103",    # Missing docstring in public function
-    "D104",    # Missing docstring in public package
-    "D105",    # Missing docstring in magic method
-    "D106",    # Missing docstring in public nested class
-    "D107",    # Missing docstring in __init__
-    "D202",    # No blank lines allowed after function docstring
-    "D205",    # 1 blank line required between summary line and description
-    "D415",    # First line should end with a period, question mark, or exclamation point
-    "E203",    # Whitespace before ':'
-    "E501",    # Line too long, handled by formatter
-    "FBT001",  # Boolean positional argument in function definition
-    "FBT002",  # Boolean default positional argument in function definition
-    "FBT003",  # Boolean positional value in function calls
-    "FIX002",  # Line contains TODO
-    "ISC001",  # Conflicts with formatter
-    "PERF203", # try-except within a loop
-    "PGH003",  # Use specific rule codes when ignoring type issues
-    "PLC1901", # Empty string comparison
-    "PLR0911", # Too many return statements
-    "PLR0912", # Too many branches
-    "PLR0913", # Too many arguments
-    "PLR0915", # Too many statements
-    "PLR0917", # Too many positional arguments
-    "PLR2004", # Magic value used in comparison
-    "PLW2901", # For loop variable overwritten by assignment target
-    "PT004",   # Fixture does not return anything, add leading underscore
-    "PT005",   # Fixture returns a value, remove leading underscore
-    "PT007",   # Wrong values type in pytest.mark.parametrize
+    "B028",    # No explicit stacklevel keyword argument found
+    "B034",    # re.sub should pass count and flags as keyword arguments
+    "B904",    # Within an except clause, raise exceptions with raise ... from err
+    "B905",    # `zip()` without an explicit `strict=` parameter
+    "F401",    # Module imported but unused
+    "F504",    # %-format string has unused named argument(s)
+    "F507",    # %-format string placeholder mismatch
+    "F811",    # Redefinition of unused name
+    "F841",    # Local variable is assigned to but never used
+    "UP031",   # Use format specifiers instead of percent format
+    "UP035",   # Deprecated imports
+    "UP037",   # Remove quotes from type annotation
+    "RUF002",  # Docstring contains ambiguous character
+    "RUF003",  # Comment contains ambiguous character
+    "RUF005",  # Consider iterable unpacking instead of concatenation
     "RUF006",  # Store reference to asyncio task
     "RUF012",  # Mutable class attributes should be annotated with typing.ClassVar
-    "S101",    # Use of assert detected
-    "S105",    # Possible hardcoded password
-    "S106",    # Possible hardcoded password
-    "S107",    # Possible hardcoded password
-    "S603",    # subprocess call: check for execution of untrusted input
-    "SIM114",  # Combine if branches using logical or operator
-    "SLF001",  # Private member accessed
-    "TD002",   # Missing author in TODO
-    "TD003",   # Missing issue link on the line following this TODO
-    "UP037",   # Remove quotes from type annotation
+    "RUF013",  # PEP 484 prohibits implicit Optional
+    "RUF015",  # Prefer next(...) over single element slice
+    "RUF036",  # None not at the end of type union
+    "RUF046",  # Value being cast to `int` is already an integer
+    "RUF059",  # Unpacked variable is never used
+    "ISC001",  # Conflicts with formatter
 ]
-select = ["ALL"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -18,14 +18,13 @@ from unittest import mock
 import pytest
 
 from goe.offload import offload_constants
-from goe.offload.operation import ddl_file as module_under_test
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.operation import ddl_file as module_under_test
 from goe.util.misc_functions import get_temp_path
-
 from tests.unit.test_functions import (
+    FAKE_ORACLE_BQ_ENV,
     build_mock_offload_operation,
     build_mock_options,
-    FAKE_ORACLE_BQ_ENV,
 )
 
 if TYPE_CHECKING:
@@ -44,9 +43,7 @@ def config() -> "OrchestrationConfig":
         ("MY-USER-123", "MY-TABLE"),
     ],
 )
-def test_generate_ddl_file_path(
-    schema: str, table_name: str, config: "OrchestrationConfig"
-):
+def test_generate_ddl_file_path(schema: str, table_name: str, config: "OrchestrationConfig"):
     path = module_under_test.generate_ddl_file_path(schema, table_name, config)
     assert schema in path
     assert table_name in path
@@ -83,17 +80,13 @@ def test_ddl_file_header():
         ("unknown-scheme://bucket/path/ddl.sql", True),
     ],
 )
-def test_normalise_ddl_file_path(
-    path: str, expect_exception: bool, config: "OrchestrationConfig"
-):
+def test_normalise_ddl_file_path(path: str, expect_exception: bool, config: "OrchestrationConfig"):
     fake_messages = OffloadMessages()
     fake_operation = build_mock_offload_operation()
     fake_operation.ddl_file = path
     if expect_exception:
         with pytest.raises(Exception):
-            _ = module_under_test.normalise_ddl_file(
-                fake_operation, config, fake_messages
-            )
+            _ = module_under_test.normalise_ddl_file(fake_operation, config, fake_messages)
     else:
         # No exception expected.
         _ = module_under_test.normalise_ddl_file(fake_operation, config, fake_messages)
@@ -117,9 +110,7 @@ def test_write_ddl_to_ddl_file(ddl_list: list, config):
     ddl_file = get_temp_path(prefix="test_write_ddl_to_ddl_file", suffix=".sql")
     m = mock.mock_open()
     with mock.patch("goe.offload.operation.ddl_file.open", m):
-        module_under_test.write_ddl_to_ddl_file(
-            ddl_file, ddl_list, config, fake_messages
-        )
+        module_under_test.write_ddl_to_ddl_file(ddl_file, ddl_list, config, fake_messages)
     fh = m()
     assert fh.write.mock_calls
     write_arg = fh.write.mock_calls[0].args[0]

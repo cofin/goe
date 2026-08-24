@@ -15,13 +15,14 @@
 """HTTP exception and handler for FastAPI."""
 
 # Standard Library
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
-# Third Party Libraries
-from oracledb import DatabaseError as OracleDatabaseError
 from fastapi import Request, status
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.responses import ORJSONResponse
+
+# Third Party Libraries
+from oracledb import DatabaseError as OracleDatabaseError
 from pydantic import ValidationError
 from redis.exceptions import ConnectionError, RedisError, TimeoutError
 
@@ -46,7 +47,7 @@ class BaseApplicationError(Exception):
         self,
         status_code: int,
         content: Any = None,
-        headers: Optional[Dict[str, Any]] = None,
+        headers: dict[str, Any] | None = None,
         *kwargs,
     ) -> None:
         """Initialize HTTPException class object instance.
@@ -72,7 +73,7 @@ class BaseApplicationError(Exception):
 
         for key, value in self.__dict__.items():
             if not key.startswith("_"):
-                kwargs.append("{key}={value}".format(key=key, value=repr(value)))
+                kwargs.append(f"{key}={value!r}")
 
         return "{name}({kwargs})".format(
             name=self.__class__.__name__,
@@ -89,9 +90,9 @@ class ApplicationError(BaseApplicationError):
     def __init__(
         self,
         status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
-        message: Union[str, schemas.ErrorMessage] = "A general exception occurred.",
+        message: str | schemas.ErrorMessage = "A general exception occurred.",
     ):
-        BaseApplicationError.__init__(  # noqa: WPS609
+        BaseApplicationError.__init__(
             self,
             status_code,
             content=(
@@ -133,7 +134,7 @@ async def http_error_handler(_: Request, exception: HTTPException):
 
 async def http422_error_handler(
     _: Request,
-    exception: Union[RequestValidationError, ValidationError],
+    exception: RequestValidationError | ValidationError,
 ):
     """Handle Http validation error globally.
 
@@ -159,9 +160,7 @@ async def http422_error_handler(
     status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
     return ORJSONResponse(
         status_code=status_code,
-        content=schemas.ErrorMessage(
-            code=status_code, message="Validation Error", details=details
-        ).dict(
+        content=schemas.ErrorMessage(code=status_code, message="Validation Error", details=details).dict(
             exclude_none=True,
         ),
         headers=getattr(exception, "headers", None),
@@ -174,9 +173,7 @@ async def system_error_exception_handler(request: Request, exception: ValueError
     details = {}
     return ORJSONResponse(
         status_code=status_code,
-        content=schemas.ErrorMessage(
-            code=status_code, message=msg, details=details
-        ).dict(
+        content=schemas.ErrorMessage(code=status_code, message=msg, details=details).dict(
             exclude_none=True,
         ),
         headers=getattr(exception, "headers", None),
@@ -212,7 +209,7 @@ async def app_error_handler(_: Request, exception: BaseApplicationError):
 
 async def cache_connectivity_error(
     _: Request,
-    exception: Union[TimeoutError, ConnectionError, RedisError],
+    exception: TimeoutError | ConnectionError | RedisError,
 ):
     """Handle cache connection error globally.
 

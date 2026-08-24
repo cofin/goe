@@ -14,10 +14,10 @@
 
 """Library of functions generating data for test tables."""
 
-from datetime import datetime, date, timedelta
 import decimal
 import random
 import uuid
+from datetime import date, datetime, timedelta
 
 import oracledb as cxo
 
@@ -50,7 +50,7 @@ def gen_char(
     if from_list:
         # Just return a value from the list provided by the user
         return from_list[(row_index + 1) % len(from_list)]
-    elif const == ordered:
+    if const == ordered:
         row = "".join(chr(row_index % 2**8) for _ in range(length // 2))
     s = ""
     if ordered and ascii7_only and notnull:
@@ -96,27 +96,15 @@ def gen_varchar(
         c = row_index % ((2**7) - 1)
         s = "".join(chr(c) for i in range(random.randint(0, length // 2)))
     elif ordered:
-        s = "".join(
-            chr(row_index % 2**8) for _ in range(random.randint(0, length // 2))
-        )
+        s = "".join(chr(row_index % 2**8) for _ in range(random.randint(0, length // 2)))
     elif ascii7_only and notnull:
-        s = "".join(
-            chr(random.randint(1, 2**7 - 1))
-            for _ in range(random.randint(0, length // 2))
-        )
+        s = "".join(chr(random.randint(1, 2**7 - 1)) for _ in range(random.randint(0, length // 2)))
     elif ascii7_only:
-        s = "".join(
-            chr(random.randint(0, 2**7 - 1))
-            for _ in range(random.randint(0, length // 2))
-        )
+        s = "".join(chr(random.randint(0, 2**7 - 1)) for _ in range(random.randint(0, length // 2)))
     elif const:
         s = "".join(const for _ in range(random.randint(0, length // 2)))
-    else:
-        if notnull or random.choice(list(range(20))) != 0:  # 5% null
-            s = "".join(
-                chr(random.randint(0, 2**8 - 1))
-                for _ in range(random.randint(0, length // 2))
-            )
+    elif notnull or random.choice(list(range(20))) != 0:  # 5% null
+        s = "".join(chr(random.randint(0, 2**8 - 1)) for _ in range(random.randint(0, length // 2)))
     if no_newlines:
         s = remove_newlines(s)
     return s
@@ -138,9 +126,9 @@ def gen_number(row_index, precision=None, scale=0, from_list=None, ordered=False
     if from_list:
         # Just return a value from the list provided by the user
         return from_list[(row_index + 1) % len(from_list)]
-    elif ordered:
+    if ordered:
         return int(row_index)
-    elif precision:
+    if precision:
         # This should really be 38 but cx-Oracle gives us trouble and 'test' had precision capped at 35
         max_precision = 35
         if scale is None:
@@ -152,16 +140,10 @@ def gen_number(row_index, precision=None, scale=0, from_list=None, ordered=False
                 scale = int(scale - (scale * (precision - max_precision) / precision))
             precision = max_precision
 
-        precision_string = str(
-            random.randint(0, (10 ** (precision - scale)) - 1)
-        ).zfill(precision - scale)
+        precision_string = str(random.randint(0, (10 ** (precision - scale)) - 1)).zfill(precision - scale)
         scale_string = str(random.randint(0, (10**scale) - 1)).zfill(scale)
         sign = random.choice([1, -1])
-        if (
-            sign == -1
-            and precision == 38
-            and len(precision_string + scale_string) >= 38
-        ):
+        if sign == -1 and precision == 38 and len(precision_string + scale_string) >= 38:
             # GOE-1648, hitting same issue as discussed on GOE-1503:
             #   cx_Oracle 7.3.0 issue with generating long negative integers in Python and binding to Oracle NUMBER.
             #   cx_Oracle is mangling the long to cx_Oracle.NUMBER conversion for 38 digit negative numbers and
@@ -174,18 +156,13 @@ def gen_number(row_index, precision=None, scale=0, from_list=None, ordered=False
             # float is painful so we use Decimal below for accuracy
             result = decimal.Decimal(precision_string + "." + scale_string) * sign
         return result
-    else:
-        # Because of decimal(, 18), just hack for now
-        return round(
-            float(str(random.uniform(-1, 1))[:10]) * (10 ** random.randint(-4, 4)), 18
-        )
-        # return random.uniform(-1, 1) * 10**random.randint(-129, 125)
+    # Because of decimal(, 18), just hack for now
+    return round(float(str(random.uniform(-1, 1))[:10]) * (10 ** random.randint(-4, 4)), 18)
+    # return random.uniform(-1, 1) * 10**random.randint(-129, 125)
 
 
 def gen_int(row_index, precision=None, from_list=None, ordered=False):
-    return gen_number(
-        row_index, precision=precision, scale=0, from_list=from_list, ordered=ordered
-    )
+    return gen_number(row_index, precision=precision, scale=0, from_list=from_list, ordered=ordered)
 
 
 def gen_float(row_index, from_list=None, allow_nan=True, allow_inf=True):
@@ -207,14 +184,11 @@ def gen_datetime(row_index, scale=6, from_list=None, ordered=False):
     if from_list:
         # Just return a value from the list provided by the user
         return from_list[(row_index + 1) % len(from_list)]
-    elif ordered:
+    if ordered:
         return datetime.fromtimestamp(row_index)
-    elif scale == 0:
-        return datetime.fromtimestamp(random.randint(0, MAX_DATE_EPOCH_SECS)).replace(
-            microsecond=0
-        )
-    else:
-        return datetime.fromtimestamp(random.randint(0, MAX_DATE_EPOCH_SECS))
+    if scale == 0:
+        return datetime.fromtimestamp(random.randint(0, MAX_DATE_EPOCH_SECS)).replace(microsecond=0)
+    return datetime.fromtimestamp(random.randint(0, MAX_DATE_EPOCH_SECS))
 
 
 def gen_date(row_index, from_list=None, ordered=False):
@@ -222,29 +196,21 @@ def gen_date(row_index, from_list=None, ordered=False):
     if from_list:
         # Just return a value from the list provided by the user
         return from_list[(row_index + 1) % len(from_list)]
-    elif ordered:
+    if ordered:
         return date.fromtimestamp(row_index)
-    else:
-        return date.fromtimestamp(random.randint(0, MAX_DATE_EPOCH_SECS))
+    return date.fromtimestamp(random.randint(0, MAX_DATE_EPOCH_SECS))
 
 
 def gen_timestamp(row_index, scale=6, from_list=None, ordered=False):
     if from_list:
         # Just return a value from the list provided by the user
         return from_list[(row_index + 1) % len(from_list)]
-    elif ordered:
+    if ordered:
         # Spacing ordered timestamps by 8 hours, to facilitate TZ tests
-        return datetime.fromtimestamp(
-            (row_index * (60 * 60 * 8)) + random.randint(-3600, 3600) + random.random()
-        )
-    elif scale == 0:
-        return datetime.fromtimestamp(random.randint(0, MAX_DATE_EPOCH_SECS)).replace(
-            microsecond=0
-        )
-    else:
-        return datetime.fromtimestamp(
-            random.randint(0, MAX_DATE_EPOCH_SECS) + random.random()
-        )
+        return datetime.fromtimestamp((row_index * (60 * 60 * 8)) + random.randint(-3600, 3600) + random.random())
+    if scale == 0:
+        return datetime.fromtimestamp(random.randint(0, MAX_DATE_EPOCH_SECS)).replace(microsecond=0)
+    return datetime.fromtimestamp(random.randint(0, MAX_DATE_EPOCH_SECS) + random.random())
 
 
 def gen_time(row_index, scale=6, from_list=None, ordered=False):
@@ -252,18 +218,11 @@ def gen_time(row_index, scale=6, from_list=None, ordered=False):
     if from_list:
         # Just return a value from the list provided by the user
         return from_list[(row_index + 1) % len(from_list)]
-    elif ordered:
+    if ordered:
         return (datetime.min + timedelta(seconds=row_index)).time()
-    elif scale == 0:
-        return (
-            (datetime.min + timedelta(seconds=random.randint(1, (60 * 60 * 24)) - 1))
-            .time()
-            .replace(microsecond=0)
-        )
-    else:
-        return (
-            datetime.min + timedelta(seconds=random.randint(1, (60 * 60 * 24)) - 1)
-        ).time()
+    if scale == 0:
+        return (datetime.min + timedelta(seconds=random.randint(1, (60 * 60 * 24)) - 1)).time().replace(microsecond=0)
+    return (datetime.min + timedelta(seconds=random.randint(1, (60 * 60 * 24)) - 1)).time()
 
 
 def gen_interval_ym(precision=9):
@@ -294,19 +253,19 @@ def gen_cxo_type_spec(col_type, length=None, precision=None, scale=None):
     # GOE-1503: Following workaround now disabled as we've temporarily shrunk GOE_TYPES.NUMBER_16 to a NUMBER(36)
     # elif col_type == 'NUMBER' and precision == 38 and scale in [0, None]: # workaround for cx_Oracle 7.3.0 putting signed integers of 38 digits in as garbage
     #    return cxo.STRING
-    elif col_type in ("NUMBER", "FLOAT"):
+    if col_type in ("NUMBER", "FLOAT"):
         return cxo.DB_TYPE_NUMBER
-    elif "DATE" in col_type:
+    if "DATE" in col_type:
         return cxo.DB_TYPE_DATE
-    elif "TIMESTAMP" in col_type:
+    if "TIMESTAMP" in col_type:
         return cxo.DB_TYPE_TIMESTAMP
-    elif col_type in ("BINARY_FLOAT", "BINARY_DOUBLE"):
+    if col_type in ("BINARY_FLOAT", "BINARY_DOUBLE"):
         return cxo.DB_TYPE_BINARY_DOUBLE
-    elif col_type == "BLOB":
+    if col_type == "BLOB":
         return cxo.DB_TYPE_BLOB
-    elif col_type == "CLOB":
+    if col_type == "CLOB":
         return cxo.DB_TYPE_CLOB
-    elif col_type == "NCLOB":
+    if col_type == "NCLOB":
         return cxo.DB_TYPE_NCLOB
-    elif col_type == "RAW":
+    if col_type == "RAW":
         return cxo.DB_TYPE_RAW

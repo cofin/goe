@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" hive_ddl_transform: DDL transformation routines for hive/impala
-"""
+"""hive_ddl_transform: DDL transformation routines for hive/impala"""
 
 import logging
 import re
@@ -35,12 +34,12 @@ class HiveDDLTransformException(Exception):
 # 'CREATE TABLE' pattern
 RE_CREATE_TABLE = re.compile(
     r"(create\s+)(external\s+)?(table\s+)(if not exists\s+)?(`)?(\w+\.)?(\w+)(`)?(.*)$",
-    re.I | re.S,
+    re.IGNORECASE | re.DOTALL,
 )
 
 # 'CREATE VIEW' pattern
 RE_CREATE_VIEW = re.compile(
-    r"(create\s+)?(view\s+)(if not exists\s+)?(`)?(\w+\.)?(\w+)(`)?(.*)$", re.I | re.S
+    r"(create\s+)?(view\s+)(if not exists\s+)?(`)?(\w+\.)?(\w+)(`)?(.*)$", re.IGNORECASE | re.DOTALL
 )
 
 
@@ -51,7 +50,7 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())  # Disabling logging by default
 
 
-class DDLTransform(object):
+class DDLTransform:
     """DDL transformation for Hive/Impala"""
 
     def __init__(self):
@@ -85,17 +84,11 @@ class DDLTransform(object):
                 ddl_chunks[1] = "external "
 
             if "schema" in options:
-                logger.debug(
-                    "Replacing schema: %s with: %s"
-                    % (match_ddl.group(4), options["schema"])
-                )
+                logger.debug("Replacing schema: %s with: %s" % (match_ddl.group(4), options["schema"]))
                 ddl_chunks[5] = options["schema"] + "."
 
             if "name" in options:
-                logger.debug(
-                    "Replacing name: %s with: %s"
-                    % (match_ddl.group(4), options["name"])
-                )
+                logger.debug("Replacing name: %s with: %s" % (match_ddl.group(4), options["name"]))
                 ddl_chunks[6] = options["name"]
 
             # Force `s around db_table
@@ -107,9 +100,7 @@ class DDLTransform(object):
 
             table_ddl = "".join([_ for _ in ddl_chunks if _])
         else:
-            raise HiveDDLTransformException(
-                "Could not find 'create table' marker in DDL: %s" % table_ddl
-            )
+            raise HiveDDLTransformException("Could not find 'create table' marker in DDL: %s" % table_ddl)
 
         # Drop ; at the end (hive complains! and impala is ok with it)
         table_ddl = ddl_separator.sub("", table_ddl)
@@ -127,24 +118,16 @@ class DDLTransform(object):
                 ddl_chunks[2] = "if not exists "
 
             if "schema" in options:
-                logger.debug(
-                    "Replacing schema: %s with: %s"
-                    % (match_ddl.group(3), options["schema"])
-                )
+                logger.debug("Replacing schema: %s with: %s" % (match_ddl.group(3), options["schema"]))
                 ddl_chunks[4] = options["schema"] + "."
 
             if "name" in options:
-                logger.debug(
-                    "Replacing name: %s with: %s"
-                    % (match_ddl.group(3), options["name"])
-                )
+                logger.debug("Replacing name: %s with: %s" % (match_ddl.group(3), options["name"]))
                 ddl_chunks[5] = options["name"]
 
             view_ddl = "".join([_ for _ in ddl_chunks if _])
         else:
-            raise HiveDDLTransformException(
-                "Could not find 'create view' marker in DDL: %s" % view_ddl
-            )
+            raise HiveDDLTransformException("Could not find 'create view' marker in DDL: %s" % view_ddl)
 
         return view_ddl
 
@@ -162,7 +145,7 @@ class DDLTransform(object):
 
         columns_pattern = re.compile(
             r"(create[^(]+)(\()(.*?)(\)\s*)(PARTITIONED BY|STORED AS|ROW FORMAT)(.*)$",
-            re.I | re.S,
+            re.IGNORECASE | re.DOTALL,
         )
         single_col_pattern = re.compile(r"^(\S+)\s+(.*),?$")
         col_split_pattern = re.compile(r",(?!(\s*\d+))")
@@ -170,15 +153,11 @@ class DDLTransform(object):
         match_ddl = columns_pattern.match(table_ddl)
         if match_ddl:
             ddl_chunks = list(match_ddl.groups())
-            columns = [
-                _.strip() for _ in col_split_pattern.split(match_ddl.group(3)) if _
-            ]
+            columns = [_.strip() for _ in col_split_pattern.split(match_ddl.group(3)) if _]
             for i, col in enumerate(columns):
                 match_single_col = single_col_pattern.match(col)
                 if not match_single_col:
-                    raise HiveDDLTransformException(
-                        "Unable to parse column definition: %s" % col
-                    )
+                    raise HiveDDLTransformException("Unable to parse column definition: %s" % col)
                 col_name, col_type = match_single_col.groups()
                 columns[i] = "%s %s" % (self._surround_col(col_name), col_type)
 
@@ -186,33 +165,25 @@ class DDLTransform(object):
 
             table_ddl = "".join([_ for _ in ddl_chunks if _])
         else:
-            raise HiveDDLTransformException(
-                "Could not find 'table columns' marker in DDL: %s" % table_ddl
-            )
+            raise HiveDDLTransformException("Could not find 'table columns' marker in DDL: %s" % table_ddl)
 
         return table_ddl
 
     def _adjust_partitioned_by(self, table_ddl):
         """Adjust 'partitioned by' part, i.e. surround column names with `s"""
 
-        partitioned_pattern = re.compile(
-            r"(create.*)(PARTITIONED BY\s*\()([^)]+)(.*)$", re.I | re.S
-        )
+        partitioned_pattern = re.compile(r"(create.*)(PARTITIONED BY\s*\()([^)]+)(.*)$", re.IGNORECASE | re.DOTALL)
         single_col_pattern = re.compile(r"^(\S+)\s+(.*),?$")
         col_split_pattern = re.compile(r",(?!(\s*\d+))")
 
         match_ddl = partitioned_pattern.match(table_ddl)
         if match_ddl:
             ddl_chunks = list(match_ddl.groups())
-            columns = [
-                _.strip() for _ in col_split_pattern.split(match_ddl.group(3)) if _
-            ]
+            columns = [_.strip() for _ in col_split_pattern.split(match_ddl.group(3)) if _]
             for i, col in enumerate(columns):
                 match_single_col = single_col_pattern.match(col)
                 if not match_single_col:
-                    raise HiveDDLTransformException(
-                        "Unable to parse partittioned column definition: %s" % col
-                    )
+                    raise HiveDDLTransformException("Unable to parse partittioned column definition: %s" % col)
                 col_name, col_type = match_single_col.groups()
                 columns[i] = "%s %s" % (self._surround_col(col_name), col_type)
 
@@ -227,24 +198,17 @@ class DDLTransform(object):
 
     def _parse_location(self, table_ddl, options):
         """Change 'location' components in table_ddl"""
-        location_pattern = re.compile(
-            r"^(.*)(location\s+)(\'\S+\'\s+)(.*)$", re.I | re.S
-        )
-        hdfs_host_pattern = re.compile(
-            r"^\'(\w+:\/\/([^/:]+)(:\d+)?)\/.*$", re.I | re.S
-        )
-        db_url_pattern = re.compile(r"^.*\/(\S+)\/(\S+)\'$", re.I | re.S)
-        maprfs_pattern = re.compile(r"^\'?(maprfs:)\/.*$", re.I | re.S)
+        location_pattern = re.compile(r"^(.*)(location\s+)(\'\S+\'\s+)(.*)$", re.IGNORECASE | re.DOTALL)
+        hdfs_host_pattern = re.compile(r"^\'(\w+:\/\/([^/:]+)(:\d+)?)\/.*$", re.IGNORECASE | re.DOTALL)
+        db_url_pattern = re.compile(r"^.*\/(\S+)\/(\S+)\'$", re.IGNORECASE | re.DOTALL)
+        maprfs_pattern = re.compile(r"^\'?(maprfs:)\/.*$", re.IGNORECASE | re.DOTALL)
 
         match_ddl = location_pattern.match(table_ddl)
         if match_ddl:
             ddl_chunks = list(match_ddl.groups())
 
             if "location" in options:
-                logger.debug(
-                    "Replacing location: %s with: %s"
-                    % (match_ddl.group(2), options["location"])
-                )
+                logger.debug("Replacing location: %s with: %s" % (match_ddl.group(2), options["location"]))
                 ddl_chunks[2] = "'%s'\n" % options["location"]
 
             if any(_ in options for _ in ("location_host", "location_prefix")):
@@ -252,52 +216,31 @@ class DDLTransform(object):
                 maprfs_match = maprfs_pattern.match(ddl_chunks[2])
 
                 if "location_prefix" in options:
-                    logger.debug(
-                        "Replacing location prefix with: %s"
-                        % options["location_prefix"]
-                    )
+                    logger.debug("Replacing location prefix with: %s" % options["location_prefix"])
                     prefix_matcher = maprfs_match or host_match
                     if not prefix_matcher:
-                        raise HiveDDLTransformException(
-                            "Unable to match location prefix in: %s" % ddl_chunks[2]
-                        )
-                    ddl_chunks[2] = ddl_chunks[2].replace(
-                        prefix_matcher.group(1), options["location_prefix"]
-                    )
+                        raise HiveDDLTransformException("Unable to match location prefix in: %s" % ddl_chunks[2])
+                    ddl_chunks[2] = ddl_chunks[2].replace(prefix_matcher.group(1), options["location_prefix"])
 
                 if "location_host" in options:
-                    logger.debug(
-                        "Replacing location host with: %s" % options["location_host"]
-                    )
+                    logger.debug("Replacing location host with: %s" % options["location_host"])
                     if not host_match:
-                        raise HiveDDLTransformException(
-                            "Unable to find host location in: %s" % ddl_chunks[2]
-                        )
-                    ddl_chunks[2] = ddl_chunks[2].replace(
-                        host_match.group(2), options["location_host"]
-                    )
+                        raise HiveDDLTransformException("Unable to find host location in: %s" % ddl_chunks[2])
+                    ddl_chunks[2] = ddl_chunks[2].replace(host_match.group(2), options["location_host"])
 
             if any(_ in options for _ in ("location_db_name", "location_table_name")):
                 db_url_match = db_url_pattern.match(ddl_chunks[2])
                 if db_url_match:
                     if "location_db_name" in options:
-                        ddl_chunks[2] = ddl_chunks[2].replace(
-                            db_url_match.group(1), options["location_db_name"]
-                        )
+                        ddl_chunks[2] = ddl_chunks[2].replace(db_url_match.group(1), options["location_db_name"])
                     if "location_table_name" in options:
-                        ddl_chunks[2] = ddl_chunks[2].replace(
-                            db_url_match.group(2), options["location_table_name"]
-                        )
+                        ddl_chunks[2] = ddl_chunks[2].replace(db_url_match.group(2), options["location_table_name"])
                 else:
-                    raise HiveDDLTransformException(
-                        "Unable to find db_url in: %s" % ddl_chunks[2]
-                    )
+                    raise HiveDDLTransformException("Unable to find db_url in: %s" % ddl_chunks[2])
 
             table_ddl = "".join([_ for _ in ddl_chunks if _])
         else:
-            raise HiveDDLTransformException(
-                "Could not find 'location' marker in DDL: %s" % table_ddl
-            )
+            raise HiveDDLTransformException("Could not find 'location' marker in DDL: %s" % table_ddl)
 
         return table_ddl
 
@@ -305,11 +248,11 @@ class DDLTransform(object):
         """Inject additional where clause into view definition"""
         where_pattern = re.compile(
             r"^(.*)(select\s+)(.*)(from\s)(.*)(where\s+)(.*?)(group by|order by|limit|;|$)(.*)",
-            re.I | re.S,
+            re.IGNORECASE | re.DOTALL,
         )
         no_where_pattern = re.compile(
             r"^(.*)(select\s+)(.*)(from\s)(.*?)(group by|order by|limit|;|$)(.*)",
-            re.I | re.S,
+            re.IGNORECASE | re.DOTALL,
         )
 
         ddl_chunks = None
@@ -318,10 +261,7 @@ class DDLTransform(object):
         if match_where:
             ddl_chunks = list(match_where.groups())
 
-            logger.debug(
-                "Appending additional WHERE clause: %s to existing: %s"
-                % (match_where.group(7), where)
-            )
+            logger.debug("Appending additional WHERE clause: %s to existing: %s" % (match_where.group(7), where))
             ddl_chunks[6] += "\nAND %s\n" % where
         else:
             match_no_where = no_where_pattern.match(view_ddl)
@@ -331,9 +271,7 @@ class DDLTransform(object):
                 logger.debug("Adding WHERE clause: %s" % where)
                 ddl_chunks[4] += "\nWHERE %s\n" % where
             else:
-                raise HiveDDLTransformException(
-                    "Could not find place to put WHERE clause in DDL: %s" % view_ddl
-                )
+                raise HiveDDLTransformException("Could not find place to put WHERE clause in DDL: %s" % view_ddl)
 
         view_ddl = "".join([_ for _ in ddl_chunks if _])
 
@@ -366,9 +304,7 @@ class DDLTransform(object):
 
         transformed_ddl = self._parse_create_view(transformed_ddl, options)
         if "where" in options:
-            transformed_ddl = self._inject_where_clause(
-                transformed_ddl, options["where"]
-            )
+            transformed_ddl = self._inject_where_clause(transformed_ddl, options["where"])
 
         return transformed_ddl
 
@@ -379,18 +315,10 @@ class DDLTransform(object):
         """
         if RE_CREATE_VIEW.match(ddl):
             return True
-        elif RE_CREATE_TABLE.match(ddl):
+        if RE_CREATE_TABLE.match(ddl):
             return False
-        else:
-            raise HiveDDLTransformException(
-                "Only CREATE TABLE or CREATE VIEW statements are supported. Getting: %s"
-                % ddl
-            )
+        raise HiveDDLTransformException("Only CREATE TABLE or CREATE VIEW statements are supported. Getting: %s" % ddl)
 
     def transform(self, ddl, options):
         """Transform DDL according to its type (table or view)"""
-        return (
-            self.transform_view(ddl, options)
-            if self.is_view(ddl)
-            else self.transform_table(ddl, options)
-        )
+        return self.transform_view(ddl, options) if self.is_view(ddl) else self.transform_table(ddl, options)

@@ -15,9 +15,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendHiveApi: BackendApi implementation for a Hive backend.
+"""BackendHiveApi: BackendApi implementation for a Hive backend.
 
-    See BackendHadoopApi for better+impyla justification.
+See BackendHadoopApi for better+impyla justification.
 """
 
 import logging
@@ -30,6 +30,28 @@ from goe.offload.column_metadata import (
     str_list_of_columns,
     valid_column_list,
 )
+from goe.offload.hadoop.hadoop_backend_api import BackendHadoopApi
+from goe.offload.hadoop.hadoop_column import (
+    HADOOP_TYPE_BIGINT,
+    HADOOP_TYPE_BINARY,
+    HADOOP_TYPE_BOOLEAN,
+    HADOOP_TYPE_CHAR,
+    HADOOP_TYPE_DATE,
+    HADOOP_TYPE_DECIMAL,
+    HADOOP_TYPE_DOUBLE,
+    HADOOP_TYPE_DOUBLE_PRECISION,
+    HADOOP_TYPE_FLOAT,
+    HADOOP_TYPE_INT,
+    HADOOP_TYPE_INTERVAL_DS,
+    HADOOP_TYPE_INTERVAL_YM,
+    HADOOP_TYPE_REAL,
+    HADOOP_TYPE_SMALLINT,
+    HADOOP_TYPE_STRING,
+    HADOOP_TYPE_TIMESTAMP,
+    HADOOP_TYPE_TINYINT,
+    HADOOP_TYPE_VARCHAR,
+)
+from goe.offload.hadoop.hive_literal import HiveLiteral
 from goe.offload.offload_constants import (
     DBTYPE_HIVE,
     FILE_STORAGE_FORMAT_AVRO,
@@ -38,31 +60,7 @@ from goe.offload.offload_constants import (
     HIVE_BACKEND_CAPABILITIES,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.hadoop.hive_literal import HiveLiteral
-from goe.offload.hadoop.hadoop_backend_api import BackendHadoopApi
-
 from goe.util.better_impyla import HDFS_NULL_PART_KEY_CONSTANT
-from goe.offload.hadoop.hadoop_column import (
-    HADOOP_TYPE_CHAR,
-    HADOOP_TYPE_STRING,
-    HADOOP_TYPE_VARCHAR,
-    HADOOP_TYPE_BINARY,
-    HADOOP_TYPE_TINYINT,
-    HADOOP_TYPE_SMALLINT,
-    HADOOP_TYPE_INT,
-    HADOOP_TYPE_BIGINT,
-    HADOOP_TYPE_DECIMAL,
-    HADOOP_TYPE_FLOAT,
-    HADOOP_TYPE_DOUBLE,
-    HADOOP_TYPE_DOUBLE_PRECISION,
-    HADOOP_TYPE_REAL,
-    HADOOP_TYPE_DATE,
-    HADOOP_TYPE_TIMESTAMP,
-    HADOOP_TYPE_INTERVAL_DS,
-    HADOOP_TYPE_INTERVAL_YM,
-    HADOOP_TYPE_BOOLEAN,
-)
-
 
 ###############################################################################
 # CONSTANTS
@@ -97,7 +95,7 @@ class BackendHiveApi(BackendHadoopApi):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendHiveApi, self).__init__(
+        super().__init__(
             connection_options,
             backend_type,
             messages,
@@ -137,9 +135,7 @@ class BackendHiveApi(BackendHadoopApi):
             self._hive_conn.refresh_cursor()
             self._execute_global_session_parameters(log_level=None)
         run_opts = self._execute_session_options(query_options, log_level=log_level)
-        run_sqls = self._execute_sqls(
-            sql, log_level=log_level, no_log_items=no_log_items
-        )
+        run_sqls = self._execute_sqls(sql, log_level=log_level, no_log_items=no_log_items)
         return run_opts + run_sqls
 
     def _format_storage_format_clause(self, storage_format):
@@ -147,8 +143,7 @@ class BackendHiveApi(BackendHadoopApi):
             return """ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
 STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
 OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'"""
-        else:
-            return "STORED AS %s" % storage_format
+        return "STORED AS %s" % storage_format
 
     def _get_hadoop_connection_exception_message_template(self):
         """Hive"""
@@ -218,18 +213,12 @@ OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'"""
         assert db_name and table_name
         if partition_tuples:
             assert isinstance(partition_tuples, list)
-            assert isinstance(
-                partition_tuples[0], (tuple, list)
-            ), "%s is not tuple" % type(partition_tuples[0])
+            assert isinstance(partition_tuples[0], (tuple, list)), "%s is not tuple" % type(partition_tuples[0])
         if not self.table_stats_compute_supported():
             return None
         for_columns_clause = " FOR COLUMNS" if for_columns else ""
         partition_clause = (
-            " PARTITION ({})".format(
-                self._format_partition_clause_for_sql(
-                    db_name, table_name, partition_tuples
-                )
-            )
+            f" PARTITION ({self._format_partition_clause_for_sql(db_name, table_name, partition_tuples)})"
             if partition_tuples
             else ""
         )
@@ -263,21 +252,15 @@ OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'"""
         assert db_name or without_db_name
         assert table_name
         assert column_list
-        assert valid_column_list(column_list), (
-            "Incorrectly formed column_list: %s" % column_list
-        )
+        assert valid_column_list(column_list), "Incorrectly formed column_list: %s" % column_list
         if partition_column_names:
             assert isinstance(partition_column_names, list)
         assert storage_format
         if table_properties:
             assert isinstance(table_properties, dict)
 
-        non_synthetic_columns = [
-            _ for _ in column_list if _.name not in (partition_column_names or [])
-        ]
-        col_projection = self._create_table_columns_clause_common(
-            non_synthetic_columns, external=external
-        )
+        non_synthetic_columns = [_ for _ in column_list if _.name not in (partition_column_names or [])]
+        col_projection = self._create_table_columns_clause_common(non_synthetic_columns, external=external)
 
         db_clause = (self.enclose_identifier(db_name) + ".") if db_name else ""
 
@@ -292,9 +275,7 @@ OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'"""
                         "Proposed table columns: %s" % str_list_of_columns(column_list),
                         detail=VERBOSE,
                     )
-                    raise BackendApiException(
-                        "Partition column is not in table columns: %s" % part_col
-                    )
+                    raise BackendApiException("Partition column is not in table columns: %s" % part_col)
                 part_col_pairs.append(
                     "%s %s"
                     % (
@@ -315,8 +296,7 @@ OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'"""
 
         if table_properties:
             table_prop_clause = "\nTBLPROPERTIES (%s)" % ", ".join(
-                "%s=%s" % (self.to_backend_literal(k), self.to_backend_literal(v))
-                for k, v in table_properties.items()
+                "%s=%s" % (self.to_backend_literal(k), self.to_backend_literal(v)) for k, v in table_properties.items()
             )
         else:
             table_prop_clause = ""
@@ -391,27 +371,18 @@ OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'"""
         projected_expressions = select_expr_tuples[:]
         part_clause = ""
         if partition_expr_tuples:
-            part_clause = " PARTITION (%s)" % ",".join(
-                self.enclose_identifier(n) for _, n in partition_expr_tuples
-            )
+            part_clause = " PARTITION (%s)" % ",".join(self.enclose_identifier(n) for _, n in partition_expr_tuples)
             projected_expressions += partition_expr_tuples
         projection = self._format_select_projection(projected_expressions)
-        from_db_table = from_object_override or self.enclose_object_reference(
-            from_db_name, from_table_name
-        )
+        from_db_table = from_object_override or self.enclose_object_reference(from_db_name, from_table_name)
 
         where_clause = ""
         if filter_clauses:
             where_clause = "\nWHERE  " + "\nAND    ".join(filter_clauses)
 
-        sort_by_clause = (
-            ("\nSORT BY " + ",".join(sort_expr_list)) if sort_expr_list else ""
-        )
+        sort_by_clause = ("\nSORT BY " + ",".join(sort_expr_list)) if sort_expr_list else ""
         dist_by_clause = (
-            (
-                "\nDISTRIBUTE BY %s"
-                % ",".join(self.enclose_identifier(n) for n in distribute_columns)
-            )
+            ("\nDISTRIBUTE BY %s" % ",".join(self.enclose_identifier(n) for n in distribute_columns))
             if distribute_columns
             else ""
         )
@@ -450,9 +421,7 @@ FROM   %(from_db_table)s%(where)s%(dist_by)s%(sort_by)s""" % {
             query_options=query_options,
         )
 
-    def get_missing_hive_table_stats(
-        self, db_name, table_name, colstats=True, as_dict=False
-    ):
+    def get_missing_hive_table_stats(self, db_name, table_name, colstats=True, as_dict=False):
         """Code to get partitions with missing stats on Hive
         This is not shared with other backends, Hive specific
         """
@@ -486,10 +455,7 @@ FROM   %(from_db_table)s%(where)s%(dist_by)s%(sort_by)s""" % {
         hive_table = self._get_hive_table(db_name, table_name)
         hive_parts = hive_table.table_partitions()
         # HiveTable on Hive doesn't give us anything other than the partition key
-        table_partitions = {
-            k: self._table_partition_info(partition_id=k)
-            for k in list(hive_parts.keys())
-        }
+        table_partitions = {k: self._table_partition_info(partition_id=k) for k in list(hive_parts.keys())}
         return table_partitions
 
     def get_table_row_count(
@@ -501,9 +467,7 @@ FROM   %(from_db_table)s%(where)s%(dist_by)s%(sort_by)s""" % {
         log_level=VVERBOSE,
     ):
         """On Hive we need to protect from getting count from stats"""
-        sql = self._gen_select_count_sql_text_common(
-            db_name, table_name, filter_clause=filter_clause
-        )
+        sql = self._gen_select_count_sql_text_common(db_name, table_name, filter_clause=filter_clause)
         query_options = {"hive.compute.query.using.stats": "false"}
         row = self.execute_query_fetch_one(
             sql,
@@ -537,9 +501,7 @@ FROM   %(from_db_table)s%(where)s%(dist_by)s%(sort_by)s""" % {
         return "%s = 'NaN'" % column_expr
 
     def is_valid_storage_format(self, storage_format):
-        return bool(
-            storage_format in [FILE_STORAGE_FORMAT_ORC, FILE_STORAGE_FORMAT_PARQUET]
-        )
+        return bool(storage_format in [FILE_STORAGE_FORMAT_ORC, FILE_STORAGE_FORMAT_PARQUET])
 
     def list_udfs(self, db_name, udf_name_filter=None, case_sensitive=True):
         raise NotImplementedError("list_udfs() is not implemented for Hive backend")

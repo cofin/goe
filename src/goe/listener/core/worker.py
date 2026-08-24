@@ -14,15 +14,16 @@
 
 # Standard Library
 import logging
-from typing import Final, Optional
+from typing import Final
+
+from goelib_contrib.worker import CronJob, Job, Queue, Status, Worker
+from goelib_contrib.worker.utils import seconds
 
 # GOE
 from goe.listener import services, utils
 from goe.listener.config import settings
 from goe.listener.schemas.base import deserialize_object, serialize_object
 from goe.listener.services import periodic_tasks
-from goelib_contrib.worker import CronJob, Job, Queue, Status, Worker
-from goelib_contrib.worker.utils import seconds
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ async def cleanup_queue():
 
 async def before_process(context):
     """Worker Before Processing"""
-    job: Optional[Job] = context.get("job", None)
+    job: Job | None = context.get("job", None)
     if job:
         logger.info(f"starting job {job.job_id}")
     context["listener_group_id"] = services.system.generate_listener_group_id()
@@ -93,7 +94,7 @@ async def before_process(context):
 
 async def after_process(context):
     """Worker After Processing"""
-    job: Optional[Job] = context.get("job", None)
+    job: Job | None = context.get("job", None)
     if job:
         if job.status == Status.FAILED:
             logger.error(
@@ -115,7 +116,7 @@ async def after_process(context):
             )
 
 
-def get_background_worker() -> Optional[Worker]:
+def get_background_worker() -> Worker | None:
     """This setting will only return a valid worker if the REDIS_HOST variable is set"""
 
     if settings.cache_enabled:

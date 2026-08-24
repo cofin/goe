@@ -16,7 +16,7 @@
 
 # Standard Library
 import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Third Party Libraries
 from pydantic import UUID3, AnyHttpUrl, Json
@@ -51,7 +51,7 @@ class HealthCheck(BaseSchema):
         """
 
         @staticmethod
-        def schema_extra(schema: Dict[str, Any]) -> None:
+        def schema_extra(schema: dict[str, Any]) -> None:
             """Post-process the generated schema.
 
             Mathod can have one or two positional arguments. The first will be
@@ -83,12 +83,12 @@ class ListenerConfig(BaseSchema):
     listener_group_id: UUID3
     version: str
     db_unique_name: str
-    active_listeners: List[AnyHttpUrl] = []
+    active_listeners: list[AnyHttpUrl] = []
     frontend_type: str
     backend_type: str
-    offload_options: Optional[Json]
-    present_options: Optional[Json]
-    prepare_options: Optional[Json]
+    offload_options: Json | None
+    present_options: Json | None
+    prepare_options: Json | None
 
 
 class OffloadableSchema(BaseSchema):
@@ -107,11 +107,11 @@ class ColumnDetail(BaseSchema):
 
     column_name: str
     data_type: str
-    data_precision: Optional[int]
-    data_scale: Optional[int]
+    data_precision: int | None
+    data_scale: int | None
     is_nullable: bool
-    partition_position: Optional[int]
-    subpartition_position: Optional[int]
+    partition_position: int | None
+    subpartition_position: int | None
 
 
 class ColumnDetails(TotaledResults[ColumnDetail]):
@@ -125,7 +125,7 @@ class SubPartitionDetail(BaseSchema):
     subpartition_position: int
     partition_name: str
     partition_position: int
-    high_values_individual: Optional[List[str]] = []
+    high_values_individual: list[str] | None = []
     partition_size: int
     num_rows: int
 
@@ -139,19 +139,17 @@ class PartitionDetail(BaseSchema):
 
     partition_name: str
     partition_position: int
-    subpartition_count: Optional[int]
-    subpartition_names: Optional[List[str]] = []
-    high_values_individual: Optional[List[str]] = []
+    subpartition_count: int | None
+    subpartition_names: list[str] | None = []
+    high_values_individual: list[str] | None = []
     partition_size: int
     num_rows: int
-    is_subpartitioned: Optional[bool]
-    subpartitions: Optional[List[SubPartitionDetail]] = []
+    is_subpartitioned: bool | None
+    subpartitions: list[SubPartitionDetail] | None = []
 
     @classmethod
     def from_orm(cls, obj: Any) -> "PartitionDetail":
-        """
-        Format Partiton details for the schema
-        """
+        """Format Partiton details for the schema"""
         obj.is_subpartitioned = False
 
         # `obj` is the orm model instance
@@ -169,22 +167,22 @@ class TableDetail(BaseSchema):
 
     table_name: str
     table_size_in_bytes: int
-    table_offloaded_size_in_bytes: Optional[int] = 0
-    table_reclaimed_size_in_bytes: Optional[int] = 0
-    estimated_row_count: Optional[int]
-    statistics_last_gathered_on: Optional[datetime.datetime]
-    partitioning_type: Optional[str]
-    subpartitioning_type: Optional[str]
-    table_compression: Optional[str]
-    table_compress_for: Optional[str]
+    table_offloaded_size_in_bytes: int | None = 0
+    table_reclaimed_size_in_bytes: int | None = 0
+    estimated_row_count: int | None
+    statistics_last_gathered_on: datetime.datetime | None
+    partitioning_type: str | None
+    subpartitioning_type: str | None
+    table_compression: str | None
+    table_compress_for: str | None
     is_offloadable: bool
     is_offloaded: bool
     is_compressed: bool
     is_partitioned: bool
     is_subpartitioned: bool
-    reason_not_offloadable: Optional[str]
-    column_details: Optional[List[ColumnDetail]]
-    partition_details: Optional[List[PartitionDetail]]
+    reason_not_offloadable: str | None
+    column_details: list[ColumnDetail] | None
+    partition_details: list[PartitionDetail] | None
 
 
 class TableDetails(TotaledResults[TableDetail]):

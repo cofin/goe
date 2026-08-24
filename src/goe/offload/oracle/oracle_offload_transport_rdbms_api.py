@@ -30,29 +30,29 @@ from goe.offload.offload_transport_functions import (
     split_ranges_for_id_range,
 )
 from goe.offload.offload_transport_rdbms_api import (
-    OffloadTransportRdbmsApiInterface,
-    OffloadTransportRdbmsApiException,
     OFFLOAD_TRANSPORT_SQL_STATISTICS_TITLE,
+    TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_EXTENT,
+    TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE,
+    TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD,
+    TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
-    TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_EXTENT,
-    TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD,
-    TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE,
-    TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT,
+    OffloadTransportRdbmsApiException,
+    OffloadTransportRdbmsApiInterface,
 )
 from goe.offload.oracle.oracle_column import (
-    ORACLE_TYPE_FLOAT,
-    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_BINARY_DOUBLE,
+    ORACLE_TYPE_BINARY_FLOAT,
     ORACLE_TYPE_DATE,
-    ORACLE_TYPE_TIMESTAMP,
-    ORACLE_TYPE_TIMESTAMP_TZ,
-    ORACLE_TYPE_TIMESTAMP_LOCAL_TZ,
+    ORACLE_TYPE_FLOAT,
     ORACLE_TYPE_INTERVAL_DS,
     ORACLE_TYPE_INTERVAL_YM,
-    ORACLE_TYPE_BINARY_FLOAT,
-    ORACLE_TYPE_BINARY_DOUBLE,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_TIMESTAMP_LOCAL_TZ,
+    ORACLE_TYPE_TIMESTAMP_TZ,
     ORACLE_TYPE_XMLTYPE,
 )
 from goe.offload.oracle.oracle_offload_source_table import (
@@ -115,13 +115,8 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
             messages,
             dry_run=dry_run,
         )
-        self.debug(
-            "OffloadTransportOracleApi setup: (%s, %s)"
-            % (rdbms_owner, rdbms_table_name)
-        )
-        self._offload_transport_auth_using_oracle_wallet = (
-            offload_options.offload_transport_auth_using_oracle_wallet
-        )
+        self.debug("OffloadTransportOracleApi setup: (%s, %s)" % (rdbms_owner, rdbms_table_name))
+        self._offload_transport_auth_using_oracle_wallet = offload_options.offload_transport_auth_using_oracle_wallet
         self._transport_row_source_query_split_methods = [
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
@@ -183,8 +178,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         return {
             "TRACEFILE_IDENTIFIER": "'%s'" % FRONTEND_TRACE_ID,
             "TIME_ZONE": "'UTC'",
-            "NLS_TIMESTAMP_TZ_FORMAT": "'YYYY-MM-DD HH24:MI:SS.FF%s TZH:TZM'"
-            % ff_scale,
+            "NLS_TIMESTAMP_TZ_FORMAT": "'YYYY-MM-DD HH24:MI:SS.FF%s TZH:TZM'" % ff_scale,
             "NLS_TIMESTAMP_FORMAT": "'YYYY-MM-DD HH24:MI:SS.FF%s'" % ff_scale,
             "NLS_DATE_FORMAT": "'YYYY-MM-DD HH24:MI:SS'",
             '"_SERIAL_DIRECT_READ"': "TRUE",
@@ -220,17 +214,11 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         else:
             use_template = alter_template
 
-        alter_session_statements = [
-            use_template % (k, v) for k, v in sorted(session_parameter_dict.items())
-        ]
+        alter_session_statements = [use_template % (k, v) for k, v in sorted(session_parameter_dict.items())]
         return alter_session_statements
 
     def _cx_getvalue(self, incoming):
-        return (
-            incoming.getvalue()
-            if incoming and hasattr(incoming, "getvalue")
-            else incoming
-        )
+        return incoming.getvalue() if incoming and hasattr(incoming, "getvalue") else incoming
 
     def _get_iot_single_partition_clause(self, partition_chunk):
         """Return PARTITION(partition_name) clause partition_chunk if there is a single partition.
@@ -238,9 +226,8 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         optimization to make up for the fact we cannot split IOT partitions by rowid range.
         """
         if partition_chunk and partition_chunk.count() == 1:
-            return " PARTITION ({})".format(partition_chunk.partition_names().pop())
-        else:
-            return ""
+            return f" PARTITION ({partition_chunk.partition_names().pop()})"
+        return ""
 
     ###########################################################################
     # PUBLIC METHODS
@@ -260,9 +247,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
     ) -> "ColumnMetadataInterface":
         if len(rdbms_table.get_primary_key_columns()) != 1:
             return None
-        pk_col = match_table_column(
-            rdbms_table.get_primary_key_columns()[0], rdbms_table.columns
-        )
+        pk_col = match_table_column(rdbms_table.get_primary_key_columns()[0], rdbms_table.columns)
         if pk_col.data_type in (
             ORACLE_TYPE_NUMBER,
             ORACLE_TYPE_DATE,
@@ -271,9 +256,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
             return pk_col
         return None
 
-    def get_id_range(
-        self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk=None
-    ) -> tuple:
+    def get_id_range(self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk=None) -> tuple:
         """Function to get the MIN and MAX values for an id column.
 
         Used to create non-overlapping ranges for splitting IOT tables between transport processes.
@@ -365,27 +348,17 @@ FROM  (
         ff_scale = self._get_ts_ff_scale(max_ts_scale)
         cast_expression = column_expression
         if rdbms_column.data_type == ORACLE_TYPE_TIMESTAMP_LOCAL_TZ:
-            cast_expression = (
-                f"CONCAT(CAST({column_expression} AS VARCHAR2(64)),' UTC')"
-            )
+            cast_expression = f"CONCAT(CAST({column_expression} AS VARCHAR2(64)),' UTC')"
         elif rdbms_column.data_type == ORACLE_TYPE_TIMESTAMP_TZ:
             # We need to cast this in the DB to ensure we use tzinfo matching the DB - not matching the client
             cast_expression = "TO_CHAR(%s,'YYYY-MM-DD HH24:MI:SS.FF%s TZH:TZM')" % (
                 column_expression,
                 ff_scale,
             )
-        elif (
-            rdbms_column.data_type == ORACLE_TYPE_DATE
-            and convert_expressions_on_rdbms_side
-        ):
+        elif rdbms_column.data_type == ORACLE_TYPE_DATE and convert_expressions_on_rdbms_side:
             cast_expression = f"TO_CHAR({column_expression},'YYYY-MM-DD HH24:MI:SS')"
-        elif (
-            rdbms_column.data_type == ORACLE_TYPE_TIMESTAMP
-            and convert_expressions_on_rdbms_side
-        ):
-            cast_expression = (
-                f"TO_CHAR({column_expression},'YYYY-MM-DD HH24:MI:SS.FF{ff_scale}')"
-            )
+        elif rdbms_column.data_type == ORACLE_TYPE_TIMESTAMP and convert_expressions_on_rdbms_side:
+            cast_expression = f"TO_CHAR({column_expression},'YYYY-MM-DD HH24:MI:SS.FF{ff_scale}')"
         elif (
             staging_column.is_string_based()
             and rdbms_column.data_type in (ORACLE_TYPE_NUMBER, ORACLE_TYPE_FLOAT)
@@ -409,22 +382,14 @@ FROM  (
             #   pyspark.sql.utils.AnalysisException: u'Decimal scale (5) cannot be greater than precision (3).;'
             # Therefore we have this workaround:
             cast_expression = f"CAST({column_expression} AS NUMBER)"
-        elif (
-            rdbms_column.data_type
-            in (ORACLE_TYPE_BINARY_FLOAT, ORACLE_TYPE_BINARY_DOUBLE)
-            and nan_values_as_null
-        ):
+        elif rdbms_column.data_type in (ORACLE_TYPE_BINARY_FLOAT, ORACLE_TYPE_BINARY_DOUBLE) and nan_values_as_null:
             cast_expression = f"CASE WHEN {column_expression} IN ('NaN','Infinity','-Infinity') THEN NULL ELSE {column_expression} END"
         elif rdbms_column.data_type == ORACLE_TYPE_XMLTYPE:
             # Note, getClobVal() only works when the input column includes the table/alias reference.
-            cast_expression = (
-                f'("{self._rdbms_table_name}".{column_expression}).getClobVal()'
-            )
+            cast_expression = f'("{self._rdbms_table_name}".{column_expression}).getClobVal()'
         return cast_expression
 
-    def get_offload_transport_sql_stats_function(
-        self, rdbms_module, rdbms_action, conn_action=None
-    ):
+    def get_offload_transport_sql_stats_function(self, rdbms_module, rdbms_action, conn_action=None):
         """Return a function that executes the LOG_SQL_STATS_QUERY_TEXT query for a given
         module and action
         """
@@ -460,14 +425,9 @@ FROM  (
         commands = []
         if include_fixed_sqoop:
             if for_plsql:
-                commands.append(
-                    "DBMS_APPLICATION_INFO.SET_MODULE('%s','%s');" % (module, action)
-                )
+                commands.append("DBMS_APPLICATION_INFO.SET_MODULE('%s','%s');" % (module, action))
             else:
-                commands.append(
-                    "BEGIN DBMS_APPLICATION_INFO.SET_MODULE('%s','%s'); END;"
-                    % (module, action)
-                )
+                commands.append("BEGIN DBMS_APPLICATION_INFO.SET_MODULE('%s','%s'); END;" % (module, action))
             commands.extend(
                 self._oracle_alter_session_statements(
                     fixed_sqoop_parameters,
@@ -502,27 +462,18 @@ FROM  (
         def enquote(x):
             if '"' not in x and "'" not in x:
                 return f"'{x}'"
-            else:
-                return x
+            return x
 
         def valid_hint_param(x):
             if not x:
                 return False
             x = x.upper().strip('"').strip("'")
-            return bool(
-                x
-                and not x.startswith("NLS_")
-                and x not in self._get_fixed_sqoop_parameters(None)
-            )
+            return bool(x and not x.startswith("NLS_") and x not in self._get_fixed_sqoop_parameters(None))
 
         def to_opt_param(kv_dict):
             if not kv_dict:
                 return ""
-            return " ".join(
-                "OPT_PARAM({}, {})".format(enquote(k), enquote(v))
-                for k, v in kv_dict.items()
-                if valid_hint_param(k)
-            )
+            return " ".join(f"OPT_PARAM({enquote(k)}, {enquote(v)})" for k, v in kv_dict.items() if valid_hint_param(k))
 
         assert type(custom_session_parameters) is dict
         opt_param_hints = (
@@ -544,8 +495,7 @@ FROM  (
         predicate_offload_clause: str,
         native_range_split_available: bool = False,
     ) -> tuple:
-        """
-        Return split type and any tuned transport parallelism.
+        """Return split type and any tuned transport parallelism.
         If there are more partitions/subpartitions than the requested parallelism then split by
         partition/subpartition, otherwise we split the few partitions by Oracle extent (ROWID ranges),
         id ranges or MOD ranges.
@@ -564,26 +514,16 @@ FROM  (
         tuned_parallelism = parallelism
         self.debug(f"partition_count: {partition_count}")
         self.debug(f"subpartition_count: {subpartition_count}")
-        if (
-            partition_count > 0
-            and partition_count >= parallelism
-            and partition_count <= MAX_UNION_ALL_SPLITS
-        ):
+        if partition_count > 0 and partition_count >= parallelism and partition_count <= MAX_UNION_ALL_SPLITS:
             # There are more partitions than parallel threads therefore it should be
             # efficient to split by partition/subpartition, applies to both heap tables and IOTs
             if offload_by_subpartition:
-                self.log(
-                    "Splitting subpartitioned table by subpartition", detail=VVERBOSE
-                )
+                self.log("Splitting subpartitioned table by subpartition", detail=VVERBOSE)
                 partition_by = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION
             else:
                 self.log("Splitting partitioned table by partition", detail=VVERBOSE)
                 partition_by = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION
-        elif (
-            partition_count > 0
-            and subpartition_count >= parallelism
-            and subpartition_count <= MAX_UNION_ALL_SPLITS
-        ):
+        elif partition_count > 0 and subpartition_count >= parallelism and subpartition_count <= MAX_UNION_ALL_SPLITS:
             self.log(
                 "Splitting subpartitioned table by subpartition as there are fewer partitions than requested parallelism: %s < %s"
                 % (str(partition_count), str(parallelism)),
@@ -618,18 +558,14 @@ FROM  (
                     partition_by = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD
             else:
                 if partition_count == 1:
-                    self.log(
-                        "Splitting IOT by MOD() for single partition", detail=VVERBOSE
-                    )
+                    self.log("Splitting IOT by MOD() for single partition", detail=VVERBOSE)
                 else:
                     self.log("Splitting non-partitioned IOT by MOD()", detail=VVERBOSE)
                 partition_by = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD
         else:
             self.log("Splitting table into ROWID ranges", detail=VVERBOSE)
             partition_by = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_EXTENT
-        self.log(
-            TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT + partition_by, detail=VVERBOSE
-        )
+        self.log(TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT + partition_by, detail=VVERBOSE)
         assert partition_by in self._transport_row_source_query_split_methods
         return partition_by, tuned_parallelism
 
@@ -673,9 +609,7 @@ FROM  (
         id_split_col = self.get_id_column_for_range_splitting(rdbms_table)
 
         if partition_by_prm == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_EXTENT and is_iot:
-            raise NotImplementedError(
-                "RDBMS extent splitting is not supported for IOTs"
-            )
+            raise NotImplementedError("RDBMS extent splitting is not supported for IOTs")
 
         owner_table = '"%s"."%s"' % (self._rdbms_owner, self._rdbms_table_name)
         partition_by = partition_by_prm
@@ -754,8 +688,7 @@ FROM  (
         elif partition_by == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD:
             if not mod_column:
                 raise OffloadTransportRdbmsApiException(
-                    "Table %s cannot be split by mod without suitable column"
-                    % owner_table
+                    "Table %s cannot be split by mod without suitable column" % owner_table
                 )
             batch_expr = "MOD(ORA_HASH(%(batch_source_col)s), %(degree)s)" % {
                 "batch_source_col": mod_column,
@@ -797,9 +730,7 @@ FROM  (
                         "batch": (i % parallelism),
                         "batch_col": TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
                         "owner_table": owner_table,
-                        "part_clause": self._get_iot_single_partition_clause(
-                            partition_chunk
-                        ),
+                        "part_clause": self._get_iot_single_partition_clause(partition_chunk),
                         "scn_clause": scn_clause,
                         "batch_source_col": id_split_col.name,
                         "low_val": lowhigh[0],
@@ -851,9 +782,7 @@ FROM  (
                 row_format = "{0: <13} {1: >12} {2: >12} {3: >12} {4: >12} {5: >12}"
                 self.log(OFFLOAD_TRANSPORT_SQL_STATISTICS_TITLE, detail=VVERBOSE)
                 self.log(
-                    row_format.format(
-                        "SQL Id", "Child#", "Executions", "Rows", "CPU(s)", "IO Wait(s)"
-                    ),
+                    row_format.format("SQL Id", "Child#", "Executions", "Rows", "CPU(s)", "IO Wait(s)"),
                     detail=VVERBOSE,
                 )
                 for (
@@ -890,9 +819,7 @@ FROM  (
 
         self.debug("log_sql_stats()")
         if validation_polling_interval == OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED:
-            self.log(
-                "Offload transport SQL stats collection is disabled", detail=VVERBOSE
-            )
+            self.log("Offload transport SQL stats collection is disabled", detail=VVERBOSE)
             return None
 
         tot_rows_processed = None
@@ -900,9 +827,7 @@ FROM  (
             if payload:
                 sql_info = []
                 row_snapshots = [item for sublist in payload for item in sublist]
-                for sql_id_child_num, row_data in groupby(
-                    sorted(row_snapshots), lambda x: "%s:%s" % (x[0], x[1])
-                ):
+                for sql_id_child_num, row_data in groupby(sorted(row_snapshots), lambda x: "%s:%s" % (x[0], x[1])):
                     rows = list(row_data)
                     sql_id, child_number = sql_id_child_num.split(":")
                     sql_info.append(
@@ -957,9 +882,7 @@ ORDER BY seconds DESC"""
                 event_width = max([len(_[1]) for _ in ash])
                 row_format = "{0: <15} {1: <" + str(event_width) + "} {2: >8}"
                 self.log("Active Session History", detail=VVERBOSE)
-                self.log(
-                    row_format.format("SQL Id", "Event", "Seconds"), detail=VVERBOSE
-                )
+                self.log(row_format.format("SQL Id", "Event", "Seconds"), detail=VVERBOSE)
                 for sql_id, event, seconds in ash:
                     self.log(row_format.format(sql_id, event, seconds), detail=VVERBOSE)
         finally:
@@ -982,11 +905,7 @@ ORDER BY seconds DESC"""
         def cx_type_handler(cursor, name, default_type, size, precision, scale):
             if default_type == cxo.DB_TYPE_NUMBER:
                 staging_column = match_table_column(name, staging_columns)
-                if (
-                    not staging_column
-                    or not staging_column.safe_mapping
-                    or staging_column.is_string_based()
-                ):
+                if not staging_column or not staging_column.safe_mapping or staging_column.is_string_based():
                     # We are offloading to string and should convert the value to string
                     return cursor.var(str, 255, cursor.arraysize)
             elif default_type in (cxo.DB_TYPE_VARCHAR, cxo.DB_TYPE_CHAR):
@@ -1013,8 +932,7 @@ ORDER BY seconds DESC"""
         ora_cursor.arraysize = fetch_size
 
         self.log(
-            "Importing load data with arraysize=%s, compression=%s"
-            % (ora_cursor.arraysize, compress),
+            "Importing load data with arraysize=%s, compression=%s" % (ora_cursor.arraysize, compress),
             detail=VERBOSE,
         )
 
@@ -1035,7 +953,7 @@ ORDER BY seconds DESC"""
 
     def sqoop_by_query_boundary_query(self, offload_transport_parallelism):
         """Return a query providing a value range for Sqoop --boundary-query option."""
-        return '"SELECT 0, {} FROM dual"'.format(offload_transport_parallelism - 1)
+        return f'"SELECT 0, {offload_transport_parallelism - 1} FROM dual"'
 
     def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands) -> list:
         oraoop_d_options = [
@@ -1073,8 +991,7 @@ ORDER BY seconds DESC"""
 
         if partition_chunk and partition_chunk.count() > 0:
             oraoop_options += [
-                "-Doraoop.import.partitions="
-                + self._ssh_cli_safe_value(",".join(partition_chunk.partition_names()))
+                "-Doraoop.import.partitions=" + self._ssh_cli_safe_value(",".join(partition_chunk.partition_names()))
             ]
         return oraoop_options
 

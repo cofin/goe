@@ -14,6 +14,7 @@
 
 from decimal import Decimal
 from unittest import TestCase, main
+
 from goe.util.misc_functions import remove_chars
 from tests.testlib.test_framework.test_value_generators import TestDecimal
 
@@ -33,7 +34,7 @@ class TestTestValueGenerators(TestCase):
         self.assertTrue(len(remove_chars(str(TestDecimal.rnd(2)), "-")) <= 2)
         self.assertIsInstance(TestDecimal.rnd(10, 1), Decimal)
         dec_10_1 = str(TestDecimal.rnd(10, 1))
-        self.assertTrue(len(remove_chars(dec_10_1.split(".")[0], "-")) <= 9)
+        self.assertTrue(len(remove_chars(dec_10_1.split(".", maxsplit=1)[0], "-")) <= 9)
         self.assertEqual(len(dec_10_1.split(".")[1]), 1)
         dec_10_10 = TestDecimal.rnd(10, 10)
         self.assertIsInstance(dec_10_10, Decimal)

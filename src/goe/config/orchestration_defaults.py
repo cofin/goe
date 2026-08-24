@@ -23,13 +23,12 @@ redundant at that time.
 # Standard Library
 import logging
 import os
-from typing import Optional
 
 from goe.offload.offload_constants import (
     BACKEND_DISTRO_CDH,
     BACKEND_DISTRO_GCP,
-    BACKEND_DISTRO_SNOWFLAKE,
     BACKEND_DISTRO_MSAZURE,
+    BACKEND_DISTRO_SNOWFLAKE,
     DBTYPE_BIGQUERY,
     DBTYPE_HIVE,
     DBTYPE_IMPALA,
@@ -79,10 +78,7 @@ def bool_option_from_string(opt_name, opt_val):
 def posint_option_from_string(opt_name, opt_val, allow_zero=False):
     if is_pos_int(opt_val, allow_zero=allow_zero):
         return int(opt_val)
-    else:
-        raise OrchestrationDefaultsException(
-            f"Invalid positive integer value {opt_name}: {opt_val}"
-        )
+    raise OrchestrationDefaultsException(f"Invalid positive integer value {opt_name}: {opt_val}")
 
 
 def time_in_seconds_from_string(opt_name, opt_val: str):
@@ -116,35 +112,34 @@ def ansi_default() -> bool:
 def backend_distribution_default():
     if os.environ.get("BACKEND_DISTRIBUTION"):
         return os.environ["BACKEND_DISTRIBUTION"].upper()
-    elif os.environ.get("QUERY_ENGINE", "").lower() == DBTYPE_IMPALA:
+    if os.environ.get("QUERY_ENGINE", "").lower() == DBTYPE_IMPALA:
         return BACKEND_DISTRO_CDH
-    elif os.environ.get("QUERY_ENGINE", "").lower() == DBTYPE_BIGQUERY:
+    if os.environ.get("QUERY_ENGINE", "").lower() == DBTYPE_BIGQUERY:
         return BACKEND_DISTRO_GCP
-    else:
-        return None
+    return None
 
 
 def backend_identifier_case_default() -> str:
     return os.environ.get("BACKEND_IDENTIFIER_CASE", "LOWER").upper() or "LOWER"
 
 
-def backend_odbc_driver_name_default() -> Optional[str]:
+def backend_odbc_driver_name_default() -> str | None:
     return os.environ.get("BACKEND_ODBC_DRIVER_NAME")
 
 
-def backend_session_parameters_default() -> Optional[str]:
+def backend_session_parameters_default() -> str | None:
     return os.environ.get("OFFLOAD_BACKEND_SESSION_PARAMETERS")
 
 
-def bigquery_dataset_location_default() -> Optional[str]:
+def bigquery_dataset_location_default() -> str | None:
     return os.environ.get("BIGQUERY_DATASET_LOCATION")
 
 
-def bigquery_dataset_project_default() -> Optional[str]:
+def bigquery_dataset_project_default() -> str | None:
     return os.environ.get("BIGQUERY_DATASET_PROJECT")
 
 
-def ca_cert_default() -> Optional[str]:
+def ca_cert_default() -> str | None:
     return os.environ.get("SSL_TRUSTED_CERTS")
 
 
@@ -164,7 +159,7 @@ def db_name_pattern_default() -> str:
     return "%s"
 
 
-def db_name_prefix_default() -> Optional[str]:
+def db_name_prefix_default() -> str | None:
     return os.environ.get("DB_NAME_PREFIX")
 
 
@@ -186,20 +181,17 @@ def force_default():
 
 def frontend_db_type_default():
     # Referencing SRCDB_VENDOR for backward compatibility
-    frontend_distro = (
-        os.environ.get("FRONTEND_DISTRIBUTION") or os.environ.get("SRCDB_VENDOR") or ""
-    ).lower()
+    frontend_distro = (os.environ.get("FRONTEND_DISTRIBUTION") or os.environ.get("SRCDB_VENDOR") or "").lower()
     if frontend_distro in [
         DBTYPE_MSSQL,
         DBTYPE_ORACLE,
         DBTYPE_TERADATA,
     ]:
         return frontend_distro
-    else:
-        return DBTYPE_ORACLE
+    return DBTYPE_ORACLE
 
 
-def frontend_odbc_driver_name_default() -> Optional[str]:
+def frontend_odbc_driver_name_default() -> str | None:
     return os.environ.get("FRONTEND_ODBC_DRIVER_NAME")
 
 
@@ -207,59 +199,59 @@ def get_load_db_pattern():
     return "%s_load"
 
 
-def google_dataproc_batches_subnet_default() -> Optional[str]:
+def google_dataproc_batches_subnet_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_BATCHES_SUBNET")
 
 
-def google_dataproc_batches_ttl_default() -> Optional[str]:
+def google_dataproc_batches_ttl_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_BATCHES_TTL")
 
 
-def google_dataproc_batches_version_default() -> Optional[str]:
+def google_dataproc_batches_version_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_BATCHES_VERSION")
 
 
-def google_dataproc_cluster_default() -> Optional[str]:
+def google_dataproc_cluster_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_CLUSTER")
 
 
-def google_dataproc_project_default() -> Optional[str]:
+def google_dataproc_project_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_PROJECT")
 
 
-def google_dataproc_region_default() -> Optional[str]:
+def google_dataproc_region_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_REGION")
 
 
-def google_dataproc_service_account_default() -> Optional[str]:
+def google_dataproc_service_account_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_SERVICE_ACCOUNT")
 
 
-def google_kms_key_name_default() -> Optional[str]:
+def google_kms_key_name_default() -> str | None:
     return os.environ.get("GOOGLE_KMS_KEY_NAME")
 
 
-def google_kms_key_ring_location_default() -> Optional[str]:
+def google_kms_key_ring_location_default() -> str | None:
     return os.environ.get("GOOGLE_KMS_KEY_RING_LOCATION")
 
 
-def google_kms_key_ring_name_default() -> Optional[str]:
+def google_kms_key_ring_name_default() -> str | None:
     return os.environ.get("GOOGLE_KMS_KEY_RING_NAME")
 
 
-def google_kms_key_ring_project_default() -> Optional[str]:
+def google_kms_key_ring_project_default() -> str | None:
     return os.environ.get("GOOGLE_KMS_KEY_RING_PROJECT")
 
 
-def hdfs_data_default() -> Optional[str]:
+def hdfs_data_default() -> str | None:
     return os.environ.get("HDFS_DATA")
 
 
-def hdfs_load_default() -> Optional[str]:
+def hdfs_load_default() -> str | None:
     return os.environ.get("HDFS_LOAD")
 
 
-def hdfs_home_default() -> Optional[str]:
+def hdfs_home_default() -> str | None:
     return os.environ.get("HDFS_HOME")
 
 
@@ -301,9 +293,7 @@ def offload_distribute_enabled_default():
 
 
 def not_null_propagation_default():
-    return (
-        os.environ.get("OFFLOAD_NOT_NULL_PROPAGATION") or NOT_NULL_PROPAGATION_AUTO
-    ).upper()
+    return (os.environ.get("OFFLOAD_NOT_NULL_PROPAGATION") or NOT_NULL_PROPAGATION_AUTO).upper()
 
 
 def offload_predicate_modify_hybrid_view_default():
@@ -311,14 +301,10 @@ def offload_predicate_modify_hybrid_view_default():
 
 
 def offload_stats_method_default(operation_name=None):
-    if (
-        operation_name == PRESENT_OP_NAME
-        and os.environ.get("OFFLOAD_STATS_METHOD") == OFFLOAD_STATS_METHOD_COPY
-    ):
+    if operation_name == PRESENT_OP_NAME and os.environ.get("OFFLOAD_STATS_METHOD") == OFFLOAD_STATS_METHOD_COPY:
         # COPY is not valid for present so ignore any COPY setting in the env file which would be in place for offload
         return OFFLOAD_STATS_METHOD_NATIVE
-    else:
-        return os.environ.get("OFFLOAD_STATS_METHOD") or OFFLOAD_STATS_METHOD_NATIVE
+    return os.environ.get("OFFLOAD_STATS_METHOD") or OFFLOAD_STATS_METHOD_NATIVE
 
 
 def optional_default():
@@ -336,12 +322,7 @@ def purge_backend_table_default():
 def query_engine_default():
     if os.environ.get("QUERY_ENGINE") is not None:
         return os.environ.get("QUERY_ENGINE").lower()
-    else:
-        return (
-            DBTYPE_HIVE
-            if os.environ.get("HIVE_SERVER_PORT") == "10000"
-            else DBTYPE_IMPALA
-        )
+    return DBTYPE_HIVE if os.environ.get("HIVE_SERVER_PORT") == "10000" else DBTYPE_IMPALA
 
 
 def quiet_default():
@@ -418,10 +399,7 @@ def hdfs_host_default():
 
 
 def hdfs_db_path_suffix_default():
-    if (
-        os.environ.get("BACKEND_DISTRIBUTION", BACKEND_DISTRO_CDH).upper()
-        not in HADOOP_BASED_BACKEND_DISTRIBUTIONS
-    ):
+    if os.environ.get("BACKEND_DISTRIBUTION", BACKEND_DISTRO_CDH).upper() not in HADOOP_BASED_BACKEND_DISTRIBUTIONS:
         return ""
     return os.environ.get("HDFS_DB_PATH_SUFFIX", ".db")
 
@@ -439,9 +417,7 @@ def hive_max_dynamic_partitions_pernode_default():
 
 
 def hive_timeout_s_default():
-    return posint_option_from_string(
-        "HIVE_SERVER_TIMEOUT", os.environ.get("HIVE_SERVER_TIMEOUT") or "3600"
-    )
+    return posint_option_from_string("HIVE_SERVER_TIMEOUT", os.environ.get("HIVE_SERVER_TIMEOUT") or "3600")
 
 
 def hiveserver2_auth_mechanism_default():
@@ -686,19 +662,19 @@ def offload_fs_prefix_default() -> str:
     return os.environ.get("OFFLOAD_FS_PREFIX", "").lower()
 
 
-def offload_fs_container_default() -> Optional[str]:
+def offload_fs_container_default() -> str | None:
     return os.environ.get("OFFLOAD_FS_CONTAINER")
 
 
-def offload_fs_azure_account_domain_default() -> Optional[str]:
+def offload_fs_azure_account_domain_default() -> str | None:
     return os.environ.get("OFFLOAD_FS_AZURE_ACCOUNT_DOMAIN")
 
 
-def offload_fs_azure_account_name_default() -> Optional[str]:
+def offload_fs_azure_account_name_default() -> str | None:
     return os.environ.get("OFFLOAD_FS_AZURE_ACCOUNT_NAME")
 
 
-def offload_fs_azure_account_key_default() -> Optional[str]:
+def offload_fs_azure_account_key_default() -> str | None:
     return os.environ.get("OFFLOAD_FS_AZURE_ACCOUNT_KEY")
 
 
@@ -708,9 +684,7 @@ def offload_fs_azure_account_key_default() -> Optional[str]:
 
 
 def compress_load_table_default() -> bool:
-    return bool(
-        os.environ.get("OFFLOAD_COMPRESS_LOAD_TABLE", "false").lower() == "true"
-    )
+    return bool(os.environ.get("OFFLOAD_COMPRESS_LOAD_TABLE", "false").lower() == "true")
 
 
 def compute_load_table_stats_default() -> bool:
@@ -720,13 +694,12 @@ def compute_load_table_stats_default() -> bool:
 def offload_staging_format_default() -> str:
     if os.environ.get("OFFLOAD_STAGING_FORMAT"):
         return os.environ["OFFLOAD_STAGING_FORMAT"].upper()
-    elif os.environ.get("BACKEND_DISTRIBUTION", BACKEND_DISTRO_CDH).upper() in [
+    if os.environ.get("BACKEND_DISTRIBUTION", BACKEND_DISTRO_CDH).upper() in [
         BACKEND_DISTRO_SNOWFLAKE,
         BACKEND_DISTRO_MSAZURE,
     ]:
         return FILE_STORAGE_FORMAT_PARQUET
-    else:
-        return FILE_STORAGE_FORMAT_AVRO
+    return FILE_STORAGE_FORMAT_AVRO
 
 
 def offload_transport_default() -> str:
@@ -739,26 +712,18 @@ def use_oracle_wallet_default() -> bool:
 
 
 def oracledb_thick_mode_default() -> bool:
-    str_val = (
-        os.environ.get("ORACLEDB_THICK_MODE")
-        or os.environ.get("USE_ORACLE_WALLET")
-        or "false"
-    )
+    str_val = os.environ.get("ORACLEDB_THICK_MODE") or os.environ.get("USE_ORACLE_WALLET") or "false"
     return bool_option_from_string("ORACLEDB_THICK_MODE", str_val)
 
 
 def offload_transport_auth_using_oracle_wallet_default() -> bool:
     str_val = os.environ.get("OFFLOAD_TRANSPORT_AUTH_USING_ORACLE_WALLET") or "false"
-    return bool_option_from_string(
-        "OFFLOAD_TRANSPORT_AUTH_USING_ORACLE_WALLET", str_val
-    )
+    return bool_option_from_string("OFFLOAD_TRANSPORT_AUTH_USING_ORACLE_WALLET", str_val)
 
 
 def offload_transport_cmd_host_default():
     # for backward compatibility we still use SQOOP_CMD_HOST as a fallback
-    return os.environ.get("OFFLOAD_TRANSPORT_CMD_HOST") or os.environ.get(
-        "SQOOP_CMD_HOST"
-    )
+    return os.environ.get("OFFLOAD_TRANSPORT_CMD_HOST") or os.environ.get("SQOOP_CMD_HOST")
 
 
 def offload_transport_consistent_read_default():
@@ -772,16 +737,12 @@ def offload_transport_fetch_size_default() -> str:
 
 
 def offload_transport_livy_max_sessions_default():
-    str_val = os.environ.get("OFFLOAD_TRANSPORT_LIVY_MAX_SESSIONS") or str(
-        LIVY_MAX_SESSIONS
-    )
+    str_val = os.environ.get("OFFLOAD_TRANSPORT_LIVY_MAX_SESSIONS") or str(LIVY_MAX_SESSIONS)
     return str_val
 
 
 def offload_transport_livy_idle_session_timeout_default() -> str:
-    str_val = os.environ.get("OFFLOAD_TRANSPORT_LIVY_IDLE_SESSION_TIMEOUT") or str(
-        LIVY_IDLE_SESSION_TIMEOUT
-    )
+    str_val = os.environ.get("OFFLOAD_TRANSPORT_LIVY_IDLE_SESSION_TIMEOUT") or str(LIVY_IDLE_SESSION_TIMEOUT)
     return str_val
 
 
@@ -796,21 +757,15 @@ def offload_transport_livy_api_verify_ssl_default():
 
 def offload_transport_parallelism_default() -> str:
     # still including SQOOP_PARALLELISM as a fallback for backwards compatibility
-    return (
-        os.environ.get("OFFLOAD_TRANSPORT_PARALLELISM")
-        or os.environ.get("SQOOP_PARALLELISM")
-        or "2"
-    )
+    return os.environ.get("OFFLOAD_TRANSPORT_PARALLELISM") or os.environ.get("SQOOP_PARALLELISM") or "2"
 
 
-def offload_transport_password_alias_default() -> Optional[str]:
+def offload_transport_password_alias_default() -> str | None:
     # still including SQOOP_PASSWORD_ALIAS as a fallback for backwards compatibility
-    return os.environ.get("OFFLOAD_TRANSPORT_PASSWORD_ALIAS") or os.environ.get(
-        "SQOOP_PASSWORD_ALIAS"
-    )
+    return os.environ.get("OFFLOAD_TRANSPORT_PASSWORD_ALIAS") or os.environ.get("SQOOP_PASSWORD_ALIAS")
 
 
-def offload_transport_credential_provider_path_default() -> Optional[str]:
+def offload_transport_credential_provider_path_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_CREDENTIAL_PROVIDER_PATH")
 
 
@@ -823,51 +778,51 @@ def offload_transport_small_table_threshold_default() -> str:
     return os.environ.get("OFFLOAD_TRANSPORT_SMALL_TABLE_THRESHOLD") or "20M"
 
 
-def offload_transport_spark_files_default() -> Optional[str]:
+def offload_transport_spark_files_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_SPARK_FILES")
 
 
-def offload_transport_spark_jars_default() -> Optional[str]:
+def offload_transport_spark_jars_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_SPARK_JARS")
 
 
-def offload_transport_spark_overrides_default() -> Optional[str]:
+def offload_transport_spark_overrides_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_SPARK_OVERRIDES")
 
 
-def offload_transport_spark_properties_default() -> Optional[str]:
+def offload_transport_spark_properties_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_SPARK_PROPERTIES")
 
 
-def offload_transport_spark_queue_name_default() -> Optional[str]:
+def offload_transport_spark_queue_name_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_SPARK_QUEUE_NAME")
 
 
-def offload_transport_spark_submit_executable_default() -> Optional[str]:
+def offload_transport_spark_submit_executable_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_SPARK_SUBMIT_EXECUTABLE")
 
 
-def offload_transport_spark_submit_master_url_default() -> Optional[str]:
+def offload_transport_spark_submit_master_url_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_SPARK_SUBMIT_MASTER_URL")
 
 
-def offload_transport_spark_thrift_host_default() -> Optional[str]:
+def offload_transport_spark_thrift_host_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_SPARK_THRIFT_HOST")
 
 
-def offload_transport_spark_thrift_port_default() -> Optional[str]:
+def offload_transport_spark_thrift_port_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_SPARK_THRIFT_PORT")
 
 
-def offload_transport_dsn_default() -> Optional[str]:
+def offload_transport_dsn_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_DSN")
 
 
-def oracle_adm_dsn_default() -> Optional[str]:
+def oracle_adm_dsn_default() -> str | None:
     return os.environ.get("ORA_ADM_CONN")
 
 
-def offload_transport_user_default() -> Optional[str]:
+def offload_transport_user_default() -> str | None:
     # Includes HADOOP_SSH_USER for backwards compatibility
     return os.environ.get("OFFLOAD_TRANSPORT_USER") or os.environ.get("HADOOP_SSH_USER")
 
@@ -880,29 +835,27 @@ def preserve_load_table_default() -> bool:
     return False
 
 
-def sqoop_additional_options_default() -> Optional[str]:
+def sqoop_additional_options_default() -> str | None:
     return os.environ.get("SQOOP_ADDITIONAL_OPTIONS")
 
 
 def sqoop_disable_direct_default() -> bool:
-    return bool(
-        os.environ.get("SQOOP_DISABLE_DIRECT", "FALSE").upper() in ["YES", "TRUE"]
-    )
+    return bool(os.environ.get("SQOOP_DISABLE_DIRECT", "FALSE").upper() in ["YES", "TRUE"])
 
 
-def sqoop_outdir_default() -> Optional[str]:
+def sqoop_outdir_default() -> str | None:
     return os.environ.get("SQOOP_OUTDIR") or ".goesqoop"
 
 
-def sqoop_overrides_default() -> Optional[str]:
+def sqoop_overrides_default() -> str | None:
     return os.environ.get("SQOOP_OVERRIDES")
 
 
-def sqoop_password_file_default() -> Optional[str]:
+def sqoop_password_file_default() -> str | None:
     return os.environ.get("SQOOP_PASSWORD_FILE")
 
 
-def sqoop_queue_name_default() -> Optional[str]:
+def sqoop_queue_name_default() -> str | None:
     return os.environ.get("SQOOP_QUEUE_NAME")
 
 
@@ -915,11 +868,11 @@ def cache_enabled() -> bool:
     return True if os.environ.get("OFFLOAD_LISTENER_REDIS_HOST") else False
 
 
-def listener_host_default() -> Optional[str]:
+def listener_host_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_HOST")
 
 
-def listener_port_default() -> Optional[str]:
+def listener_port_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_PORT")
 
 
@@ -927,19 +880,19 @@ def listener_heartbeat_interval_default() -> int:
     return int(os.environ.get("OFFLOAD_LISTENER_HEARTBEAT_INTERVAL") or 30)
 
 
-def listener_shared_token_default() -> Optional[str]:
+def listener_shared_token_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_SHARED_TOKEN")
 
 
-def listener_redis_username_default() -> Optional[str]:
+def listener_redis_username_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_REDIS_USERNAME")
 
 
-def listener_redis_password_default() -> Optional[str]:
+def listener_redis_password_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_REDIS_PASSWORD")
 
 
-def listener_redis_host_default() -> Optional[str]:
+def listener_redis_host_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_REDIS_HOST")
 
 
@@ -951,7 +904,7 @@ def listener_redis_db_default() -> int:
     return int(os.environ.get("OFFLOAD_LISTENER_REDIS_DB") or 0)
 
 
-def listener_redis_ssl_cert_default() -> Optional[str]:
+def listener_redis_ssl_cert_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_REDIS_SSL_CERT")
 
 
@@ -960,6 +913,4 @@ def listener_redis_use_ssl_default() -> bool:
 
 
 def listener_redis_use_sentinel_default() -> int:
-    return bool(
-        os.environ.get("OFFLOAD_LISTENER_REDIS_USE_SENTINEL", "false").lower() == "true"
-    )
+    return bool(os.environ.get("OFFLOAD_LISTENER_REDIS_USE_SENTINEL", "false").lower() == "true")

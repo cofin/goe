@@ -26,8 +26,8 @@ from goe.offload.offload_functions import (
 from goe.offload.offload_transport import (
     MISSING_ROWS_IMPORTED_WARNING,
     OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
-    OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
@@ -35,9 +35,9 @@ from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
     OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED,
     POLLING_VALIDATION_TEXT,
+    is_livy_available,
     is_spark_gcloud_batches_available,
     is_spark_gcloud_dataproc_available,
-    is_livy_available,
     is_spark_submit_available,
     is_spark_thrift_available,
     is_sqoop_available,
@@ -49,7 +49,6 @@ from goe.offload.offload_transport_rdbms_api import (
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
 from tests.integration.scenarios.assertion_functions import (
     backend_table_exists,
     load_table_is_compressed,
@@ -74,7 +73,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api,
     get_test_messages_ctx,
 )
-
 
 LOAD_TABLE_COMP_DIM1 = "STORY_OT_LOADT_COMP1"
 LOAD_TABLE_COMP_DIM2 = "STORY_OT_LOADT_COMP2"
@@ -120,9 +118,7 @@ def simple_offload_test(
 ):
     frontend_api = get_frontend_testing_api(config, messages, trace_action=test_id)
     backend_api = get_backend_testing_api(config, messages)
-    repo_client = orchestration_repo_client_factory(
-        config, messages, trace_action=f"repo_client({test_id})"
-    )
+    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
 
     # Setup
     run_setup(
@@ -132,9 +128,7 @@ def simple_offload_test(
         messages,
         frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, table_name),
         python_fns=[
-            lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, table_name
-            ),
+            lambda: drop_backend_test_table(config, backend_api, messages, data_db, table_name),
         ],
     )
 
@@ -189,15 +183,11 @@ def simple_offload_test(
     frontend_api.close()
 
 
-def load_table_compression_tests(
-    config, schema, data_db, table_name, transport_method, messages, test_id
-):
+def load_table_compression_tests(config, schema, data_db, table_name, transport_method, messages, test_id):
     load_db = load_db_name(schema, config)
     frontend_api = get_frontend_testing_api(config, messages, trace_action=test_id)
     backend_api = get_backend_testing_api(config, messages)
-    repo_client = orchestration_repo_client_factory(
-        config, messages, trace_action=f"repo_client({test_id})"
-    )
+    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
     dfs = get_dfs_from_options(config, messages=messages, dry_run=False)
     backend_name = convert_backend_identifier_case(config, table_name)
 
@@ -209,12 +199,8 @@ def load_table_compression_tests(
         messages,
         frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, table_name),
         python_fns=[
-            lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, table_name
-            ),
-            lambda: drop_backend_test_load_table(
-                config, backend_api, messages, load_db, table_name
-            ),
+            lambda: drop_backend_test_table(config, backend_api, messages, data_db, table_name),
+            lambda: drop_backend_test_load_table(config, backend_api, messages, load_db, table_name),
         ],
     )
 
@@ -230,9 +216,7 @@ def load_table_compression_tests(
     }
     offload_messages = run_offload(options, config, messages)
 
-    assert backend_table_exists(
-        config, backend_api, messages, load_db, table_name
-    ), "Backend load table should exist"
+    assert backend_table_exists(config, backend_api, messages, load_db, table_name), "Backend load table should exist"
     assert standard_dimension_assertion(
         config,
         backend_api,
@@ -256,9 +240,7 @@ def load_table_compression_tests(
     }
     offload_messages = run_offload(options, config, messages)
 
-    assert backend_table_exists(
-        config, backend_api, messages, load_db, table_name
-    ), "Backend load table should exist"
+    assert backend_table_exists(config, backend_api, messages, load_db, table_name), "Backend load table should exist"
     assert standard_dimension_assertion(
         config,
         backend_api,
@@ -296,9 +278,7 @@ def offload_transport_polling_validation_tests(
         messages,
         frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, table_name),
         python_fns=[
-            lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, table_name
-            ),
+            lambda: drop_backend_test_table(config, backend_api, messages, data_db, table_name),
         ],
     )
 
@@ -507,13 +487,8 @@ def test_offload_transport_load_table_no_qi(config, schema, data_db):
     """Test load table controls when using anying other than Query Import."""
     id = "test_offload_transport_load_table_no_qi"
     with get_test_messages_ctx(config, id) as messages:
-        if (
-            no_query_import_transport_method(config)
-            == OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
-        ):
-            pytest.skip(
-                f"Skipping {id} because we only have Query Import at our disposal"
-            )
+        if no_query_import_transport_method(config) == OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT:
+            pytest.skip(f"Skipping {id} because we only have Query Import at our disposal")
 
         load_table_compression_tests(
             config,

@@ -14,14 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" ColumnMetadataInterface: Base interface for GOE column metadata.
-    Other classes will build upon this basic model.
+"""ColumnMetadataInterface: Base interface for GOE column metadata.
+Other classes will build upon this basic model.
 """
 
-from abc import ABCMeta, abstractmethod
-from copy import copy
 import logging
 import re
+from abc import ABCMeta, abstractmethod
+from copy import copy
 from typing import Optional
 
 from goe.util.misc_functions import str_summary_of_self
@@ -131,9 +131,7 @@ CANONICAL_CHAR_SEMANTICS_UNICODE = "UNICODE"
 SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE = "GOE_PART_%s_%s"
 
 # Regular expression extracting granularity/source name from synthetic partition column name.
-SYNTHETIC_PARTITION_COLUMN_NAME_RE = re.compile(
-    r"(^GOE_PART_)(Y|M|D|\d+|U\d+)_([A-Z0-9$#_]+$)", re.I
-)
+SYNTHETIC_PARTITION_COLUMN_NAME_RE = re.compile(r"(^GOE_PART_)(Y|M|D|\d+|U\d+)_([A-Z0-9$#_]+$)", re.IGNORECASE)
 
 # A column name replacement for when the source columns contain special characters.
 STAGING_FILE_SIMPLIFIED_NAME_TOKEN = "_GOE_SPECIAL_CHAR_COLUMN"
@@ -159,8 +157,7 @@ def get_column_names(column_list, conv_fn=None):
     """
     if conv_fn:
         return [conv_fn(_.name) for _ in column_list or []]
-    else:
-        return [_.name for _ in column_list or []]
+    return [_.name for _ in column_list or []]
 
 
 def get_partition_columns(column_list):
@@ -187,8 +184,7 @@ def get_partition_source_column_names(column_list, conv_fn=None):
     columns = get_partition_columns(column_list)
     if conv_fn:
         return [conv_fn(partition_info(_).source_column_name) for _ in columns or []]
-    else:
-        return [partition_info(_).source_column_name for _ in columns or []]
+    return [partition_info(_).source_column_name for _ in columns or []]
 
 
 def is_safe_mapping(prior_safe_mapping, new_safe_mapping) -> bool:
@@ -211,27 +207,20 @@ def match_partition_column_by_source(source_column_name, column_list):
     assert isinstance(column_list, list)
     if column_list:
         assert isinstance(column_list[0], ColumnMetadataInterface)
-    part_cols_with_source = [
-        _
-        for _ in column_list
-        if _.partition_info and _.partition_info.source_column_name
-    ]
+    part_cols_with_source = [_ for _ in column_list if _.partition_info and _.partition_info.source_column_name]
     match_cols = [
-        _
-        for _ in part_cols_with_source
-        if _.partition_info.source_column_name.lower() == source_column_name.lower()
+        _ for _ in part_cols_with_source if _.partition_info.source_column_name.lower() == source_column_name.lower()
     ]
     if match_cols:
         return match_cols[0]
     return None
 
 
-def match_table_column(
-    search_name: str, column_list: list
-) -> Optional["ColumnMetadataInterface"]:
+def match_table_column(search_name: str, column_list: list) -> Optional["ColumnMetadataInterface"]:
     """Looks for, and returns, a column with name search_name in a list of table columns.
 
-    Case insensitive matching."""
+    Case insensitive matching.
+    """
     assert search_name
     assert isinstance(column_list, list)
     if column_list:
@@ -248,9 +237,7 @@ def match_table_column_position(search_name, column_list):
     assert isinstance(column_list, list)
     if column_list:
         assert isinstance(column_list[0], ColumnMetadataInterface)
-    match_cols = [
-        i for i, _ in enumerate(column_list) if _.name.lower() == search_name.lower()
-    ]
+    match_cols = [i for i, _ in enumerate(column_list) if _.name.lower() == search_name.lower()]
     if match_cols:
         return match_cols[0]
     return None
@@ -273,8 +260,7 @@ def invalid_column_list_message(column_list):
         return None
     if isinstance(column_list[0], ColumnMetadataInterface):
         return None
-    else:
-        return "Type %s is not instance of column" % type(column_list[0])
+    return "Type %s is not instance of column" % type(column_list[0])
 
 
 def is_synthetic_partition_column(column):
@@ -295,8 +281,7 @@ def str_list_of_columns(column_list, with_cr=True):
     """
     if with_cr:
         return "\n".join(str(_) for _ in column_list or [])
-    else:
-        return [str(_) for _ in column_list or []]
+    return [str(_) for _ in column_list or []]
 
 
 logger = logging.getLogger(__name__)
@@ -356,9 +341,7 @@ class ColumnPartitionInfo:
     # PUBLIC METHODS
     ###########################################################################
 
-    def synthetic_name(
-        self, full_column_list, source_column_name_override=None, position_override=None
-    ):
+    def synthetic_name(self, full_column_list, source_column_name_override=None, position_override=None):
         """Generate a synthetic column name from partition attributes.
         source_column_name_override: Pass in a specific name to use in the resulting synthetic name
                                      This is used for Join Pushdown when an aliased (and
@@ -366,15 +349,11 @@ class ColumnPartitionInfo:
         position_override: As above, used for Join Pushdown.
         """
         assert full_column_list
-        assert valid_column_list(full_column_list), invalid_column_list_message(
-            full_column_list
-        )
+        assert valid_column_list(full_column_list), invalid_column_list_message(full_column_list)
         assert self.source_column_name
         source_column = match_table_column(self.source_column_name, full_column_list)
         if self.function:
-            position = (
-                position_override if position_override is not None else self.position
-            )
+            position = position_override if position_override is not None else self.position
             synth_desc = "U" + str(position)
         elif source_column.is_number_based() and self.digits:
             synth_desc = ("{:0%sd}" % self.digits).format(int(self.granularity))
@@ -450,9 +429,7 @@ class ColumnMetadataInterface(metaclass=ABCMeta):
 
     def _optional_integer(self, column_attribute):
         if column_attribute:
-            assert isinstance(column_attribute, int), "{} is not int".format(
-                type(column_attribute)
-            )
+            assert isinstance(column_attribute, int), f"{type(column_attribute)} is not int"
         return column_attribute
 
     def _optional_boolean(self, column_attribute):
@@ -460,15 +437,11 @@ class ColumnMetadataInterface(metaclass=ABCMeta):
             if isinstance(column_attribute, str):
                 if column_attribute.upper() in ("Y", "YES", "TRUE"):
                     return True
-                elif column_attribute.upper() in ("N", "NO", "FALSE"):
+                if column_attribute.upper() in ("N", "NO", "FALSE"):
                     return False
-                else:
-                    raise ColumnMetadataException(
-                        "Invalid boolean value: %s" % column_attribute
-                    )
-            else:
-                assert isinstance(column_attribute, bool)
-                return column_attribute
+                raise ColumnMetadataException("Invalid boolean value: %s" % column_attribute)
+            assert isinstance(column_attribute, bool)
+            return column_attribute
         return None
 
     def _required_boolean(self, column_attribute):
@@ -493,47 +466,38 @@ class ColumnMetadataInterface(metaclass=ABCMeta):
     @abstractmethod
     def format_data_type(self):
         """Take the attributes of the column and format a data type spec for use in SQL"""
-        pass
 
     @abstractmethod
     def has_time_element(self):
         """Does the column data contain a time element"""
-        pass
 
     @abstractmethod
     def is_binary(self):
         """Does the column hold binary data"""
-        pass
 
     @abstractmethod
     def is_nan_capable(self):
         """Is the column capable of holding NaN (not-a-number) data"""
-        pass
 
     @abstractmethod
     def is_number_based(self):
         """Is the column numeric in class"""
-        pass
 
     @abstractmethod
     def is_date_based(self):
         """Is the column date in class"""
-        pass
 
     @abstractmethod
     def is_interval(self):
         """Is the column of an interval type"""
-        pass
 
     @abstractmethod
     def is_string_based(self):
         """Is the column string based in class"""
-        pass
 
     @abstractmethod
     def is_time_zone_based(self):
         """Does the column contain time zone data"""
-        pass
 
     def valid_for_offload_predicate(self):
         """Is the column valid for use in an Offload Predicate.
@@ -551,11 +515,7 @@ class ColumnMetadataInterface(metaclass=ABCMeta):
              without a limit and fall back to being unbound.
         Default logic below may be overridden in specific implementations.
         """
-        return bool(
-            self.is_string_based()
-            and self.data_length is None
-            and self.char_length is None
-        )
+        return bool(self.is_string_based() and self.data_length is None and self.char_length is None)
 
     def clone(
         self,
@@ -588,9 +548,7 @@ class ColumnMetadataInterface(metaclass=ABCMeta):
     def set_simplified_staging_column_name(self, column_position: int) -> str:
         """Simplified column name when the original name contains special characters. Used for staging columns."""
         if any(_ in self.name for _ in STAGING_FILE_UNSUPPORTED_NAME_CHARACTERS):
-            self.staging_file_column_name = (
-                f"{STAGING_FILE_SIMPLIFIED_NAME_TOKEN}_{column_position}"
-            )
+            self.staging_file_column_name = f"{STAGING_FILE_SIMPLIFIED_NAME_TOKEN}_{column_position}"
         else:
             self.staging_file_column_name = self.name
 
@@ -614,7 +572,7 @@ class CanonicalColumn(ColumnMetadataInterface):
         char_semantics=None,
     ):
         """CONSTRUCTOR"""
-        super(CanonicalColumn, self).__init__(
+        super().__init__(
             name,
             data_type,
             data_length,
@@ -633,24 +591,18 @@ class CanonicalColumn(ColumnMetadataInterface):
 
     def format_data_type(self):
         # We should never need to format a canonical column
-        raise NotImplementedError(
-            "format_data_type() is not applicable to a CanonicalColumn"
-        )
+        raise NotImplementedError("format_data_type() is not applicable to a CanonicalColumn")
 
     def has_time_element(self):
         """Does the column data contain a time element"""
-        return bool(
-            self.data_type in [GOE_TYPE_TIME, GOE_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ]
-        )
+        return bool(self.data_type in [GOE_TYPE_TIME, GOE_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ])
 
     def is_binary(self):
         return bool(self.data_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
 
     def is_nan_capable(self):
         # We should never need to this for a canonical column
-        raise NotImplementedError(
-            "is_nan_capable() is not applicable to a CanonicalColumn"
-        )
+        raise NotImplementedError("is_nan_capable() is not applicable to a CanonicalColumn")
 
     def is_number_based(self):
         """Is the column numeric in class"""

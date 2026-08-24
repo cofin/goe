@@ -23,7 +23,6 @@ import logging
 from datetime import datetime
 from sys import getsizeof
 from textwrap import dedent
-from typing import Dict, List, Optional, Union
 
 # Third Party Libraries
 import pyodbc
@@ -72,7 +71,7 @@ logger.addHandler(logging.NullHandler())
 
 def teradata_get_primary_partition_expression(
     owner: str, table_name: str, query_runner: FrontendApiInterface
-) -> Optional[TeradataPartitionExpression]:
+) -> TeradataPartitionExpression | None:
     """Return a TeradataPartitionExpression object describing the first row partition expression we'll use
     to drive offloads. Only RANGE_N is supported.
     The result is cached in state because we'll need to decode this data for multiple reasons.
@@ -93,8 +92,7 @@ def teradata_get_primary_partition_expression(
     if part_expr.partition_type == PARTITION_TYPE_COLUMNAR:
         # If a table is columnar alone then treat as non-partitioned
         return None
-    else:
-        return part_expr
+    return part_expr
 
 
 ###########################################################################
@@ -156,11 +154,7 @@ class TeradataFrontendApi(FrontendApiInterface):
         Those operations have None in the description property on the cursor so we
         check for it before trying to close.
         """
-        if (
-            self._client
-            and self._cursor
-            and getattr(self._cursor, "description", None) is not None
-        ):
+        if self._client and self._cursor and getattr(self._cursor, "description", None) is not None:
             try:
                 self._cursor.close()
             except Exception as exc:
@@ -169,24 +163,17 @@ class TeradataFrontendApi(FrontendApiInterface):
     def _conn_user_and_pass_for_override(self):
         """Return a user and password from connection_options object for the override user"""
         assert self._conn_user_override
-        if self._conn_user_override.upper() == self._upper_or_empty(
-            self._connection_options.teradata_adm_user
-        ):
+        if self._conn_user_override.upper() == self._upper_or_empty(self._connection_options.teradata_adm_user):
             return (
                 self._connection_options.teradata_adm_user,
                 self._connection_options.teradata_adm_pass,
             )
-        elif self._conn_user_override.upper() == self._upper_or_empty(
-            self._connection_options.teradata_app_user
-        ):
+        if self._conn_user_override.upper() == self._upper_or_empty(self._connection_options.teradata_app_user):
             return (
                 self._connection_options.teradata_app_user,
                 self._connection_options.teradata_app_pass,
             )
-        else:
-            raise NotImplementedError(
-                f"User details are unknown for Teradata connection: {self._conn_user_override}"
-            )
+        raise NotImplementedError(f"User details are unknown for Teradata connection: {self._conn_user_override}")
 
     def _connect(self):
         made_new_connection = False
@@ -225,31 +212,24 @@ class TeradataFrontendApi(FrontendApiInterface):
         table_properties=None,
     ) -> str:
         if table_properties:
-            raise NotImplementedError(
-                f"Create table properties pending implementation: {table_properties}"
-            )
+            raise NotImplementedError(f"Create table properties pending implementation: {table_properties}")
 
         col_projection = self._create_table_columns_clause_common(column_list)
 
         partition_clause = ""
         if partition_column_names:
-            raise NotImplementedError(
-                "Create table partitioning pending implementation"
-            )
+            raise NotImplementedError("Create table partitioning pending implementation")
 
-        sql = (
-            dedent(
-                """\
+        sql = dedent(
+            """\
             CREATE TABLE %(owner_table)s (
                 %(col_projection)s
             )%(partition_clause)s"""
-            )
-            % {
-                "owner_table": self.enclose_object_reference(schema, table_name),
-                "col_projection": col_projection,
-                "partition_clause": partition_clause,
-            }
-        )
+        ) % {
+            "owner_table": self.enclose_object_reference(schema, table_name),
+            "col_projection": col_projection,
+            "partition_clause": partition_clause,
+        }
         return sql
 
     def _disconnect(self, force=False):
@@ -263,9 +243,7 @@ class TeradataFrontendApi(FrontendApiInterface):
                     self._client.close()
                     self._client = None
             except Exception as exc:
-                self._log(
-                    "Exception closing connection:\n%s" % str(exc), detail=VVERBOSE
-                )
+                self._log("Exception closing connection:\n%s" % str(exc), detail=VVERBOSE)
 
     def _execute_ddl_or_dml(
         self,
@@ -291,9 +269,7 @@ class TeradataFrontendApi(FrontendApiInterface):
         sqls = [sql] if isinstance(sql, str) else sql
         try:
             for i, run_sql in enumerate(sqls):
-                self._log_or_not(
-                    "%s SQL: %s" % (self._sql_engine_name, run_sql), log_level=log_level
-                )
+                self._log_or_not("%s SQL: %s" % (self._sql_engine_name, run_sql), log_level=log_level)
                 run_sqls.append(run_sql)
                 if not self._dry_run:
                     if query_params:
@@ -305,9 +281,7 @@ class TeradataFrontendApi(FrontendApiInterface):
                             ),
                             log_level=log_level,
                         )
-                        self._cursor.execute(
-                            run_sql, *self._to_native_query_params(query_params)
-                        )
+                        self._cursor.execute(run_sql, *self._to_native_query_params(query_params))
                     else:
                         self._cursor.execute(run_sql)
         finally:
@@ -335,9 +309,7 @@ class TeradataFrontendApi(FrontendApiInterface):
         """
 
         def log_query():
-            self._log_or_not(
-                "%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level
-            )
+            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
             if query_params:
                 self._log_or_not(
                     "%s SQL parameters: %s"
@@ -368,10 +340,7 @@ class TeradataFrontendApi(FrontendApiInterface):
             if fetch_action == FETCH_ACTION_ALL:
                 if as_dict:
                     columns = self._cursor_projection(self._cursor)
-                    rows = [
-                        self._cursor_row_to_dict(columns, _)
-                        for _ in self._cursor.fetchall()
-                    ]
+                    rows = [self._cursor_row_to_dict(columns, _) for _ in self._cursor.fetchall()]
                 else:
                     # pyodbc gives us back a list of pyodbc.Row and not tuple, in most cases no-big-deal, but
                     # there is a possibility for code to be using isinstance(, (tuple, list)) so we stay
@@ -380,13 +349,7 @@ class TeradataFrontendApi(FrontendApiInterface):
             elif fetch_action == FETCH_ACTION_ONE:
                 row = self._cursor.fetchone()
                 if as_dict:
-                    rows = (
-                        self._cursor_row_to_dict(
-                            self._cursor_projection(self._cursor), row
-                        )
-                        if row
-                        else row
-                    )
+                    rows = self._cursor_row_to_dict(self._cursor_projection(self._cursor), row) if row else row
                 else:
                     # pyodbc gives us back a pyodbc.Row and not a tuple, in practice no-big-deal but
                     # upsets a number of unit tests.
@@ -406,8 +369,7 @@ class TeradataFrontendApi(FrontendApiInterface):
 
         if fetch_action == FETCH_ACTION_CURSOR:
             return self._cursor
-        else:
-            return rows
+        return rows
 
     def _execute_session_options(self, query_options, log_level=VVERBOSE):
         return_list = []
@@ -448,12 +410,8 @@ class TeradataFrontendApi(FrontendApiInterface):
                 if param_batch == []:
                     continue
                 if i == 0:
-                    self._log_or_not(
-                        "%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level
-                    )
-                self._log_or_not(
-                    "Binds(%s): %s rows" % (i, len(param_batch)), log_level=log_level
-                )
+                    self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
+                self._log_or_not("Binds(%s): %s rows" % (i, len(param_batch)), log_level=log_level)
                 if not self._dry_run:
                     self._cursor.executemany(sql, param_batch)
         finally:
@@ -483,17 +441,13 @@ class TeradataFrontendApi(FrontendApiInterface):
             Try and fit the biggest batch we can inside this limit.
         """
         LIMIT = 7 * pow(1024, 2)
-        total_binds_len = sum(
-            [sum([getsizeof(_) for _ in row]) for row in native_params]
-        )
+        total_binds_len = sum([sum([getsizeof(_) for _ in row]) for row in native_params])
         if not batch_size:
             if (total_binds_len + getsizeof(sql)) < LIMIT:
                 batch_size = len(query_params)
             else:
                 avg_binds_len = int(total_binds_len / len(native_params))
-                batch_size = int(
-                    (LIMIT / avg_binds_len) - ((LIMIT / avg_binds_len) % 10)
-                )
+                batch_size = int((LIMIT / avg_binds_len) - ((LIMIT / avg_binds_len) % 10))
         try:
             for i, param_batch in enumerate(
                 [
@@ -504,12 +458,8 @@ class TeradataFrontendApi(FrontendApiInterface):
                 if param_batch == []:
                     continue
                 if i == 0:
-                    self._log_or_not(
-                        "%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level
-                    )
-                self._log_or_not(
-                    "Binds(%s): %s rows" % (i, len(param_batch)), log_level=log_level
-                )
+                    self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
+                self._log_or_not("Binds(%s): %s rows" % (i, len(param_batch)), log_level=log_level)
                 if not self._dry_run:
                     self._cursor.fast_executemany = True
                     if param_inputsizes:
@@ -524,9 +474,8 @@ class TeradataFrontendApi(FrontendApiInterface):
     def _fixed_session_parameters(self) -> dict:
         return {"time zone": "'+00:00'"}
 
-    def _format_query_options(self, query_options: Optional[dict] = None) -> list:
-        """
-        Format options for Teradata
+    def _format_query_options(self, query_options: dict | None = None) -> list:
+        """Format options for Teradata
         query_options: key/value pairs for session settings
         """
         if not query_options:
@@ -539,9 +488,7 @@ class TeradataFrontendApi(FrontendApiInterface):
 
     def _goe_db_component_version(self):
         # We don't have an installed objects on Teradata so this method should never be called
-        raise NotImplementedError(
-            "_goe_db_component_version() is not implemented for Teradata"
-        )
+        raise NotImplementedError("_goe_db_component_version() is not implemented for Teradata")
 
     def _open_cursor(self):
         self._cursor = self._client.cursor() if self._client else None
@@ -557,9 +504,7 @@ class TeradataFrontendApi(FrontendApiInterface):
     def close(self, force=False):
         self._disconnect(force=force)
 
-    def agg_validate_sample_column_names(
-        self, schema, table_name, num_required: int = 5
-    ) -> list:
+    def agg_validate_sample_column_names(self, schema, table_name, num_required: int = 5) -> list:
         sql = dedent(
             """\
         SELECT ColumnName
@@ -579,14 +524,10 @@ class TeradataFrontendApi(FrontendApiInterface):
         WHERE  ColumnId IN (first_column_id, last_column_id)
         OR     ndv_rank <= ?"""
         )
-        rows = self.execute_query_fetch_all(
-            sql, query_params=[schema, table_name, num_required], log_level=VVERBOSE
-        )
+        rows = self.execute_query_fetch_all(sql, query_params=[schema, table_name, num_required], log_level=VVERBOSE)
         return [_[0] for _ in rows] if rows else []
 
-    def create_new_connection(
-        self, user_name, user_password, trace_action_override=None
-    ):
+    def create_new_connection(self, user_name, user_password, trace_action_override=None):
         self._debug("Making new connection with user %s" % user_name)
         odbc_url = self._connect_url(user_name, user_password)
         client = pyodbc.connect(odbc_url)
@@ -658,13 +599,9 @@ class TeradataFrontendApi(FrontendApiInterface):
         return cols
 
     def get_db_unique_name(self) -> str:
-        raise NotImplementedError(
-            "get_db_unique_name() is not implemented for Teradata"
-        )
+        raise NotImplementedError("get_db_unique_name() is not implemented for Teradata")
 
-    def get_distinct_column_values(
-        self, schema, table_name, column_names, partition_name=None, order_results=False
-    ):
+    def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
         """Run SQL to get distinct values for a list of columns.
         partition_name is ignored on Teradata.
         """
@@ -673,7 +610,7 @@ class TeradataFrontendApi(FrontendApiInterface):
         if isinstance(column_names, str):
             column_names = [column_names]
         projection = ",".join([self.enclose_identifier(_) for _ in column_names])
-        order_clause = " ORDER BY {}".format(projection) if order_results else ""
+        order_clause = f" ORDER BY {projection}" if order_results else ""
         sql = "SELECT DISTINCT %(col)s FROM %(own)s.%(tab)s%(order_clause)s" % {
             "col": projection,
             "own": self.enclose_identifier(schema.upper()),
@@ -711,35 +648,23 @@ class TeradataFrontendApi(FrontendApiInterface):
                 ddl_str = ddl_str.strip().rstrip(";")
             if as_list:
                 return ddl_str.split("\n")
-            else:
-                return ddl_str
-        else:
-            return None
+            return ddl_str
+        return None
 
     def get_offloadable_schemas(self):
-        raise NotImplementedError(
-            "Teradata get_offloadable_schemas is not implemented."
-        )
+        raise NotImplementedError("Teradata get_offloadable_schemas is not implemented.")
 
     def get_command_step_codes(self) -> list:
         raise NotImplementedError("Teradata get_command_step_codes is not implemented.")
 
-    def get_command_executions(self) -> List[Dict[str, Union[str, UUID4]]]:
+    def get_command_executions(self) -> list[dict[str, str | UUID4]]:
         raise NotImplementedError("Teradata get_command_executions is not implemented.")
 
-    def get_command_execution(
-        self, execution_id: ExecutionId
-    ) -> Dict[str, Union[str, UUID4]]:
-        raise NotImplementedError(
-            "Teradata get_command_execution_status is not implemented."
-        )
+    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | UUID4]:
+        raise NotImplementedError("Teradata get_command_execution_status is not implemented.")
 
-    def get_command_execution_steps(
-        self, execution_id: ExecutionId
-    ) -> List[Dict[str, Union[str, UUID4]]]:
-        raise NotImplementedError(
-            "Teradata get_command_execution_steps is not implemented."
-        )
+    def get_command_execution_steps(self, execution_id: ExecutionId) -> list[dict[str, str | UUID4]]:
+        raise NotImplementedError("Teradata get_command_execution_steps is not implemented.")
 
     def get_current_scn(self) -> int:
         return None
@@ -747,26 +672,21 @@ class TeradataFrontendApi(FrontendApiInterface):
     def get_partition_columns(self, schema, table_name):
         """Return columns in the first row partition expression, i.e. we skip columnar partitioning."""
         try:
-            partition_expression = teradata_get_primary_partition_expression(
-                schema, table_name, self
-            )
+            partition_expression = teradata_get_primary_partition_expression(schema, table_name, self)
         except (
             UnsupportedCaseNPartitionExpression,
             UnsupportedPartitionExpression,
         ) as exc:
             # Treat tables with unsupported partition expressions as non-partitioned.
             self._log(
-                "Cannot retrieve partition column from partition expression: {}".format(
-                    str(exc)
-                ),
+                f"Cannot retrieve partition column from partition expression: {exc!s}",
                 detail=VVERBOSE,
             )
             return []
         if partition_expression:
             table_columns = self.get_columns(schema, table_name)
             return [match_table_column(partition_expression.column, table_columns)]
-        else:
-            return []
+        return []
 
     def get_primary_key_column_names(self, schema, table_name):
         q = dedent(
@@ -786,9 +706,7 @@ class TeradataFrontendApi(FrontendApiInterface):
         raise NotImplementedError("Teradata get_schema_tables is not implemented.")
 
     def get_session_option(self, option_name):
-        raise NotImplementedError(
-            "get_session_option() is not implemented for Teradata"
-        )
+        raise NotImplementedError("get_session_option() is not implemented for Teradata")
 
     def get_session_user(self) -> str:
         sql = "SELECT CURRENT_USER"
@@ -796,9 +714,7 @@ class TeradataFrontendApi(FrontendApiInterface):
         return row[0] if row else row
 
     def get_subpartition_columns(self, schema, table_name):
-        raise NotImplementedError(
-            "get_subpartition_columns() is not implemented for Teradata"
-        )
+        raise NotImplementedError("get_subpartition_columns() is not implemented for Teradata")
 
     def get_table_row_count(
         self,
@@ -887,9 +803,7 @@ class TeradataFrontendApi(FrontendApiInterface):
             AND    TableKind = 'T'
         """
         )
-        return bool(
-            self.execute_query_fetch_one(sql, query_params=[schema, table_name])
-        )
+        return bool(self.execute_query_fetch_one(sql, query_params=[schema, table_name]))
 
     def to_frontend_literal(self, py_val, data_type=None) -> str:
         self._debug("Formatting %s literal: %s" % (type(py_val), repr(py_val)))

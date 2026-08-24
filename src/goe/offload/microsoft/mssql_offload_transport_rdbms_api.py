@@ -22,7 +22,6 @@ from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DI
 from goe.offload.offload_transport_rdbms_api import OffloadTransportRdbmsApiInterface
 from goe.util.misc_functions import id_generator
 
-
 ###########################################################################
 # CONSTANTS
 ###########################################################################
@@ -54,9 +53,7 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
             messages,
             dry_run=dry_run,
         )
-        self.debug(
-            "OffloadTransportMSSQLApi setup: (%s, %s)" % (rdbms_owner, rdbms_table_name)
-        )
+        self.debug("OffloadTransportMSSQLApi setup: (%s, %s)" % (rdbms_owner, rdbms_table_name))
 
     ###########################################################################
     # PRIVATE METHODS
@@ -74,9 +71,7 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
         self,
         rdbms_table,
     ) -> str:
-        raise NotImplementedError(
-            "MSSQL get_id_column_for_range_splitting() pending implementation"
-        )
+        raise NotImplementedError("MSSQL get_id_column_for_range_splitting() pending implementation")
 
     def get_id_range(self, rdbms_col_name: str, partition_chunk=None) -> tuple:
         raise NotImplementedError("MSSQL get_id_range() pending implementation")
@@ -105,9 +100,7 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
         escape_semi_colons=False,
         max_ts_scale=None,
     ) -> list:
-        raise NotImplementedError(
-            "MSSQL get_rdbms_session_setup_commands() not implemented."
-        )
+        raise NotImplementedError("MSSQL get_rdbms_session_setup_commands() not implemented.")
 
     def get_rdbms_session_setup_hint(self, custom_session_parameters, max_ts_scale):
         """No session setup hints required on MSSQL"""
@@ -144,14 +137,10 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
         id_col_min=None,
         id_col_max=None,
     ) -> str:
-        raise NotImplementedError(
-            "MSSQL get_transport_row_source_query() not implemented."
-        )
+        raise NotImplementedError("MSSQL get_transport_row_source_query() not implemented.")
 
     def get_transport_row_source_query_hint_block(self) -> str:
-        raise NotImplementedError(
-            "MSSQL get_transport_row_source_query_hint_block() not implemented."
-        )
+        raise NotImplementedError("MSSQL get_transport_row_source_query_hint_block() not implemented.")
 
     def jdbc_driver_name(self) -> str:
         return None

@@ -20,20 +20,19 @@ as RDBMS columns, cast information, staging file details. For these we continue 
 rely on integration tests.
 """
 
-from datetime import datetime
 import decimal
 import logging
+from datetime import datetime
 from unittest import TestCase, main
 
-from goe.exceptions import OffloadException
 from goe.goe import OffloadOperation
 from goe.offload.column_metadata import (
-    CanonicalColumn,
-    ColumnMetadataInterface,
-    get_partition_columns,
     GOE_TYPE_DECIMAL,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
+    CanonicalColumn,
+    ColumnMetadataInterface,
+    get_partition_columns,
 )
 from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.offload_constants import DBTYPE_IMPALA
@@ -71,16 +70,14 @@ def partition_key_test_numbers(low_digits, high_digits, wiggle_room=3, negative=
     nums = []
     for digits in range(low_digits, high_digits + 1):
         boundary = 10**digits
-        for num in range(
-            boundary - wiggle_room, min(boundary + wiggle_room + 1, 10**high_digits)
-        ):
+        for num in range(boundary - wiggle_room, min(boundary + wiggle_room + 1, 10**high_digits)):
             nums.append(-num if negative else num)
     return nums
 
 
 class TestCurrentBackendTable(TestCase):
     def __init__(self, *args, **kwargs):
-        super(TestCurrentBackendTable, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.test_api = None
         self.config = None
@@ -95,14 +92,10 @@ class TestCurrentBackendTable(TestCase):
             execution_id=execution_id,
             command_type=orchestration_constants.COMMAND_OFFLOAD,
         )
-        self.test_api = backend_testing_api_factory(
-            self.config.target, self.config, messages, dry_run=True
-        )
+        self.test_api = backend_testing_api_factory(self.config.target, self.config, messages, dry_run=True)
         self.schema = get_default_test_user()
         self.db = data_db_name(self.schema, self.config)
-        self.db, self.table = convert_backend_identifier_case(
-            self.config, self.db, FACT_NAME
-        )
+        self.db, self.table = convert_backend_identifier_case(self.config, self.db, FACT_NAME)
         operation = OffloadOperation.from_dict(
             {"owner_table": "%s.%s" % (self.schema or self.db, self.table)},
             self.config,
@@ -118,9 +111,7 @@ class TestCurrentBackendTable(TestCase):
             orchestration_operation=operation,
             dry_run=True,
         )
-        operation.set_bucket_info_from_metadata(
-            operation.get_hybrid_metadata(self.config), messages
-        )
+        operation.set_bucket_info_from_metadata(operation.get_hybrid_metadata(self.config), messages)
         self.api.refresh_operational_settings(operation)
 
     def _create_test_table(self):
@@ -138,9 +129,7 @@ class TestCurrentBackendTable(TestCase):
             self.config,
             frontend_api,
             messages,
-            frontend_api.sales_based_fact_create_ddl(
-                self.schema, FACT_NAME, simple_partition_names=True
-            ),
+            frontend_api.sales_based_fact_create_ddl(self.schema, FACT_NAME, simple_partition_names=True),
         )
         # If the table has already been offloaded previously then we'll re-use it.
         if not run_offload(
@@ -159,16 +148,10 @@ class TestCurrentBackendTable(TestCase):
                 }
             )
 
-    def _compare_sql_and_python_synthetic_part_number_outcomes(
-        self, num, num_column, granularity, padding_digits
-    ):
-        logger.info(
-            f"Testing synthetic expressions. Input/Granularity/Digits: {num}/{granularity}/{padding_digits}"
-        )
-        num_staging_cast = "CAST({} AS {})".format(num, num_column.format_data_type())
-        cast = self.api._gen_synthetic_part_number_sql_expr(
-            num_staging_cast, num_column, granularity, padding_digits
-        )
+    def _compare_sql_and_python_synthetic_part_number_outcomes(self, num, num_column, granularity, padding_digits):
+        logger.info(f"Testing synthetic expressions. Input/Granularity/Digits: {num}/{granularity}/{padding_digits}")
+        num_staging_cast = f"CAST({num} AS {num_column.format_data_type()})"
+        cast = self.api._gen_synthetic_part_number_sql_expr(num_staging_cast, num_column, granularity, padding_digits)
         logger.info(f"Synthetic CAST expression: {cast}")
         row = None
         try:
@@ -178,35 +161,25 @@ class TestCurrentBackendTable(TestCase):
         except Exception as exc:
             self.assertTrue(
                 bool(row),
-                "Exception casting input number: ({}) {}\nCast: {}\nException: {}".format(
-                    type(num), num, cast, str(exc)
-                ),
+                f"Exception casting input number: ({type(num)}) {num}\nCast: {cast}\nException: {exc!s}",
             )
         sql_value = row[0]
         logger.info(f"SQL CAST output: {sql_value}")
         if isinstance(sql_value, str):
-            python_value = SyntheticPartitionLiteral._gen_number_string_literal(
-                num, granularity, padding_digits
-            )
+            python_value = SyntheticPartitionLiteral._gen_number_string_literal(num, granularity, padding_digits)
             logger.info(f"Orchestration output: {python_value}")
             self.assertEqual(
                 str(sql_value),
                 str(python_value),
-                "String cast for input number: ({}) {}\nCast: {}".format(
-                    type(num), num, cast
-                ),
+                f"String cast for input number: ({type(num)}) {num}\nCast: {cast}",
             )
         else:
-            python_value = SyntheticPartitionLiteral._gen_number_integral_literal(
-                num, granularity
-            )
+            python_value = SyntheticPartitionLiteral._gen_number_integral_literal(num, granularity)
             logger.info(f"Orchestration output: {python_value}")
             self.assertEqual(
                 sql_value,
                 int(python_value),
-                "Numeric cast for input number: ({}) {}\nCast: {}".format(
-                    type(num), num, cast
-                ),
+                f"Numeric cast for input number: ({type(num)}) {num}\nCast: {cast}",
             )
 
     def _run_call_sql_expression_from_sql(
@@ -216,9 +189,7 @@ class TestCurrentBackendTable(TestCase):
         Also selects the raw column value that went into the SQL expression for verification.
         """
         if db and table:
-            where_clause = (
-                " WHERE {} IS NOT NULL".format(base_column) if base_column else ""
-            )
+            where_clause = f" WHERE {base_column} IS NOT NULL" if base_column else ""
             sql = "SELECT %s, %s FROM %s%s LIMIT 1" % (
                 sql_expression,
                 self.test_api.enclose_identifier(base_column),
@@ -251,18 +222,14 @@ class TestCurrentBackendTable(TestCase):
             pass
 
     def _test_derive_unicode_string_columns(self):
-        self.assertIsInstance(
-            self.api.derive_unicode_string_columns(as_csv=False), list
-        )
+        self.assertIsInstance(self.api.derive_unicode_string_columns(as_csv=False), list)
         self.assertIsInstance(self.api.derive_unicode_string_columns(as_csv=True), str)
 
     def _test__derive_partition_info(self):
         part_cols = get_partition_columns(self.api.get_partition_columns())
         if part_cols:
             self.api._derive_partition_info(part_cols[0], partition_columns=part_cols)
-            self.api._derive_partition_info(
-                part_cols[0].name, partition_columns=part_cols
-            )
+            self.api._derive_partition_info(part_cols[0].name, partition_columns=part_cols)
 
     def _test__gen_synthetic_literal_function(self):
         """Double underscore because we are unit testing a private method"""
@@ -272,9 +239,7 @@ class TestCurrentBackendTable(TestCase):
                 part_col = part_cols[0]
                 literal_fn = self.api._gen_synthetic_literal_function(part_col)
                 self.assertIsNotNone(literal_fn)
-                source_column = self.api.get_column(
-                    part_col.partition_info.source_column_name
-                )
+                source_column = self.api.get_column(part_col.partition_info.source_column_name)
                 source_value = datetime.now() if source_column.is_date_based() else 123
                 self.assertIsNotNone(literal_fn(source_value))
 
@@ -290,29 +255,19 @@ class TestCurrentBackendTable(TestCase):
                         granularity,
                         source_column_cast=date_columns[0].name,
                     )
-                    row = self._run_call_sql_expression_from_sql(
-                        cast, self.db, self.table, date_columns[0].name
-                    )
+                    row = self._run_call_sql_expression_from_sql(cast, self.db, self.table, date_columns[0].name)
                     self.assertIsNotNone(row)
                     self.assertEqual(len(row[0]), expected_length)
                     # Check that the value from SQL matches output of our Python logic
-                    verification_value = (
-                        SyntheticPartitionLiteral._gen_date_as_string_literal(
-                            row[1], granularity
-                        )
-                    )
+                    verification_value = SyntheticPartitionLiteral._gen_date_as_string_literal(row[1], granularity)
                     self.assertEqual(row[0], verification_value)
 
     def _test__gen_synthetic_part_number_granularity_sql_expr(self):
         """Ensure that decimal places are floored and not rounded"""
 
-        def check_num_values_truncated(
-            col_input, granularity, digits, expected_str_outcome, expected_int_outcome
-        ):
+        def check_num_values_truncated(col_input, granularity, digits, expected_str_outcome, expected_int_outcome):
             num_column = self.api.gen_default_numeric_column("A_COLUMN")
-            cast = self.api._gen_synthetic_part_number_sql_expr(
-                col_input, num_column, granularity, digits
-            )
+            cast = self.api._gen_synthetic_part_number_sql_expr(col_input, num_column, granularity, digits)
             row = self._run_call_sql_expression_from_sql(
                 cast, query_options=self.api._cast_verification_query_options()
             )
@@ -345,12 +300,8 @@ class TestCurrentBackendTable(TestCase):
         ]:
             if not self.api.synthetic_partition_numbers_are_string():
                 digits = None
-            cast = self.api._gen_synthetic_part_number_sql_expr(
-                num_column.name, num_column, granularity, digits
-            )
-            row = self._run_call_sql_expression_from_sql(
-                cast, self.db, self.table, num_column.name
-            )
+            cast = self.api._gen_synthetic_part_number_sql_expr(num_column.name, num_column, granularity, digits)
+            row = self._run_call_sql_expression_from_sql(cast, self.db, self.table, num_column.name)
             self.assertIsNotNone(row)
             synthetic_value = row[0]
             raw_column_value = row[1]
@@ -372,9 +323,7 @@ class TestCurrentBackendTable(TestCase):
                     "0" * min(expected_trailing_zeros, len(synthetic_value)),
                 )
                 # Check that the value from SQL matches output of our Python logic
-                python_value = SyntheticPartitionLiteral._gen_number_integral_literal(
-                    raw_column_value, granularity
-                )
+                python_value = SyntheticPartitionLiteral._gen_number_integral_literal(raw_column_value, granularity)
             self.assertEqual(row[0], python_value)
 
     def _test__gen_synthetic_part_string_sql_expr(self):
@@ -384,18 +333,12 @@ class TestCurrentBackendTable(TestCase):
             if str_columns:
                 str_column = str_columns[0]
                 for granularity in [1, 3]:
-                    cast = self.api._gen_synthetic_part_string_sql_expr(
-                        str_column.name, granularity
-                    )
-                    row = self._run_call_sql_expression_from_sql(
-                        cast, self.db, self.table, str_column.name
-                    )
+                    cast = self.api._gen_synthetic_part_string_sql_expr(str_column.name, granularity)
+                    row = self._run_call_sql_expression_from_sql(cast, self.db, self.table, str_column.name)
                     self.assertIsNotNone(row)
                     self.assertEqual(len(row[0]), granularity)
                     # Check that the value from SQL matches output of our Python logic
-                    verification_value = SyntheticPartitionLiteral._gen_string_literal(
-                        row[1], granularity
-                    )
+                    verification_value = SyntheticPartitionLiteral._gen_string_literal(row[1], granularity)
                     self.assertEqual(row[0], verification_value)
 
     def _test__staging_to_backend_cast(self):
@@ -458,14 +401,12 @@ class TestCurrentBackendTable(TestCase):
         if not self.api.synthetic_partitioning_supported():
             return
         max_precision = 9
-        canonical_column = CanonicalColumn(
-            "A_COLUMN", GOE_TYPE_INTEGER_4, from_override=True
-        )
+        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_INTEGER_4, from_override=True)
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 10, 512, 1234]:
-            for num in partition_key_test_numbers(
-                8, max_precision
-            ) + partition_key_test_numbers(8, max_precision, negative=True):
+            for num in partition_key_test_numbers(8, max_precision) + partition_key_test_numbers(
+                8, max_precision, negative=True
+            ):
                 self._compare_sql_and_python_synthetic_part_number_outcomes(
                     num, num_column, granularity, max_precision + 2
                 )
@@ -478,9 +419,7 @@ class TestCurrentBackendTable(TestCase):
         canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_INTEGER_8)
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 10000, 8192, 1234]:
-            for num in partition_key_test_numbers(
-                15, max_precision, wiggle_room=10
-            ) + partition_key_test_numbers(
+            for num in partition_key_test_numbers(15, max_precision, wiggle_room=10) + partition_key_test_numbers(
                 15, max_precision, wiggle_room=10, negative=True
             ):
                 self._compare_sql_and_python_synthetic_part_number_outcomes(
@@ -492,17 +431,13 @@ class TestCurrentBackendTable(TestCase):
         if not self.api.synthetic_partitioning_supported():
             return
         max_precision = min(self.api.max_decimal_precision(), 18)
-        canonical_column = CanonicalColumn(
-            "A_COLUMN", GOE_TYPE_DECIMAL, data_precision=max_precision, data_scale=0
-        )
+        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_DECIMAL, data_precision=max_precision, data_scale=0)
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 100000, 8192, 1234]:
             nums = partition_key_test_numbers(16, 18, wiggle_room=10)
             if self.api.backend_type() != DBTYPE_IMPALA:
                 # Issues with large negative numbers on CDH. Saving for GOE-1938
-                nums += partition_key_test_numbers(
-                    16, 18, negative=True, wiggle_room=10
-                )
+                nums += partition_key_test_numbers(16, 18, negative=True, wiggle_room=10)
             for num in nums:
                 self._compare_sql_and_python_synthetic_part_number_outcomes(
                     num, num_column, granularity, max_precision + 2
@@ -510,27 +445,18 @@ class TestCurrentBackendTable(TestCase):
 
     def _test_synthetic_part_number_decimal_38_expressions(self):
         """Ensure that difficult synthetic column inputs are converted equally by SQL and Orchestration code."""
-        if (
-            not self.api.synthetic_partitioning_supported()
-            or self.api.backend_type() != DBTYPE_IMPALA
-        ):
+        if not self.api.synthetic_partitioning_supported() or self.api.backend_type() != DBTYPE_IMPALA:
             # Only Hadoop currently copes with partition keys over BIGINT
             return
         max_precision = min(self.api.max_decimal_precision(), 38)
-        canonical_column = CanonicalColumn(
-            "A_COLUMN", GOE_TYPE_DECIMAL, data_precision=max_precision, data_scale=0
-        )
+        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_DECIMAL, data_precision=max_precision, data_scale=0)
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 100000, 16384, 1234]:
             for num in (
                 partition_key_test_numbers(16, 19, wiggle_room=10)
-                + partition_key_test_numbers(
-                    min(max_precision, 36), max_precision, wiggle_room=10
-                )
+                + partition_key_test_numbers(min(max_precision, 36), max_precision, wiggle_room=10)
                 + partition_key_test_numbers(16, 19, negative=True, wiggle_room=10)
-                + partition_key_test_numbers(
-                    min(max_precision, 36), max_precision, wiggle_room=10, negative=True
-                )
+                + partition_key_test_numbers(min(max_precision, 36), max_precision, wiggle_room=10, negative=True)
             ):
                 if num >= 0:
                     # All negatives fail with DECIMAL(38) and FLOOR SQL syntax
@@ -543,9 +469,7 @@ class TestCurrentBackendTable(TestCase):
         if not self.api.synthetic_partitioning_supported():
             return
         # 12399.6 truncates decimal places on CDH 5.15 and rounds on CDH 6.2 therefore a good test value.
-        canonical_column = CanonicalColumn(
-            "A_COLUMN", GOE_TYPE_DECIMAL, data_precision=18, data_scale=9
-        )
+        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_DECIMAL, data_precision=18, data_scale=9)
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 100, 8192, 1234]:
             for num in [
@@ -565,22 +489,15 @@ class TestCurrentBackendTable(TestCase):
                 decimal.Decimal("-87654321.123456789"),
                 decimal.Decimal("-87654321.987654321"),
             ]:
-                self._compare_sql_and_python_synthetic_part_number_outcomes(
-                    num, num_column, granularity, 38
-                )
+                self._compare_sql_and_python_synthetic_part_number_outcomes(num, num_column, granularity, 38)
 
     def _test_synthetic_part_number_decimal_38_9_expressions(self):
         """Ensure that difficult synthetic column inputs are converted equally by SQL and Orchestration code."""
-        if (
-            not self.api.synthetic_partitioning_supported()
-            or self.api.backend_type() != DBTYPE_IMPALA
-        ):
+        if not self.api.synthetic_partitioning_supported() or self.api.backend_type() != DBTYPE_IMPALA:
             # Only Hadoop currently copes with partition keys over BIGINT
             return
         # 12399.6 truncates decimal places on CDH 5.15 and rounds on CDH 6.2 therefore a good test value.
-        canonical_column = CanonicalColumn(
-            "A_COLUMN", GOE_TYPE_DECIMAL, data_precision=38, data_scale=9
-        )
+        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_DECIMAL, data_precision=38, data_scale=9)
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 100, 8192, 1234]:
             for num in [
@@ -593,9 +510,7 @@ class TestCurrentBackendTable(TestCase):
                 decimal.Decimal("1998849133104929799110640.003010780"),
                 decimal.Decimal("-1998849133104929799110640.003010780"),
             ]:
-                self._compare_sql_and_python_synthetic_part_number_outcomes(
-                    num, num_column, granularity, 38
-                )
+                self._compare_sql_and_python_synthetic_part_number_outcomes(num, num_column, granularity, 38)
 
     def _run_all_tests(self):
         # Private methods, feels wrong but there are just a few we want testing

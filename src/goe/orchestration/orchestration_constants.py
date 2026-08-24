@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Constants used across multiple Orchestration commands.
-"""
+"""Constants used across multiple Orchestration commands."""
 
 # Try not to import any modules in here, this module is widely imported and we've previously had subtle side effects
 

@@ -14,14 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Offload predicate test code.
-"""
+"""Offload predicate test code."""
 
 from copy import copy
+
 import pytest
 
-from goe.exceptions import OffloadException
 from goe.goe import OffloadOperation
 from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
@@ -97,9 +95,7 @@ def create_fact_table(config, frontend_api, messages, schema):
         config,
         frontend_api,
         messages,
-        frontend_api.sales_based_fact_create_ddl(
-            schema, FACT_NAME, simple_partition_names=True
-        ),
+        frontend_api.sales_based_fact_create_ddl(schema, FACT_NAME, simple_partition_names=True),
     )
 
 
@@ -121,18 +117,14 @@ def source_to_canonical_mappings(
         )
         canonical_columns.append(new_col)
     # Process any char semantics overrides
-    for cs_col in [
-        _ for _ in canonical_columns if _.name in char_semantics_overrides.keys()
-    ]:
+    for cs_col in [_ for _ in canonical_columns if _.name in char_semantics_overrides.keys()]:
         cs_col.char_semantics = char_semantics_overrides[cs_col.name]
         cs_col.from_override = True
 
     return canonical_columns
 
 
-def fake_partition_col_on_backend_table(
-    frontend_table, backend_table, config, operation, messages
-):
+def fake_partition_col_on_backend_table(frontend_table, backend_table, config, operation, messages):
     # This is a bit hacky but allows us to test synthetic part cols. The hacks:
     # 1) We don't pass reset_backend_table=True, ordinarily we would in order to change partition info
     # 2) We use defaults_for_fresh_offload() below even though we're not doing a reset, this is so we can get
@@ -156,9 +148,7 @@ def fake_partition_col_on_backend_table(
         frontend_table.columns,
         new_backend_table,
     )
-    backend_columns = new_backend_table.convert_canonical_columns_to_backend(
-        canonical_columns
-    )
+    backend_columns = new_backend_table.convert_canonical_columns_to_backend(canonical_columns)
     new_backend_table.set_columns(backend_columns)
     new_backend_table.refresh_operational_settings(operation, frontend_table.columns)
     return new_backend_table
@@ -173,9 +163,7 @@ def test_ida_predicate_render_to_sql_dim(config, schema, data_db):
 
     messages = OffloadMessages.from_options(config, log_fh=test_messages.get_log_fh())
     create_and_offload_dim_table(config, frontend_api, test_messages, schema)
-    frontend_table = OffloadSourceTable.create(
-        schema, DIM_NAME, config, messages, dry_run=True
-    )
+    frontend_table = OffloadSourceTable.create(schema, DIM_NAME, config, messages, dry_run=True)
     operation = OffloadOperation.from_dict(
         {"owner_table": "%s.%s" % (schema, DIM_NAME)},
         config,
@@ -197,23 +185,16 @@ def test_ida_predicate_render_to_sql_dim(config, schema, data_db):
     pred_expect_equal = frontend_api.expected_std_dim_offload_predicates()
 
     for predicate_dsl, expected_sql in pred_expect_equal:
-        assert (
-            frontend_table.predicate_to_where_clause(GenericPredicate(predicate_dsl))
-            == expected_sql
-        )
+        assert frontend_table.predicate_to_where_clause(GenericPredicate(predicate_dsl)) == expected_sql
 
     # Backend predicates.
     pred_expect_equal = backend_api.expected_std_dim_offload_predicates()
     for predicate_dsl, expected_sql in pred_expect_equal:
-        backend_predicate = backend_table.predicate_to_where_clause(
-            GenericPredicate(predicate_dsl)
-        )
+        backend_predicate = backend_table.predicate_to_where_clause(GenericPredicate(predicate_dsl))
         assert backend_predicate == expected_sql
 
     # Synthetic partition backend predicates.
-    expect_equal_by_synth_part = (
-        backend_api.expected_std_dim_synthetic_offload_predicates()
-    )
+    expect_equal_by_synth_part = backend_api.expected_std_dim_synthetic_offload_predicates()
 
     for synth_part, expect_equal in expect_equal_by_synth_part:
         partition_column, granularity, digits = synth_part
@@ -234,9 +215,7 @@ def test_ida_predicate_render_to_sql_dim(config, schema, data_db):
         )
 
         for predicate_dsl, expected_sql in expect_equal:
-            backend_sql = partitioned_backend_table.predicate_to_where_clause(
-                GenericPredicate(predicate_dsl)
-            )
+            backend_sql = partitioned_backend_table.predicate_to_where_clause(GenericPredicate(predicate_dsl))
             assert backend_sql == expected_sql
 
     # Connections are being left open, explicitly close them.
@@ -250,9 +229,7 @@ def test_ida_predicate_render_to_sql_fact(config, schema):
 
     messages = OffloadMessages.from_options(config, log_fh=test_messages.get_log_fh())
     create_fact_table(config, frontend_api, test_messages, schema)
-    frontend_table = OffloadSourceTable.create(
-        schema, FACT_NAME, config, messages, dry_run=True
-    )
+    frontend_table = OffloadSourceTable.create(schema, FACT_NAME, config, messages, dry_run=True)
 
     # Setup complete, on to some actual testing.
     pred_expect_equal = frontend_api.expected_sales_offload_predicates()
@@ -263,17 +240,12 @@ def test_ida_predicate_render_to_sql_fact(config, schema):
         expected_bind_sql,
         expected_binds,
     ) in pred_expect_equal:
-        assert (
-            frontend_table.predicate_to_where_clause(GenericPredicate(predicate_dsl))
-            == expected_sql
-        )
+        assert frontend_table.predicate_to_where_clause(GenericPredicate(predicate_dsl)) == expected_sql
         if expected_bind_sql or expected_binds:
             (
                 where_clause,
                 binds,
-            ) = frontend_table.predicate_to_where_clause_with_binds(
-                GenericPredicate(predicate_dsl)
-            )
+            ) = frontend_table.predicate_to_where_clause_with_binds(GenericPredicate(predicate_dsl))
             assert where_clause == expected_bind_sql
             if expected_binds:
                 for p in binds:

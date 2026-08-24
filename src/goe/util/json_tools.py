@@ -14,7 +14,7 @@
 
 # Standard Library
 import datetime
-from typing import Any, Union
+from typing import Any
 
 # Third Party Libraries
 import orjson
@@ -22,8 +22,7 @@ import orjson
 
 # orjson.dumps returns bytearray, so you'll can't pass it directly as json_serializer
 def serialize_object(obj) -> str:
-    """
-    Encodes json with the optimized ORJSON package
+    """Encodes json with the optimized ORJSON package
 
     orjson.dumps returns bytearray, so you can't pass it directly as json_serializer
     """
@@ -33,9 +32,8 @@ def serialize_object(obj) -> str:
     ).decode()
 
 
-def deserialize_object(obj: Union[bytes, bytearray, memoryview, str]) -> Any:
-    """
-    Decodes to an object with the optimized ORJSON package
+def deserialize_object(obj: bytes | bytearray | memoryview | str) -> Any:
+    """Decodes to an object with the optimized ORJSON package
 
     orjson.dumps returns bytearray, so you can't pass it directly as json_serializer
     """
@@ -48,13 +46,9 @@ def encode_datetime_object(dt: datetime.datetime) -> str:
 
 
 def convert_field_to_camel_case(string: str) -> str:
-    """
-    Cameilize field name
+    """Cameilize field name
 
     most frontend ui frameworks use camel case
     this camelizes fields
     """
-    return "".join(
-        word if index == 0 else word.capitalize()
-        for index, word in enumerate(string.split("_"))
-    )
+    return "".join(word if index == 0 else word.capitalize() for index, word in enumerate(string.split("_")))

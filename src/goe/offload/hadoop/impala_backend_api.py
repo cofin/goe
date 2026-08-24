@@ -15,14 +15,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendHiveApi: BackendApi implementation for a Hive backend.
+"""BackendHiveApi: BackendApi implementation for a Hive backend.
 
-    See BackendHadoopApi for better+impyla justification.
+See BackendHadoopApi for better+impyla justification.
 """
 
-from copy import copy
 import logging
 import re
+from copy import copy
 
 from numpy import datetime64
 
@@ -32,13 +32,34 @@ from goe.offload.backend_api import (
     UdfParameter,
 )
 from goe.offload.column_metadata import (
+    GOE_TYPE_BINARY,
+    GOE_TYPE_LARGE_BINARY,
     is_safe_mapping,
     match_table_column,
     str_list_of_columns,
     valid_column_list,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
 )
+from goe.offload.hadoop.hadoop_backend_api import (
+    BackendHadoopApi,
+)
+from goe.offload.hadoop.hadoop_column import (
+    HADOOP_TYPE_BIGINT,
+    HADOOP_TYPE_BOOLEAN,
+    HADOOP_TYPE_CHAR,
+    HADOOP_TYPE_DATE,
+    HADOOP_TYPE_DECIMAL,
+    HADOOP_TYPE_DOUBLE,
+    HADOOP_TYPE_FLOAT,
+    HADOOP_TYPE_INT,
+    HADOOP_TYPE_REAL,
+    HADOOP_TYPE_SMALLINT,
+    HADOOP_TYPE_STRING,
+    HADOOP_TYPE_TIMESTAMP,
+    HADOOP_TYPE_TINYINT,
+    HADOOP_TYPE_VARCHAR,
+    HadoopColumn,
+)
+from goe.offload.hadoop.impala_literal import ImpalaLiteral
 from goe.offload.offload_constants import (
     CAPABILITY_CANONICAL_DATE,
     CAPABILITY_COLUMN_STATS_SET,
@@ -53,30 +74,8 @@ from goe.offload.offload_constants import (
     IMPALA_BACKEND_CAPABILITIES,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.hadoop.hadoop_backend_api import (
-    BackendHadoopApi,
-)
-from goe.offload.hadoop.hadoop_column import (
-    HadoopColumn,
-    HADOOP_TYPE_CHAR,
-    HADOOP_TYPE_STRING,
-    HADOOP_TYPE_VARCHAR,
-    HADOOP_TYPE_TINYINT,
-    HADOOP_TYPE_SMALLINT,
-    HADOOP_TYPE_INT,
-    HADOOP_TYPE_BIGINT,
-    HADOOP_TYPE_DATE,
-    HADOOP_TYPE_DECIMAL,
-    HADOOP_TYPE_FLOAT,
-    HADOOP_TYPE_DOUBLE,
-    HADOOP_TYPE_REAL,
-    HADOOP_TYPE_TIMESTAMP,
-    HADOOP_TYPE_BOOLEAN,
-)
-from goe.offload.hadoop.impala_literal import ImpalaLiteral
 from goe.util.better_impyla import from_impala_size
 from goe.util.goe_version import GOEVersion
-
 
 ###############################################################################
 # CONSTANTS
@@ -110,7 +109,7 @@ class BackendImpalaApi(BackendHadoopApi):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendImpalaApi, self).__init__(
+        super().__init__(
             connection_options,
             backend_type,
             messages,
@@ -152,9 +151,7 @@ class BackendImpalaApi(BackendHadoopApi):
             self._hive_conn.refresh_cursor()
             self._execute_global_session_parameters(log_level=None)
         run_opts = self._execute_session_options(query_options, log_level=log_level)
-        run_sqls = self._execute_sqls(
-            sql, log_level=log_level, profile=profile, no_log_items=no_log_items
-        )
+        run_sqls = self._execute_sqls(sql, log_level=log_level, profile=profile, no_log_items=no_log_items)
         return run_opts + run_sqls
 
     def _fetch_show_functions(self, db_name, udf_name_filter=None):
@@ -225,15 +222,13 @@ class BackendImpalaApi(BackendHadoopApi):
     def canonical_date_supported(self):
         if self.is_capability_supported(CAPABILITY_CANONICAL_DATE):
             return bool(GOEVersion(self.target_version()) >= GOEVersion("3.3.0"))
-        else:
-            return False
+        return False
 
     def column_stats_set_supported(self):
         """Setting column stats is not valid in Impala before v2.6.0"""
         if self.is_capability_supported(CAPABILITY_COLUMN_STATS_SET):
             return bool(GOEVersion(self.target_version()) >= GOEVersion("2.6.0"))
-        else:
-            return False
+        return False
 
     def compute_stats(
         self,
@@ -249,17 +244,11 @@ class BackendImpalaApi(BackendHadoopApi):
         """
         assert db_name and table_name
         if partition_tuples:
-            assert isinstance(partition_tuples, list) and isinstance(
-                partition_tuples[0], (tuple, list)
-            )
+            assert isinstance(partition_tuples, list) and isinstance(partition_tuples[0], (tuple, list))
         if not self.table_stats_compute_supported():
-            return
+            return None
         partition_clause = (
-            " PARTITION ({})".format(
-                self._format_partition_clause_for_sql(
-                    db_name, table_name, partition_tuples
-                )
-            )
+            f" PARTITION ({self._format_partition_clause_for_sql(db_name, table_name, partition_tuples)})"
             if partition_tuples
             else ""
         )
@@ -293,9 +282,7 @@ class BackendImpalaApi(BackendHadoopApi):
         assert db_name or without_db_name
         assert table_name
         assert column_list
-        assert valid_column_list(column_list), (
-            "Incorrectly formed column_list: %s" % column_list
-        )
+        assert valid_column_list(column_list), "Incorrectly formed column_list: %s" % column_list
         if partition_column_names:
             assert isinstance(partition_column_names, list)
         assert storage_format
@@ -304,12 +291,8 @@ class BackendImpalaApi(BackendHadoopApi):
         if sort_column_names:
             assert isinstance(sort_column_names, list)
 
-        non_synthetic_columns = [
-            _ for _ in column_list if _.name not in (partition_column_names or [])
-        ]
-        col_projection = self._create_table_columns_clause_common(
-            non_synthetic_columns, external=external
-        )
+        non_synthetic_columns = [_ for _ in column_list if _.name not in (partition_column_names or [])]
+        col_projection = self._create_table_columns_clause_common(non_synthetic_columns, external=external)
 
         db_clause = (self.enclose_identifier(db_name) + ".") if db_name else ""
 
@@ -324,9 +307,7 @@ class BackendImpalaApi(BackendHadoopApi):
                         "Proposed table columns: %s" % str_list_of_columns(column_list),
                         detail=VERBOSE,
                     )
-                    raise BackendApiException(
-                        "Partition column is not in table columns: %s" % part_col
-                    )
+                    raise BackendApiException("Partition column is not in table columns: %s" % part_col)
                 part_col_pairs.append(
                     "%s %s"
                     % (
@@ -345,8 +326,7 @@ class BackendImpalaApi(BackendHadoopApi):
 
         if table_properties:
             table_prop_clause = "\nTBLPROPERTIES (%s)" % ", ".join(
-                "%s=%s" % (self.to_backend_literal(k), self.to_backend_literal(v))
-                for k, v in table_properties.items()
+                "%s=%s" % (self.to_backend_literal(k), self.to_backend_literal(v)) for k, v in table_properties.items()
             )
         else:
             table_prop_clause = ""
@@ -433,29 +413,25 @@ class BackendImpalaApi(BackendHadoopApi):
         """
         if self.is_capability_supported(CAPABILITY_DROP_COLUMN):
             return bool(GOEVersion(self.target_version()) < GOEVersion("3.3.0"))
-        else:
-            return False
+        return False
 
     def filesystem_scheme_abfs_supported(self):
         """ABFS is not valid in Impala before v3.1.0"""
         if self.is_capability_supported(CAPABILITY_FS_SCHEME_ABFS):
             return bool(GOEVersion(self.target_version()) >= GOEVersion("3.1.0"))
-        else:
-            return False
+        return False
 
     def filesystem_scheme_adl_supported(self):
         """ADL is not valid in Impala before v2.9.0"""
         if self.is_capability_supported(CAPABILITY_FS_SCHEME_ADL):
             return bool(GOEVersion(self.target_version()) >= GOEVersion("2.9.0"))
-        else:
-            return False
+        return False
 
     def filesystem_scheme_s3a_supported(self):
         """S3A is not valid in Impala before v2.6.0"""
         if self.is_capability_supported(CAPABILITY_FS_SCHEME_S3A):
             return bool(GOEVersion(self.target_version()) >= GOEVersion("2.6.0"))
-        else:
-            return False
+        return False
 
     def from_canonical_column(self, column, decimal_padding_digits=0):
         """Translate an internal GOE column to an Impala column."""
@@ -485,12 +461,9 @@ class BackendImpalaApi(BackendHadoopApi):
         # We deal with them here and then fall back into the parent code
         if column.data_type == GOE_TYPE_BINARY:
             return new_column(column, HADOOP_TYPE_STRING)
-        elif column.data_type == GOE_TYPE_LARGE_BINARY:
+        if column.data_type == GOE_TYPE_LARGE_BINARY:
             return new_column(column, HADOOP_TYPE_STRING)
-        else:
-            return super(BackendImpalaApi, self).from_canonical_column(
-                column, decimal_padding_digits=decimal_padding_digits
-            )
+        return super().from_canonical_column(column, decimal_padding_digits=decimal_padding_digits)
 
     def gen_insert_select_sql_text(
         self,
@@ -524,14 +497,10 @@ class BackendImpalaApi(BackendHadoopApi):
         projected_expressions = [e for e, _ in select_expr_tuples]
         part_clause = ""
         if partition_expr_tuples:
-            part_clause = " PARTITION (%s)" % ",".join(
-                self.enclose_identifier(n) for _, n in partition_expr_tuples
-            )
+            part_clause = " PARTITION (%s)" % ",".join(self.enclose_identifier(n) for _, n in partition_expr_tuples)
             projected_expressions += [e for e, _ in partition_expr_tuples]
         projection = "\n,      ".join(_ for _ in projected_expressions)
-        from_db_table = from_object_override or self.enclose_object_reference(
-            from_db_name, from_table_name
-        )
+        from_db_table = from_object_override or self.enclose_object_reference(from_db_name, from_table_name)
 
         where_clause = ""
         if filter_clauses:
@@ -587,9 +556,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         not_when_dry_running=False,
         log_level=VVERBOSE,
     ):
-        sql = self._gen_select_count_sql_text_common(
-            db_name, table_name, filter_clause=filter_clause
-        )
+        sql = self._gen_select_count_sql_text_common(db_name, table_name, filter_clause=filter_clause)
         row = self.execute_query_fetch_one(
             sql,
             log_level=log_level,
@@ -622,9 +589,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         if self.get_partition_columns(db_name, table_name):
             # we get the size from each partition
             partitions = self.get_table_partitions(db_name, table_name)
-            self._log(
-                "Summing size of %s partitions" % len(partitions), detail=VVERBOSE
-            )
+            self._log("Summing size of %s partitions" % len(partitions), detail=VVERBOSE)
             size_bytes = 0
             for k, v in partitions.items():
                 size_bytes += v["size_in_bytes"] or 0
@@ -638,15 +603,10 @@ FROM   %(from_db_table)s%(where)s""" % {
         sort_cols = hive_table.sort_columns()
         if sort_cols:
             return sort_cols if as_csv else sort_cols.split(",")
-        else:
-            return []
+        return []
 
     def get_user_name(self):
-        sql = "SELECT %s" % (
-            "EFFECTIVE_USER()"
-            if self._connection_options.hiveserver2_http_transport
-            else "USER()"
-        )
+        sql = "SELECT %s" % ("EFFECTIVE_USER()" if self._connection_options.hiveserver2_http_transport else "USER()")
         row = self.execute_query_fetch_one(sql, log_level=VERBOSE)
         return row[0] if row else None
 
@@ -689,9 +649,7 @@ FROM   %(from_db_table)s%(where)s""" % {
 
         return [
             convert_show_output_to_returnable_list(_)
-            for _ in self._fetch_show_functions(
-                db_name, udf_name_filter=udf_name_filter
-            )
+            for _ in self._fetch_show_functions(db_name, udf_name_filter=udf_name_filter)
         ]
 
     def max_datetime_value(self):
@@ -709,8 +667,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         """
         if self.is_capability_supported(CAPABILITY_RANGER):
             return bool(GOEVersion(self.target_version()) >= GOEVersion("3.3.0"))
-        else:
-            return False
+        return False
 
     def refresh_table_files(self, db_name, table_name, sync=None):
         """Rescan files for a table."""
@@ -727,15 +684,13 @@ FROM   %(from_db_table)s%(where)s""" % {
         """
         if self.is_capability_supported(CAPABILITY_SENTRY):
             return bool(GOEVersion(self.target_version()) < GOEVersion("3.3.0"))
-        else:
-            return False
+        return False
 
     def sorted_table_supported(self):
         """SORT BY is not valid in Impala before v2.9.0"""
         if self.is_capability_supported(CAPABILITY_SORTED_TABLE):
             return bool(GOEVersion(self.target_version()) >= GOEVersion("2.9.0"))
-        else:
-            return False
+        return False
 
     def supported_backend_data_types(self):
         data_types = [

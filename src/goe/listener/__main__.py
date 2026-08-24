@@ -1,5 +1,4 @@
 #! /usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 # Copyright 2016 The GOE Authors. All rights reserved.
 #
@@ -16,7 +15,6 @@
 # limitations under the License.
 
 """Application Web Server Gateway Interface - gunicorn."""
-
 
 # GOE
 from goe.listener.config.application import settings

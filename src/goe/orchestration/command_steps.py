@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Constants and functions used to define orchestration command steps.
-    Steps are executed by OffloadMessages.offload_step(), this may change in time.
+"""Constants and functions used to define orchestration command steps.
+Steps are executed by OffloadMessages.offload_step(), this may change in time.
 """
 
 
@@ -117,8 +117,7 @@ CTX_EXCEPTION_STACK = "exception_stack"
 
 
 def step_title(step_id):
-    """
-    Returns human facing title for step_id.
+    """Returns human facing title for step_id.
     Simple wrapper but hides the implementation a small amount allowing for title source to be changed.
     """
     if step_id not in STEP_TITLES:
