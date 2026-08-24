@@ -2,11 +2,12 @@
 type: Task
 id: build_ci_overhaul_20260823:makefile_modernization
 title: Modernize Makefile with DMA Standards & UV Commands
+description: Modernize top-level Makefile with standard DMA developer targets, color output, and UV execution.
 state: open
 created_at: "2026-08-23T01:15:00Z"
 updated_at: "2026-08-23T01:15:00Z"
 tags:
-  - task
+  - refactor
   - build
   - makefile
   - uv

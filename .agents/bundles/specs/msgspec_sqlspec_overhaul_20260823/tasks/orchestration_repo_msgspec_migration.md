@@ -2,13 +2,15 @@
 type: Task
 id: msgspec_sqlspec_overhaul_20260823:orchestration_repo_msgspec_migration
 title: Migrate OrchestrationRepoClient JSON serialization to msgspec
+description: Migrate OrchestrationRepoClient JSON serialization and query result parsing to msgspec.
 state: open
 created_at: "2026-08-23T15:25:00Z"
 updated_at: "2026-08-23T15:25:00Z"
 tags:
-  - task
+  - migration
   - persistence
   - msgspec
+  - repository
 depends_on:
   - msgspec_sqlspec_overhaul_20260823:json_tools_msgspec_migration
 files:

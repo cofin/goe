@@ -2,11 +2,12 @@
 type: Task
 id: msgspec_sqlspec_overhaul_20260823:sqlspec_integration_and_struct_schemas
 title: Integrate SQLSpec Library & Define msgspec Struct Schemas
+description: Integrate SQLSpec database abstraction library and define typed msgspec.Struct models for schemas.
 state: open
 created_at: "2026-08-23T15:25:00Z"
 updated_at: "2026-08-23T15:25:00Z"
 tags:
-  - task
+  - feature
   - sqlspec
   - msgspec
   - schemas

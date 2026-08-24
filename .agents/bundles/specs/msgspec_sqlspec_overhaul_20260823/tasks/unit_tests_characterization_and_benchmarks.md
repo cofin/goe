@@ -2,14 +2,16 @@
 type: Task
 id: msgspec_sqlspec_overhaul_20260823:unit_tests_characterization_and_benchmarks
 title: Verify Unit Tests & Characterization for Msgspec/SQLSpec Migration
+description: Verify unit test suite and characterization benchmarks for msgspec and sqlspec migration.
 state: open
 created_at: "2026-08-23T15:25:00Z"
 updated_at: "2026-08-23T15:25:00Z"
 tags:
-  - task
+  - test
   - testing
   - characterization
   - msgspec
+  - sqlspec
 depends_on:
   - msgspec_sqlspec_overhaul_20260823:json_tools_msgspec_migration
   - msgspec_sqlspec_overhaul_20260823:orchestration_repo_msgspec_migration

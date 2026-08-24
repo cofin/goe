@@ -2,11 +2,12 @@
 type: Task
 id: msgspec_sqlspec_overhaul_20260823:offload_messages_msgspec_migration
 title: Migrate OffloadMessages Redis Publishing to msgspec
+description: Migrate OffloadMessages Redis pub/sub message encoding and log telemetry to msgspec.
 state: open
 created_at: "2026-08-23T15:25:00Z"
 updated_at: "2026-08-23T15:25:00Z"
 tags:
-  - task
+  - migration
   - messaging
   - redis
   - msgspec

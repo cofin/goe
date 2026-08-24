@@ -14,4 +14,9 @@ This directory contains unpromoted research documents and investigative spikes.
 
 ## Open Research
 
-- [GOE Modernization & Architectural Overhaul (Build, Msgspec, Rich-Click, Litestar)](modernization_overhaul_20260822/research.md) - Architectural blueprint and 4-pillar phased overhaul for modernizing build tooling, CI, msgspec serialization, rich-click CLI entrypoints, and Litestar listener services.
+*No open unpromoted research documents at this time.*
+
+## Promoted Research
+
+- [GOE Modernization & Architectural Overhaul (`modernization_overhaul_20260822`)](../specs/modernization_overhaul_20260823/research/modernization_overhaul_20260822/research.md) - Promoted to [GOE Modernization Master Roadmap (`modernization_overhaul_20260823`)](../specs/modernization_overhaul_20260823/spec.md).
+

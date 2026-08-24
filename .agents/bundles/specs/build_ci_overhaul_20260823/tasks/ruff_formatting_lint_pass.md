@@ -2,11 +2,12 @@
 type: Task
 id: build_ci_overhaul_20260823:ruff_formatting_lint_pass
 title: Code Quality & Ruff Formatting Pass
+description: Execute code quality, formatting, and linting passes with Ruff across src, tests, and tools.
 state: open
 created_at: "2026-08-23T01:15:00Z"
 updated_at: "2026-08-23T01:15:00Z"
 tags:
-  - task
+  - refactor
   - quality
   - ruff
   - format

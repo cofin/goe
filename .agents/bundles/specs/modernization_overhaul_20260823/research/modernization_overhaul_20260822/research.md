@@ -2,9 +2,9 @@
 type: Research
 research_id: modernization_overhaul_20260822
 title: GOE Modernization & Architectural Overhaul (Build, Msgspec, Rich-Click, Litestar)
-state: open
+state: promoted
 created_at: "2026-08-22T22:45:00Z"
-updated_at: "2026-08-22T22:45:00Z"
+updated_at: "2026-08-24T21:40:00Z"
 description: Architectural research and phased blueprint for overhauling build tooling, CI, msgspec serialization, rich-click CLI entrypoints, and Litestar listener services.
 tags:
   - research
@@ -13,7 +13,7 @@ tags:
   - cli
   - litestar
   - ci
-promoted_to: null
+promoted_to: modernization_overhaul_20260823
 ---
 
 # GOE Modernization & Architectural Overhaul

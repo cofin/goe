@@ -2,11 +2,12 @@
 type: Task
 id: rich_click_cli_overhaul_20260823:sync_logmgr_listener_commands
 title: Implement goe sync, goe logmgr, and goe listener Subcommands
+description: Implement goe sync, goe logmgr, and goe listener subcommands within the unified CLI suite.
 state: open
 created_at: "2026-08-23T15:25:00Z"
 updated_at: "2026-08-23T15:25:00Z"
 tags:
-  - task
+  - feature
   - cli
   - sync
   - listener

@@ -2,13 +2,14 @@
 type: Task
 id: build_ci_overhaul_20260823:knowledge_and_workflow_reconciliation
 title: Reconcile Knowledge Base & Context Files with Modern Tooling
+description: Reconcile Flow knowledge chapters, development standards, and root instructions with modernized tooling.
 state: open
 created_at: "2026-08-23T01:15:00Z"
 updated_at: "2026-08-23T01:15:00Z"
 tags:
-  - task
-  - documentation
+  - docs
   - workflow
+  - standards
   - knowledge
 depends_on:
   - build_ci_overhaul_20260823:pyproject_modernization
@@ -21,7 +22,7 @@ files:
   - .agents/bundles/knowledge/standards/testing.md
   - .agents/bundles/log.md
   - AGENTS.md
-tests: []
+tests:
 verification_strategy: documentation_validation
 ---
 

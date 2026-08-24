@@ -2,11 +2,12 @@
 type: Task
 id: rich_click_cli_overhaul_20260823:offload_command_migration
 title: Implement goe offload Subcommand with Rich Options
+description: Implement goe offload subcommand migrating legacy optparse options to structured Click option groups.
 state: open
 created_at: "2026-08-23T15:25:00Z"
 updated_at: "2026-08-23T15:25:00Z"
 tags:
-  - task
+  - migration
   - cli
   - offload
   - rich-click

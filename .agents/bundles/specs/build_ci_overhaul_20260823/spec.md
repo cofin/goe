@@ -12,7 +12,7 @@ tags:
   - ci
   - ruff
   - uv
-parent_prd: null
+parent_prd: modernization_overhaul_20260823
 research:
   - modernization_overhaul_20260822
 ---

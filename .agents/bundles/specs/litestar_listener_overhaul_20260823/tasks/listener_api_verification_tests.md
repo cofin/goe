@@ -2,11 +2,12 @@
 type: Task
 id: litestar_listener_overhaul_20260823:listener_api_verification_tests
 title: Implement End-to-End Litestar Listener API & Contract Test Suite
+description: Implement comprehensive end-to-end API test suite using Litestar AsyncTestClient.
 state: open
 created_at: "2026-08-23T15:25:00Z"
 updated_at: "2026-08-23T15:25:00Z"
 tags:
-  - task
+  - test
   - testing
   - litestar
   - api

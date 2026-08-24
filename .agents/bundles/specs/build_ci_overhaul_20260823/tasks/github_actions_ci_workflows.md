@@ -2,11 +2,12 @@
 type: Task
 id: build_ci_overhaul_20260823:github_actions_ci_workflows
 title: Scaffold GitHub Actions CI/CD & Standalone PyApp Packaging
+description: Scaffold GitHub Actions matrix CI/CD workflows and PyApp standalone binary build scripts.
 state: open
 created_at: "2026-08-23T01:15:00Z"
 updated_at: "2026-08-23T01:15:00Z"
 tags:
-  - task
+  - feature
   - ci
   - github-actions
   - pyapp
