@@ -23,9 +23,9 @@ from goe.offload.column_metadata import ColumnPartitionInfo
 from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.offload_source_table import RdbmsPartition
 from goe.offload.oracle.oracle_column import (
-    OracleColumn,
     ORACLE_TYPE_DATE,
     ORACLE_TYPE_NUMBER,
+    OracleColumn,
 )
 from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
 
@@ -177,9 +177,7 @@ FAKE_ORACLE_COLUMNS = [
     OracleColumn(
         "TIME_ID",
         ORACLE_TYPE_DATE,
-        partition_info=ColumnPartitionInfo(
-            position=0, range_end=None, range_start=None, source_column_name=None
-        ),
+        partition_info=ColumnPartitionInfo(position=0, range_end=None, range_start=None, source_column_name=None),
     ),
     OracleColumn(
         "PROD_ID",
@@ -202,9 +200,7 @@ FAKE_ORACLE_PARTITIONS = [
         high_values_python=(numpy.datetime64("2012-04-01T00:00:00"),),
         partition_size=1_000_000,
         num_rows=2,
-        high_values_individual=(
-            "TO_DATE(' 2012-08-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')",
-        ),
+        high_values_individual=("TO_DATE(' 2012-08-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')",),
     ),
     RdbmsPartition.by_name(
         partition_name="P3",
@@ -218,9 +214,7 @@ FAKE_ORACLE_PARTITIONS = [
         high_values_python=(numpy.datetime64("2012-03-01T00:00:00"),),
         partition_size=1_000_000,
         num_rows=2,
-        high_values_individual=(
-            "TO_DATE(' 2012-03-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')",
-        ),
+        high_values_individual=("TO_DATE(' 2012-03-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')",),
     ),
     RdbmsPartition.by_name(
         partition_name="P2",
@@ -234,9 +228,7 @@ FAKE_ORACLE_PARTITIONS = [
         high_values_python=(numpy.datetime64("2012-02-01T00:00:00"),),
         partition_size=1_000_000,
         num_rows=2,
-        high_values_individual=(
-            "TO_DATE(' 2012-02-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')",
-        ),
+        high_values_individual=("TO_DATE(' 2012-02-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')",),
     ),
     RdbmsPartition.by_name(
         partition_name="P1",
@@ -250,9 +242,7 @@ FAKE_ORACLE_PARTITIONS = [
         high_values_python=(numpy.datetime64("2012-01-01T00:00:00"),),
         partition_size=1_000_000,
         num_rows=2,
-        high_values_individual=(
-            "TO_DATE(' 2012-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')",
-        ),
+        high_values_individual=("TO_DATE(' 2012-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')",),
     ),
 ]
 

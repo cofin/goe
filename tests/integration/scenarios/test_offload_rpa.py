@@ -26,7 +26,6 @@ from goe.offload.oracle.oracle_column import ORACLE_TYPE_NVARCHAR2
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
 from tests.integration.scenarios.assertion_functions import (
     sales_based_fact_assertion,
     synthetic_part_col_name,
@@ -50,7 +49,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 RPA_FACT_TABLE_NUM = "RPA_NUM"
 RPA_FACT_TABLE_NUM_UDF = "RPA_UNUM"
@@ -175,9 +173,7 @@ def offload_range_ipa_standard_tests(
             partition_function=udf,
             synthetic_partition_digits=synthetic_partition_digits,
         )
-        expected_goe_part_name = convert_backend_identifier_case(
-            config, expected_goe_part_name
-        )
+        expected_goe_part_name = convert_backend_identifier_case(config, expected_goe_part_name)
 
     backend_name = convert_backend_identifier_case(config, table_name)
 
@@ -191,9 +187,7 @@ def offload_range_ipa_standard_tests(
             schema, table_name, part_key_type=part_key_type, simple_partition_names=True
         ),
         python_fns=[
-            lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, table_name
-            ),
+            lambda: drop_backend_test_table(config, backend_api, messages, data_db, table_name),
         ],
     )
 
@@ -377,9 +371,7 @@ def offload_range_ipa_standard_tests(
         ),
     )
 
-    assert not sales_based_fact_partition_exists(
-        schema, table_name, [hv_1], frontend_api
-    )
+    assert not sales_based_fact_partition_exists(schema, table_name, [hv_1], frontend_api)
 
     # RANGE Offload After Partition Drop.
     # Offloads next partition from fact table after the oldest partition was dropped.
@@ -421,9 +413,7 @@ def offload_range_ipa_standard_tests(
         ),
     )
 
-    assert not sales_based_fact_partition_exists(
-        schema, table_name, [hv_1, hv_2, hv_3, hv_4], frontend_api
-    )
+    assert not sales_based_fact_partition_exists(schema, table_name, [hv_1, hv_2, hv_3, hv_4], frontend_api)
 
     # RANGE No-op Offload After Partition Drop.
     # Offloads no partitions from fact after all offloaded partitions have been dropped (GOE-1035)
@@ -457,13 +447,12 @@ def test_offload_rpa_int8(config, schema, data_db):
         #      Didn't have time to rectify this for Teradata MVP.
         pytest.skip(f"Skipping {id} for system/type: {config.db_type}")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         offload_range_ipa_standard_tests(
             schema,
@@ -479,13 +468,12 @@ def test_offload_rpa_int8(config, schema, data_db):
 
 def test_offload_rpa_date(config, schema, data_db):
     id = "test_offload_rpa_date"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         offload_range_ipa_standard_tests(
             schema,
@@ -501,13 +489,12 @@ def test_offload_rpa_date(config, schema, data_db):
 
 def test_offload_rpa_timestamp(config, schema, data_db):
     id = "test_offload_rpa_timestamp"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         offload_range_ipa_standard_tests(
             schema,
@@ -527,13 +514,12 @@ def test_offload_rpa_string(config, schema, data_db):
         # TODO In Teradata MVP we don't support string based partitioning.
         pytest.skip(f"Skipping {id} for system/type: {config.db_type}")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         offload_range_ipa_standard_tests(
             schema,
@@ -551,17 +537,14 @@ def test_offload_rpa_nvarchar2(config, schema, data_db):
     id = "test_offload_rpa_nvarchar2"
 
     if config.db_type != offload_constants.DBTYPE_ORACLE:
-        pytest.skip(
-            f"Skipping {id} for system/type: {config.db_type}/{ORACLE_TYPE_NVARCHAR2}"
-        )
+        pytest.skip(f"Skipping {id} for system/type: {config.db_type}/{ORACLE_TYPE_NVARCHAR2}")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         offload_range_ipa_standard_tests(
             schema,
@@ -577,30 +560,23 @@ def test_offload_rpa_nvarchar2(config, schema, data_db):
 
 def test_offload_rpa_udf_int8(config, schema, data_db):
     id = "test_offload_rpa_udf_int8"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         if not backend_api.goe_partition_functions_supported():
-            pytest.skip(
-                f"Skipping {id} partition function tests due to goe_partition_functions_supported() == False"
-            )
+            pytest.skip(f"Skipping {id} partition function tests due to goe_partition_functions_supported() == False")
 
         if config.db_type == offload_constants.DBTYPE_TERADATA:
             # TODO We need our numeric sales table to be partitioned on YYYYMM for assertions to make sense.
             #      Didn't have time to rectify this for Teradata MVP.
-            pytest.skip(
-                f"Skipping {id} for system/type: {config.db_type}/{frontend_api.test_type_canonical_int_8()}"
-            )
+            pytest.skip(f"Skipping {id} for system/type: {config.db_type}/{frontend_api.test_type_canonical_int_8()}")
 
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
-        backend_api.create_test_partition_functions(
-            data_db, udf=test_constants.PARTITION_FUNCTION_TEST_FROM_INT8
-        )
+        backend_api.create_test_partition_functions(data_db, udf=test_constants.PARTITION_FUNCTION_TEST_FROM_INT8)
 
         offload_range_ipa_standard_tests(
             schema,
@@ -617,26 +593,19 @@ def test_offload_rpa_udf_int8(config, schema, data_db):
 
 def test_offload_rpa_udf_string(config, schema, data_db):
     id = "test_offload_rpa_udf_string"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         if not backend_api.goe_partition_functions_supported():
-            messages.log(
-                f"Skipping {id} partition function tests due to goe_partition_functions_supported() == False"
-            )
-            pytest.skip(
-                f"Skipping {id} partition function tests due to goe_partition_functions_supported() == False"
-            )
+            messages.log(f"Skipping {id} partition function tests due to goe_partition_functions_supported() == False")
+            pytest.skip(f"Skipping {id} partition function tests due to goe_partition_functions_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
-        backend_api.create_test_partition_functions(
-            data_db, udf=test_constants.PARTITION_FUNCTION_TEST_FROM_STRING
-        )
+        backend_api.create_test_partition_functions(data_db, udf=test_constants.PARTITION_FUNCTION_TEST_FROM_STRING)
 
         offload_range_ipa_standard_tests(
             schema,
@@ -658,13 +627,12 @@ def test_offload_rpa_alpha(config, schema, data_db):
     if config.db_type != offload_constants.DBTYPE_ORACLE:
         pytest.skip(f"Skipping {id} for system/type: {config.db_type}/AlphaString")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         canonical_string = frontend_api.test_type_canonical_string()
 
@@ -693,9 +661,7 @@ def test_offload_rpa_alpha(config, schema, data_db):
                     WHERE  ROWNUM <= 100""",
             ],
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, RPA_ALPHA_FACT_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, RPA_ALPHA_FACT_TABLE),
             ],
         )
 
@@ -754,17 +720,14 @@ def test_offload_rpa_empty_partitions(config, schema, data_db):
     id = "test_offload_rpa_empty_partitions"
 
     if config.db_type == offload_constants.DBTYPE_TERADATA:
-        pytest.skip(
-            f"Skipping {id} for {config.db_type} because empty partitions are not a thing"
-        )
+        pytest.skip(f"Skipping {id} for {config.db_type} because empty partitions are not a thing")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup, create a partitioned table with one populated partition and a series of empty ones
         run_setup(
@@ -779,9 +742,7 @@ def test_offload_rpa_empty_partitions(config, schema, data_db):
                 extra_pred="AND time_id = TO_DATE('2012-01-01','YYYY-MM-DD')",
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, NOSEG_FACT
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, NOSEG_FACT),
             ],
         )
 

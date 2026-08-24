@@ -15,13 +15,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" SparkThrift implementation of BackendTestingApi: An extension of BackendApi used purely for code relating to the setup,
-    processing and verification of integration tests.
+"""SparkThrift implementation of BackendTestingApi: An extension of BackendApi used purely for code relating to the setup,
+processing and verification of integration tests.
 """
 
 import logging
 
-from goe.offload.offload_messages import VVERBOSE
 from tests.testlib.test_framework.hadoop.hadoop_backend_testing_api import (
     BackendHadoopTestingApi,
 )

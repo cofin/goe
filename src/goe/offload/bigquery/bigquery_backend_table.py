@@ -14,10 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendBigqueryTable: Library for logic/interaction with a table that will
-    be either:
-      1) The target of an offload
-      2) The source of a present
+"""BackendBigqueryTable: Library for logic/interaction with a table that will
+be either:
+  1) The target of an offload
+  2) The source of a present
 """
 
 import logging
@@ -25,23 +25,23 @@ from typing import TYPE_CHECKING
 
 from google.cloud import bigquery
 
+from goe.offload.backend_table import (
+    PARTITION_KEY_OUT_OF_RANGE,
+    TYPICAL_DATE_GRANULARITY_TERMS,
+    BackendTableInterface,
+)
+from goe.offload.bigquery import bigquery_predicate
 from goe.offload.bigquery.bigquery_column import (
-    BigQueryColumn,
+    BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_DATE,
     BIGQUERY_TYPE_DATETIME,
     BIGQUERY_TYPE_FLOAT64,
     BIGQUERY_TYPE_INT64,
     BIGQUERY_TYPE_NUMERIC,
-    BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_TIME,
+    BigQueryColumn,
 )
-from goe.offload.bigquery import bigquery_predicate
 from goe.offload.column_metadata import ColumnMetadataInterface, get_column_names
-from goe.offload.backend_table import (
-    BackendTableInterface,
-    PARTITION_KEY_OUT_OF_RANGE,
-    TYPICAL_DATE_GRANULARITY_TERMS,
-)
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.staging.avro.avro_staging_file import AVRO_TYPE_DOUBLE, AVRO_TYPE_LONG
 from goe.offload.staging.parquet.parquet_column import (
@@ -84,7 +84,7 @@ class BackendBigQueryTable(BackendTableInterface):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendBigQueryTable, self).__init__(
+        super().__init__(
             db_name,
             table_name,
             backend_type,
@@ -150,9 +150,7 @@ class BackendBigQueryTable(BackendTableInterface):
 
     def _drop_load_table(self, sync=None):
         """Drop the staging/load table."""
-        self._db_api.drop_table(
-            self._load_db_name, self._load_table_name, purge=True, sync=sync
-        )
+        self._db_api.drop_table(self._load_db_name, self._load_table_name, purge=True, sync=sync)
 
     def _final_insert_format_sql(
         self,
@@ -183,8 +181,7 @@ class BackendBigQueryTable(BackendTableInterface):
                     kms_key_name=self._kms_key_name
                 )
             }
-        else:
-            return None
+        return None
 
     def _gen_synthetic_partition_column_object(self, synthetic_name, canonical_column):
         """Return BigQuery column object for synthetic partition column"""
@@ -194,21 +191,17 @@ class BackendBigQueryTable(BackendTableInterface):
                 data_type=BIGQUERY_TYPE_DATE,
                 partition_info=canonical_column.partition_info,
             )
-        elif canonical_column.is_number_based():
+        if canonical_column.is_number_based():
             return self._db_api.gen_column_object(
                 synthetic_name,
                 data_type=BIGQUERY_TYPE_INT64,
                 partition_info=canonical_column.partition_info,
             )
-        else:
-            raise NotImplementedError(
-                "BigQuery synthetic partitioning not implemented for column type: %s"
-                % canonical_column.data_type
-            )
+        raise NotImplementedError(
+            "BigQuery synthetic partitioning not implemented for column type: %s" % canonical_column.data_type
+        )
 
-    def _gen_synthetic_partition_date_as_string_sql_expr(
-        self, extract_name, pad_size, source_column_cast
-    ):
+    def _gen_synthetic_partition_date_as_string_sql_expr(self, extract_name, pad_size, source_column_cast):
         """BigQuery implementation
         Dates are strings in the load table so we work from strings in here.
         """
@@ -279,17 +272,12 @@ class BackendBigQueryTable(BackendTableInterface):
             start=column.partition_info.range_start,
             end=column.partition_info.range_end,
         )
-        return (
-            base_message
-            + ", this data will be stored in the __UNPARTITIONED__ partition"
-        )
+        return base_message + ", this data will be stored in the __UNPARTITIONED__ partition"
 
     def _rm_load_table_location(self):
         self._rm_dfs_dir(self.get_staging_table_location())
 
-    def _staging_to_backend_cast(
-        self, rdbms_column, backend_column, staging_column
-    ) -> tuple:
+    def _staging_to_backend_cast(self, rdbms_column, backend_column, staging_column) -> tuple:
         """Returns correctly cast or overridden columns ready for insert/select to final table.
         BigQuery implementation.
         """
@@ -297,44 +285,34 @@ class BackendBigQueryTable(BackendTableInterface):
         def cast(expr, data_type, safe_cast=False):
             if safe_cast:
                 return "SAFE_CAST(%s AS %s)" % (expr, data_type)
-            else:
-                return "CAST(%s AS %s)" % (expr, data_type)
+            return "CAST(%s AS %s)" % (expr, data_type)
 
         def parse_date(expr, safe_cast=False):
             if safe_cast:
-                return "SAFE.PARSE_DATE('%F', {})".format(expr)
-            else:
-                return "PARSE_DATE('%F', {})".format(expr)
+                return f"SAFE.PARSE_DATE('%F', {expr})"
+            return f"PARSE_DATE('%F', {expr})"
 
         def parse_datetime(expr, safe_cast=False):
             if safe_cast:
-                return "SAFE.PARSE_DATETIME('%F %H:%M:%E*S', {})".format(expr)
-            else:
-                return "PARSE_DATETIME('%F %H:%M:%E*S', {})".format(expr)
+                return f"SAFE.PARSE_DATETIME('%F %H:%M:%E*S', {expr})"
+            return f"PARSE_DATETIME('%F %H:%M:%E*S', {expr})"
 
         def parse_time(expr, safe_cast=False):
             if safe_cast:
-                return "SAFE.PARSE_TIME('%H:%M:%E*S', {})".format(expr)
-            else:
-                return "PARSE_TIME('%H:%M:%E*S', {})".format(expr)
+                return f"SAFE.PARSE_TIME('%H:%M:%E*S', {expr})"
+            return f"PARSE_TIME('%H:%M:%E*S', {expr})"
 
         def parse_timestamp(expr, safe_cast=False):
             # PARSE_TIMESTAMP() understands time zone names and numeric formats ([+-]nn:nn) so no complex logic required
             if safe_cast:
-                return "SAFE.PARSE_TIMESTAMP('%F %H:%M:%E*S %Z', {})".format(expr)
-            else:
-                return "PARSE_TIMESTAMP('%F %H:%M:%E*S %Z', {})".format(expr)
+                return f"SAFE.PARSE_TIMESTAMP('%F %H:%M:%E*S %Z', {expr})"
+            return f"PARSE_TIMESTAMP('%F %H:%M:%E*S %Z', {expr})"
 
         def date_to_string_format(expr, has_time_element):
             if has_time_element:
                 # We need a string containing the full timestamp spec including microseconds and 4 digit year.
-                return "FORMAT_DATETIME('%E4Y-%m-%d %H:%M:%E6S', PARSE_DATETIME('%F %H:%M:%E*S', {col}))".format(
-                    col=expr
-                )
-            else:
-                return "FORMAT_DATE('%E4Y-%m-%d', PARSE_DATE('%F', {col}))".format(
-                    col=expr
-                )
+                return f"FORMAT_DATETIME('%E4Y-%m-%d %H:%M:%E6S', PARSE_DATETIME('%F %H:%M:%E*S', {expr}))"
+            return f"FORMAT_DATE('%E4Y-%m-%d', PARSE_DATE('%F', {expr}))"
 
         def staging_file_int64_match(backend_column, staging_column):
             return bool(
@@ -350,9 +328,7 @@ class BackendBigQueryTable(BackendTableInterface):
 
         assert backend_column
         assert isinstance(backend_column, BigQueryColumn)
-        assert rdbms_column, (
-            "RDBMS column missing for backend column: %s" % backend_column.name
-        )
+        assert rdbms_column, "RDBMS column missing for backend column: %s" % backend_column.name
         assert isinstance(rdbms_column, ColumnMetadataInterface)
         assert staging_column
         assert isinstance(staging_column, ColumnMetadataInterface)
@@ -361,10 +337,7 @@ class BackendBigQueryTable(BackendTableInterface):
         return_vcast = None
         return_type = backend_column.format_data_type().upper()
 
-        if (
-            isinstance(staging_column, BigQueryColumn)
-            and staging_column.data_type == backend_column.data_type
-        ):
+        if isinstance(staging_column, BigQueryColumn) and staging_column.data_type == backend_column.data_type:
             # Same column type and data type so no need to CAST, this is only possible when materializing a join
             self._log(
                 "No cast of %s required for matching load data type: %s"
@@ -372,9 +345,9 @@ class BackendBigQueryTable(BackendTableInterface):
                 detail=VVERBOSE,
             )
         elif backend_column.is_number_based():
-            if staging_file_int64_match(
+            if staging_file_int64_match(backend_column, staging_column) or staging_file_float64_match(
                 backend_column, staging_column
-            ) or staging_file_float64_match(backend_column, staging_column):
+            ):
                 # Same data type so no need to CAST
                 self._log(
                     "No cast required for matching data types: %s/%s"
@@ -393,24 +366,16 @@ class BackendBigQueryTable(BackendTableInterface):
                 )
         elif backend_column.data_type == BIGQUERY_TYPE_TIME:
             return_cast = parse_time(self._format_staging_column_name(staging_column))
-            return_vcast = parse_time(
-                self._format_staging_column_name(staging_column), safe_cast=True
-            )
+            return_vcast = parse_time(self._format_staging_column_name(staging_column), safe_cast=True)
         elif rdbms_column.is_time_zone_based():
             if not backend_column.is_string_based():
                 # BigQuery TIMESTAMP is time zoned so we do not normalise to UTC.
-                return_cast = parse_timestamp(
-                    self._format_staging_column_name(staging_column)
-                )
-                return_vcast = parse_timestamp(
-                    self._format_staging_column_name(staging_column), safe_cast=True
-                )
+                return_cast = parse_timestamp(self._format_staging_column_name(staging_column))
+                return_vcast = parse_timestamp(self._format_staging_column_name(staging_column), safe_cast=True)
                 if not backend_column.is_time_zone_based():
                     # Cast the time zoned data to the type of the backend column.
                     return_cast = cast(return_cast, backend_column.data_type)
-                    return_vcast = cast(
-                        return_cast, backend_column.data_type, safe_cast=True
-                    )
+                    return_vcast = cast(return_cast, backend_column.data_type, safe_cast=True)
         elif rdbms_column.is_date_based():
             if backend_column.is_string_based():
                 return_cast = """CASE
@@ -428,20 +393,12 @@ class BackendBigQueryTable(BackendTableInterface):
                 return_vcast = return_cast
             else:
                 if rdbms_column.has_time_element():
-                    return_cast = parse_datetime(
-                        self._format_staging_column_name(staging_column)
-                    )
-                    return_vcast = parse_datetime(
-                        self._format_staging_column_name(staging_column), safe_cast=True
-                    )
+                    return_cast = parse_datetime(self._format_staging_column_name(staging_column))
+                    return_vcast = parse_datetime(self._format_staging_column_name(staging_column), safe_cast=True)
                     no_cast_type = BIGQUERY_TYPE_DATETIME
                 else:
-                    return_cast = parse_date(
-                        self._format_staging_column_name(staging_column)
-                    )
-                    return_vcast = parse_date(
-                        self._format_staging_column_name(staging_column), safe_cast=True
-                    )
+                    return_cast = parse_date(self._format_staging_column_name(staging_column))
+                    return_vcast = parse_date(self._format_staging_column_name(staging_column), safe_cast=True)
                     no_cast_type = BIGQUERY_TYPE_DATE
                 if backend_column.data_type != no_cast_type:
                     return_cast = cast(return_cast, backend_column.data_type)
@@ -449,9 +406,8 @@ class BackendBigQueryTable(BackendTableInterface):
 
         if return_cast:
             return return_cast, return_type, return_vcast
-        else:
-            return_cast = self._format_staging_column_name(staging_column)
-            return return_cast, None, return_cast
+        return_cast = self._format_staging_column_name(staging_column)
+        return return_cast, None, return_cast
 
     ###########################################################################
     # PUBLIC METHODS
@@ -463,7 +419,6 @@ class BackendBigQueryTable(BackendTableInterface):
 
     def compute_final_table_stats(self, incremental_stats, materialized_join=False):
         """Do nothing on BigQuery"""
-        pass
 
     def create_backend_table(self, with_terminator=False) -> list:
         """Create a table in BigQuery based on object state.
@@ -496,15 +451,14 @@ class BackendBigQueryTable(BackendTableInterface):
                 location=self._orchestration_config.bigquery_dataset_location,
                 with_terminator=with_terminator,
             )
-        else:
-            return []
+        return []
 
     def empty_staging_area(self, staging_file):
         self._rm_load_table_location()
 
     def get_default_location(self):
         """Not applicable to BigQuery"""
-        return None
+        return
 
     def get_staging_table_location(self):
         # Use cached location to avoid re-doing same thing multiple times
@@ -521,10 +475,7 @@ class BackendBigQueryTable(BackendTableInterface):
                 self._load_table_name,
             )
         )
-        select_expression_tuples = [
-            (self.get_final_table_cast(col), col.name.upper())
-            for col in self.get_columns()
-        ]
+        select_expression_tuples = [(self.get_final_table_cast(col), col.name.upper()) for col in self.get_columns()]
         sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples)
         self._execute_dml(
             sqls,
@@ -552,10 +503,7 @@ class BackendBigQueryTable(BackendTableInterface):
                 self._load_table_name,
             )
         )
-        select_expression_tuples = [
-            (self.get_final_table_cast(col), col.name.upper())
-            for col in self.get_columns()
-        ]
+        select_expression_tuples = [(self.get_final_table_cast(col), col.name.upper()) for col in self.get_columns()]
         sqls, query_options = self._gen_mat_join_insert_sqls(
             select_expression_tuples,
             threshold_cols,
@@ -584,16 +532,10 @@ class BackendBigQueryTable(BackendTableInterface):
             self._db_api.enclose_object_reference(self.db_name, self.table_name),
             bigquery_predicate.predicate_to_where_clause(self.get_columns(), predicate),
         )
-        return bool(
-            self._execute_query_fetch_one(
-                sql, log_level=VERBOSE, not_when_dry_running=False
-            )
-        )
+        return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
 
     def predicate_to_where_clause(self, predicate, columns_override=None):
-        return bigquery_predicate.predicate_to_where_clause(
-            columns_override or self.get_columns(), predicate
-        )
+        return bigquery_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
 
     def result_cache_area_exists(self):
         return self._result_cache_db_exists()
@@ -601,16 +543,12 @@ class BackendBigQueryTable(BackendTableInterface):
     def setup_result_cache_area(self):
         """Prepare result cache area for Hybrid Queries"""
         if self.create_database_supported() and self._user_requested_create_backend_db:
-            self._create_result_cache_db(
-                location=self._orchestration_config.bigquery_dataset_location
-            )
+            self._create_result_cache_db(location=self._orchestration_config.bigquery_dataset_location)
 
     def setup_staging_area(self, staging_file):
         """Prepare any staging area for BigQuery OffloadTransport"""
         if self.create_database_supported() and self._user_requested_create_backend_db:
-            self._create_load_db(
-                location=self._orchestration_config.bigquery_dataset_location
-            )
+            self._create_load_db(location=self._orchestration_config.bigquery_dataset_location)
         self._rm_load_table_location()
         self.get_staging_table_location()
 
@@ -624,6 +562,4 @@ class BackendBigQueryTable(BackendTableInterface):
         BigQuery catches overflowing casts but this way we can spot them beforehand and
         provide the user with SQL to view offending values.
         """
-        self._validate_final_table_casts(
-            staging_columns, log_profile=self._log_profile_after_verification_queries
-        )
+        self._validate_final_table_casts(staging_columns, log_profile=self._log_profile_after_verification_queries)

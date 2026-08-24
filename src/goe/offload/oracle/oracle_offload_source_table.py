@@ -16,83 +16,81 @@
 
 """OracleSourceTable: Library for logic/interaction with Oracle source of an offload"""
 
-from datetime import date, datetime
 import logging
 import re
-from typing import Union
+from datetime import date, datetime
 
-from oracledb import DatabaseError
 from numpy import datetime64
 
 from goe.offload import offload_constants
 from goe.offload.column_metadata import (
-    CanonicalColumn,
-    get_partition_columns,
-    is_safe_mapping,
+    ALL_CANONICAL_TYPES,
+    CANONICAL_CHAR_SEMANTICS_CHAR,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_VARIABLE_STRING,
+    DATE_CANONICAL_TYPES,
     GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_FLOAT,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
+    GOE_TYPE_INTERVAL_DS,
+    GOE_TYPE_INTERVAL_YM,
+    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_LARGE_STRING,
     GOE_TYPE_TIME,
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    CANONICAL_CHAR_SEMANTICS_CHAR,
-    ALL_CANONICAL_TYPES,
-    DATE_CANONICAL_TYPES,
+    GOE_TYPE_VARIABLE_STRING,
     NUMERIC_CANONICAL_TYPES,
     STRING_CANONICAL_TYPES,
+    CanonicalColumn,
+    get_partition_columns,
+    is_safe_mapping,
 )
 from goe.offload.frontend_api import QueryParameter
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_source_table import (
-    OffloadSourceTableInterface,
-    OffloadSourceTableException,
-    RdbmsPartition,
-    convert_high_values_to_python,
     OFFLOAD_PARTITION_TYPE_HASH,
     OFFLOAD_PARTITION_TYPE_LIST,
     OFFLOAD_PARTITION_TYPE_RANGE,
-)
-from goe.offload.oracle.oracle_column import (
-    OracleColumn,
-    ORACLE_TYPE_CHAR,
-    ORACLE_TYPE_NCHAR,
-    ORACLE_TYPE_CLOB,
-    ORACLE_TYPE_NCLOB,
-    ORACLE_TYPE_LONG,
-    ORACLE_TYPE_VARCHAR,
-    ORACLE_TYPE_VARCHAR2,
-    ORACLE_TYPE_NVARCHAR2,
-    ORACLE_TYPE_RAW,
-    ORACLE_TYPE_BLOB,
-    ORACLE_TYPE_LONG_RAW,
-    ORACLE_TYPE_NUMBER,
-    ORACLE_TYPE_FLOAT,
-    ORACLE_TYPE_BINARY_FLOAT,
-    ORACLE_TYPE_BINARY_DOUBLE,
-    ORACLE_TYPE_DATE,
-    ORACLE_TYPE_TIMESTAMP,
-    ORACLE_TYPE_TIMESTAMP_TZ,
-    ORACLE_TYPE_TIMESTAMP_LOCAL_TZ,
-    ORACLE_TYPE_INTERVAL_DS,
-    ORACLE_TYPE_INTERVAL_YM,
-    ORACLE_TYPE_XMLTYPE,
-    ORACLE_TIMESTAMP_RE,
+    OffloadSourceTableException,
+    OffloadSourceTableInterface,
+    RdbmsPartition,
+    convert_high_values_to_python,
 )
 from goe.offload.oracle import oracle_predicate
+from goe.offload.oracle.oracle_column import (
+    ORACLE_TIMESTAMP_RE,
+    ORACLE_TYPE_BINARY_DOUBLE,
+    ORACLE_TYPE_BINARY_FLOAT,
+    ORACLE_TYPE_BLOB,
+    ORACLE_TYPE_CHAR,
+    ORACLE_TYPE_CLOB,
+    ORACLE_TYPE_DATE,
+    ORACLE_TYPE_FLOAT,
+    ORACLE_TYPE_INTERVAL_DS,
+    ORACLE_TYPE_INTERVAL_YM,
+    ORACLE_TYPE_LONG,
+    ORACLE_TYPE_LONG_RAW,
+    ORACLE_TYPE_NCHAR,
+    ORACLE_TYPE_NCLOB,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_NVARCHAR2,
+    ORACLE_TYPE_RAW,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_TIMESTAMP_LOCAL_TZ,
+    ORACLE_TYPE_TIMESTAMP_TZ,
+    ORACLE_TYPE_VARCHAR,
+    ORACLE_TYPE_VARCHAR2,
+    ORACLE_TYPE_XMLTYPE,
+    OracleColumn,
+)
 from goe.util.goe_version import GOEVersion
 
 logger = logging.getLogger(__name__)
@@ -146,15 +144,13 @@ def oracle_number_literal_to_python(rdbms_literal):
 
 
 def oracle_version_supports_exadata(db_version: str) -> bool:
-    return GOEVersion(db_version) >= GOEVersion(
-        ORACLE_VERSION_WITH_CELL_OFFLOAD_PROCESSING
-    )
+    return GOEVersion(db_version) >= GOEVersion(ORACLE_VERSION_WITH_CELL_OFFLOAD_PROCESSING)
 
 
 def oracle_version_is_smart_scan_unsafe(db_version: str) -> bool:
-    return oracle_version_supports_exadata(db_version) and GOEVersion(
-        db_version
-    ) < GOEVersion(ORACLE_VERSION_SAFE_FOR_CELL_OFFLOAD_PROCESSING)
+    return oracle_version_supports_exadata(db_version) and GOEVersion(db_version) < GOEVersion(
+        ORACLE_VERSION_SAFE_FOR_CELL_OFFLOAD_PROCESSING
+    )
 
 
 ###########################################################################
@@ -182,7 +178,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
             and hasattr(connection_options, "rdbms_dsn")
         )
 
-        super(OracleSourceTable, self).__init__(
+        super().__init__(
             schema_name,
             table_name,
             connection_options,
@@ -193,8 +189,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         )
 
         logger.info(
-            "OracleSourceTable setup: (%s, %s, %s)"
-            % (schema_name, table_name, connection_options.ora_adm_user)
+            "OracleSourceTable setup: (%s, %s, %s)" % (schema_name, table_name, connection_options.ora_adm_user)
         )
         if dry_run:
             logger.info("* Dry run *")
@@ -254,23 +249,18 @@ class OracleSourceTable(OffloadSourceTableInterface):
     def _columns_getter(self):
         if self._is_view():
             return self._columns
-        elif self._offload_by_subpartition:
+        if self._offload_by_subpartition:
             return self._columns_with_subpartition_info
-        else:
-            return self._columns_with_partition_info
+        return self._columns_with_partition_info
 
     def _columns_setter(self, new_columns, skip_exists_check=False):
         """When running in verification mode we might need to fake the columns in order to continue processing."""
         if not skip_exists_check and self.exists():
-            raise OffloadSourceTableException(
-                "Set of columns is only supported when the table does NOT exist"
-            )
+            raise OffloadSourceTableException("Set of columns is only supported when the table does NOT exist")
         self._columns = new_columns
         self._columns_with_partition_info = self._get_columns_with_partition_info()
         self._columns_with_subpartition_info = self._get_columns_with_partition_info(
-            part_col_names_override=self._db_api.get_subpartition_column_names(
-                self.owner, self.table_name
-            )
+            part_col_names_override=self._db_api.get_subpartition_column_names(self.owner, self.table_name)
         )
 
     def _get_db_block_size(self):
@@ -295,9 +285,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 AND   t.owner = :owner
                 AND   t.table_name = :table_name"""
 
-        row = self._db_api.execute_query_fetch_one(
-            q, query_params={"owner": self.owner, "table_name": self.table_name}
-        )
+        row = self._db_api.execute_query_fetch_one(q, query_params={"owner": self.owner, "table_name": self.table_name})
         if row:
             self._table_exists = True
             (
@@ -349,9 +337,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 return None
 
             table_stats["num_rows"] = row[0]
-            table_stats["num_bytes"] = (
-                (row[1] * self._db_block_size) if row[1] else row[1]
-            )
+            table_stats["num_bytes"] = (row[1] * self._db_block_size) if row[1] else row[1]
             table_stats["avg_row_len"] = row[2]
 
             if self.is_partitioned():
@@ -373,9 +359,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 ):
                     table_stats["partition_stats"][row[0]] = {
                         "num_rows": row[1],
-                        "num_bytes": (
-                            (row[2] * self._db_block_size) if row[2] else row[2]
-                        ),
+                        "num_bytes": ((row[2] * self._db_block_size) if row[2] else row[2]),
                         "avg_row_len": row[3],
                     }
 
@@ -418,9 +402,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         return self._table_stats
 
     def _get_hash_bucket_candidate(self):
-        logger.debug(
-            "_get_hash_bucket_candidate: %s, %s" % (self.owner, self.table_name)
-        )
+        logger.debug("_get_hash_bucket_candidate: %s, %s" % (self.owner, self.table_name))
         q = """SELECT column_name
             FROM (
                 SELECT c.column_name
@@ -436,9 +418,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
             WHERE ROWNUM = 1""" % ",".join(
             sorted(
                 "'%s'" % dtype
-                for dtype in self.supported_data_types().difference(
-                    self.hash_bucket_unsuitable_data_types()
-                )
+                for dtype in self.supported_data_types().difference(self.hash_bucket_unsuitable_data_types())
             )
         )
         rows = self._db_api.execute_query_fetch_one(
@@ -454,14 +434,12 @@ class OracleSourceTable(OffloadSourceTableInterface):
         def hv_python_fn(hv):
             if populate_hvs:
                 return tuple(self.decode_partition_high_values(hv, strict=strict))
-            else:
-                return None
+            return None
 
         def hv_individual_fn(hv):
             if populate_hvs:
                 return tuple(self._decode_partition_high_values_string(hv))
-            else:
-                return None
+            return None
 
         logger.debug("_get_partitions: %s, %s" % (self.owner, self.table_name))
         q = """
@@ -545,9 +523,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
                     partition_name=partition_name,
                     partition_position=partition_position,
                     subpartition_count=subpartition_count,
-                    subpartition_names=(
-                        [subpartition_name] if subpartition_name is not None else None
-                    ),
+                    subpartition_names=([subpartition_name] if subpartition_name is not None else None),
                     high_values_csv=partition_high_value,
                     partition_size=partition_bytes,
                     num_rows=num_rows,
@@ -571,14 +547,12 @@ class OracleSourceTable(OffloadSourceTableInterface):
         def hv_python_fn(hv):
             if populate_hvs:
                 return tuple(self.decode_partition_high_values(hv, strict=strict))
-            else:
-                return None
+            return None
 
         def hv_individual_fn(hv):
             if populate_hvs:
                 return tuple(self._decode_partition_high_values_string(hv))
-            else:
-                return None
+            return None
 
         logger.debug("_get_subpartitions: %s, %s" % (self.owner, self.table_name))
         q = """
@@ -726,8 +700,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         When using optimiser stats only certain data types are supported
         """
         logger.debug(
-            "get_column_low_high_values: %s, %s, %s, %s"
-            % (self.owner, self.table_name, column_name, from_stats)
+            "get_column_low_high_values: %s, %s, %s, %s" % (self.owner, self.table_name, column_name, from_stats)
         )
         assert column_name
         column_name = column_name.upper()
@@ -735,9 +708,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         if from_stats:
             col = self.get_column(column_name)
             if not col:
-                raise OffloadSourceTableException(
-                    'Unknown column name "%s"' % column_name
-                )
+                raise OffloadSourceTableException('Unknown column name "%s"' % column_name)
 
             params = {
                 "owner": self.owner,
@@ -753,9 +724,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 ORACLE_TYPE_BINARY_FLOAT,
             ]:
                 raw_fn = "UTL_RAW.CAST_TO_%s" % (
-                    ORACLE_TYPE_NUMBER
-                    if col.data_type == ORACLE_TYPE_FLOAT
-                    else col.data_type
+                    ORACLE_TYPE_NUMBER if col.data_type == ORACLE_TYPE_FLOAT else col.data_type
                 )
                 q = """SELECT %(fn)s(low_value) AS low_val
                     ,      %(fn)s(high_value) AS high_val
@@ -765,13 +734,10 @@ class OracleSourceTable(OffloadSourceTableInterface):
                     AND    column_name = :column_name""" % {"fn": raw_fn}
                 row = self._db_api.execute_query_fetch_one(q, query_params=params)
             elif col.is_date_based():
-                row = self._db_api.oracle_get_column_low_high_dates(
-                    self.owner, self.table_name, col.name
-                )
+                row = self._db_api.oracle_get_column_low_high_dates(self.owner, self.table_name, col.name)
             else:
                 raise OffloadSourceTableException(
-                    'Unable to get values for column "%s" of type "%s" from stats'
-                    % (column_name, col.data_type)
+                    'Unable to get values for column "%s" of type "%s" from stats' % (column_name, col.data_type)
                 )
         else:
             # TODO nj@2021-07-21 Should this take ORACLE_VERSION_WITH_SUBPART_MIN_MAX_OPTIMIZATION into account?
@@ -789,7 +755,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         return row
 
     def _get_db_version(self):
-        """returns the RDBMS version"""
+        """Returns the RDBMS version"""
         if not hasattr(self, "_db_version") or not self._db_version:
             self._db_version = self._db_api.frontend_version()
         return self._db_version
@@ -815,10 +781,9 @@ class OracleSourceTable(OffloadSourceTableInterface):
     def _sample_data_types_data_sample_pct(self, data_sample_pct):
         if data_sample_pct and data_sample_pct < 0:
             return self._sample_data_types_max_pct()
-        elif data_sample_pct and data_sample_pct >= 100:
+        if data_sample_pct and data_sample_pct >= 100:
             return self._sample_data_types_max_pct()
-        else:
-            return data_sample_pct
+        return data_sample_pct
 
     def _sample_data_types_execute_query(self, sample_sql):
         query_options = {}
@@ -829,9 +794,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         )
 
     def _sample_data_types_date_as_string_column(self, column_name):
-        return OracleColumn(
-            column_name, self._db_api.generic_string_data_type(), data_length=128
-        )
+        return OracleColumn(column_name, self._db_api.generic_string_data_type(), data_length=128)
 
     def _sample_data_types_decimal_column(self, column, data_precision, data_scale):
         return OracleColumn(
@@ -867,8 +830,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
     def partition_type(self):
         if self._offload_by_subpartition:
             return self._subpartition_type
-        else:
-            return self._partition_type
+        return self._partition_type
 
     @property
     def subpartition_type(self):
@@ -879,19 +841,16 @@ class OracleSourceTable(OffloadSourceTableInterface):
         return self._offload_by_subpartition
 
     @property
-    def offload_partition_level(self) -> Union[int, None]:
+    def offload_partition_level(self) -> int | None:
         if self.is_partitioned():
             return 2 if self._offload_by_subpartition else 1
-        else:
-            return None
+        return None
 
     @property
     def parallelism(self):
         return self._parallelism
 
-    def check_nanosecond_offload_allowed(
-        self, backend_max_datetime_scale, allow_nanosecond_timestamp_columns=None
-    ):
+    def check_nanosecond_offload_allowed(self, backend_max_datetime_scale, allow_nanosecond_timestamp_columns=None):
         nano_cols = [
             _
             for _ in self.columns
@@ -939,9 +898,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         executed on demand and not during instantiation
         """
         if not self._partitions and self.is_partitioned():
-            self._partitions = self._get_partitions(
-                strict=strict, populate_hvs=populate_hvs
-            )
+            self._partitions = self._get_partitions(strict=strict, populate_hvs=populate_hvs)
         return self._partitions
 
     def get_subpartitions(self, strict=True, populate_hvs=True):
@@ -949,9 +906,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         executed on demand and not during instantiation
         """
         if not self._subpartitions and self.is_subpartitioned():
-            self._subpartitions = self._get_subpartitions(
-                strict=strict, populate_hvs=populate_hvs
-            )
+            self._subpartitions = self._get_subpartitions(strict=strict, populate_hvs=populate_hvs)
         return self._subpartitions
 
     def get_max_partition_size(self):
@@ -1020,8 +975,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         def to_char_ts_col(col_name, data_type):
             if data_type in (ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ):
                 return "TO_CHAR(%s,'YYYY-MM-DD HH24:MI:SS.FF9')" % col_name
-            else:
-                return col_name
+            return col_name
 
         assert self.partition_columns
 
@@ -1032,9 +986,9 @@ class OracleSourceTable(OffloadSourceTableInterface):
             proj_col = to_char_ts_col(min_of_col, part_col.data_type)
             min_sql = None
 
-            if self._offload_by_subpartition and GOEVersion(
-                self._db_version
-            ) < GOEVersion(ORACLE_VERSION_WITH_SUBPART_MIN_MAX_OPTIMIZATION):
+            if self._offload_by_subpartition and GOEVersion(self._db_version) < GOEVersion(
+                ORACLE_VERSION_WITH_SUBPART_MIN_MAX_OPTIMIZATION
+            ):
                 # In Oracle 11.2 MIN() on subpartition columns does not take advantage of PARTITION RANGE ALL MIN/MAX
                 # here we UNION ALL MIN() queries for each top level partition
                 top_level_partitions = self.get_partitions(populate_hvs=False)
@@ -1058,13 +1012,14 @@ class OracleSourceTable(OffloadSourceTableInterface):
         else:
             # MIN() is single column only so for multi-column partition schemes we use GROUP BY/ORDER BY
             cols = ", ".join([_.name for _ in self.partition_columns])
-            proj_cols = ", ".join(
-                [to_char_ts_col(_.name, _.data_type) for _ in self.partition_columns]
-            )
+            proj_cols = ", ".join([to_char_ts_col(_.name, _.data_type) for _ in self.partition_columns])
             order_by = cols
-            min_sql = (
-                "SELECT %s FROM (SELECT %s FROM %s GROUP BY %s ORDER BY %s) WHERE ROWNUM = 1"
-                % (proj_cols, cols, owner_table, cols, order_by)
+            min_sql = "SELECT %s FROM (SELECT %s FROM %s GROUP BY %s ORDER BY %s) WHERE ROWNUM = 1" % (
+                proj_cols,
+                cols,
+                owner_table,
+                cols,
+                order_by,
             )
 
         self._messages.log("Min partition key SQL: %s" % min_sql, detail=VVERBOSE)
@@ -1079,9 +1034,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         return self._partition_has_rows(partition_name)
 
     def predicate_has_rows(self, predicate):
-        where_clause, query_params = self.predicate_to_where_clause_with_binds(
-            predicate
-        )
+        where_clause, query_params = self.predicate_to_where_clause_with_binds(predicate)
         self._debug(f"Converted predicate: {where_clause}")
         sql = 'SELECT 1 FROM "%s"."%s" WHERE (%s) AND ROWNUM = 1' % (
             self.owner.upper(),
@@ -1094,53 +1047,37 @@ class OracleSourceTable(OffloadSourceTableInterface):
     def predicate_to_where_clause(self, predicate, columns_override=None):
         if not predicate:
             return None
-        return oracle_predicate.predicate_to_where_clause(
-            columns_override or self.columns, predicate
-        )
+        return oracle_predicate.predicate_to_where_clause(columns_override or self.columns, predicate)
 
     def predicate_to_where_clause_with_binds(self, predicate):
-        where_clause, bind_dict = oracle_predicate.predicate_to_where_clause_with_binds(
-            self.columns, predicate
-        )
-        query_params = [
-            QueryParameter(param_name=k, param_value=v) for k, v in bind_dict.items()
-        ]
+        where_clause, bind_dict = oracle_predicate.predicate_to_where_clause_with_binds(self.columns, predicate)
+        query_params = [QueryParameter(param_name=k, param_value=v) for k, v in bind_dict.items()]
         return where_clause, query_params
 
-    def rdbms_literal_to_python(
-        self, rdbms_column, rdbms_literal, partition_type, strict=True
-    ):
+    def rdbms_literal_to_python(self, rdbms_column, rdbms_literal, partition_type, strict=True):
         """Takes a single string as stored in dba_tab_partitions.high_value and rationalises to Python value"""
-        logger.debug(
-            "rdbms_literal_to_python: %s, %s, %s"
-            % (rdbms_column.name, rdbms_column.data_type, rdbms_literal)
-        )
+        logger.debug("rdbms_literal_to_python: %s, %s, %s" % (rdbms_column.name, rdbms_column.data_type, rdbms_literal))
         converted_value = None
         if rdbms_literal.upper() in ("DEFAULT", offload_constants.PART_OUT_OF_LIST):
             converted_value = offload_constants.PART_OUT_OF_LIST
         elif rdbms_column.is_date_based():
-            converted_value = self.datetime_literal_to_python(
-                rdbms_literal, strict=strict
-            )
+            converted_value = self.datetime_literal_to_python(rdbms_literal, strict=strict)
         elif rdbms_column.data_type == ORACLE_TYPE_NUMBER:
             converted_value = self.numeric_literal_to_python(rdbms_literal)
         elif rdbms_column.is_string_based():
             converted_value = self.char_literal_to_python(rdbms_literal)
+        elif strict:
+            raise OffloadSourceTableException(
+                "Unsupported partition key type for %s: %s" % (rdbms_column.name, rdbms_column.data_type)
+            )
         else:
-            if strict:
-                raise OffloadSourceTableException(
-                    "Unsupported partition key type for %s: %s"
-                    % (rdbms_column.name, rdbms_column.data_type)
-                )
-            else:
-                converted_value = str(rdbms_literal)
+            converted_value = str(rdbms_literal)
         return converted_value
 
     def supported_partition_data_types(self):
         if self.partition_type == OFFLOAD_PARTITION_TYPE_RANGE:
             return ORACLE_SUPPORTED_RANGE_DATA_TYPES
-        else:
-            return ORACLE_SUPPORTED_LIST_DATA_TYPES
+        return ORACLE_SUPPORTED_LIST_DATA_TYPES
 
     def to_rdbms_literal_with_sql_conv_fn(self, py_val, rdbms_data_type):
         """Function takes a python variable and returns a variable that cx-Oracle can cope with along
@@ -1181,8 +1118,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
             # Unimplemented as we don't support timezones within the offload/present Python
             # We can offload the data but not as a partition key or for use with this code
             raise NotImplementedError(
-                'Oracle to_rdbms_literal_with_sql_conv_fn() data type "%s" not implemented.'
-                % rdbms_data_type
+                'Oracle to_rdbms_literal_with_sql_conv_fn() data type "%s" not implemented.' % rdbms_data_type
             )
 
         return py_val, sql_fn
@@ -1193,19 +1129,11 @@ class OracleSourceTable(OffloadSourceTableInterface):
         """
 
         def partition_key_data_types_are_valid(partition_columns):
-            return bool(
-                [
-                    _
-                    for _ in partition_columns
-                    if _.data_type in ORACLE_SUPPORTED_RANGE_DATA_TYPES
-                ]
-            )
+            return bool([_ for _ in partition_columns if _.data_type in ORACLE_SUPPORTED_RANGE_DATA_TYPES])
 
         if not self.is_subpartitioned():
             return False
-        if not partition_key_data_types_are_valid(
-            get_partition_columns(self._columns_with_subpartition_info)
-        ):
+        if not partition_key_data_types_are_valid(get_partition_columns(self._columns_with_subpartition_info)):
             return False
         if (self.partition_type, self.subpartition_type) in [
             (OFFLOAD_PARTITION_TYPE_LIST, OFFLOAD_PARTITION_TYPE_RANGE),
@@ -1217,9 +1145,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
             OFFLOAD_PARTITION_TYPE_RANGE,
         ):
             if valid_for_auto_enable:
-                if not partition_key_data_types_are_valid(
-                    get_partition_columns(self._columns_with_partition_info)
-                ):
+                if not partition_key_data_types_are_valid(get_partition_columns(self._columns_with_partition_info)):
                     # top level RANGE incompatible but subpartition RANGE looks good
                     return True
             else:
@@ -1265,34 +1191,28 @@ class OracleSourceTable(OffloadSourceTableInterface):
         """Return a string based Oracle date/timestamp literal (as found in HIGH_VALUE) as a Python value"""
         if rdbms_literal in ("MAXVALUE", offload_constants.PART_OUT_OF_RANGE):
             return datetime64(datetime.max)
-        elif "TO_DATE(" in rdbms_literal:
+        if "TO_DATE(" in rdbms_literal:
             # if decoding dba_tab_partitions.high_value then need to parse TO_DATE()
             td, ds, c1, fmt, c2, cal, br = rdbms_literal.split("'")
             return datetime64(ds)
-        elif ORACLE_TYPE_TIMESTAMP in rdbms_literal and len(rdbms_literal) in (31, 41):
+        if ORACLE_TYPE_TIMESTAMP in rdbms_literal and len(rdbms_literal) in (31, 41):
             # if decoding dba_tab_partitions.high_value then need to parse TIMESTAMP' ...'
             # len 31 == no FF. len 41 == with FF9
             ts, ds, meh = rdbms_literal.split("'")
             return datetime64(ds)
-        elif not strict:
+        if not strict:
             return None
-        else:
-            raise NotImplementedError(
-                "Oracle date/time literal not implemented: %s" % rdbms_literal
-            )
+        raise NotImplementedError("Oracle date/time literal not implemented: %s" % rdbms_literal)
 
     @staticmethod
     def numeric_literal_to_python(rdbms_literal):
         """Return a string based Oracle NUMBER literal (as found in HIGH_VALUE) as a Python value"""
         if rdbms_literal in ("MAXVALUE", offload_constants.PART_OUT_OF_RANGE):
             return float("inf")
-        elif re.match(r"^-?\d+$", rdbms_literal.strip("'").strip()):
+        if re.match(r"^-?\d+$", rdbms_literal.strip("'").strip()):
             # strip(') because Oracle allows single quoted HVs for NUMERIC partitioning
             return int(rdbms_literal.strip("'").strip())
-        else:
-            raise NotImplementedError(
-                "Oracle NUMBER literal not implemented: %s" % rdbms_literal
-            )
+        raise NotImplementedError("Oracle NUMBER literal not implemented: %s" % rdbms_literal)
 
     def get_subpartition_boundary_info(self):
         """Return a dictionary of all subpartition high values along with:
@@ -1318,8 +1238,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
             # For convenience we store whether the boundary is a "common boundary"
             # This avoids having the logic in multiple places, an alternative would be to expose a method for this
             subs_by_hwm[p.high_values_python]["common"] = bool(
-                subs_by_hwm[p.high_values_python]["sub_count"]
-                == subs_by_hwm[p.high_values_python]["expected_subs"]
+                subs_by_hwm[p.high_values_python]["sub_count"] == subs_by_hwm[p.high_values_python]["expected_subs"]
             )
             if p.subpartition_position == p.subpartition_count:
                 # Is this subpartition the last in its partition (if it is, remove it from future
@@ -1379,27 +1298,23 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 data_length=column.data_length,
                 safe_mapping=True,
             )
-        elif column.data_type in (
+        if column.data_type in (
             ORACLE_TYPE_CLOB,
             ORACLE_TYPE_NCLOB,
             ORACLE_TYPE_LONG,
         ):
             return new_column(column, GOE_TYPE_LARGE_STRING)
-        elif column.data_type in (ORACLE_TYPE_VARCHAR2, ORACLE_TYPE_NVARCHAR2):
-            return new_column(
-                column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length
-            )
-        elif column.data_type == ORACLE_TYPE_RAW:
+        if column.data_type in (ORACLE_TYPE_VARCHAR2, ORACLE_TYPE_NVARCHAR2):
+            return new_column(column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length)
+        if column.data_type == ORACLE_TYPE_RAW:
             return new_column(column, GOE_TYPE_BINARY, data_length=column.data_length)
-        elif column.data_type in (ORACLE_TYPE_BLOB, ORACLE_TYPE_LONG_RAW):
+        if column.data_type in (ORACLE_TYPE_BLOB, ORACLE_TYPE_LONG_RAW):
             return new_column(column, GOE_TYPE_LARGE_BINARY)
-        elif column.data_type == ORACLE_TYPE_FLOAT:
+        if column.data_type == ORACLE_TYPE_FLOAT:
             # FLOAT is an anomaly because precision is specified in bits. We could convert it but scale is unknown
             # and NUMBER(p, *) is not possible. Best thing for now is to wipe out precision matching NUMBER(*,*)
-            return new_column(
-                column, GOE_TYPE_DECIMAL, data_precision=None, safe_mapping=False
-            )
-        elif column.data_type == ORACLE_TYPE_NUMBER:
+            return new_column(column, GOE_TYPE_DECIMAL, data_precision=None, safe_mapping=False)
+        if column.data_type == ORACLE_TYPE_NUMBER:
             data_precision = column.data_precision
             data_scale = column.data_scale
             if data_precision is not None and data_scale is not None:
@@ -1415,59 +1330,45 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 data_precision, data_scale, safe_mapping=column.safe_mapping
             )
             if integral_type:
-                return new_column(
-                    column, integral_type, data_precision=data_precision, data_scale=0
-                )
-            else:
-                # If precision & scale are None then this is unsafe, otherwise leave it None to let new_column() logic take over
-                safe_mapping = (
-                    False if data_precision is None and data_scale is None else None
-                )
-                return new_column(
-                    column,
-                    GOE_TYPE_DECIMAL,
-                    data_precision=data_precision,
-                    data_scale=data_scale,
-                    safe_mapping=safe_mapping,
-                )
-        elif column.data_type == ORACLE_TYPE_BINARY_FLOAT:
+                return new_column(column, integral_type, data_precision=data_precision, data_scale=0)
+            # If precision & scale are None then this is unsafe, otherwise leave it None to let new_column() logic take over
+            safe_mapping = False if data_precision is None and data_scale is None else None
+            return new_column(
+                column,
+                GOE_TYPE_DECIMAL,
+                data_precision=data_precision,
+                data_scale=data_scale,
+                safe_mapping=safe_mapping,
+            )
+        if column.data_type == ORACLE_TYPE_BINARY_FLOAT:
             return new_column(column, GOE_TYPE_FLOAT)
-        elif column.data_type == ORACLE_TYPE_BINARY_DOUBLE:
+        if column.data_type == ORACLE_TYPE_BINARY_DOUBLE:
             return new_column(column, GOE_TYPE_DOUBLE)
-        elif column.data_type == ORACLE_TYPE_DATE:
+        if column.data_type == ORACLE_TYPE_DATE:
             return new_column(column, GOE_TYPE_TIMESTAMP)
-        elif column.data_type == ORACLE_TYPE_TIMESTAMP:
+        if column.data_type == ORACLE_TYPE_TIMESTAMP:
             return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=column.data_scale)
-        elif column.data_type == ORACLE_TYPE_TIMESTAMP_TZ:
-            return new_column(
-                column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale
-            )
-        elif column.data_type == ORACLE_TYPE_TIMESTAMP_LOCAL_TZ:
-            return new_column(
-                column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale
-            )
-        elif column.data_type == ORACLE_TYPE_INTERVAL_DS:
+        if column.data_type == ORACLE_TYPE_TIMESTAMP_TZ:
+            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale)
+        if column.data_type == ORACLE_TYPE_TIMESTAMP_LOCAL_TZ:
+            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale)
+        if column.data_type == ORACLE_TYPE_INTERVAL_DS:
             return new_column(
                 column,
                 GOE_TYPE_INTERVAL_DS,
                 data_precision=column.data_precision,
                 data_scale=column.data_scale,
             )
-        elif column.data_type == ORACLE_TYPE_INTERVAL_YM:
+        if column.data_type == ORACLE_TYPE_INTERVAL_YM:
             return new_column(
                 column,
                 GOE_TYPE_INTERVAL_YM,
                 data_precision=column.data_precision,
                 data_scale=column.data_scale,
             )
-        elif column.data_type == ORACLE_TYPE_XMLTYPE:
-            return new_column(
-                column, GOE_TYPE_LARGE_STRING, data_scale=column.data_scale
-            )
-        else:
-            raise NotImplementedError(
-                "Unsupported Oracle data type: %s" % column.data_type
-            )
+        if column.data_type == ORACLE_TYPE_XMLTYPE:
+            return new_column(column, GOE_TYPE_LARGE_STRING, data_scale=column.data_scale)
+        raise NotImplementedError("Unsupported Oracle data type: %s" % column.data_type)
 
     def from_canonical_column(self, column):
         """Translate an internal GOE column to an Oracle column"""
@@ -1497,20 +1398,11 @@ class OracleSourceTable(OffloadSourceTableInterface):
             )
 
         def nchar_or_char(data_type, char_semantics):
-            if (
-                data_type == ORACLE_TYPE_CHAR
-                and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE
-            ):
+            if data_type == ORACLE_TYPE_CHAR and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE:
                 return ORACLE_TYPE_NCHAR
-            elif (
-                data_type == ORACLE_TYPE_CLOB
-                and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE
-            ):
+            if data_type == ORACLE_TYPE_CLOB and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE:
                 return ORACLE_TYPE_NCLOB
-            elif (
-                data_type == ORACLE_TYPE_VARCHAR2
-                and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE
-            ):
+            if data_type == ORACLE_TYPE_VARCHAR2 and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE:
                 return ORACLE_TYPE_NVARCHAR2
             return data_type
 
@@ -1518,11 +1410,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         assert isinstance(column, CanonicalColumn)
 
         if column.data_type == GOE_TYPE_FIXED_STRING:
-            max_length = (
-                1000
-                if column.char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE
-                else 2000
-            )
+            max_length = 1000 if column.char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE else 2000
             if column.data_length or column.char_length:
                 data_length = column.data_length
                 char_length = column.char_length or data_length
@@ -1530,30 +1418,20 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 data_length = char_length = max_length
             if (
                 char_length
-                if column.char_semantics
-                in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
+                if column.char_semantics in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
                 else data_length
             ) > max_length:
-                return new_column(
-                    column, nchar_or_char(ORACLE_TYPE_CLOB, column.char_semantics)
-                )
-            else:
-                return new_column(
-                    column,
-                    nchar_or_char(ORACLE_TYPE_CHAR, column.char_semantics),
-                    data_length=data_length,
-                    char_length=char_length,
-                )
-        elif column.data_type == GOE_TYPE_LARGE_STRING:
+                return new_column(column, nchar_or_char(ORACLE_TYPE_CLOB, column.char_semantics))
             return new_column(
-                column, nchar_or_char(ORACLE_TYPE_CLOB, column.char_semantics)
+                column,
+                nchar_or_char(ORACLE_TYPE_CHAR, column.char_semantics),
+                data_length=data_length,
+                char_length=char_length,
             )
-        elif column.data_type == GOE_TYPE_VARIABLE_STRING:
-            max_length = (
-                2000
-                if column.char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE
-                else 4000
-            )
+        if column.data_type == GOE_TYPE_LARGE_STRING:
+            return new_column(column, nchar_or_char(ORACLE_TYPE_CLOB, column.char_semantics))
+        if column.data_type == GOE_TYPE_VARIABLE_STRING:
+            max_length = 2000 if column.char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE else 4000
             if column.data_length or column.char_length:
                 data_length = column.data_length
                 char_length = column.char_length or data_length
@@ -1561,29 +1439,24 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 data_length = char_length = max_length
             if (
                 char_length
-                if column.char_semantics
-                in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
+                if column.char_semantics in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
                 else data_length
             ) > max_length:
-                return new_column(
-                    column, nchar_or_char(ORACLE_TYPE_CLOB, column.char_semantics)
-                )
-            else:
-                return new_column(
-                    column,
-                    nchar_or_char(ORACLE_TYPE_VARCHAR2, column.char_semantics),
-                    data_length=data_length,
-                    char_length=char_length,
-                )
-        elif column.data_type == GOE_TYPE_BINARY:
+                return new_column(column, nchar_or_char(ORACLE_TYPE_CLOB, column.char_semantics))
+            return new_column(
+                column,
+                nchar_or_char(ORACLE_TYPE_VARCHAR2, column.char_semantics),
+                data_length=data_length,
+                char_length=char_length,
+            )
+        if column.data_type == GOE_TYPE_BINARY:
             data_length = column.data_length or 2000
             if data_length > 2000:
                 return new_column(column, ORACLE_TYPE_BLOB)
-            else:
-                return new_column(column, ORACLE_TYPE_RAW, data_length=data_length)
-        elif column.data_type == GOE_TYPE_LARGE_BINARY:
+            return new_column(column, ORACLE_TYPE_RAW, data_length=data_length)
+        if column.data_type == GOE_TYPE_LARGE_BINARY:
             return new_column(column, ORACLE_TYPE_BLOB)
-        elif column.data_type in (
+        if column.data_type in (
             GOE_TYPE_INTEGER_1,
             GOE_TYPE_INTEGER_2,
             GOE_TYPE_INTEGER_4,
@@ -1600,7 +1473,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 data_scale=data_scale,
                 data_length=data_length,
             )
-        elif column.data_type == GOE_TYPE_DECIMAL:
+        if column.data_type == GOE_TYPE_DECIMAL:
             data_length = column.data_length or 22
             data_precision, data_scale = column.data_precision, column.data_scale
             if column.data_precision and column.data_precision > 38:
@@ -1614,53 +1487,37 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 data_scale=data_scale,
                 data_length=data_length,
             )
-        elif column.data_type == GOE_TYPE_FLOAT:
+        if column.data_type == GOE_TYPE_FLOAT:
             return new_column(column, ORACLE_TYPE_BINARY_FLOAT, data_length=4)
-        elif column.data_type == GOE_TYPE_DOUBLE:
+        if column.data_type == GOE_TYPE_DOUBLE:
             return new_column(column, ORACLE_TYPE_BINARY_DOUBLE, data_length=8)
-        elif column.data_type == GOE_TYPE_DATE:
+        if column.data_type == GOE_TYPE_DATE:
             return new_column(column, ORACLE_TYPE_DATE, data_length=7)
-        elif column.data_type == GOE_TYPE_TIME:
+        if column.data_type == GOE_TYPE_TIME:
             return new_column(column, ORACLE_TYPE_VARCHAR2, data_length=18)
-        elif column.data_type == GOE_TYPE_TIMESTAMP:
-            data_scale = (
-                column.data_scale
-                if column.data_scale is not None
-                else self.max_datetime_scale()
-            )
+        if column.data_type == GOE_TYPE_TIMESTAMP:
+            data_scale = column.data_scale if column.data_scale is not None else self.max_datetime_scale()
             if data_scale == 0:
                 return new_column(column, ORACLE_TYPE_DATE, data_length=7)
-            else:
-                return new_column(
-                    column, ORACLE_TYPE_TIMESTAMP, data_scale=data_scale, data_length=11
-                )
-        elif column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            data_scale = (
-                column.data_scale
-                if column.data_scale is not None
-                else self.max_datetime_scale()
-            )
-            return new_column(
-                column, ORACLE_TYPE_TIMESTAMP_TZ, data_scale=data_scale, data_length=13
-            )
-        elif column.data_type == GOE_TYPE_INTERVAL_DS:
+            return new_column(column, ORACLE_TYPE_TIMESTAMP, data_scale=data_scale, data_length=11)
+        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
+            data_scale = column.data_scale if column.data_scale is not None else self.max_datetime_scale()
+            return new_column(column, ORACLE_TYPE_TIMESTAMP_TZ, data_scale=data_scale, data_length=13)
+        if column.data_type == GOE_TYPE_INTERVAL_DS:
             return new_column(
                 column,
                 ORACLE_TYPE_INTERVAL_DS,
                 data_precision=column.data_precision,
                 data_scale=column.data_scale,
             )
-        elif column.data_type == GOE_TYPE_INTERVAL_YM:
+        if column.data_type == GOE_TYPE_INTERVAL_YM:
             return new_column(
                 column,
                 ORACLE_TYPE_INTERVAL_YM,
                 data_precision=column.data_precision,
                 data_scale=column.data_scale,
             )
-        else:
-            raise NotImplementedError(
-                "Unsupported GOE data type: %s" % column.data_type
-            )
+        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
 
     def valid_canonical_override(self, column, canonical_override):
         assert isinstance(column, OracleColumn)
@@ -1670,39 +1527,34 @@ class OracleSourceTable(OffloadSourceTableInterface):
             target_type = canonical_override
         if column.data_type in [ORACLE_TYPE_CHAR, ORACLE_TYPE_NCHAR]:
             return bool(target_type == GOE_TYPE_FIXED_STRING)
-        elif column.data_type in [ORACLE_TYPE_CLOB, ORACLE_TYPE_NCLOB]:
+        if column.data_type in [ORACLE_TYPE_CLOB, ORACLE_TYPE_NCLOB]:
             return bool(target_type == GOE_TYPE_LARGE_STRING)
-        elif column.data_type in [
+        if column.data_type in [
             ORACLE_TYPE_VARCHAR,
             ORACLE_TYPE_VARCHAR2,
             ORACLE_TYPE_NVARCHAR2,
         ]:
             return bool(target_type == GOE_TYPE_VARIABLE_STRING)
-        elif column.data_type == ORACLE_TYPE_RAW:
+        if column.data_type == ORACLE_TYPE_RAW:
             return bool(target_type == GOE_TYPE_BINARY)
-        elif column.data_type == ORACLE_TYPE_BLOB:
+        if column.data_type == ORACLE_TYPE_BLOB:
             return bool(target_type == GOE_TYPE_LARGE_BINARY)
-        elif column.data_type == ORACLE_TYPE_BINARY_FLOAT:
+        if column.data_type == ORACLE_TYPE_BINARY_FLOAT:
             return bool(target_type in [GOE_TYPE_FLOAT, GOE_TYPE_DOUBLE])
-        elif column.data_type == ORACLE_TYPE_BINARY_DOUBLE:
+        if column.data_type == ORACLE_TYPE_BINARY_DOUBLE:
             return bool(target_type == GOE_TYPE_DOUBLE)
-        elif column.is_number_based():
+        if column.is_number_based():
             return target_type in NUMERIC_CANONICAL_TYPES
-        elif column.is_date_based() and column.is_time_zone_based():
+        if column.is_date_based() and column.is_time_zone_based():
             return bool(target_type == GOE_TYPE_TIMESTAMP_TZ)
-        elif column.is_date_based():
-            return bool(
-                target_type in DATE_CANONICAL_TYPES
-                or target_type in STRING_CANONICAL_TYPES
-            )
-        elif column.data_type == ORACLE_TYPE_INTERVAL_DS:
+        if column.is_date_based():
+            return bool(target_type in DATE_CANONICAL_TYPES or target_type in STRING_CANONICAL_TYPES)
+        if column.data_type == ORACLE_TYPE_INTERVAL_DS:
             return bool(target_type == GOE_TYPE_INTERVAL_DS)
-        elif column.data_type == ORACLE_TYPE_INTERVAL_YM:
+        if column.data_type == ORACLE_TYPE_INTERVAL_YM:
             return bool(target_type == GOE_TYPE_INTERVAL_YM)
-        elif target_type not in ALL_CANONICAL_TYPES:
-            self._messages.log(
-                "Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE
-            )
+        if target_type not in ALL_CANONICAL_TYPES:
+            self._messages.log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
             return False
         return False
 
@@ -1716,9 +1568,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
     def transform_tokenize_data_type(self):
         return ORACLE_TYPE_VARCHAR2
 
-    def transform_regexp_replace_expression(
-        self, rdbms_column, regexp_replace_pattern, regexp_replace_string
-    ):
+    def transform_regexp_replace_expression(self, rdbms_column, regexp_replace_pattern, regexp_replace_string):
         return "REGEXP_REPLACE(%s, %s, %s)" % (
             self.enclose_identifier(rdbms_column.name),
             regexp_replace_pattern,

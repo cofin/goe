@@ -20,9 +20,7 @@ from goe.offload.offload_constants import (
 )
 
 
-def orchestration_repo_client_factory(
-    connection_options, messages, dry_run=None, trace_action=None
-):
+def orchestration_repo_client_factory(connection_options, messages, dry_run=None, trace_action=None):
     if dry_run is None:
         if hasattr(connection_options, "execute"):
             dry_run = bool(not connection_options.execute)
@@ -33,16 +31,11 @@ def orchestration_repo_client_factory(
             OracleOrchestrationRepoClient,
         )
 
-        return OracleOrchestrationRepoClient(
-            connection_options, messages, dry_run=dry_run, trace_action=trace_action
-        )
-    elif connection_options.db_type == DBTYPE_TERADATA:
+        return OracleOrchestrationRepoClient(connection_options, messages, dry_run=dry_run, trace_action=trace_action)
+    if connection_options.db_type == DBTYPE_TERADATA:
         from goe.persistence.teradata.teradata_orchestration_repo_client import (
             TeradataOrchestrationRepoClient,
         )
 
-        return TeradataOrchestrationRepoClient(
-            connection_options, messages, dry_run=dry_run, trace_action=trace_action
-        )
-    else:
-        raise NotImplementedError("Unsupported RDBMS: %s" % connection_options.db_type)
+        return TeradataOrchestrationRepoClient(connection_options, messages, dry_run=dry_run, trace_action=trace_action)
+    raise NotImplementedError("Unsupported RDBMS: %s" % connection_options.db_type)

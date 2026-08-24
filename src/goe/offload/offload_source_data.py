@@ -14,51 +14,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" OffloadSourceData: Library for logic/interaction with data that is the source of an offload
-    Goes hand in hand with OffloadSourceTable but is more about interacting with the source data,
-    applying filters to it etc
-    Any RDBMS specifics should be catered for in OffloadSourceTable, this module should be generic
-    offload logic
+"""OffloadSourceData: Library for logic/interaction with data that is the source of an offload
+Goes hand in hand with OffloadSourceTable but is more about interacting with the source data,
+applying filters to it etc
+Any RDBMS specifics should be catered for in OffloadSourceTable, this module should be generic
+offload logic
 """
 
-from abc import ABCMeta, abstractmethod
-from datetime import datetime, date
 import logging
 import re
+from abc import ABCMeta, abstractmethod
+from datetime import date, datetime
 from functools import partial
 
 from numpy import datetime64
 
 from goe.offload import offload_constants, predicate_offload
+from goe.offload.backend_table import BackendTableInterface
 from goe.offload.column_metadata import valid_column_list
 from goe.offload.offload_functions import (
-    get_dsl_threshold_clauses,
     datetime_literal_to_python,
+    get_dsl_threshold_clauses,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_metadata_functions import (
-    incremental_hv_list_from_csv,
-    decode_metadata_incremental_high_values_from_metadata,
     OFFLOAD_TYPE_FULL,
     OFFLOAD_TYPE_INCREMENTAL,
+    decode_metadata_incremental_high_values_from_metadata,
+    incremental_hv_list_from_csv,
 )
 from goe.offload.offload_source_table import (
-    OffloadSourceTableInterface,
-    OFFLOAD_PARTITION_TYPE_RANGE,
     OFFLOAD_PARTITION_TYPE_LIST,
+    OFFLOAD_PARTITION_TYPE_RANGE,
+    OffloadSourceTableInterface,
 )
-from goe.offload.backend_table import BackendTableInterface
 from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP,
     ORACLE_TYPE_TIMESTAMP_TZ,
 )
 from goe.persistence.orchestration_metadata import (
-    INCREMENTAL_PREDICATE_TYPE_PREDICATE,
-    INCREMENTAL_PREDICATE_TYPE_RANGE,
-    INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE_AND_PREDICATE,
+    INCREMENTAL_PREDICATE_TYPE_PREDICATE,
+    INCREMENTAL_PREDICATE_TYPE_RANGE,
+    INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE,
 )
 
 
@@ -89,39 +89,27 @@ LAPBO_TYPE_100_10 = "100/10"
 LAPBO_TYPE_100_0 = "100/0"
 
 # Text used in exceptions that can be matched in tests
-NO_DEFAULT_PARTITION_NOTICE_TEXT = (
-    f"with high_value of {offload_constants.PART_OUT_OF_LIST}"
-)
+NO_DEFAULT_PARTITION_NOTICE_TEXT = f"with high_value of {offload_constants.PART_OUT_OF_LIST}"
 NO_MATCHING_PARTITION_EXCEPTION_TEXT = "No partition found matching name"
-NO_MAXVALUE_PARTITION_NOTICE_TEXT = (
-    f"with high_value of {offload_constants.PART_OUT_OF_RANGE}"
-)
-INCREMENTAL_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT = (
-    "Offload type invalid when DEFAULT partition has been offloaded"
-)
+NO_MAXVALUE_PARTITION_NOTICE_TEXT = f"with high_value of {offload_constants.PART_OUT_OF_RANGE}"
+INCREMENTAL_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT = "Offload type invalid when DEFAULT partition has been offloaded"
 INVALID_HV_FOR_LIST_AS_RANGE_EXCEPTION_TEXT = (
     "Partitions have key values which are incompatible with LIST_AS_RANGE offloading"
 )
-IPA_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT = (
-    f"Cannot offload {offload_constants.PART_OUT_OF_LIST} partition"
+IPA_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT = f"Cannot offload {offload_constants.PART_OUT_OF_LIST} partition"
+OFFLOAD_TYPE_CHANGE_FOR_PBO_EXCEPTION_TEXT = (
+    "Switching between offload type FULL/INCREMENTAL is not supported for Predicate-Based Offload"
 )
-OFFLOAD_TYPE_CHANGE_FOR_PBO_EXCEPTION_TEXT = "Switching between offload type FULL/INCREMENTAL is not supported for Predicate-Based Offload"
 PREDICATE_APPEND_HWM_MESSAGE_TEXT = "Appended IPA high value to offload predicate"
-PREDICATE_TYPE_INCOMPATIBLE_EXCEPTION_TEXT = (
-    "--offload-predicate is incompatible with INCREMENTAL_PREDICATE_TYPE"
-)
+PREDICATE_TYPE_INCOMPATIBLE_EXCEPTION_TEXT = "--offload-predicate is incompatible with INCREMENTAL_PREDICATE_TYPE"
 PREDICATE_TYPE_NO_MODIFY_HV_EXCEPTION_TEXT = (
     "Option --no-modify-hybrid-view cannot be used with INCREMENTAL_PREDICATE_TYPE"
 )
 PREDICATE_TYPE_NO_MODIFY_RESET_EXCEPTION_TEXT = (
     "Options --no-modify-hybrid-view and --reset-hybrid-view are not compatible"
 )
-PREDICATE_TYPE_OFFLOAD_TYPE_FULL_EXCEPTION_TEXT = (
-    "OFFLOAD_TYPE FULL is not compatible with INCREMENTAL_PREDICATE_TYPE"
-)
-PREDICATE_TYPE_REQUIRED_EXCEPTION_TEXT = (
-    "--offload-predicate-type required for existing predicate type"
-)
+PREDICATE_TYPE_OFFLOAD_TYPE_FULL_EXCEPTION_TEXT = "OFFLOAD_TYPE FULL is not compatible with INCREMENTAL_PREDICATE_TYPE"
+PREDICATE_TYPE_REQUIRED_EXCEPTION_TEXT = "--offload-predicate-type required for existing predicate type"
 RANGE_AND_PREDICATE_WITHOUT_PART_KEY_EXCEPTION_TEXT = (
     "Offload predicate must contain a predicate for all existing partition key columns"
 )
@@ -152,9 +140,7 @@ def offload_source_data_factory(
         offload_operation.offload_predicate
         or offload_operation.ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_PREDICATE
     ):
-        messages.log(
-            "Offload source data type: OffloadSourceDataPredicate", detail=VVERBOSE
-        )
+        messages.log("Offload source data type: OffloadSourceDataPredicate", detail=VVERBOSE)
         return OffloadSourceDataPredicate(
             offload_source_table,
             offload_target_table,
@@ -165,7 +151,7 @@ def offload_source_data_factory(
             rdbms_partition_columns_override=rdbms_partition_columns_override,
             col_offload_source_table_override=col_offload_source_table_override,
         )
-    elif not offload_source_table.partition_type:
+    if not offload_source_table.partition_type:
         messages.log("Offload source data type: OffloadSourceDataFull", detail=VVERBOSE)
         return OffloadSourceDataFull(
             offload_source_table,
@@ -175,10 +161,7 @@ def offload_source_data_factory(
             messages,
             source_client_type=source_client_type,
         )
-    elif (
-        offload_source_table.partition_type
-        not in OFFLOAD_PARTITION_APPEND_CAPABLE_TYPES
-    ):
+    if offload_source_table.partition_type not in OFFLOAD_PARTITION_APPEND_CAPABLE_TYPES:
         messages.log(
             "Offload source data type: OffloadSourceDataFullPartitioned",
             detail=VVERBOSE,
@@ -193,7 +176,7 @@ def offload_source_data_factory(
             rdbms_partition_columns_override=rdbms_partition_columns_override,
             col_offload_source_table_override=col_offload_source_table_override,
         )
-    elif offload_source_table.partition_type in (
+    if offload_source_table.partition_type in (
         OFFLOAD_PARTITION_TYPE_RANGE,
         OFFLOAD_PARTITION_TYPE_LIST,
     ):
@@ -227,9 +210,7 @@ def offload_source_data_factory(
             )
 
         if offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_RANGE:
-            messages.log(
-                "Offload source data type: OffloadSourceDataIpaRange", detail=VVERBOSE
-            )
+            messages.log("Offload source data type: OffloadSourceDataIpaRange", detail=VVERBOSE)
             return OffloadSourceDataIpaRange(
                 offload_source_table,
                 offload_target_table,
@@ -240,7 +221,7 @@ def offload_source_data_factory(
                 rdbms_partition_columns_override=rdbms_partition_columns_override,
                 col_offload_source_table_override=col_offload_source_table_override,
             )
-        elif (
+        if (
             offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_LIST
             and offload_operation.ipa_predicate_type
             in (
@@ -262,10 +243,8 @@ def offload_source_data_factory(
                 rdbms_partition_columns_override=rdbms_partition_columns_override,
                 col_offload_source_table_override=col_offload_source_table_override,
             )
-        elif offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_LIST:
-            messages.log(
-                "Offload source data type: OffloadSourceDataIpaList", detail=VVERBOSE
-            )
+        if offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_LIST:
+            messages.log("Offload source data type: OffloadSourceDataIpaList", detail=VVERBOSE)
             return OffloadSourceDataIpaList(
                 offload_source_table,
                 offload_target_table,
@@ -276,16 +255,12 @@ def offload_source_data_factory(
                 rdbms_partition_columns_override=rdbms_partition_columns_override,
                 col_offload_source_table_override=col_offload_source_table_override,
             )
-        else:
-            raise NotImplementedError(
-                "Offload source data method not implemented for partition type: %s"
-                % offload_source_table.partition_type
-            )
-    else:
         raise NotImplementedError(
-            "Offload source data method not implemented for partition type: %s"
-            % offload_source_table.partition_type
+            "Offload source data method not implemented for partition type: %s" % offload_source_table.partition_type
         )
+    raise NotImplementedError(
+        "Offload source data method not implemented for partition type: %s" % offload_source_table.partition_type
+    )
 
 
 def get_offload_type_for_config(
@@ -315,10 +290,7 @@ def get_offload_type_for_config(
     elif hybrid_metadata:
         # The user has not specified an override but hybrid objects already exist - derive settings
         offload_type = hybrid_metadata.offload_type
-        if (
-            hybrid_metadata.incremental_high_value
-            or hybrid_metadata.incremental_predicate_value
-        ):
+        if hybrid_metadata.incremental_high_value or hybrid_metadata.incremental_predicate_value:
             if with_messages:
                 if hybrid_metadata.incremental_high_value:
                     messages.log(
@@ -356,8 +328,7 @@ def is_default_partition(partition):
     upper_fn = lambda s: s.upper() if isinstance(s, str) else s
     return (
         True
-        if [upper_fn(_) for _ in partition.partition_values_python]
-        == [offload_constants.PART_OUT_OF_LIST]
+        if [upper_fn(_) for _ in partition.partition_values_python] == [offload_constants.PART_OUT_OF_LIST]
         else False
     )
 
@@ -371,7 +342,7 @@ logger.addHandler(logging.NullHandler())  # Disabling logging by default
 ###########################################################################
 
 
-class OffloadSourcePartition(object):
+class OffloadSourcePartition:
     """Holds a list of partitions for an RDBMS table:
     Basis is this is format Oracle uses, this should be refined in future to be more generic
     [
@@ -425,7 +396,7 @@ class OffloadSourcePartition(object):
         )
 
 
-class OffloadSourcePartitions(object):
+class OffloadSourcePartitions:
     """Holds partitions in scope for offload"""
 
     def __init__(self, partitions=[]):
@@ -438,23 +409,18 @@ class OffloadSourcePartitions(object):
                 self._partitions[0].partition_name,
                 self._partitions[-1].partition_name,
             )
-        else:
-            return "OffloadSourcePartitions(None)"
+        return "OffloadSourcePartitions(None)"
 
     @staticmethod
     def from_source_table(offload_source_table, partition_append_capable):
         """Constructor to return partitions from an OffloadSourceTable"""
         if offload_source_table.offload_by_subpartition:
-            rdbms_partitions = offload_source_table.get_subpartitions(
-                strict=partition_append_capable
-            )
+            rdbms_partitions = offload_source_table.get_subpartitions(strict=partition_append_capable)
             name_fn = lambda x: x.subpartition_name
             hwm_info = offload_source_table.get_subpartition_boundary_info()
             common_hwm_fn = lambda x: hwm_info[x.high_values_python]["common"]
         else:
-            rdbms_partitions = offload_source_table.get_partitions(
-                strict=partition_append_capable
-            )
+            rdbms_partitions = offload_source_table.get_partitions(strict=partition_append_capable)
             name_fn = lambda x: x.partition_name
             common_hwm_fn = lambda x: True
 
@@ -512,12 +478,7 @@ class OffloadSourcePartitions(object):
                     self._partitions.append(default_partition)
 
     def subpartition_names(self):
-        return [
-            s
-            for p in self._partitions
-            if p.subpartitions is not None
-            for s in p.subpartitions
-        ]
+        return [s for p in self._partitions if p.subpartitions is not None for s in p.subpartitions]
 
     def report_partitions(self, offload_by_subpartition, messages, include_stats=True):
         """Reports partitions in a standard format, used in offload stdout"""
@@ -525,8 +486,7 @@ class OffloadSourcePartitions(object):
         def partition_attr_report_value(list_of_attrs):
             if any(_ is None for _ in list_of_attrs):
                 return "Unknown"
-            else:
-                return sum(list_of_attrs)
+            return sum(list_of_attrs)
 
         part_description = "subpartitions" if offload_by_subpartition else "partitions"
         if not self._partitions:
@@ -561,28 +521,22 @@ class OffloadSourcePartitions(object):
         if partition_name:
             filter_fn = lambda x: x.partition_name == partition_name
         else:
-            filter_fn = lambda x: x.partition_values_python == tuple(
-                partition_values_python
-            )
+            filter_fn = lambda x: x.partition_values_python == tuple(partition_values_python)
         filtered_partitions = self.search_by_filter(filter_fn)
         if not filtered_partitions:
             return None
-        elif partition_name and len(filtered_partitions) > 1:
+        if partition_name and len(filtered_partitions) > 1:
             raise OffloadSourceDataException(
-                "Unexpected partition count for partition name %s: %s"
-                % (partition_name, len(filtered_partitions))
+                "Unexpected partition count for partition name %s: %s" % (partition_name, len(filtered_partitions))
             )
-        else:
-            # It's possible to match multiple partitions by value due to sub-partitioning
-            # Return the first in the list
-            return filtered_partitions[0]
+        # It's possible to match multiple partitions by value due to sub-partitioning
+        # Return the first in the list
+        return filtered_partitions[0]
 
     def get_partition_by_index(self, index):
         return self._partitions[index] if self._partitions else None
 
-    def get_prior_partition(
-        self, partition=None, partition_name=None, partition_values_python=None
-    ):
+    def get_prior_partition(self, partition=None, partition_name=None, partition_values_python=None):
         """Get a single partition based on finding a particular partition_values_python and then
         finding the partition_values_python before the parameter.
         We can use any of a whole partition, partition name or HV as a jumping off point.
@@ -602,30 +556,19 @@ class OffloadSourcePartitions(object):
         )
         if not start_partition:
             if partition_name:
-                raise OffloadSourceDataException(
-                    "%s: %s" % (NO_MATCHING_PARTITION_EXCEPTION_TEXT, partition_name)
-                )
-            else:
-                raise OffloadSourceDataException(
-                    "No partition found matching high value: %s"
-                    % str(partition_values_python)
-                )
-        logger.debug(
-            "get_prior_partition filter partition: %s" % start_partition.partition_name
-        )
+                raise OffloadSourceDataException("%s: %s" % (NO_MATCHING_PARTITION_EXCEPTION_TEXT, partition_name))
+            raise OffloadSourceDataException(
+                "No partition found matching high value: %s" % str(partition_values_python)
+            )
+        logger.debug("get_prior_partition filter partition: %s" % start_partition.partition_name)
 
         def filter_fn(p):
             if is_default_partition(p):
                 return False
-            return bool(
-                tuple(p.partition_values_python)
-                < tuple(start_partition.partition_values_python)
-            )
+            return bool(tuple(p.partition_values_python) < tuple(start_partition.partition_values_python))
 
         true_part_list, _ = self.split_partitions(filter_fn)
-        return (
-            true_part_list.get_partitions()[0] if true_part_list.count() > 0 else None
-        )
+        return true_part_list.get_partitions()[0] if true_part_list.count() > 0 else None
 
     def has_maxvalue_partition(self):
         """Partitions are sorted new to old therefore, if there's an OUT-OF-RANGE partition it will be first
@@ -633,14 +576,10 @@ class OffloadSourcePartitions(object):
         """
         if (not self._partitions) or (self._partitions[0].partition_literal is None):
             return None
-        elif (
-            offload_constants.PART_OUT_OF_RANGE
-            in self._partitions[0].partition_values_individual
-        ):
+        if offload_constants.PART_OUT_OF_RANGE in self._partitions[0].partition_values_individual:
             # TODO need to review this for Teradata when there could be 2 open (MAXVALUE) partitions
             return self._partitions[0].partition_name
-        else:
-            return None
+        return None
 
     def remove_maxvalue_partition(self):
         """Partitions are sorted new to old therefore, if there's a MAXVALUE partition it will be first
@@ -667,15 +606,9 @@ class OffloadSourcePartitions(object):
     def has_default_partition(self, return_partition_object=False):
         """For convenience returns a matching partition name/None instead of True/False"""
         if self._partitions:
-            default_partitions = [
-                _ for _ in self._partitions if is_default_partition(_)
-            ]
+            default_partitions = [_ for _ in self._partitions if is_default_partition(_)]
             if default_partitions:
-                return (
-                    default_partitions[0]
-                    if return_partition_object
-                    else default_partitions[0].partition_name
-                )
+                return default_partitions[0] if return_partition_object else default_partitions[0].partition_name
         return None
 
     def search_by_filter(self, filter_fn):
@@ -699,9 +632,7 @@ class OffloadSourcePartitions(object):
         true_partitions, false_partitions = [], []
         for p in self._partitions:
             true_partitions.append(p) if split_fn(p) else false_partitions.append(p)
-        return OffloadSourcePartitions(true_partitions), OffloadSourcePartitions(
-            false_partitions
-        )
+        return OffloadSourcePartitions(true_partitions), OffloadSourcePartitions(false_partitions)
 
 
 ###########################################################################
@@ -729,12 +660,8 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
         rdbms_partition_columns_override=None,
         col_offload_source_table_override=None,
     ):
-        assert offload_source_table and isinstance(
-            offload_source_table, OffloadSourceTableInterface
-        )
-        assert offload_target_table and isinstance(
-            offload_target_table, BackendTableInterface
-        )
+        assert offload_source_table and isinstance(offload_source_table, OffloadSourceTableInterface)
+        assert offload_target_table and isinstance(offload_target_table, BackendTableInterface)
         if col_offload_source_table_override:
             assert col_offload_source_table_override and isinstance(
                 col_offload_source_table_override, OffloadSourceTableInterface
@@ -757,31 +684,24 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
                 ),
                 detail=VVERBOSE,
             )
-        self._col_offload_source_table = (
-            col_offload_source_table_override or offload_source_table
-        )
+        self._col_offload_source_table = col_offload_source_table_override or offload_source_table
         self._offload_target_table = offload_target_table
         self._pre_offload_hybrid_metadata = hybrid_metadata
         self.debug("Pre-offload metadata: %s" % str(hybrid_metadata))
         # Caching partition_columns independently because join materialization requires an override.
         if rdbms_partition_columns_override:
             self.log(
-                "Overriding source data partition columns with: %s"
-                % str(rdbms_partition_columns_override),
+                "Overriding source data partition columns with: %s" % str(rdbms_partition_columns_override),
                 detail=VVERBOSE,
             )
-        self._partition_columns = (
-            rdbms_partition_columns_override or offload_source_table.partition_columns
-        )
+        self._partition_columns = rdbms_partition_columns_override or offload_source_table.partition_columns
         # This informs us whether we are offloading, materializing a join, or presenting
         self._source_client_type = source_client_type
         self._terms = OFFLOAD_OP_TERMS[source_client_type]
         # Cache attributes from offload_operation/options that we are interested in
         self._offload_predicate = offload_operation.offload_predicate
         self._inflight_offload_predicate = self._offload_predicate
-        self._offload_predicate_modify_hybrid_view = (
-            offload_operation.offload_predicate_modify_hybrid_view
-        )
+        self._offload_predicate_modify_hybrid_view = offload_operation.offload_predicate_modify_hybrid_view
         self._post_offload_predicates = None
         # For joins we need a version of the predicate with adjusted column names
         self._col_offload_predicate = self._offload_predicate
@@ -790,12 +710,8 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
         self._user_requested_hybrid_view_reset = offload_operation.reset_hybrid_view
         self._user_requested_predicate_type = offload_operation.ipa_predicate_type
         self._user_requested_partition_names = offload_operation.partition_names
-        self._user_requested_max_offload_chunk_size = (
-            offload_operation.max_offload_chunk_size
-        )
-        self._user_requested_max_offload_chunk_count = (
-            offload_operation.max_offload_chunk_count
-        )
+        self._user_requested_max_offload_chunk_size = offload_operation.max_offload_chunk_size
+        self._user_requested_max_offload_chunk_count = offload_operation.max_offload_chunk_count
         # cache any offload_source_table attributes that are used frequently - just for convenience
         self._offload_by_subpartition = offload_source_table.offload_by_subpartition
 
@@ -831,17 +747,13 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
         if not self._target_table_exists():
             self._backend_synth_part_expr = []
         elif not self._backend_synth_part_expr:
-            self._backend_synth_part_expr = (
-                self._offload_target_table.gen_synthetic_partition_col_expressions(
-                    as_python_fns=True
-                )
+            self._backend_synth_part_expr = self._offload_target_table.gen_synthetic_partition_col_expressions(
+                as_python_fns=True
             )
         return self._backend_synth_part_expr
 
     def _is_synthetic_partition_column(self, partition_column):
-        return self._offload_target_table.is_synthetic_partition_column(
-            partition_column
-        )
+        return self._offload_target_table.is_synthetic_partition_column(partition_column)
 
     def _target_table_exists(self):
         if self._user_requested_table_reset:
@@ -875,10 +787,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
                 if _.partition_name not in self._offloaded_partitions.partition_names()
             ]
             self._partitions_to_offload = OffloadSourcePartitions(partition_delta)
-            self.debug(
-                "Partitions to Offload initial count: %s"
-                % self._partitions_to_offload.count()
-            )
+            self.debug("Partitions to Offload initial count: %s" % self._partitions_to_offload.count())
         return self._partitions_to_offload
 
     def _datetime_literal_to_python(self, dt_literal):
@@ -896,11 +805,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
         """
         if not more_of_this_hwm:
             return []
-        return [
-            subp
-            for subp in remaining_partitions
-            if subp.partition_values_python == more_of_this_hwm
-        ]
+        return [subp for subp in remaining_partitions if subp.partition_values_python == more_of_this_hwm]
 
     def _make_rpa_hwm_gte_clause(self):
         """If this is a partition append incremental offload then we can attempt to build a where clause to optimise
@@ -915,10 +820,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
         if self._user_requested_table_reset:
             return None
 
-        if (
-            self._source_partitions.count() == 0
-            or not self._pre_offload_hybrid_metadata
-        ):
+        if self._source_partitions.count() == 0 or not self._pre_offload_hybrid_metadata:
             # Not an IPA offload
             return None
 
@@ -931,17 +833,13 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
 
         assert type(backend_synth_part_expr) is list
         if backend_synth_part_expr:
-            assert (
-                len(backend_synth_part_expr[0]) == 4
-            ), "_backend_synth_part_expr is malformed"
+            assert len(backend_synth_part_expr[0]) == 4, "_backend_synth_part_expr is malformed"
 
         matching_backend_part_col = None
         synthetic_conv_fn = None
         for part_expr in backend_synth_part_expr:
             if part_expr[3].upper() == partition_column.name.upper():
-                matching_backend_part_col = self._offload_target_table.get_column(
-                    part_expr[0]
-                )
+                matching_backend_part_col = self._offload_target_table.get_column(part_expr[0])
                 synthetic_conv_fn = part_expr[2]
                 break
 
@@ -950,34 +848,19 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
             return None
 
         if not self._is_synthetic_partition_column(matching_backend_part_col.name):
-            self.debug(
-                "Partition column is native therefore no extra predicate is required"
-            )
+            self.debug("Partition column is native therefore no extra predicate is required")
             return None
 
         prior_offload_partition = self._get_prior_partition_to_offload_by_hv_literal()
-        prior_rdbms_hv = (
-            prior_offload_partition.partition_literal
-            if prior_offload_partition
-            else None
-        )
+        prior_rdbms_hv = prior_offload_partition.partition_literal if prior_offload_partition else None
         hv_tuple = (
-            self._part_offload_source_table.decode_partition_high_values(prior_rdbms_hv)
-            if prior_rdbms_hv
-            else None
+            self._part_offload_source_table.decode_partition_high_values(prior_rdbms_hv) if prior_rdbms_hv else None
         )
         self.debug("Prior partition HV tuple: %s" % str(hv_tuple))
 
-        if (
-            hv_tuple
-            and self._partition_columns[0].is_number_based()
-            and hv_tuple[0] < 0
-        ):
+        if hv_tuple and self._partition_columns[0].is_number_based() and hv_tuple[0] < 0:
             # Workaround referenced in GOE-1572, we cannot trust synthetic partition values for negative numbers
-            self.debug(
-                "No synthetic partition predicate for negative numeric: %s"
-                % str(hv_tuple[0])
-            )
+            self.debug("No synthetic partition predicate for negative numeric: %s" % str(hv_tuple[0]))
             return None
 
         if hv_tuple:
@@ -992,11 +875,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
         if not row_values:
             return None
         new_row = [
-            (
-                self._datetime_literal_to_python(row_val)
-                if part_col.is_date_based()
-                else row_val
-            )
+            (self._datetime_literal_to_python(row_val) if part_col.is_date_based() else row_val)
             for part_col, row_val in zip(self._partition_columns, row_values)
         ]
         return tuple(new_row)
@@ -1004,31 +883,23 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
     def _get_pre_offload_offload_type(self):
         if self._pre_offload_hybrid_metadata:
             return self._pre_offload_hybrid_metadata.offload_type
-        else:
-            return None
+        return None
 
     def _get_pre_offload_incremental_key(self):
         if self._pre_offload_hybrid_metadata:
             return self._pre_offload_hybrid_metadata.incremental_key
-        else:
-            return None
+        return None
 
     def _get_prior_partition_to_offload_by_hv_literal(self):
         """Find a particular RDBMS hwm in the list of candidate partitions and return the prior offloaded partition"""
-        hv = (
-            self._pre_offload_hybrid_metadata.incremental_high_value
-            if self._pre_offload_hybrid_metadata
-            else None
-        )
+        hv = self._pre_offload_hybrid_metadata.incremental_high_value if self._pre_offload_hybrid_metadata else None
         self.debug("Finding partition prior to: %s" % str(hv))
         source_partitions = self._source_partitions.get_partitions()
 
         def match_fn(p):
             match = bool(p.partition_literal == hv)
             if match:
-                self.debug(
-                    "Matched %s: %s == %s" % (p.partition_name, p.partition_literal, hv)
-                )
+                self.debug("Matched %s: %s == %s" % (p.partition_name, p.partition_literal, hv))
             return match
 
         hv_partition_index = [i for i, p in enumerate(source_partitions) if match_fn(p)]
@@ -1055,9 +926,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
         column_names = [_.name for _ in self._partition_columns]
         # TODO Ideally we should check frontend system as part of data type check below.
         ts_columns = [
-            _.name
-            for _ in self._partition_columns
-            if _.data_type in (ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ)
+            _.name for _ in self._partition_columns if _.data_type in (ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ)
         ]
         prune_clause = self._make_rpa_hwm_gte_clause()
         if prune_clause:
@@ -1072,8 +941,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
         finally:
             t2 = datetime.now().replace(microsecond=0)
             self.log(
-                "Elapsed time to retrieve maximum backend partition key data: %s"
-                % (t2 - t1),
+                "Elapsed time to retrieve maximum backend partition key data: %s" % (t2 - t1),
                 detail=VVERBOSE,
             )
         return self._combine_part_cols_with_values(max_row)
@@ -1083,7 +951,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
     def _report_source_partitions(self):
         logger.debug("_report_source_partitions")
         assert self._source_partitions
-        self.log("In {}:".format(self._col_offload_source_table.frontend_db_name()))
+        self.log(f"In {self._col_offload_source_table.frontend_db_name()}:")
         self._source_partitions.report_partitions(
             self._part_offload_source_table.offload_by_subpartition, self._messages
         )
@@ -1116,9 +984,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
         elif isinstance(new_partitions, list):
             self._partitions_to_offload.set_partitions(new_partitions)
         else:
-            raise NotImplementedError(
-                "Unsupported partition override of type: %s" % type(new_partitions)
-            )
+            raise NotImplementedError("Unsupported partition override of type: %s" % type(new_partitions))
         return self._partitions_to_offload
 
     ###########################################################################
@@ -1155,13 +1021,8 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
 
     def get_pre_offload_predicates(self, as_dsl=False):
         if self._pre_offload_hybrid_metadata:
-            return (
-                self._pre_offload_hybrid_metadata.decode_incremental_predicate_values(
-                    as_dsl=as_dsl
-                )
-            )
-        else:
-            return None
+            return self._pre_offload_hybrid_metadata.decode_incremental_predicate_values(as_dsl=as_dsl)
+        return None
 
     def get_post_offload_predicates(self):
         return self._post_offload_predicates
@@ -1172,8 +1033,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
     def get_pre_offload_predicate_type(self):
         if self._pre_offload_hybrid_metadata:
             return self._pre_offload_hybrid_metadata.incremental_predicate_type
-        else:
-            return None
+        return None
 
     def get_inflight_offload_predicate(self):
         return self._inflight_offload_predicate
@@ -1189,9 +1049,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
 
     def incremental_hv_list_from_csv(self, metadata_high_value_string):
         logger.debug("incremental_hv_list_from_csv")
-        return incremental_hv_list_from_csv(
-            metadata_high_value_string, self._partition_append_predicate_type
-        )
+        return incremental_hv_list_from_csv(metadata_high_value_string, self._partition_append_predicate_type)
 
     # Methods for RDBMS source partitions
 
@@ -1208,17 +1066,11 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
             )
             if sort_by_hv:
                 self.log(
-                    "Sorting %s partitions by partition value"
-                    % source_partitions.count(),
+                    "Sorting %s partitions by partition value" % source_partitions.count(),
                     detail=VVERBOSE,
                 )
-                source_partitions.sort_partitions(
-                    sort_fn=lambda x: x.partition_values_python, reverse=True
-                )
-            self.debug(
-                "populate_source_partitions, partition count: %s"
-                % source_partitions.count()
-            )
+                source_partitions.sort_partitions(sort_fn=lambda x: x.partition_values_python, reverse=True)
+            self.debug("populate_source_partitions, partition count: %s" % source_partitions.count())
             self._source_partitions = source_partitions
         return self._source_partitions
 
@@ -1229,9 +1081,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
         elif isinstance(new_partitions, list):
             self._source_partitions.set_partitions(new_partitions)
         else:
-            raise NotImplementedError(
-                "Unsupported partition override of type: %s" % type(new_partitions)
-            )
+            raise NotImplementedError("Unsupported partition override of type: %s" % type(new_partitions))
         return self._source_partitions
 
     def free_source_partitions(self):
@@ -1283,16 +1133,13 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
             chunk_size = chunk[0].size_in_bytes
             while (
                 remaining
-                and (chunk_size + remaining[0].size_in_bytes)
-                < self._user_requested_max_offload_chunk_size
+                and (chunk_size + remaining[0].size_in_bytes) < self._user_requested_max_offload_chunk_size
                 and len(chunk) < self._user_requested_max_offload_chunk_count
             ):
                 p = remaining.pop(0)
                 chunk.append(p)
                 chunk_size += p.size_in_bytes
-            with_matching_hwm = self._partitions_of_matching_hwm(
-                chunk[-1].partition_values_python, remaining
-            )
+            with_matching_hwm = self._partitions_of_matching_hwm(chunk[-1].partition_values_python, remaining)
             if with_matching_hwm:
                 # If there are partitions with a matching HWM then they should be included in the chunk, overriding
                 # max chunk size/count. This prevents failed offloads from believing a HWM is completely offloaded
@@ -1332,7 +1179,7 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
         self._incremental_append_capable = True
         self._partition_append_predicate_type = None
 
-        super(OffloadSourceDataPredicate, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -1364,25 +1211,19 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
         return bool(self._offload_predicate and not self._offload_predicate_case_2())
 
     def _no_offload_type_full(self, predicate_type):
-        if (
-            self._user_requested_offload_type == OFFLOAD_TYPE_FULL
-            or self._offload_type == OFFLOAD_TYPE_FULL
-        ):
+        if self._user_requested_offload_type == OFFLOAD_TYPE_FULL or self._offload_type == OFFLOAD_TYPE_FULL:
             raise OffloadSourceDataException(
-                "%s: %s"
-                % (PREDICATE_TYPE_OFFLOAD_TYPE_FULL_EXCEPTION_TEXT, predicate_type)
+                "%s: %s" % (PREDICATE_TYPE_OFFLOAD_TYPE_FULL_EXCEPTION_TEXT, predicate_type)
             )
 
     def _offload_predicate_case_1(self):
         case_1 = bool(
             not self._pre_offload_hybrid_metadata
-            or self.get_pre_offload_predicate_type()
-            == INCREMENTAL_PREDICATE_TYPE_PREDICATE
+            or self.get_pre_offload_predicate_type() == INCREMENTAL_PREDICATE_TYPE_PREDICATE
         )
         if case_1:
             self.log(
-                "Pre-offload predicate type is case 1: %s"
-                % self.get_pre_offload_predicate_type(),
+                "Pre-offload predicate type is case 1: %s" % self.get_pre_offload_predicate_type(),
                 detail=VVERBOSE,
             )
         return case_1
@@ -1399,27 +1240,22 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
         if not self._pre_offload_hybrid_metadata:
             # Cannot have LAPBO if there's no pre-offload metadata
             return None
-        elif (
+        if (
             pre_offload_offload_type == OFFLOAD_TYPE_INCREMENTAL
             and self.get_pre_offload_predicate_type() in case_2_predicate_types
             # If the predicate type remains the same
-            and self._user_requested_predicate_type
-            == self.get_pre_offload_predicate_type()
+            and self._user_requested_predicate_type == self.get_pre_offload_predicate_type()
         ):
             return LAPBO_TYPE_90_10
-        elif (
+        if (
             pre_offload_offload_type == OFFLOAD_TYPE_FULL
             and pre_offload_inc_key is not None
             and self.get_pre_offload_predicate_type() in case_2_predicate_types
             # If the predicate type remains the same
-            and self._user_requested_predicate_type
-            == self.get_pre_offload_predicate_type()
+            and self._user_requested_predicate_type == self.get_pre_offload_predicate_type()
         ):
             return LAPBO_TYPE_100_10
-        elif (
-            pre_offload_offload_type == OFFLOAD_TYPE_FULL
-            and pre_offload_inc_key is None
-        ):
+        if pre_offload_offload_type == OFFLOAD_TYPE_FULL and pre_offload_inc_key is None:
             return LAPBO_TYPE_100_0
         return None
 
@@ -1434,9 +1270,7 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
                 and self._user_requested_offload_type != pre_offload_offload_type
             ):
                 # In theory we could support switching OFFLOAD_TYPE during PBO but in practice we choose not to.
-                raise OffloadSourceDataException(
-                    OFFLOAD_TYPE_CHANGE_FOR_PBO_EXCEPTION_TEXT
-                )
+                raise OffloadSourceDataException(OFFLOAD_TYPE_CHANGE_FOR_PBO_EXCEPTION_TEXT)
 
             self.log(
                 "Pre-offload/user requested predicate type is case 2 (%s late arriving data): %s/%s"
@@ -1499,51 +1333,33 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
         )
         # all HWM columns must have a corresponding predicate, and optionally the value must be < hwm
         return all(
-            list(
-                self._offload_predicate.ast.find_pred(
-                    partial(is_column_predicate, hv_col.name)
-                )
-            )
+            list(self._offload_predicate.ast.find_pred(partial(is_column_predicate, hv_col.name)))
             for hv_col, hv in zip(hv_columns, hv_values)
         )
 
     def _offload_predicate_in_pre_offload_metadata(self):
-        return bool(
-            self._offload_predicate.dsl
-            in (self.get_pre_offload_predicates(as_dsl=True) or [])
-        )
+        return bool(self._offload_predicate.dsl in (self.get_pre_offload_predicates(as_dsl=True) or []))
 
     def _predicate_has_rows_check(self, offload_predicate):
         """Returns True if the predicate matches data to Offload"""
-        source_has_rows = self._part_offload_source_table.predicate_has_rows(
-            offload_predicate
-        )
-        source_where_clause = self._part_offload_source_table.predicate_to_where_clause(
-            offload_predicate
-        )
+        source_has_rows = self._part_offload_source_table.predicate_has_rows(offload_predicate)
+        source_where_clause = self._part_offload_source_table.predicate_to_where_clause(offload_predicate)
 
         if self._user_requested_table_reset:
             dest_has_rows = False
         else:
-            dest_has_rows = self._offload_target_table.predicate_has_rows(
-                offload_predicate
-            )
+            dest_has_rows = self._offload_target_table.predicate_has_rows(offload_predicate)
 
         if not source_has_rows:
             self._nothing_to_offload = True
-            self.log(
-                "No rows in source:\n%s\nNo data to offload." % source_where_clause
-            )
+            self.log("No rows in source:\n%s\nNo data to offload." % source_where_clause)
         elif dest_has_rows:
             self._nothing_to_offload = True
             if self._offload_predicate_in_pre_offload_metadata():
                 self.log("Already %s:\n%s" % (self._terms["past"], source_where_clause))
             else:
                 # This is a new predicate but it matches previously offloaded data
-                self.log(
-                    "Already %s (overlap):\n%s"
-                    % (self._terms["past"], source_where_clause)
-                )
+                self.log("Already %s (overlap):\n%s" % (self._terms["past"], source_where_clause))
         else:
             self.log("To %s:\n%s" % (self._terms["name"], source_where_clause))
         return source_has_rows
@@ -1551,15 +1367,11 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
     def _set_post_offload_predicates(self, source_has_rows):
         if self._user_requested_hybrid_view_reset:
             self._post_offload_predicates = [self._offload_predicate]
-        elif (
-            self.nothing_to_offload() and not source_has_rows
-        ) or not self._offload_predicate_modify_hybrid_view:
+        elif (self.nothing_to_offload() and not source_has_rows) or not self._offload_predicate_modify_hybrid_view:
             # Keep the same values we had before
             self._post_offload_predicates = self.get_pre_offload_predicates()
         elif not self._offload_predicate_in_pre_offload_metadata():
-            self._post_offload_predicates = (
-                self.get_pre_offload_predicates() or []
-            ) + [self._offload_predicate]
+            self._post_offload_predicates = (self.get_pre_offload_predicates() or []) + [self._offload_predicate]
         else:
             # Keep the same values we had before
             self._post_offload_predicates = self.get_pre_offload_predicates()
@@ -1573,12 +1385,8 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
 
         pre_offload_predicate_type = self.get_pre_offload_predicate_type()
 
-        self.debug(
-            "pre_offload_predicate_type: %s" % self.get_pre_offload_predicate_type()
-        )
-        self.debug(
-            "user_requested_predicate_type: %s" % self._user_requested_predicate_type
-        )
+        self.debug("pre_offload_predicate_type: %s" % self.get_pre_offload_predicate_type())
+        self.debug("user_requested_predicate_type: %s" % self._user_requested_predicate_type)
 
         if self._offload_predicate_case_1():
             if not self._offload_predicate_modify_hybrid_view:
@@ -1611,9 +1419,7 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
 
         elif self._offload_predicate_case_2():
             if self._user_requested_hybrid_view_reset:
-                raise OffloadSourceDataException(
-                    PREDICATE_TYPE_NO_MODIFY_RESET_EXCEPTION_TEXT
-                )
+                raise OffloadSourceDataException(PREDICATE_TYPE_NO_MODIFY_RESET_EXCEPTION_TEXT)
 
             if self._offload_predicate_modify_hybrid_view:
                 self._offload_predicate_modify_hybrid_view = False
@@ -1645,14 +1451,10 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
                     target_table_max,
                     equality_with_gt=False,
                 )
-                self._messages.notice(
-                    "%s: %s" % (PREDICATE_APPEND_HWM_MESSAGE_TEXT, str(max_lt_dsl))
-                )
+                self._messages.notice("%s: %s" % (PREDICATE_APPEND_HWM_MESSAGE_TEXT, str(max_lt_dsl)))
                 hv_col_predicates = [predicate_offload.GenericPredicate(max_lt_dsl)]
-                self._inflight_offload_predicate = (
-                    predicate_offload.create_and_relation_predicate(
-                        hv_col_predicates + [self._offload_predicate]
-                    )
+                self._inflight_offload_predicate = predicate_offload.create_and_relation_predicate(
+                    hv_col_predicates + [self._offload_predicate]
                 )
                 _ = self._predicate_has_rows_check(self._inflight_offload_predicate)
             else:
@@ -1660,13 +1462,9 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
 
         elif self._offload_predicate_case_3():
             if pre_offload_predicate_type == INCREMENTAL_PREDICATE_TYPE_RANGE:
-                self._partition_append_predicate_type = (
-                    INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE
-                )
+                self._partition_append_predicate_type = INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE
             elif pre_offload_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE:
-                self._partition_append_predicate_type = (
-                    INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE_AND_PREDICATE
-                )
+                self._partition_append_predicate_type = INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE_AND_PREDICATE
             else:
                 self._partition_append_predicate_type = pre_offload_predicate_type
 
@@ -1675,9 +1473,7 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
             self._no_offload_type_full(self._partition_append_predicate_type)
 
             if not self._offload_predicate_contains_hwm_cols():
-                raise OffloadSourceDataException(
-                    RANGE_AND_PREDICATE_WITHOUT_PART_KEY_EXCEPTION_TEXT
-                )
+                raise OffloadSourceDataException(RANGE_AND_PREDICATE_WITHOUT_PART_KEY_EXCEPTION_TEXT)
 
             self._set_post_offload_predicates(source_has_rows)
 
@@ -1705,8 +1501,7 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
                 detail=VVERBOSE,
             )
             self.log(
-                "offload_predicate_modify_hybrid_view: %s"
-                % self._offload_predicate_modify_hybrid_view,
+                "offload_predicate_modify_hybrid_view: %s" % self._offload_predicate_modify_hybrid_view,
                 detail=VVERBOSE,
             )
             if pre_offload_predicate_type in (
@@ -1716,10 +1511,7 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
                 raise OffloadSourceDataException(
                     f"{PREDICATE_TYPE_REQUIRED_EXCEPTION_TEXT}: {pre_offload_predicate_type}"
                 )
-            else:
-                raise OffloadSourceDataException(
-                    "Incompatible --offload-predicate options"
-                )
+            raise OffloadSourceDataException("Incompatible --offload-predicate options")
 
     def get_incremental_high_values(self):
         return self._incremental_hvs
@@ -1750,7 +1542,7 @@ class OffloadSourceDataFull(OffloadSourceDataInterface):
         self._incremental_append_capable = False
         self._partition_append_predicate_type = None
 
-        super(OffloadSourceDataFull, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -1817,7 +1609,7 @@ class OffloadSourceDataFullPartitioned(OffloadSourceDataInterface):
         self._incremental_append_capable = False
         self._partition_append_predicate_type = None
 
-        super(OffloadSourceDataFullPartitioned, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -1844,9 +1636,7 @@ class OffloadSourceDataFullPartitioned(OffloadSourceDataInterface):
 
     def _ida_options_have_been_specified(self):
         if self._user_requested_partition_names:
-            raise NotImplementedError(
-                "Partition name filter is not valid for this offload"
-            )
+            raise NotImplementedError("Partition name filter is not valid for this offload")
         return False
 
     ###########################################################################
@@ -1867,8 +1657,7 @@ class OffloadSourceDataFullPartitioned(OffloadSourceDataInterface):
         if not self.partitions_to_offload:
             return False
         return bool(
-            self.partitions_to_offload.has_maxvalue_partition()
-            or self.partitions_to_offload.has_default_partition()
+            self.partitions_to_offload.has_maxvalue_partition() or self.partitions_to_offload.has_default_partition()
         )
 
 
@@ -1897,7 +1686,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         self._incremental_append_capable = True
         self._partition_append_predicate_type = INCREMENTAL_PREDICATE_TYPE_RANGE
 
-        super(OffloadSourceDataIpaRange, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -1945,9 +1734,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         """
         assert isinstance(csv_str, str)
         logger.debug("_normalise_rpa_partition_append_csv")
-        tokens = self._col_offload_source_table.split_partition_high_value_string(
-            csv_str
-        )
+        tokens = self._col_offload_source_table.split_partition_high_value_string(csv_str)
         pa_list = []
         self._check_number_of_partition_append_filters(tokens)
         for part_col, token in zip(self._partition_columns, tokens):
@@ -1955,19 +1742,13 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
                 if part_col.is_date_based():
                     pa_list.append(self._datetime_literal_to_python(token))
                 elif part_col.is_number_based():
-                    converted_token = (
-                        self._col_offload_source_table.numeric_literal_to_python(token)
-                    )
+                    converted_token = self._col_offload_source_table.numeric_literal_to_python(token)
                     pa_list.append(converted_token)
                 elif part_col.is_string_based():
-                    converted_token = self._convert_string_literal_for_rpa(
-                        part_col, token
-                    )
+                    converted_token = self._convert_string_literal_for_rpa(part_col, token)
                     pa_list.append(converted_token)
                 else:
-                    raise OffloadSourceDataException(
-                        "Unsupported partition key type: %s" % part_col.data_type
-                    )
+                    raise OffloadSourceDataException("Unsupported partition key type: %s" % part_col.data_type)
             except ValueError:
                 self.log("Failed to parse %s value: %s" % (part_col.data_type, token))
                 raise
@@ -1981,9 +1762,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         """
         logger.debug("_normalise_rpa_partition_filter")
         if isinstance(user_requested_less_than_value, str):
-            rpa_filter_tuple = self._normalise_rpa_partition_append_csv(
-                user_requested_less_than_value
-            )
+            rpa_filter_tuple = self._normalise_rpa_partition_append_csv(user_requested_less_than_value)
         elif isinstance(user_requested_less_than_value, (list, tuple)):
             rpa_filter_tuple = tuple(user_requested_less_than_value)
         elif isinstance(user_requested_less_than_value, date):
@@ -2028,10 +1807,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         matched_partition = self._source_partitions.get_partition(partition_name)
         if matched_partition:
             return matched_partition.partition_values_python
-        else:
-            raise OffloadSourceDataException(
-                "%s: %s" % (NO_MATCHING_PARTITION_EXCEPTION_TEXT, partition_name)
-            )
+        raise OffloadSourceDataException("%s: %s" % (NO_MATCHING_PARTITION_EXCEPTION_TEXT, partition_name))
 
     def _ida_options_have_been_specified(self):
         if self._user_requested_rpa_filter or self._user_requested_partition_names:
@@ -2040,9 +1816,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
 
     def _normalise_rpa_filter(self):
         if self._user_requested_rpa_filter:
-            self._rpa_filter = self._normalise_rpa_partition_filter(
-                self._user_requested_rpa_filter
-            )
+            self._rpa_filter = self._normalise_rpa_partition_filter(self._user_requested_rpa_filter)
         elif self._user_requested_partition_names:
             self._rpa_filter = self._normalise_rpa_partition_name()
         else:
@@ -2062,9 +1836,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         )
         return match
 
-    def _rpa_partition_already_offloaded(
-        self, partition, partition_already_marked_offloaded
-    ):
+    def _rpa_partition_already_offloaded(self, partition, partition_already_marked_offloaded):
         """This method is used to differentiate between true RANGE and LIST_AS_RANGE.
         rdbms_min <= backend_max: If there's data in Oracle older than backend max then current partition must
                                   be offloaded and we'll stop iterating when we find a HWM beyond backend max
@@ -2076,27 +1848,20 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
 
         def rpa_hv_already_offloaded(partition):
             match = bool(
-                (
-                    self._rdbms_min is not None
-                    and self._rdbms_min <= self._target_table_max
-                )
+                (self._rdbms_min is not None and self._rdbms_min <= self._target_table_max)
                 or tuple(partition.partition_values_python) <= self._target_table_max
             )
             self.debug(
                 "Partition %s already offloaded check: %s: %s <= %s"
                 % (
                     partition.partition_name,
-                    bool(
-                        tuple(partition.partition_values_python)
-                        <= self._target_table_max
-                    ),
+                    bool(tuple(partition.partition_values_python) <= self._target_table_max),
                     tuple(partition.partition_values_python),
                     self._target_table_max,
                 )
             )
             self.log(
-                "Partition %s already offloaded check: %s"
-                % (partition.partition_name, match),
+                "Partition %s already offloaded check: %s" % (partition.partition_name, match),
                 detail=VVERBOSE,
             )
             return match
@@ -2106,9 +1871,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
                 "Partition %s already marked as offloaded: %s"
                 % (partition.partition_name, partition_already_marked_offloaded)
             )
-        return bool(
-            partition_already_marked_offloaded or rpa_hv_already_offloaded(partition)
-        )
+        return bool(partition_already_marked_offloaded or rpa_hv_already_offloaded(partition))
 
     def _rpa_partitions_already_offloaded(self):
         """Return partitions already offloaded based on a HWM and min/max values
@@ -2125,18 +1888,13 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
             self.log("backend_max: " + str(self._target_table_max), detail=VVERBOSE)
             self.log("rdbms_min: " + str(self._rdbms_min), detail=VVERBOSE)
 
-            reversed_offload_partitions = list(
-                reversed(self._source_partitions.get_partitions())
-            )
+            reversed_offload_partitions = list(reversed(self._source_partitions.get_partitions()))
             for i, p in enumerate(reversed_offload_partitions):  # traverse old to new
                 if self._rpa_partition_already_offloaded(p, bool(already_offloaded)):
                     already_offloaded.append(p)
                 if self._rpa_hv_not_offloaded(p):
                     # Reached a partition with a HWM beyond the backend max, therefore time to break out of the loop
-                    if (
-                        self._part_offload_source_table.offload_by_subpartition
-                        and i < len(reversed_offload_partitions)
-                    ):
+                    if self._part_offload_source_table.offload_by_subpartition and i < len(reversed_offload_partitions):
                         # When offloading by subpartition we may find repeating HWM, gobble up any other partitions of the same HWM
                         with_matching_hwm = self._partitions_of_matching_hwm(
                             p.partition_values_python,
@@ -2146,8 +1904,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
                             # There is an assumption here that partitions of matching HWM are contiguous. This will be
                             # true of Oracle, we need to be careful when introducing more RDBMSs
                             self.log(
-                                "Skipping %s partitions with matching HWM"
-                                % len(with_matching_hwm),
+                                "Skipping %s partitions with matching HWM" % len(with_matching_hwm),
                                 detail=VVERBOSE,
                             )
                             already_offloaded.extend(with_matching_hwm)
@@ -2170,8 +1927,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
             filtered_partitions = self._source_partitions.search_by_filter(filter_fn)
             if filtered_partitions:
                 self.log(
-                    "HWM partition %s derived from HWM filter"
-                    % filtered_partitions[0].partition_name,
+                    "HWM partition %s derived from HWM filter" % filtered_partitions[0].partition_name,
                     detail=VVERBOSE,
                 )
                 self._rpa_hwm_partition = filtered_partitions[0]
@@ -2179,20 +1935,14 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         if not self._rpa_hwm_partition:
             if self._partitions_to_offload.count() > 0:
                 logger.debug("get_hwm_partition from partitions_to_offload")
-                self._rpa_hwm_partition = (
-                    self._partitions_to_offload.get_partition_by_index(0)
-                )
+                self._rpa_hwm_partition = self._partitions_to_offload.get_partition_by_index(0)
             elif self._offloaded_partitions.count() > 0:
                 logger.debug("get_hwm_partition from offloaded_partitions")
-                self._rpa_hwm_partition = (
-                    self._offloaded_partitions.get_partition_by_index(0)
-                )
+                self._rpa_hwm_partition = self._offloaded_partitions.get_partition_by_index(0)
 
         return self._rpa_hwm_partition
 
-    def _check_hwm_is_a_valid_boundary(
-        self, hwm_partition, retained_partitions, offload_type
-    ):
+    def _check_hwm_is_a_valid_boundary(self, hwm_partition, retained_partitions, offload_type):
         """When RANGE offloading at subpartition level we need to ensure that any HWM for offload is a valid common boundary"""
         logger.debug("_check_hwm_is_a_valid_boundary")
 
@@ -2204,20 +1954,15 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
             return bool(
                 check_partition.common_partition_literal
                 and retained_partitions_ascending
-                and check_partition.partition_values_python
-                != retained_partitions_ascending[-1].partition_values_python
+                and check_partition.partition_values_python != retained_partitions_ascending[-1].partition_values_python
             )
 
         def more_human_readable_python_hwm(python_hwm):
             # convert to str to remove datatype info and chop off any redundant trailing fractional seconds
-            str_fn = lambda x: (
-                re.sub(r"\.000000$", "", str(x)) if type(x) is datetime64 else str(x)
-            )
+            str_fn = lambda x: re.sub(r"\.000000$", "", str(x)) if type(x) is datetime64 else str(x)
             return str([str_fn(hv) for hv in python_hwm])
 
-        hwm_check_retained = (
-            list(reversed(retained_partitions)) if retained_partitions else []
-        )
+        hwm_check_retained = list(reversed(retained_partitions)) if retained_partitions else []
         if is_valid_common_boundary(hwm_partition, hwm_check_retained):
             # It's a valid HWM and the subpartition offload list is good to be used.
             self.log(
@@ -2231,14 +1976,10 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
                 if p.common_partition_literal:
                     next_common_boundary = p
                     break
-            if next_common_boundary and is_valid_common_boundary(
-                next_common_boundary, hwm_check_retained
-            ):
+            if next_common_boundary and is_valid_common_boundary(next_common_boundary, hwm_check_retained):
                 self._messages.warning(
                     "Minimum recommended common boundary is: --less-than-values=%s"
-                    % more_human_readable_python_hwm(
-                        next_common_boundary.partition_values_python
-                    )
+                    % more_human_readable_python_hwm(next_common_boundary.partition_values_python)
                 )
             elif offload_type == OFFLOAD_TYPE_INCREMENTAL:
                 # It's the last HWM in the table...
@@ -2249,16 +1990,12 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
                 # regardless of the messages and tests above, we don't have a valid HWM so need to stop here
                 if self._get_rpa_filter():
                     raise OffloadSourceDataException(
-                        "No common boundary at HWM filter: %s"
-                        % more_human_readable_python_hwm(self._get_rpa_filter())
+                        "No common boundary at HWM filter: %s" % more_human_readable_python_hwm(self._get_rpa_filter())
                     )
-                else:
-                    raise OffloadSourceDataException(
-                        "No common boundary at HWM: %s"
-                        % more_human_readable_python_hwm(
-                            hwm_partition.partition_values_python
-                        )
-                    )
+                raise OffloadSourceDataException(
+                    "No common boundary at HWM: %s"
+                    % more_human_readable_python_hwm(hwm_partition.partition_values_python)
+                )
 
     def _maxvalue_partition_has_been_offloaded(self):
         logger.debug("_maxvalue_partition_has_been_offloaded")
@@ -2268,13 +2005,9 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
     def _do_not_offload_maxvalue_partition(self):
         """If there's a MAXVALUE partition to offload then remove it and return the partition object"""
         logger.debug("_do_not_offload_maxvalue_partition")
-        if (
-            self._part_offload_source_table.partition_type
-            == OFFLOAD_PARTITION_TYPE_RANGE
-        ):
+        if self._part_offload_source_table.partition_type == OFFLOAD_PARTITION_TYPE_RANGE:
             return self._partitions_to_offload.remove_maxvalue_partition()
-        else:
-            return None
+        return None
 
     def _get_less_than_rpa_filter_fn(self):
         logger.debug("_get_less_than_rpa_filter_fn")
@@ -2285,9 +2018,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
                 match = bool(tuple(p.partition_values_python) <= tuple(less_than_list))
             except TypeError as exc:
                 self.log(
-                    "{} <= {} throws: {}".format(
-                        str(p.partition_values_python), str(less_than_list), str(exc)
-                    ),
+                    f"{p.partition_values_python!s} <= {less_than_list!s} throws: {exc!s}",
                     detail=VERBOSE,
                 )
                 raise
@@ -2326,8 +2057,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         finally:
             t2 = datetime.now().replace(microsecond=0)
             self.log(
-                "Elapsed time to retrieve minimum RDBMS partition key data: %s"
-                % (t2 - t1),
+                "Elapsed time to retrieve minimum RDBMS partition key data: %s" % (t2 - t1),
                 detail=VVERBOSE,
             )
         self._rdbms_min = self._combine_part_cols_with_values(min_row)
@@ -2340,14 +2070,9 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
             if not self._target_table_exists():
                 self._offloaded_partitions = OffloadSourcePartitions()
             else:
-                self._offloaded_partitions = OffloadSourcePartitions(
-                    self._rpa_partitions_already_offloaded()
-                )
+                self._offloaded_partitions = OffloadSourcePartitions(self._rpa_partitions_already_offloaded())
 
-            if (
-                self._offload_type == OFFLOAD_TYPE_INCREMENTAL
-                and self._maxvalue_partition_has_been_offloaded()
-            ):
+            if self._offload_type == OFFLOAD_TYPE_INCREMENTAL and self._maxvalue_partition_has_been_offloaded():
                 raise OffloadSourceDataException(
                     f"Offload type {self._offload_type} invalid when {offload_constants.PART_OUT_OF_RANGE} partition has been offloaded"
                 )
@@ -2360,10 +2085,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
     def _do_not_offload_open_ended_partition(self):
         """For INCREMENTAL RANGE do not offload a MAXVALUE partition."""
         removed_maxval_partition = None
-        if (
-            self._offload_type == OFFLOAD_TYPE_INCREMENTAL
-            and self.partitions_to_offload.has_maxvalue_partition()
-        ):
+        if self._offload_type == OFFLOAD_TYPE_INCREMENTAL and self.partitions_to_offload.has_maxvalue_partition():
             removed_maxval_partition = self._do_not_offload_maxvalue_partition()
         return removed_maxval_partition
 
@@ -2388,14 +2110,12 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
             if self._offload_type == OFFLOAD_TYPE_INCREMENTAL:
                 self._override_partitions_to_offload(filtered_partitions)
                 retained_partition_list = discarded_partitions.get_partitions()
-            else:
-                # ignore filtering and offload all partitions, however we still use filter to define view HWM (100/10 pattern)
-                if filtered_partition_list:
-                    self.log(
-                        "Offloading all partitions when OFFLOAD_TYPE is %s"
-                        % self._offload_type,
-                        detail=VERBOSE,
-                    )
+            # ignore filtering and offload all partitions, however we still use filter to define view HWM (100/10 pattern)
+            elif filtered_partition_list:
+                self.log(
+                    "Offloading all partitions when OFFLOAD_TYPE is %s" % self._offload_type,
+                    detail=VERBOSE,
+                )
 
         if removed_open_partition:
             # Add the MAXVALUE/DEFAULT partition to the retained list
@@ -2414,9 +2134,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         hwm_partition = self._set_incremental_high_values()
 
         if self.partitions_to_offload.count() > 0 and self._offload_by_subpartition:
-            self._check_hwm_is_a_valid_boundary(
-                hwm_partition, retained_partition_list, self._offload_type
-            )
+            self._check_hwm_is_a_valid_boundary(hwm_partition, retained_partition_list, self._offload_type)
 
     ###########################################################################
     # PUBLIC METHODS
@@ -2452,9 +2170,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
             ) = self.split_partitions_to_offload_by_no_segment()
 
             self.log("To %s:" % self._terms["name"])
-            keep_partitions.report_partitions(
-                self._part_offload_source_table.offload_by_subpartition, self._messages
-            )
+            keep_partitions.report_partitions(self._part_offload_source_table.offload_by_subpartition, self._messages)
 
             if discard_partitions.count() > 0:
                 self.log("To skip (no segments):")
@@ -2473,9 +2189,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
                     )
                 )
 
-            if self._target_table_max and (
-                not self._rdbms_min or self._target_table_max < self._rdbms_min
-            ):
+            if self._target_table_max and (not self._rdbms_min or self._target_table_max < self._rdbms_min):
                 # this indicates that all offloaded partitions have been removed from the RDBMS, we may get verification errors
                 self._messages.warning(
                     "Offloaded data is less than RDBMS data, data verification may fail due to purged historical RDBMS data"
@@ -2485,8 +2199,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         logger.debug("get_incremental_high_values")
         if self._rpa_hwm_partition:
             return self._rpa_hwm_partition.partition_values_individual
-        else:
-            return []
+        return []
 
     def offloading_open_ended_partition(self):
         if not self.partitions_to_offload:
@@ -2519,7 +2232,7 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
         self._incremental_append_capable = True
         self._partition_append_predicate_type = INCREMENTAL_PREDICATE_TYPE_LIST
 
-        super(OffloadSourceDataIpaList, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -2564,14 +2277,11 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
             detail=VVERBOSE,
         )
         keys_in_default = self._get_lpa_keys_for_default_partition(default_partition)
-        self.log(
-            "LPA keys in open partition: %s" % str(keys_in_default), detail=VVERBOSE
-        )
+        self.log("LPA keys in open partition: %s" % str(keys_in_default), detail=VVERBOSE)
         matching_keys = [_ for _ in keys_in_default if _ in list_of_keys]
         if matching_keys:
             self.log(
-                "LPA keys indicating open partition has been offloaded: %s"
-                % str(matching_keys),
+                "LPA keys indicating open partition has been offloaded: %s" % str(matching_keys),
                 detail=VVERBOSE,
             )
             return True
@@ -2586,17 +2296,11 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
         pa_list = []
         if self._partition_columns[0].is_date_based():
             # For dates check for human input date formats, don't use RDBMS literal checking
-            tokens = self._col_offload_source_table.split_partition_high_value_string(
-                csv_str
-            )
-            pa_list.extend(
-                [self._datetime_literal_to_python(token) for token in tokens]
-            )
+            tokens = self._col_offload_source_table.split_partition_high_value_string(csv_str)
+            pa_list.extend([self._datetime_literal_to_python(token) for token in tokens])
         else:
             # For all other data types use RDBMS literal checking
-            pa_list = self._part_offload_source_table.decode_partition_high_values(
-                csv_str
-            )
+            pa_list = self._part_offload_source_table.decode_partition_high_values(csv_str)
         return tuple(pa_list)
 
     def _get_lpa_partition_filters(self):
@@ -2610,45 +2314,33 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
         if self._lpa_partition_filters is None:
             lpa_filter_list = []
             if self._user_requested_lpa_filters:
-                logger.debug(
-                    "filtering by user_requested_lpa_filters: %s"
-                    % (self._user_requested_lpa_filters)
-                )
+                logger.debug("filtering by user_requested_lpa_filters: %s" % (self._user_requested_lpa_filters))
                 # the user request should be a list of csvs
                 if type(self._user_requested_lpa_filters) not in (list, tuple):
                     raise OffloadSourceDataException(
-                        "Invalid type for partition append filter: %s"
-                        % type(self._user_requested_lpa_filters)
+                        "Invalid type for partition append filter: %s" % type(self._user_requested_lpa_filters)
                     )
                 for lpa_filter in self._user_requested_lpa_filters:
                     if isinstance(lpa_filter, str):
-                        lpa_filter_list.append(
-                            self._normalise_lpa_partition_append_csv(lpa_filter)
-                        )
+                        lpa_filter_list.append(self._normalise_lpa_partition_append_csv(lpa_filter))
                     elif isinstance(lpa_filter, tuple):
                         lpa_filter_list.append(lpa_filter)
                     else:
                         raise OffloadSourceDataException(
-                            "Invalid type for partition append filter: %s"
-                            % type(lpa_filter)
+                            "Invalid type for partition append filter: %s" % type(lpa_filter)
                         )
             elif self._user_requested_partition_names:
                 logger.debug("filtering by user_requested_partition_names")
                 # find the named partitions and construct a list for comparison with p.partition_values_python
                 for partition_name in self._user_requested_partition_names:
-                    matched_partition = self._source_partitions.get_partition(
-                        partition_name
-                    )
+                    matched_partition = self._source_partitions.get_partition(partition_name)
                     if matched_partition:
-                        lpa_filter_list.append(
-                            matched_partition.partition_values_python
-                        )
+                        lpa_filter_list.append(matched_partition.partition_values_python)
                     else:
                         raise OffloadSourceDataException(
-                            "%s: %s"
-                            % (NO_MATCHING_PARTITION_EXCEPTION_TEXT, partition_name)
+                            "%s: %s" % (NO_MATCHING_PARTITION_EXCEPTION_TEXT, partition_name)
                         )
-            self.debug("Final filters: {}".format(lpa_filter_list))
+            self.debug(f"Final filters: {lpa_filter_list}")
             self._lpa_partition_filters = lpa_filter_list
 
         return self._lpa_partition_filters
@@ -2661,13 +2353,9 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
 
         column_names = [_.name for _ in self._partition_columns]
         ts_columns = [
-            _.name
-            for _ in self._partition_columns
-            if _.data_type in (ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ)
+            _.name for _ in self._partition_columns if _.data_type in (ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ)
         ]
-        rows = self._offload_target_table.get_distinct_column_values(
-            column_names, columns_to_cast_to_string=ts_columns
-        )
+        rows = self._offload_target_table.get_distinct_column_values(column_names, columns_to_cast_to_string=ts_columns)
         return self._get_lpa_keys_normalise_rows(self._partition_columns[0], rows)
 
     def _get_lpa_keys_for_default_partition(self, default_partition_name=None):
@@ -2684,14 +2372,11 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
         partition_column = self._part_offload_source_table.partition_columns[0]
         t1 = datetime.now().replace(microsecond=0)
         try:
-            rows = self._part_offload_source_table.get_distinct_column(
-                partition_column.name, default_partition_name
-            )
+            rows = self._part_offload_source_table.get_distinct_column(partition_column.name, default_partition_name)
         finally:
             t2 = datetime.now().replace(microsecond=0)
             self.log(
-                "Elapsed time to retrieve distinct RDBMS partition key data: %s"
-                % (t2 - t1),
+                "Elapsed time to retrieve distinct RDBMS partition key data: %s" % (t2 - t1),
                 detail=VVERBOSE,
             )
         return self._get_lpa_keys_normalise_rows(partition_column, rows)
@@ -2713,10 +2398,7 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
         """
         logger.debug("_get_source_partitions_matching_lpa_filters")
         lpa_filters = self._get_lpa_partition_filters()
-        self.debug(
-            "_get_source_partitions_matching_lpa_filters lpa_filters: %s"
-            % str(lpa_filters)
-        )
+        self.debug("_get_source_partitions_matching_lpa_filters lpa_filters: %s" % str(lpa_filters))
         filter_fn = self._lpa_partition_filter_fn(lpa_filters)
         matching_partitions = self._source_partitions.search_by_filter(filter_fn)
         return matching_partitions
@@ -2749,15 +2431,11 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
                     self._pre_offload_hybrid_metadata, self._col_offload_source_table
                 )
                 return hv_individual_list
-            else:
-                return []
+            return []
 
         logger.debug("_set_incremental_high_values")
         if self._lpa_incremental_high_values is not None:
-            self.debug(
-                "Retaining LPA incremental high values: %s"
-                % str(self._lpa_incremental_high_values)
-            )
+            self.debug("Retaining LPA incremental high values: %s" % str(self._lpa_incremental_high_values))
             return self._lpa_incremental_high_values
 
         if self._pred_for_90_10_in_hybrid_view:
@@ -2765,14 +2443,12 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
             if self._get_lpa_partition_filters():
                 self.debug("new HVs from filtered source partitions")
                 matching_list_hvs = [
-                    _.partition_values_individual
-                    for _ in self._get_source_partitions_matching_lpa_filters()
+                    _.partition_values_individual for _ in self._get_source_partitions_matching_lpa_filters()
                 ]
             elif self._partitions_to_offload.count() > 0:
                 self.debug("new HVs from partitions to offload")
                 matching_list_hvs = [
-                    _.partition_values_individual
-                    for _ in self._partitions_to_offload.get_partitions()
+                    _.partition_values_individual for _ in self._partitions_to_offload.get_partitions()
                 ]
             else:
                 matching_list_hvs = []
@@ -2781,9 +2457,7 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
             if self._user_requested_hybrid_view_reset:
                 if not matching_list_hvs:
                     # This is not good, we have a UNION ALL so MUST have predicates for the IN/NOT IN lists
-                    raise OffloadSourceDataException(
-                        "No matching partitions for hybrid view reset"
-                    )
+                    raise OffloadSourceDataException("No matching partitions for hybrid view reset")
                 metadata_hvs = []
             else:
                 metadata_hvs = get_metadata_list()
@@ -2791,9 +2465,7 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
 
             # The order shouldn't really matter but we do have processes that check for changed metadata
             # and this at least ensures a no-op update of metadata does not flag up as a change in what's offloaded
-            self._lpa_incremental_high_values = sorted(
-                list(set(matching_list_hvs + metadata_hvs))
-            )
+            self._lpa_incremental_high_values = sorted(list(set(matching_list_hvs + metadata_hvs)))
         else:
             # 100/0 - no incremental values in views or metadata, also ignore any reset hybrid view request
             self._lpa_incremental_high_values = []
@@ -2806,41 +2478,25 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
                 self._offloaded_partitions = OffloadSourcePartitions()
             else:
                 target_list_keys = self._get_lpa_keys_from_target()
-                self.log(
-                    "LPA keys in backend: %s" % str(target_list_keys), detail=VVERBOSE
-                )
+                self.log("LPA keys in backend: %s" % str(target_list_keys), detail=VVERBOSE)
                 if self._source_partitions.has_default_partition():
                     if self._default_partition_has_matching_keys(target_list_keys):
                         # Add DEFAULT to target_list_keys to indicate it has been offloaded
-                        default_partition = (
-                            self._source_partitions.get_default_partition()
-                        )
-                        target_list_keys.append(
-                            default_partition.partition_values_python[0]
-                        )
+                        default_partition = self._source_partitions.get_default_partition()
+                        target_list_keys.append(default_partition.partition_values_python[0])
 
                 def filter_fn(p):
                     # Using any() below because some key values may not exists but if "any" of
                     # them are in the backend then the partition has been offloaded
                     if any(_ in target_list_keys for _ in p.partition_values_python):
-                        self.debug(
-                            "Partition has been offloaded (i.e. is in backend keys): %s"
-                            % p.partition_literal
-                        )
+                        self.debug("Partition has been offloaded (i.e. is in backend keys): %s" % p.partition_literal)
                         return True
                     return False
 
-                offloaded_partitions = self._source_partitions.search_by_filter(
-                    filter_fn
-                )
-                self._offloaded_partitions = OffloadSourcePartitions(
-                    offloaded_partitions
-                )
+                offloaded_partitions = self._source_partitions.search_by_filter(filter_fn)
+                self._offloaded_partitions = OffloadSourcePartitions(offloaded_partitions)
 
-            if (
-                self._offload_type == OFFLOAD_TYPE_INCREMENTAL
-                and self._default_partition_has_been_offloaded()
-            ):
+            if self._offload_type == OFFLOAD_TYPE_INCREMENTAL and self._default_partition_has_been_offloaded():
                 raise OffloadSourceDataException(
                     "%s: %s"
                     % (
@@ -2869,8 +2525,7 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
                 ):
                     # User has requested a default partition
                     return True
-                else:
-                    return False
+                return False
             # Check if partition p is a requested partition
             if p.partition_values_python in lpa_filters:
                 return True
@@ -2895,10 +2550,7 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
         logger.debug("_discard_partitions_using_filters")
         lpa_filters = self._get_lpa_partition_filters()
         self._partitions_to_offload_apply_lpa_filter(lpa_filters)
-        if (
-            self._offload_type == OFFLOAD_TYPE_INCREMENTAL
-            and self.partitions_to_offload.has_default_partition()
-        ):
+        if self._offload_type == OFFLOAD_TYPE_INCREMENTAL and self.partitions_to_offload.has_default_partition():
             raise OffloadSourceDataException(
                 "%s %s for offload type %s"
                 % (
@@ -2908,9 +2560,7 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
                 )
             )
         if self._offload_by_subpartition:
-            raise NotImplementedError(
-                "LIST subpartition level offload is not supported"
-            )
+            raise NotImplementedError("LIST subpartition level offload is not supported")
 
     ###########################################################################
     # PUBLIC METHODS
@@ -2946,9 +2596,7 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
             ) = self.split_partitions_to_offload_by_no_segment()
 
             self.log("To %s:" % self._terms["name"])
-            keep_partitions.report_partitions(
-                self._part_offload_source_table.offload_by_subpartition, self._messages
-            )
+            keep_partitions.report_partitions(self._part_offload_source_table.offload_by_subpartition, self._messages)
 
             if discard_partitions.count() > 0:
                 self.log("To skip (no segments):")
@@ -2971,8 +2619,7 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
         logger.debug("get_incremental_high_values")
         if self._lpa_incremental_high_values:
             return self._lpa_incremental_high_values
-        else:
-            return []
+        return []
 
     def offloading_open_ended_partition(self):
         if not self.partitions_to_offload:
@@ -3008,7 +2655,7 @@ class OffloadSourceDataIpaListAsRange(OffloadSourceDataIpaRange):
         # Cache attributes from offload_operation that we are interested in
         self._user_requested_list_rpa_lte_filter = offload_operation.less_or_equal_value
 
-        super(OffloadSourceDataIpaListAsRange, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -3034,10 +2681,7 @@ class OffloadSourceDataIpaListAsRange(OffloadSourceDataIpaRange):
 
         def filter_fn(p):
             if len(p.partition_values_python) > 1:
-                self.debug(
-                    "Partition has multiple multiple high values: %s"
-                    % p.partition_literal
-                )
+                self.debug("Partition has multiple multiple high values: %s" % p.partition_literal)
                 return True
             return False
 
@@ -3059,10 +2703,7 @@ class OffloadSourceDataIpaListAsRange(OffloadSourceDataIpaRange):
     def _do_not_offload_open_ended_partition(self):
         """For INCREMENTAL LIST_AS_RANGE do not offload a DEFAULT partition."""
         removed_default_partition = None
-        if (
-            self._offload_type == OFFLOAD_TYPE_INCREMENTAL
-            and self.partitions_to_offload.has_default_partition()
-        ):
+        if self._offload_type == OFFLOAD_TYPE_INCREMENTAL and self.partitions_to_offload.has_default_partition():
             removed_default_partition = self._do_not_offload_default_partition()
         return removed_default_partition
 
@@ -3128,9 +2769,7 @@ class OffloadSourceDataIpaListAsRange(OffloadSourceDataIpaRange):
 
     def _normalise_list_rpa_lte_filter(self):
         if self._user_requested_list_rpa_lte_filter:
-            self._list_rpa_lte_filter = self._normalise_rpa_partition_filter(
-                self._user_requested_list_rpa_lte_filter
-            )
+            self._list_rpa_lte_filter = self._normalise_rpa_partition_filter(self._user_requested_list_rpa_lte_filter)
         else:
             self._list_rpa_lte_filter = tuple()
         return self._list_rpa_lte_filter
@@ -3149,31 +2788,21 @@ class OffloadSourceDataIpaListAsRange(OffloadSourceDataIpaRange):
             if self._user_requested_table_reset or not self._target_table_exists():
                 self._offloaded_partitions = OffloadSourcePartitions()
             else:
-                self._offloaded_partitions = OffloadSourcePartitions(
-                    self._rpa_partitions_already_offloaded()
-                )
+                self._offloaded_partitions = OffloadSourcePartitions(self._rpa_partitions_already_offloaded())
 
-            if (
-                self._offload_type == OFFLOAD_TYPE_INCREMENTAL
-                and self._maxvalue_partition_has_been_offloaded()
-            ):
+            if self._offload_type == OFFLOAD_TYPE_INCREMENTAL and self._maxvalue_partition_has_been_offloaded():
                 raise OffloadSourceDataException(
                     f"Offload type {self._offload_type} invalid when {offload_constants.PART_OUT_OF_RANGE} partition has been offloaded"
                 )
 
         return self._offloaded_partitions
 
-    def _rpa_partition_already_offloaded(
-        self, partition, partition_already_marked_offloaded
-    ):
+    def _rpa_partition_already_offloaded(self, partition, partition_already_marked_offloaded):
         """This method is used to differentiate between true RANGE and LIST_AS_RANGE.
         We can ignore partition_already_marked_offloaded because LIST_AS_RANGE HVs are like-for-like.
         """
         match = bool(tuple(partition.partition_values_python) <= self._target_table_max)
-        self.debug(
-            "Partition %s already offloaded check: %s"
-            % (partition.partition_name, match)
-        )
+        self.debug("Partition %s already offloaded check: %s" % (partition.partition_name, match))
         return match
 
     ###########################################################################
@@ -3205,7 +2834,7 @@ class OffloadSourceDataIUPartitioned(OffloadSourceDataInterface):
         self._incremental_append_capable = False
         self._partition_append_predicate_type = None
 
-        super(OffloadSourceDataIUPartitioned, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -3252,6 +2881,5 @@ class OffloadSourceDataIUPartitioned(OffloadSourceDataInterface):
         if not self.partitions_to_offload:
             return False
         return bool(
-            self.partitions_to_offload.has_maxvalue_partition()
-            or self.partitions_to_offload.has_default_partition()
+            self.partitions_to_offload.has_maxvalue_partition() or self.partitions_to_offload.has_default_partition()
         )

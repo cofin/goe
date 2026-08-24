@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" ParquetColumn: Parquet implementation of ColumnMetadataInterface
-"""
+"""ParquetColumn: Parquet implementation of ColumnMetadataInterface"""
 
 from goe.offload.column_metadata import ColumnMetadataInterface
 
@@ -54,7 +53,7 @@ class StagingParquetColumn(ColumnMetadataInterface):
         safe_mapping=True,
         char_semantics=None,
     ):
-        super(StagingParquetColumn, self).__init__(
+        super().__init__(
             name,
             data_type,
             data_length,
@@ -73,18 +72,14 @@ class StagingParquetColumn(ColumnMetadataInterface):
     def has_time_element(self):
         """Does the column data contain a time"""
         # We should not need to this for a staging column
-        raise NotImplementedError(
-            "has_time_element() is not applicable to a StagingParquetColumn"
-        )
+        raise NotImplementedError("has_time_element() is not applicable to a StagingParquetColumn")
 
     def is_binary(self):
         return bool(self.data_type == PARQUET_TYPE_BINARY)
 
     def is_nan_capable(self):
         # We should not need to this for a staging column
-        raise NotImplementedError(
-            "is_nan_capable() is not applicable to a StagingParquetColumn"
-        )
+        raise NotImplementedError("is_nan_capable() is not applicable to a StagingParquetColumn")
 
     def is_number_based(self):
         """Is the column numeric in class"""

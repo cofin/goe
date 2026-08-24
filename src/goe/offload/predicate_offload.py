@@ -14,91 +14,88 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Grammar and AST transformation support classes for offload-predicate DSL.
+
+Offload predicates should be passed around in GenericPredicate objects. GP instances contain a normalised form of
+the AST specified by the grammar. Named GenericPredicate to emphasise that this form of the predicate has not been
+specialised for any of the supported front/back end databases.
+
+General usage will be to parse a DSL string (such as directly from the user-specified CLI option) with the
+GenericPredicate constructor. This GP can then be transformed and rendered into front/back end SQL.
+
+Normal sequence for rendering GenericPredicate to a SQL dialect:
+1. Enrich GenericPredicate with column type information. See GenericPredicateToTyped, just supply a mapping
+    between column names and types.
+2. Transform typed AST into a "templated" form specific to the target SQL dialect. At this stage the AST
+    contains SQL text templates and still contains unchanged Python value nodes. This interim stage in the
+    rendering allows some code sharing between rendering for literals and rendering for binds.
+3. Transform AST value nodes into either their literal or bind form.
+4. Finally render straight to SQL using GenericPredicateToSQL. Templates are applied at this stage, and the
+    resulting SQL optionally combined with the bind dict from step 3 can be passed directly to DBAPI.execute.
+
+
+Offload predicate grammar:
+--------------------------
+
+The offload predicate DSL is similar to SQL but is definitely not SQL. As a language used to specify predicates
+it supports some syntax and operators found in ANSI SQL, but it is not a restricted subset of SQL.
+
+The DSL allows specification of any number of predicates in a range of forms, which can be logically combined
+with AND/OR to arbitrary nesting. Whitespace is insignificant.
+
+Predicates always contain a single column written with the "column" keyword and a "function-call" syntax:
+eg. column(CUSTOMER_ID)
+Columns can include aliases, separated from the column name with a dot:
+eg. column(SALES.CUSTOMER_ID)
+There is currently no support for case-sensitive column names - columns may be written with any case and are taken
+to mean upper-case column names.
+
+Predicates can take several forms:
+- column operator value
+- value operator column
+- column IN (value1, value2, ...)
+- column NOT IN (value1, value2, ...)
+- column IS NULL
+- column IS NOT NULL
+
+The basic SQL operators are supported and are written as in SQL: =, !=, <, <=, >, >=
+
+Values have a "function-call" syntax similar to columns with three available types.
+
+String values use the "string" keyword and double-quotes:
+eg. string("my string value")
+Double-quote characters can be included by escaping with backslash.
+
+Numeric values use the "numeric" keyword:
+eg. numeric(123), numeric(-3.141)
+Both integral and decimal values are supported with the same keyword.
+
+Date/time values use the "datetime" keyword and can be specified at several levels of precision. The date part
+always the form YYYY-MM-DD, the optional time part has the form HH24:MI:SS and supports optional fractional
+seconds at any precision up to nanoseconds.
+eg. datetime(2001-01-01)
+eg. datetime(2020-09-23 13:01:01)
+eg. datetime(2020-09-23 13:01:01.123)
+eg. datetime(2020-09-23 13:01:01.123456789)
+
+Value lists for use in the IN/NOT IN predicate form are surrounded by parentheses and separated by commas.
+The values in a value list must be specified as normal with the "function-call" syntax and whitespace remains
+insignificant.
+eg. column(customer_id) IN (numeric(120), numeric(121), numeric(122))
+
+Predicates may be logically combined with AND/OR but this always requires parentheses around predicates. This
+avoids any ambiguity arising from logical-precedence.
+eg. (column(EVENT_TIME) >= datetime(2020-01-01)) AND (column(EVENT_CODE) IN (numeric(17), numeric(18)))
 """
-    Grammar and AST transformation support classes for offload-predicate DSL.
-
-    Offload predicates should be passed around in GenericPredicate objects. GP instances contain a normalised form of
-    the AST specified by the grammar. Named GenericPredicate to emphasise that this form of the predicate has not been
-    specialised for any of the supported front/back end databases.
-
-    General usage will be to parse a DSL string (such as directly from the user-specified CLI option) with the
-    GenericPredicate constructor. This GP can then be transformed and rendered into front/back end SQL.
-
-    Normal sequence for rendering GenericPredicate to a SQL dialect:
-    1. Enrich GenericPredicate with column type information. See GenericPredicateToTyped, just supply a mapping
-        between column names and types.
-    2. Transform typed AST into a "templated" form specific to the target SQL dialect. At this stage the AST
-        contains SQL text templates and still contains unchanged Python value nodes. This interim stage in the
-        rendering allows some code sharing between rendering for literals and rendering for binds.
-    3. Transform AST value nodes into either their literal or bind form.
-    4. Finally render straight to SQL using GenericPredicateToSQL. Templates are applied at this stage, and the
-        resulting SQL optionally combined with the bind dict from step 3 can be passed directly to DBAPI.execute.
-
-
-    Offload predicate grammar:
-    --------------------------
-
-    The offload predicate DSL is similar to SQL but is definitely not SQL. As a language used to specify predicates
-    it supports some syntax and operators found in ANSI SQL, but it is not a restricted subset of SQL.
-
-    The DSL allows specification of any number of predicates in a range of forms, which can be logically combined
-    with AND/OR to arbitrary nesting. Whitespace is insignificant.
-
-    Predicates always contain a single column written with the "column" keyword and a "function-call" syntax:
-    eg. column(CUSTOMER_ID)
-    Columns can include aliases, separated from the column name with a dot:
-    eg. column(SALES.CUSTOMER_ID)
-    There is currently no support for case-sensitive column names - columns may be written with any case and are taken
-    to mean upper-case column names.
-
-    Predicates can take several forms:
-    - column operator value
-    - value operator column
-    - column IN (value1, value2, ...)
-    - column NOT IN (value1, value2, ...)
-    - column IS NULL
-    - column IS NOT NULL
-
-    The basic SQL operators are supported and are written as in SQL: =, !=, <, <=, >, >=
-
-    Values have a "function-call" syntax similar to columns with three available types.
-
-    String values use the "string" keyword and double-quotes:
-    eg. string("my string value")
-    Double-quote characters can be included by escaping with backslash.
-
-    Numeric values use the "numeric" keyword:
-    eg. numeric(123), numeric(-3.141)
-    Both integral and decimal values are supported with the same keyword.
-
-    Date/time values use the "datetime" keyword and can be specified at several levels of precision. The date part
-    always the form YYYY-MM-DD, the optional time part has the form HH24:MI:SS and supports optional fractional
-    seconds at any precision up to nanoseconds.
-    eg. datetime(2001-01-01)
-    eg. datetime(2020-09-23 13:01:01)
-    eg. datetime(2020-09-23 13:01:01.123)
-    eg. datetime(2020-09-23 13:01:01.123456789)
-
-    Value lists for use in the IN/NOT IN predicate form are surrounded by parentheses and separated by commas.
-    The values in a value list must be specified as normal with the "function-call" syntax and whitespace remains
-    insignificant.
-    eg. column(customer_id) IN (numeric(120), numeric(121), numeric(122))
-
-    Predicates may be logically combined with AND/OR but this always requires parentheses around predicates. This
-    avoids any ambiguity arising from logical-precedence.
-    eg. (column(EVENT_TIME) >= datetime(2020-01-01)) AND (column(EVENT_CODE) IN (numeric(17), numeric(18)))
-"""
-
 
 import datetime
-from optparse import OptionValueError
-import traceback
 import logging
+import traceback
+from optparse import OptionValueError
 
 import lark
-from lark import Tree, Token
-
 import numpy as np
+from lark import Token, Tree
 
 from goe.offload.column_metadata import (
     ColumnMetadataInterface,
@@ -107,7 +104,6 @@ from goe.offload.column_metadata import (
     match_partition_column_by_source,
 )
 from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
-
 
 dev_log = logging.getLogger("goe")
 
@@ -148,17 +144,15 @@ def python_timestamp_to_string(python_ts, with_time=True, subsecond=0):
             else:
                 np_unit = "ms"
             return np.datetime_as_string(python_ts, np_unit).replace("T", " ")
-        elif with_time:
+        if with_time:
             return np.datetime_as_string(python_ts, "s").replace("T", " ")
-        else:
-            return np.datetime_as_string(python_ts, "D")
-    elif isinstance(python_ts, datetime.date):
+        return np.datetime_as_string(python_ts, "D")
+    if isinstance(python_ts, datetime.date):
         if with_time and subsecond:
             return python_ts.strftime("%Y-%m-%d %H:%M:%S.%f")
-        elif with_time:
+        if with_time:
             return python_ts.strftime("%Y-%m-%d %H:%M:%S")
-        else:
-            return python_ts.strftime("%Y-%m-%d")
+        return python_ts.strftime("%Y-%m-%d")
 
 
 class handle_parse_errors:
@@ -170,9 +164,7 @@ class handle_parse_errors:
         pass
 
     def __exit__(self, exc_type, exc, tb):
-        if isinstance(
-            exc, (lark.exceptions.UnexpectedToken, lark.exceptions.UnexpectedCharacters)
-        ):
+        if isinstance(exc, (lark.exceptions.UnexpectedToken, lark.exceptions.UnexpectedCharacters)):
             if hasattr(exc, "considered_tokens"):
                 considered_rules = [t.rule for t in exc.considered_tokens]
             else:
@@ -181,13 +173,7 @@ class handle_parse_errors:
             expected_rule_names = set([r.origin.name for r in considered_rules])
             if expected_rule_names:
                 expected_hint = "Expected tokens in this position:\n"
-                expected_hint += "\n".join(
-                    set(
-                        "- %s" % RULE_HINT[r]
-                        for r in expected_rule_names
-                        if r in RULE_HINT
-                    )
-                )
+                expected_hint += "\n".join(set("- %s" % RULE_HINT[r] for r in expected_rule_names if r in RULE_HINT))
             else:
                 expected_hint = ""
 
@@ -196,17 +182,10 @@ class handle_parse_errors:
                 statement_hint = "\n".join(message_lines[2:4])
             else:
                 statement_hint = ""
-            raise OptionValueError(
-                "Unexpected offload predicate syntax:\n"
-                + statement_hint
-                + "\n"
-                + expected_hint
-            )
-        elif isinstance(exc, lark.exceptions.UnexpectedEOF):
-            raise OptionValueError(
-                "Encountered EOF before reaching end of valid offload predicate."
-            )
-        elif isinstance(exc, lark.exceptions.VisitError):
+            raise OptionValueError("Unexpected offload predicate syntax:\n" + statement_hint + "\n" + expected_hint)
+        if isinstance(exc, lark.exceptions.UnexpectedEOF):
+            raise OptionValueError("Encountered EOF before reaching end of valid offload predicate.")
+        if isinstance(exc, lark.exceptions.VisitError):
             dev_log.debug("Exception while processing:")
             dev_log.debug(exc.obj.pretty())
             dev_log.debug("Traceback:")
@@ -234,8 +213,7 @@ class GenericPredicate:
         def get_alias_column(node):
             if len(node.children) == 1:
                 return (None, node.children[-1].value)
-            else:
-                return tuple(c.value for c in node.children)
+            return tuple(c.value for c in node.children)
 
         column_nodes = self.ast.find_pred(lambda tree: tree.data == "column")
         return list(set([get_alias_column(n) for n in column_nodes]))
@@ -250,10 +228,7 @@ class GenericPredicate:
         and are therefore both uppercased for search and replacement
         """
         original_name, new_name = original_name.upper(), new_name.upper()
-        target_cols = (
-            lambda tree: tree.data == "column"
-            and tree.children[-1].value == original_name
-        )
+        target_cols = lambda tree: tree.data == "column" and tree.children[-1].value == original_name
         for column_node in self.ast.find_pred(target_cols):
             column_node.children[-1] = column_node.children[-1].update(value=new_name)
 
@@ -277,23 +252,19 @@ def parse_predicate_dsl(dsl_str, top_level_node="offload_predicate"):
 
 
 def create_or_relation_predicate(children_predicates):
-    "Return a GenericPredicate with top-level OR node, <children_predicates> will be children"
+    """Return a GenericPredicate with top-level OR node, <children_predicates> will be children"""
     assert all(isinstance(p, GenericPredicate) for p in children_predicates)
-    return GenericPredicate(
-        ast=Tree("or_relation_group", [p.ast for p in children_predicates])
-    )
+    return GenericPredicate(ast=Tree("or_relation_group", [p.ast for p in children_predicates]))
 
 
 def create_and_relation_predicate(children_predicates):
-    "Return a GenericPredicate with top-level AND node, <children_predicates> will be children"
+    """Return a GenericPredicate with top-level AND node, <children_predicates> will be children"""
     assert all(isinstance(p, GenericPredicate) for p in children_predicates)
-    return GenericPredicate(
-        ast=Tree("and_relation_group", [p.ast for p in children_predicates])
-    )
+    return GenericPredicate(ast=Tree("and_relation_group", [p.ast for p in children_predicates]))
 
 
 class RawToInternalAST(lark.Transformer):
-    'Turn value strings into internal "python values" format, extract infix operators into parent-child relationship'
+    """Turn value strings into internal "python values" format, extract infix operators into parent-child relationship"""
 
     def quoted_value(self, node_type, items):
         (value,) = items
@@ -305,38 +276,29 @@ class RawToInternalAST(lark.Transformer):
     string_value = lambda self, items: self.quoted_value("string_value", items)
 
     def predicate(self, items):
-        "Transform infix AST to correct parent-child relationship between operators and operands"
+        """Transform infix AST to correct parent-child relationship between operators and operands"""
         if len(items) == 1:
             return items[0]
-        elif len(items) == 2:
+        if len(items) == 2:
             column, null_relation = items
             null_relation.children = [column]
             return null_relation
-        else:
-            lhs, relation, rhs = items
-            relation.children = [lhs, rhs]
-            return relation
+        lhs, relation, rhs = items
+        relation.children = [lhs, rhs]
+        return relation
 
     def and_relation_group(self, items):
-        "Remove AND terminals"
+        """Remove AND terminals"""
         return Tree(
             "and_relation_group",
-            [
-                i
-                for i in items
-                if not (isinstance(i, Token) and i.value.lower() == "and")
-            ],
+            [i for i in items if not (isinstance(i, Token) and i.value.lower() == "and")],
         )
 
     def or_relation_group(self, items):
-        "Remove OR terminals"
+        """Remove OR terminals"""
         return Tree(
             "or_relation_group",
-            [
-                i
-                for i in items
-                if not (isinstance(i, Token) and i.value.lower() == "or")
-            ],
+            [i for i in items if not (isinstance(i, Token) and i.value.lower() == "or")],
         )
 
     def column(self, items):
@@ -356,35 +318,24 @@ class RawToInternalAST(lark.Transformer):
 
 
 class GenericPredicateToTyped(lark.Transformer):
-    """
-    Transform value nodes into tuples of their value and a DB data type, usually the first step in rendering a predicate to SQL
+    """Transform value nodes into tuples of their value and a DB data type, usually the first step in rendering a predicate to SQL
     Also validate comparison nodes: column types must be compatible with AST value node type.
     """
 
     def __init__(self, columns):
         assert isinstance(columns, list)
         if columns:
-            assert isinstance(
-                columns[0], ColumnMetadataInterface
-            ), "Invalid column type: %s" % type(columns[0])
+            assert isinstance(columns[0], ColumnMetadataInterface), "Invalid column type: %s" % type(columns[0])
 
         self.column_name_to_type = {col.name.upper(): col.data_type for col in columns}
 
-        self.invalid_data_types = [
-            _.data_type for _ in columns if not _.valid_for_offload_predicate()
-        ]
+        self.invalid_data_types = [_.data_type for _ in columns if not _.valid_for_offload_predicate()]
         # map of node_type (Tree.data member) to list of data types used in columns
         valid_columns = [_ for _ in columns if _.valid_for_offload_predicate()]
         self.valid_node_data_types = {
-            "numeric_value": list(
-                set(_.data_type for _ in valid_columns if _.is_number_based())
-            ),
-            "datetime_value": list(
-                set(_.data_type for _ in valid_columns if _.is_date_based())
-            ),
-            "string_value": list(
-                set(_.data_type for _ in valid_columns if _.is_string_based())
-            ),
+            "numeric_value": list(set(_.data_type for _ in valid_columns if _.is_number_based())),
+            "datetime_value": list(set(_.data_type for _ in valid_columns if _.is_date_based())),
+            "string_value": list(set(_.data_type for _ in valid_columns if _.is_string_based())),
         }
         self.node_names = {
             "numeric_value": "numeric",
@@ -396,23 +347,15 @@ class GenericPredicateToTyped(lark.Transformer):
         try:
             return self.column_name_to_type[col_name]
         except KeyError:
-            raise OptionValueError(
-                "Unable to resolve column '%s' in offload predicate" % col_name
-            )
+            raise OptionValueError("Unable to resolve column '%s' in offload predicate" % col_name)
 
     def check_data_type(self, node_types, data_type):
         if data_type in self.invalid_data_types:
-            raise OptionValueError(
-                "Data type is not supported for offload predicate: %s" % data_type
-            )
+            raise OptionValueError("Data type is not supported for offload predicate: %s" % data_type)
         for nt in node_types:
-            if (
-                nt != "literal_value"
-                and data_type not in self.valid_node_data_types.get(nt, [])
-            ):
+            if nt != "literal_value" and data_type not in self.valid_node_data_types.get(nt, []):
                 raise OptionValueError(
-                    "Columns of data type %s cannot be compared to %s values"
-                    % (data_type, self.node_names.get(nt, nt))
+                    "Columns of data type %s cannot be compared to %s values" % (data_type, self.node_names.get(nt, nt))
                 )
 
     def enrich_value_type(self, items, node_type):
@@ -444,26 +387,18 @@ class GenericPredicateToTyped(lark.Transformer):
             data_type = self.resolve_column_type(rhs.children[-1].value)
             assert lhs.data != "value_list"
             self.check_data_type([lhs.data], data_type)
-            lhs = Tree(
-                lhs.data, [v.update(value=(v.value, data_type)) for v in lhs.children]
-            )
+            lhs = Tree(lhs.data, [v.update(value=(v.value, data_type)) for v in lhs.children])
 
         return Tree(node_type, [lhs, rhs])
 
     equals = lambda self, items: self.enrich_value_type(items, "equals")
     not_equals = lambda self, items: self.enrich_value_type(items, "not_equals")
     greater_than = lambda self, items: self.enrich_value_type(items, "greater_than")
-    greater_than_or_equal = lambda self, items: self.enrich_value_type(
-        items, "greater_than_or_equal"
-    )
+    greater_than_or_equal = lambda self, items: self.enrich_value_type(items, "greater_than_or_equal")
     less_than = lambda self, items: self.enrich_value_type(items, "less_than")
-    less_than_or_equal = lambda self, items: self.enrich_value_type(
-        items, "less_than_or_equal"
-    )
+    less_than_or_equal = lambda self, items: self.enrich_value_type(items, "less_than_or_equal")
     in_relation = lambda self, items: self.enrich_value_type(items, "in_relation")
-    not_in_relation = lambda self, items: self.enrich_value_type(
-        items, "not_in_relation"
-    )
+    not_in_relation = lambda self, items: self.enrich_value_type(items, "not_in_relation")
 
 
 class GenericPredicateToSQL(lark.Transformer):
@@ -478,12 +413,8 @@ class GenericPredicateToSQL(lark.Transformer):
 
     offload_predicate = lambda self, items: items[0]
 
-    and_relation_group = (
-        lambda self, items: "(" + " AND ".join("%s" % i for i in items) + ")"
-    )
-    or_relation_group = (
-        lambda self, items: "(" + " OR ".join("%s" % i for i in items) + ")"
-    )
+    and_relation_group = lambda self, items: "(" + " AND ".join("%s" % i for i in items) + ")"
+    or_relation_group = lambda self, items: "(" + " OR ".join("%s" % i for i in items) + ")"
 
     column = lambda self, items: ".".join(items)
     value_list = lambda self, items: "(" + ", ".join(items) + ")"
@@ -503,28 +434,18 @@ class GenericPredicateToDSL(GenericPredicateToSQL):
 
     def numeric_value(self, items):
         value = items[0].value
-        value = (
-            value[0] if isinstance(value, tuple) else value
-        )  # deal with typed predicate
-        value = (
-            np.format_float_positional(value, trim="-")
-            if isinstance(value, float)
-            else value
-        )
+        value = value[0] if isinstance(value, tuple) else value  # deal with typed predicate
+        value = np.format_float_positional(value, trim="-") if isinstance(value, float) else value
         return "numeric(%s)" % value
 
     def string_value(self, items):
         value = items[0].value
-        value = (
-            value[0] if isinstance(value, tuple) else value
-        )  # deal with typed predicate
+        value = value[0] if isinstance(value, tuple) else value  # deal with typed predicate
         return 'string("%s")' % value
 
     def datetime_value(self, items):
         value = items[0].value
-        value = (
-            value[0] if isinstance(value, tuple) else value
-        )  # deal with typed predicate
+        value = value[0] if isinstance(value, tuple) else value  # deal with typed predicate
         assert isinstance(value, np.datetime64)
         str_value = str(value).replace("T", " ")
         return "datetime(%s)" % str_value[:29]
@@ -553,8 +474,7 @@ class TypedPredicateToLiterals(lark.Transformer):
         # logic here could be based on DB data_type, but that is for subclasses to override
         if isinstance(value, float):
             return Token("LITERAL", np.format_float_positional(value, trim="-"))
-        else:
-            return Token("LITERAL", str(value))
+        return Token("LITERAL", str(value))
 
     def quote_literal(self, items, quote="'"):
         value, data_type = items[0].value
@@ -568,7 +488,7 @@ class TypedPredicateToBinds(lark.Transformer):
         self.binds = {}
 
     def __default__(self, data, children, meta):
-        "register self.binds as meta as we ascend up the tree, so the top node will have binds accessible in .meta"
+        """Register self.binds as meta as we ascend up the tree, so the top node will have binds accessible in .meta"""
         return Tree(data, children, self.binds)
 
     def literal_value(self, items):
@@ -603,21 +523,13 @@ class InsertSyntheticPartitionClauses(lark.Transformer):
         column_name = column.children[0].value
 
         partition_columns = get_partition_columns(self.table_columns)
-        synthetic_part_col = match_partition_column_by_source(
-            column_name, partition_columns
-        )
+        synthetic_part_col = match_partition_column_by_source(column_name, partition_columns)
         if synthetic_part_col and is_synthetic_partition_column(synthetic_part_col):
             synth_value_literal = SyntheticPartitionLiteral.gen_synthetic_literal(
                 synthetic_part_col, self.table_columns, value_obj
             )
-            synth_column_tree = lark.Tree(
-                "column", [lark.Token("COLUMN", synthetic_part_col.name)]
-            )
-            new_value_node_name = (
-                "datetime_value"
-                if synthetic_part_col.is_date_based()
-                else "string_value"
-            )
+            synth_column_tree = lark.Tree("column", [lark.Token("COLUMN", synthetic_part_col.name)])
+            new_value_node_name = "datetime_value" if synthetic_part_col.is_date_based() else "string_value"
             synth_value_tree = lark.Tree(
                 new_value_node_name,
                 [
@@ -644,28 +556,19 @@ class InsertSyntheticPartitionClauses(lark.Transformer):
                 "and_relation_group",
                 [lark.Tree(relation_name, items), synthetic_predicate],
             )
-        else:
-            return lark.Tree(relation_name, items)
+        return lark.Tree(relation_name, items)
 
     equals = lambda self, items: self.insert_synthetic_predicate(items, "equals")
-    not_equals = lambda self, items: self.insert_synthetic_predicate(
-        items, "not_equals"
-    )
-    greater_than = lambda self, items: self.insert_synthetic_predicate(
-        items, "greater_than"
-    )
-    greater_than_or_equal = lambda self, items: self.insert_synthetic_predicate(
-        items, "greater_than_or_equal"
-    )
+    not_equals = lambda self, items: self.insert_synthetic_predicate(items, "not_equals")
+    greater_than = lambda self, items: self.insert_synthetic_predicate(items, "greater_than")
+    greater_than_or_equal = lambda self, items: self.insert_synthetic_predicate(items, "greater_than_or_equal")
     less_than = lambda self, items: self.insert_synthetic_predicate(items, "less_than")
-    less_than_or_equal = lambda self, items: self.insert_synthetic_predicate(
-        items, "less_than_or_equal"
-    )
+    less_than_or_equal = lambda self, items: self.insert_synthetic_predicate(items, "less_than_or_equal")
 
 
 def get_parser(top_level_node="offload_predicate"):
     return lark.Lark(
-        """
+        r"""
 %import common.ESCAPED_STRING
 %import common.INT
 %import common.DECIMAL

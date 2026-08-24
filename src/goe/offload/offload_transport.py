@@ -14,24 +14,25 @@
 
 """OffloadTransport: Library for offloading data from an RDBMS frontend to a cloud backend."""
 
-from abc import ABCMeta, abstractmethod
-from datetime import datetime
 import json
 import logging
 import os
 import re
+import traceback
+from abc import ABCMeta, abstractmethod
+from datetime import datetime
 from socket import gethostname
 from textwrap import dedent
-import traceback
-from typing import Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from goe.config import orchestration_defaults
+from goe.filesystem.goe_dfs import DFS_TYPE_FILE
 from goe.offload.column_metadata import match_table_column
 from goe.offload.factory.backend_api_factory import backend_api_factory
-from goe.offload.factory.query_import_factory import query_import_factory
 from goe.offload.factory.offload_transport_rdbms_api_factory import (
     offload_transport_rdbms_api_factory,
 )
+from goe.offload.factory.query_import_factory import query_import_factory
 from goe.offload.factory.staging_file_factory import staging_file_factory
 from goe.offload.frontend_api import FRONTEND_TRACE_MODULE
 from goe.offload.offload_constants import (
@@ -45,24 +46,20 @@ from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_PARQUET,
     HADOOP_BASED_BACKEND_DISTRIBUTIONS,
     OFFLOAD_TRANSPORT_AUTO,
-    OFFLOAD_TRANSPORT_GOE,
     OFFLOAD_TRANSPORT_GCP,
+    OFFLOAD_TRANSPORT_GOE,
     OFFLOAD_TRANSPORT_SQOOP,
     OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.oracle.oracle_column import (
-    ORACLE_TYPE_TIMESTAMP_TZ,
-    ORACLE_TYPE_XMLTYPE,
-)
 from goe.offload.offload_transport_functions import (
     credential_provider_path_jvm_override,
+    get_local_staging_path,
     hs2_connection_log_message,
     run_os_cmd,
     running_as_same_user_and_host,
     scp_to_cmd,
     ssh_cmd_prefix,
-    get_local_staging_path,
 )
 from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE,
@@ -72,11 +69,12 @@ from goe.offload.offload_transport_rdbms_api import (
 )
 from goe.offload.offload_xform_functions import apply_transformation
 from goe.offload.operation.data_type_controls import char_semantics_override_map
+from goe.offload.oracle.oracle_column import (
+    ORACLE_TYPE_TIMESTAMP_TZ,
+    ORACLE_TYPE_XMLTYPE,
+)
 from goe.offload.spark.pyspark_literal import PysparkLiteral
 from goe.orchestration import command_steps
-
-from goe.filesystem.goe_dfs import DFS_TYPE_FILE
-
 from goe.util.misc_functions import (
     ansi_c_string_safe,
     bytes_to_human_size,
@@ -176,9 +174,7 @@ MISSING_ROWS_SPARK_WARNING = "Import record count not identified from Spark"
 OFFLOAD_TRANSPORT_SPARK_GCLOUD_EXECUTABLE = "gcloud"
 
 # Used for test assertions
-POLLING_VALIDATION_TEXT = (
-    "Calculating offload transport source row counts from %s snapshots"
-)
+POLLING_VALIDATION_TEXT = "Calculating offload transport source row counts from %s snapshots"
 
 # Used for scraping Spark log messages to find transport row count
 # Example logger messages:
@@ -205,9 +201,7 @@ logger.addHandler(logging.NullHandler())
 def spark_submit_executable_exists(
     config: "OrchestrationConfig", messages: "OffloadMessages", executable_override=None
 ):
-    spark_submit_executable = (
-        executable_override or config.offload_transport_spark_submit_executable
-    )
+    spark_submit_executable = executable_override or config.offload_transport_spark_submit_executable
     cmd = ["which", spark_submit_executable]
     cmd = (
         ssh_cmd_prefix(
@@ -226,10 +220,7 @@ def is_spark_thrift_available(
     messages: "OffloadMessages" = None,
 ):
     """If messages is passed in then we'll log any reason for a False return"""
-    if (
-        not config.offload_transport_spark_thrift_host
-        or not config.offload_transport_spark_thrift_port
-    ):
+    if not config.offload_transport_spark_thrift_host or not config.offload_transport_spark_thrift_port:
         if messages:
             messages.log(
                 "OFFLOAD_TRANSPORT_SPARK_THRIFT_HOST and OFFLOAD_TRANSPORT_SPARK_THRIFT_PORT required for transport method: %s"
@@ -237,8 +228,7 @@ def is_spark_thrift_available(
                 detail=VVERBOSE,
             )
         return False
-    else:
-        return True
+    return True
 
 
 def is_livy_available(
@@ -258,8 +248,7 @@ def is_livy_available(
             else None
         )
         return False
-    else:
-        return True
+    return True
 
 
 def is_spark_submit_available(
@@ -274,15 +263,14 @@ def is_spark_submit_available(
     if not config.offload_transport_cmd_host:
         (
             messages.log(
-                "OFFLOAD_TRANSPORT_CMD_HOST required for transport method: %s"
-                % OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
+                "OFFLOAD_TRANSPORT_CMD_HOST required for transport method: %s" % OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
                 detail=VVERBOSE,
             )
             if messages
             else None
         )
         return False
-    elif not config.offload_transport_spark_submit_executable:
+    if not config.offload_transport_spark_submit_executable:
         (
             messages.log(
                 "OFFLOAD_TRANSPORT_SPARK_SUBMIT_EXECUTABLE required for transport method: %s"
@@ -293,17 +281,13 @@ def is_spark_submit_available(
             else None
         )
         return False
-    elif messages and not spark_submit_executable_exists(
-        config, messages, executable_override=executable_override
-    ):
+    if messages and not spark_submit_executable_exists(config, messages, executable_override=executable_override):
         messages.log(
-            "Spark submit executable required for transport method: %s"
-            % OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
+            "Spark submit executable required for transport method: %s" % OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
             detail=VVERBOSE,
         )
         return False
-    else:
-        return True
+    return True
 
 
 def is_spark_gcloud_available(
@@ -336,19 +320,17 @@ def is_spark_gcloud_available(
             else None
         )
         return False
-    elif messages and not spark_submit_executable_exists(
+    if messages and not spark_submit_executable_exists(
         config,
         messages,
         executable_override=OFFLOAD_TRANSPORT_SPARK_GCLOUD_EXECUTABLE,
     ):
         messages.log(
-            "gcloud executable required for transport method: %s"
-            % OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
+            "gcloud executable required for transport method: %s" % OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
             detail=VVERBOSE,
         )
         return False
-    else:
-        return True
+    return True
 
 
 def is_spark_gcloud_dataproc_available(
@@ -357,8 +339,7 @@ def is_spark_gcloud_dataproc_available(
     messages: "OffloadMessages" = None,
 ):
     return bool(
-        config.google_dataproc_cluster
-        and is_spark_gcloud_available(config, offload_source_table, messages=messages)
+        config.google_dataproc_cluster and is_spark_gcloud_available(config, offload_source_table, messages=messages)
     )
 
 
@@ -404,8 +385,7 @@ def is_query_import_available(
     if offload_source_table:
         if (
             offload_operation
-            and (offload_source_table.size_in_bytes or 0)
-            > offload_operation.offload_transport_small_table_threshold
+            and (offload_source_table.size_in_bytes or 0) > offload_operation.offload_transport_small_table_threshold
         ):
             log(
                 "Table size (%s) > %s (OFFLOAD_TRANSPORT_SMALL_TABLE_THRESHOLD) is not valid with transport method: %s"
@@ -430,10 +410,7 @@ def is_sqoop_available(
     """If messages is passed in then we'll log any reason for a False return
     Sqoop can only be validated if operational config is passed in. Without that we just assume True
     """
-    if (
-        config.backend_distribution
-        and config.backend_distribution not in HADOOP_BASED_BACKEND_DISTRIBUTIONS
-    ):
+    if config.backend_distribution and config.backend_distribution not in HADOOP_BASED_BACKEND_DISTRIBUTIONS:
         if messages:
             messages.log(
                 "Transport method only valid on Hadoop systems: %s/%s"
@@ -444,42 +421,35 @@ def is_sqoop_available(
                 detail=VVERBOSE,
             )
         return False
-    elif not config.offload_transport_cmd_host:
+    if not config.offload_transport_cmd_host:
         if messages:
             messages.log(
-                "OFFLOAD_TRANSPORT_CMD_HOST required for transport method: %s"
-                % OFFLOAD_TRANSPORT_METHOD_SQOOP,
+                "OFFLOAD_TRANSPORT_CMD_HOST required for transport method: %s" % OFFLOAD_TRANSPORT_METHOD_SQOOP,
                 detail=VVERBOSE,
             )
         return False
-    elif offload_operation and offload_operation.offload_by_subpartition:
+    if offload_operation and offload_operation.offload_by_subpartition:
         if messages:
             messages.log(
-                "Subpartition level offloads are not valid with transport method: %s"
-                % OFFLOAD_TRANSPORT_METHOD_SQOOP,
+                "Subpartition level offloads are not valid with transport method: %s" % OFFLOAD_TRANSPORT_METHOD_SQOOP,
                 detail=VVERBOSE,
             )
         return False
-    elif offload_operation and offload_operation.column_transformations:
+    if offload_operation and offload_operation.column_transformations:
         if messages:
             messages.log(
-                "Column transformations are not valid with transport method: %s"
-                % OFFLOAD_TRANSPORT_METHOD_SQOOP,
+                "Column transformations are not valid with transport method: %s" % OFFLOAD_TRANSPORT_METHOD_SQOOP,
                 detail=VVERBOSE,
             )
         return False
-    elif offload_operation and offload_operation.offload_predicate:
+    if offload_operation and offload_operation.offload_predicate:
         if messages:
             messages.log(
-                "Predicate offloads are not valid with transport method: %s"
-                % OFFLOAD_TRANSPORT_METHOD_SQOOP,
+                "Predicate offloads are not valid with transport method: %s" % OFFLOAD_TRANSPORT_METHOD_SQOOP,
                 detail=VVERBOSE,
             )
         return False
-    elif (
-        offload_source_table
-        and ORACLE_TYPE_TIMESTAMP_TZ in offload_source_table.data_types_in_use()
-    ):
+    if offload_source_table and ORACLE_TYPE_TIMESTAMP_TZ in offload_source_table.data_types_in_use():
         if messages:
             messages.log(
                 "TIMESTAMP WITH TIME ZONE offloads are not valid with transport method: %s"
@@ -487,31 +457,21 @@ def is_sqoop_available(
                 detail=VVERBOSE,
             )
         return False
-    elif (
-        offload_source_table
-        and ORACLE_TYPE_XMLTYPE in offload_source_table.data_types_in_use()
-    ):
+    if offload_source_table and ORACLE_TYPE_XMLTYPE in offload_source_table.data_types_in_use():
         if messages:
             messages.log(
-                "XMLTYPE offloads are not valid with transport method: %s"
-                % OFFLOAD_TRANSPORT_METHOD_SQOOP,
+                "XMLTYPE offloads are not valid with transport method: %s" % OFFLOAD_TRANSPORT_METHOD_SQOOP,
                 detail=VVERBOSE,
             )
         return False
-    elif not offload_operation:
+    if not offload_operation:
         return True
-    else:
-        return True
+    return True
 
 
-def is_sqoop_by_query_available(
-    config: "OrchestrationConfig", messages: "OffloadMessages" = None
-):
+def is_sqoop_by_query_available(config: "OrchestrationConfig", messages: "OffloadMessages" = None):
     """If messages is passed in then we'll log any reason for a False return"""
-    if (
-        config.backend_distribution
-        and config.backend_distribution not in HADOOP_BASED_BACKEND_DISTRIBUTIONS
-    ):
+    if config.backend_distribution and config.backend_distribution not in HADOOP_BASED_BACKEND_DISTRIBUTIONS:
         (
             messages.log(
                 "Transport method only valid on Hadoop systems: %s/%s"
@@ -525,7 +485,7 @@ def is_sqoop_by_query_available(
             else None
         )
         return False
-    elif not config.offload_transport_cmd_host:
+    if not config.offload_transport_cmd_host:
         (
             messages.log(
                 "OFFLOAD_TRANSPORT_CMD_HOST required for transport method: %s"
@@ -536,8 +496,7 @@ def is_sqoop_by_query_available(
             else None
         )
         return False
-    else:
-        return True
+    return True
 
 
 def get_offload_transport_method_validation_fns(
@@ -550,9 +509,7 @@ def get_offload_transport_method_validation_fns(
         OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT: lambda: is_spark_thrift_available(
             config, offload_source_table, messages=messages
         ),
-        OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY: lambda: is_livy_available(
-            config, offload_source_table, messages=messages
-        ),
+        OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY: lambda: is_livy_available(config, offload_source_table, messages=messages),
         OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT: lambda: is_spark_submit_available(
             config, offload_source_table, messages=messages
         ),
@@ -574,9 +531,7 @@ def get_offload_transport_method_validation_fns(
             offload_source_table=offload_source_table,
             messages=messages,
         ),
-        OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY: lambda: is_sqoop_by_query_available(
-            config, messages=messages
-        ),
+        OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY: lambda: is_sqoop_by_query_available(config, messages=messages),
     }
 
 
@@ -596,19 +551,14 @@ def validate_offload_transport_method(
     assert exception_class
 
     if offload_transport_method not in VALID_OFFLOAD_TRANSPORT_METHODS:
-        raise exception_class(
-            "Unsupported transport method: %s" % offload_transport_method
-        )
+        raise exception_class("Unsupported transport method: %s" % offload_transport_method)
 
     validation_fn = get_offload_transport_method_validation_fns(
         config, offload_operation, offload_source_table, messages
     )[offload_transport_method]
 
     if not validation_fn():
-        raise exception_class(
-            "Transport method is incompatible with this offload: %s"
-            % offload_transport_method
-        )
+        raise exception_class("Transport method is incompatible with this offload: %s" % offload_transport_method)
 
 
 def choose_offload_transport_method(
@@ -638,11 +588,7 @@ def choose_offload_transport_method(
             # An override was supplied
             rules = [offload_operation.offload_transport_method]
         elif config.offload_transport == OFFLOAD_TRANSPORT_AUTO:
-            rules = (
-                OFFLOAD_TRANSPORT_GOE_METHODS
-                + OFFLOAD_TRANSPORT_SQOOP_METHODS
-                + OFFLOAD_TRANSPORT_GCP_METHODS
-            )
+            rules = OFFLOAD_TRANSPORT_GOE_METHODS + OFFLOAD_TRANSPORT_SQOOP_METHODS + OFFLOAD_TRANSPORT_GCP_METHODS
         elif config.offload_transport == OFFLOAD_TRANSPORT_GOE:
             rules = OFFLOAD_TRANSPORT_GOE_METHODS
         elif config.offload_transport == OFFLOAD_TRANSPORT_SQOOP:
@@ -656,13 +602,11 @@ def choose_offload_transport_method(
 
         # if we get to here then no rule was accepted
         raise OffloadTransportException(
-            "No valid transport methods found for offload transport: %s"
-            % config.offload_transport
+            "No valid transport methods found for offload transport: %s" % config.offload_transport
         )
-    elif config.db_type == DBTYPE_MSSQL:
+    if config.db_type == DBTYPE_MSSQL:
         return OFFLOAD_TRANSPORT_METHOD_SQOOP
-    else:
-        raise OffloadTransportException("Unsupported DB type: %s" % config.db_type)
+    raise OffloadTransportException("Unsupported DB type: %s" % config.db_type)
 
 
 def derive_rest_api_verify_value_from_url(url):
@@ -672,18 +616,14 @@ def derive_rest_api_verify_value_from_url(url):
     """
     if url and url[:6] == "https:":
         return False
-    else:
-        return None
+    return None
 
 
 def convert_nans_to_nulls(offload_target_table, offload_operation):
     """If the backend does not support NaN values and the --allow-floating-point-conversions parameter is set,
     we must convert any 'NaN','Infinity','-Infinity' values in RDBMS nan capable columns to NULL
     """
-    return bool(
-        not offload_target_table.nan_supported()
-        and offload_operation.allow_floating_point_conversions
-    )
+    return bool(not offload_target_table.nan_supported() and offload_operation.allow_floating_point_conversions)
 
 
 def get_offload_transport_value(
@@ -694,21 +634,14 @@ def get_offload_transport_value(
 ):
     if dedicated_value:
         return dedicated_value
-    elif (
-        offload_transport_method in OFFLOAD_TRANSPORT_SQOOP_METHODS
-        and sqoop_specific_value
-    ):
+    if offload_transport_method in OFFLOAD_TRANSPORT_SQOOP_METHODS and sqoop_specific_value:
         return sqoop_specific_value
-    elif (
-        offload_transport_method in OFFLOAD_TRANSPORT_SPARK_METHODS
-        and spark_specific_value
-    ):
+    if offload_transport_method in OFFLOAD_TRANSPORT_SPARK_METHODS and spark_specific_value:
         return spark_specific_value
-    else:
-        return None
+    return None
 
 
-class OffloadTransport(object, metaclass=ABCMeta):
+class OffloadTransport(metaclass=ABCMeta):
     """Interface for classes transporting data from an RDBMS frontend to storage that can be accessed by a backend.
     Overloads by different transport methods, such a Spark, Sqoop, etc
     (abstract parent class)
@@ -736,13 +669,9 @@ class OffloadTransport(object, metaclass=ABCMeta):
         self._rdbms_is_iot = offload_source_table.is_iot()
         self._rdbms_partition_type = offload_source_table.partition_type
         self._rdbms_pk_cols = offload_source_table.get_primary_key_columns()
-        self._fetchmany_takes_fetch_size = (
-            offload_source_table.fetchmany_takes_fetch_size()
-        )
+        self._fetchmany_takes_fetch_size = offload_source_table.fetchmany_takes_fetch_size()
         if offload_operation.offload_transport_snapshot:
-            self._offload_transport_snapshot = (
-                offload_operation.offload_transport_snapshot
-            )
+            self._offload_transport_snapshot = offload_operation.offload_transport_snapshot
         else:
             self._offload_transport_snapshot = offload_source_table.get_current_scn()
         self._offload_by_subpartition = offload_operation.offload_by_subpartition
@@ -757,12 +686,8 @@ class OffloadTransport(object, metaclass=ABCMeta):
         self._target_table = offload_target_table
         self._staging_table_location = self._target_table.get_staging_table_location()
         # Config relating to the transport method
-        self._offload_transport_consistent_read = (
-            offload_operation.offload_transport_consistent_read
-        )
-        self._offload_transport_fetch_size = (
-            offload_operation.offload_transport_fetch_size
-        )
+        self._offload_transport_consistent_read = offload_operation.offload_transport_consistent_read
+        self._offload_transport_fetch_size = offload_operation.offload_transport_fetch_size
         self._offload_transport_queue_name = get_offload_transport_value(
             self._offload_transport_method,
             offload_operation.offload_transport_queue_name,
@@ -775,12 +700,8 @@ class OffloadTransport(object, metaclass=ABCMeta):
             offload_options.sqoop_overrides,
             offload_options.offload_transport_spark_overrides,
         )
-        self._offload_transport_parallelism = int(
-            offload_operation.offload_transport_parallelism
-        )
-        self._validation_polling_interval = (
-            offload_operation.offload_transport_validation_polling_interval
-        )
+        self._offload_transport_parallelism = int(offload_operation.offload_transport_parallelism)
+        self._validation_polling_interval = offload_operation.offload_transport_validation_polling_interval
         self._create_basic_connectivity_attributes(offload_options)
         self._transport_context = {}
         # For a full list of properties see:
@@ -805,10 +726,7 @@ class OffloadTransport(object, metaclass=ABCMeta):
             self._staging_format,
             self._get_canonical_columns(),
             offload_options,
-            bool(
-                self._target_table
-                and self._target_table.transport_binary_data_in_base64()
-            ),
+            bool(self._target_table and self._target_table.transport_binary_data_in_base64()),
             messages,
             dry_run=self._dry_run,
         )
@@ -840,8 +758,7 @@ class OffloadTransport(object, metaclass=ABCMeta):
                 staging_column = match_table_column(column.name, staging_columns)
                 base64_columns.append(staging_column)
             return base64_columns
-        else:
-            return []
+        return []
 
     def _get_canonical_columns(self):
         """Map source RDBMS columns to canonical columns so they can then be converted to staging columns"""
@@ -849,9 +766,7 @@ class OffloadTransport(object, metaclass=ABCMeta):
             assume_all_staging_columns_nullable = bool(
                 self._offload_transport_method in OFFLOAD_TRANSPORT_SQOOP_METHODS
             )
-            char_semantics_map = char_semantics_override_map(
-                self._unicode_string_columns_csv, self._rdbms_columns
-            )
+            char_semantics_map = char_semantics_override_map(self._unicode_string_columns_csv, self._rdbms_columns)
             canonical_columns = []
             for tab_col in self._rdbms_columns:
                 canonical_column = self._rdbms_table.to_canonical_column(tab_col)
@@ -864,17 +779,11 @@ class OffloadTransport(object, metaclass=ABCMeta):
         return self._canonical_columns
 
     def _create_basic_connectivity_attributes(self, offload_options):
-        self._offload_transport_auth_using_oracle_wallet = (
-            offload_options.offload_transport_auth_using_oracle_wallet
-        )
+        self._offload_transport_auth_using_oracle_wallet = offload_options.offload_transport_auth_using_oracle_wallet
         self._offload_transport_cmd_host = offload_options.offload_transport_cmd_host
-        self._offload_transport_credential_provider_path = (
-            offload_options.offload_transport_credential_provider_path
-        )
+        self._offload_transport_credential_provider_path = offload_options.offload_transport_credential_provider_path
         self._offload_transport_dsn = offload_options.offload_transport_dsn
-        self._offload_transport_password_alias = (
-            offload_options.offload_transport_password_alias
-        )
+        self._offload_transport_password_alias = offload_options.offload_transport_password_alias
         self._offload_transport_rdbms_session_parameters = (
             json.loads(offload_options.offload_transport_rdbms_session_parameters)
             if offload_options.offload_transport_rdbms_session_parameters
@@ -913,9 +822,7 @@ class OffloadTransport(object, metaclass=ABCMeta):
         if offload_transport_spark_properties:
             spark_config_properties = json.loads(offload_transport_spark_properties)
         if not self._offload_transport_password_alias:
-            spark_config_properties.update(
-                {"spark.jdbc.password": self._offload_options.rdbms_app_pass}
-            )
+            spark_config_properties.update({"spark.jdbc.password": self._offload_options.rdbms_app_pass})
         return spark_config_properties
 
     def _reset_transport_context(self):
@@ -925,7 +832,7 @@ class OffloadTransport(object, metaclass=ABCMeta):
         }
 
     def _ssh_cmd_prefix(self, host=None):
-        """many calls to ssh_cmd_prefix() in this class use std inputs therefore abstract in this method"""
+        """Many calls to ssh_cmd_prefix() in this class use std inputs therefore abstract in this method"""
         host = host or self._offload_transport_cmd_host
         return ssh_cmd_prefix(self._offload_options.offload_transport_user, host)
 
@@ -935,8 +842,7 @@ class OffloadTransport(object, metaclass=ABCMeta):
         """
         if self._ssh_cmd_prefix():
             return ansi_c_string_safe(cmd_option_string)
-        else:
-            return cmd_option_string
+        return cmd_option_string
 
     def _spark_sql_option_safe(self, opt_val):
         # options in spark sql are wrapped in single quotes and need protecting
@@ -945,8 +851,7 @@ class OffloadTransport(object, metaclass=ABCMeta):
     def _str_time(self, name_safe=False):
         if name_safe:
             return datetime.now().strftime("%Y%m%d%H%M%S")
-        else:
-            return str(datetime.now().replace(microsecond=0))
+        return str(datetime.now().replace(microsecond=0))
 
     def _run_os_cmd(self, cmd, optional=False, no_log_items=[]):
         """Run an os command and:
@@ -974,8 +879,7 @@ class OffloadTransport(object, metaclass=ABCMeta):
                 self._target_table.max_datetime_scale(),
                 self._rdbms_table.max_datetime_scale(),
             )
-        else:
-            return None
+        return None
 
     def _get_rdbms_session_setup_commands(
         self,
@@ -1003,19 +907,14 @@ class OffloadTransport(object, metaclass=ABCMeta):
         if rows_imported is None and not self._dry_run:
             self._messages.warning(MISSING_ROWS_IMPORTED_WARNING)
 
-    def _remote_copy_transport_control_file(
-        self, options_file_local_path, target_host, prefix="", suffix=""
-    ):
+    def _remote_copy_transport_control_file(self, options_file_local_path, target_host, prefix="", suffix=""):
         """Copies a control file to Offload Transport host which will be used to run a command.
         If SSH short-circuit is in play then no copy is made, we just return the name of the local file.
         Returns commands to be used to remove the files, we do this because the control files can contain
         sensitive information so we want to clean them up even though they are in /tmp.
         """
         ssh_user = self._offload_options.offload_transport_user
-        self.debug(
-            "_remote_copy_transport_control_file(%s, %s, %s)"
-            % (options_file_local_path, ssh_user, target_host)
-        )
+        self.debug("_remote_copy_transport_control_file(%s, %s, %s)" % (options_file_local_path, ssh_user, target_host))
         rm_commands = [["rm", "-f", options_file_local_path]]
         if running_as_same_user_and_host(ssh_user, target_host):
             self.log(
@@ -1028,18 +927,12 @@ class OffloadTransport(object, metaclass=ABCMeta):
             # Copy the control file to the target host
             options_file_remote_path = get_temp_path(prefix=prefix, suffix=suffix)
             self.log(
-                "Copying local file (%s) to remote (%s)"
-                % (options_file_local_path, options_file_remote_path),
+                "Copying local file (%s) to remote (%s)" % (options_file_local_path, options_file_remote_path),
                 detail=VVERBOSE,
             )
-            scp_cmd = scp_to_cmd(
-                ssh_user, target_host, options_file_local_path, options_file_remote_path
-            )
+            scp_cmd = scp_to_cmd(ssh_user, target_host, options_file_local_path, options_file_remote_path)
             self._run_os_cmd(scp_cmd)
-            rm_commands.append(
-                ssh_cmd_prefix(ssh_user, target_host)
-                + ["rm", "-f", options_file_remote_path]
-            )
+            rm_commands.append(ssh_cmd_prefix(ssh_user, target_host) + ["rm", "-f", options_file_remote_path])
         return rm_commands, options_file_remote_path
 
     def _remote_copy_transport_file(self, local_path: str, target_host: str):
@@ -1053,10 +946,7 @@ class OffloadTransport(object, metaclass=ABCMeta):
              want to revisit this to try and merge the methods.
         """
         ssh_user = self._offload_options.offload_transport_user
-        self.debug(
-            "_remote_copy_transport_file(%s, %s, %s)"
-            % (local_path, ssh_user, target_host)
-        )
+        self.debug("_remote_copy_transport_file(%s, %s, %s)" % (local_path, ssh_user, target_host))
         if running_as_same_user_and_host(ssh_user, target_host):
             self.log(
                 "Local host (%s@%s) and remote host (%s@%s) are the same therefore no file copy required"
@@ -1081,20 +971,14 @@ class OffloadTransport(object, metaclass=ABCMeta):
         remote_paths = []
         for local_path in local_paths:
             if local_path:
-                remote_paths.append(
-                    self._remote_copy_transport_file(local_path, target_host)
-                )
+                remote_paths.append(self._remote_copy_transport_file(local_path, target_host))
         return remote_paths
 
-    def _remote_copy_transport_file_csv(
-        self, local_path_csv: str, target_host: str
-    ) -> str:
+    def _remote_copy_transport_file_csv(self, local_path_csv: str, target_host: str) -> str:
         """Calls _remote_copy_transport_files() for all file paths in a CSV and returns new list of paths."""
         if not local_path_csv:
             return local_path_csv
-        remote_files = self._remote_copy_transport_files(
-            local_path_csv.split(","), self._offload_transport_cmd_host
-        )
+        remote_files = self._remote_copy_transport_files(local_path_csv.split(","), self._offload_transport_cmd_host)
         return ",".join(remote_files)
 
     def _spark_listener_included_in_config(self):
@@ -1102,31 +986,22 @@ class OffloadTransport(object, metaclass=ABCMeta):
         Search is case-insensitive but returns the config name in correct case.
         """
         for k, v in self._spark_config_properties.items():
-            if (
-                k.lower() == "spark.extralisteners"
-                and isinstance(v, str)
-                and GOE_LISTENER_NAME in v
-            ):
-                self.log(
-                    "%s configured: %s: %s" % (GOE_LISTENER_NAME, k, v), detail=VVERBOSE
-                )
+            if k.lower() == "spark.extralisteners" and isinstance(v, str) and GOE_LISTENER_NAME in v:
+                self.log("%s configured: %s: %s" % (GOE_LISTENER_NAME, k, v), detail=VVERBOSE)
                 return k
         return None
 
     def _credential_provider_path_jvm_override(self):
-        return credential_provider_path_jvm_override(
-            self._offload_transport_credential_provider_path
-        )
+        return credential_provider_path_jvm_override(self._offload_transport_credential_provider_path)
 
     def _get_mod_column(self) -> str:
         """Pick a column suitable for MOD splitting"""
         if self._bucket_hash_col:
             return self._bucket_hash_col
-        elif self._rdbms_pk_cols:
+        if self._rdbms_pk_cols:
             return self._rdbms_pk_cols[0]
-        else:
-            # Return any column
-            return self._rdbms_columns[0].name
+        # Return any column
+        return self._rdbms_columns[0].name
 
     def _get_transport_row_source_query(
         self,
@@ -1138,13 +1013,10 @@ class OffloadTransport(object, metaclass=ABCMeta):
     ):
         if self._rdbms_offload_predicate:
             self.log(
-                "Offloading with offload predicate:\n%s"
-                % str(self._rdbms_offload_predicate),
+                "Offloading with offload predicate:\n%s" % str(self._rdbms_offload_predicate),
                 detail=VVERBOSE,
             )
-        predicate_offload_clause = self._rdbms_table.predicate_to_where_clause(
-            self._rdbms_offload_predicate
-        )
+        predicate_offload_clause = self._rdbms_table.predicate_to_where_clause(self._rdbms_offload_predicate)
         mod_column = self._get_mod_column()
         return self._rdbms_api.get_transport_row_source_query(
             partition_by,
@@ -1197,12 +1069,8 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
         }
         return rdbms_source_query
 
-    def _get_transport_split_type(
-        self, partition_chunk, native_range_split_available: bool = False
-    ) -> str:
-        predicate_offload_clause = self._rdbms_table.predicate_to_where_clause(
-            self._rdbms_offload_predicate
-        )
+    def _get_transport_split_type(self, partition_chunk, native_range_split_available: bool = False) -> str:
+        predicate_offload_clause = self._rdbms_table.predicate_to_where_clause(self._rdbms_offload_predicate)
         (
             split_row_source_by,
             tuned_parallelism,
@@ -1215,19 +1083,14 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
             predicate_offload_clause,
             native_range_split_available=native_range_split_available,
         )
-        if (
-            tuned_parallelism
-            and tuned_parallelism != self._offload_transport_parallelism
-        ):
+        if tuned_parallelism and tuned_parallelism != self._offload_transport_parallelism:
             self.notice(
                 f"Overriding transport parallelism: {self._offload_transport_parallelism} -> {tuned_parallelism}"
             )
             self._offload_transport_parallelism = tuned_parallelism
         return split_row_source_by
 
-    def _build_offload_query_lists(
-        self, convert_expressions_on_rdbms_side=None, for_spark=False, for_qi=False
-    ):
+    def _build_offload_query_lists(self, convert_expressions_on_rdbms_side=None, for_spark=False, for_qi=False):
         """Returns a tuple containing:
         A list of column expressions to build an RDBMS projection.
         A list of column names for the projection (useful for aliases if above has anonymous CAST()s),
@@ -1238,9 +1101,7 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
         colnames, colexpressions = [], []
         staging_columns = self._staging_file.get_staging_columns()
         if convert_expressions_on_rdbms_side is None:
-            convert_expressions_on_rdbms_side = bool(
-                self._target_table.backend_type() == DBTYPE_SYNAPSE
-            )
+            convert_expressions_on_rdbms_side = bool(self._target_table.backend_type() == DBTYPE_SYNAPSE)
         for rdbms_col in self._rdbms_columns:
             cast_column = apply_transformation(
                 self._column_transformations,
@@ -1252,9 +1113,7 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
 
             colnames.append(staging_column.staging_file_column_name)
 
-            cast_column = cast_column or self._rdbms_table.enclose_identifier(
-                rdbms_col.name
-            )
+            cast_column = cast_column or self._rdbms_table.enclose_identifier(rdbms_col.name)
 
             cast_column = self._rdbms_api.get_rdbms_query_cast(
                 cast_column,
@@ -1278,20 +1137,12 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
             colexpressions = colexpressions + extra_cols
             colnames = colnames + extra_cols
         if no_newlines:
-            sql_projection = ",".join(
-                [
-                    '%s "%s"' % (expr, cname)
-                    for expr, cname in zip(colexpressions, colnames)
-                ]
-            )
+            sql_projection = ",".join(['%s "%s"' % (expr, cname) for expr, cname in zip(colexpressions, colnames)])
         else:
             max_expr_len = max(len(_) for _ in colexpressions)
             project_pattern = "%-" + str(max_expr_len or 32) + 's AS "%s"'
             sql_projection = "\n,      ".join(
-                [
-                    project_pattern % (expr, cname)
-                    for expr, cname in zip(colexpressions, colnames)
-                ]
+                [project_pattern % (expr, cname) for expr, cname in zip(colexpressions, colnames)]
             )
         return sql_projection
 
@@ -1319,19 +1170,14 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
 
         if remap:
             if self._offload_transport_method in OFFLOAD_TRANSPORT_SQOOP_METHODS:
-                remap_strings = ",".join(
-                    "%s=%s" % (col_name, remap_type) for col_name, remap_type in remap
-                )
+                remap_strings = ",".join("%s=%s" % (col_name, remap_type) for col_name, remap_type in remap)
                 remap_prefix = "--map-column-java"
             elif self._offload_transport_method in OFFLOAD_TRANSPORT_SPARK_METHODS:
-                remap_strings = "'%s'" % ",".join(
-                    "%s %s" % (col_name, remap_type) for col_name, remap_type in remap
-                )
+                remap_strings = "'%s'" % ",".join("%s %s" % (col_name, remap_type) for col_name, remap_type in remap)
                 remap_prefix = "customSchema"
             else:
                 raise NotImplementedError(
-                    "_offload_transport_type_remappings: unknown remap type %s"
-                    % self._offload_transport_method
+                    "_offload_transport_type_remappings: unknown remap type %s" % self._offload_transport_method
                 )
 
             self.log(
@@ -1341,12 +1187,10 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
 
             if return_as_list:
                 return [remap_prefix, remap_strings]
-            else:
-                return remap_prefix + remap_sep + remap_strings
-        else:
-            return [] if return_as_list else ""
+            return remap_prefix + remap_sep + remap_strings
+        return [] if return_as_list else ""
 
-    def _check_and_log_transported_files(self, row_count) -> Union[int, None]:
+    def _check_and_log_transported_files(self, row_count) -> int | None:
         """Check and list contents of target location.
         This interface level method assumes we can list contents via GOEDfs and is particularly useful when
         writing to cloud storage by ensuring filesystems with eventual consistency have made the files visible.
@@ -1375,9 +1219,7 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
 
         try:
             total_size = 0
-            for file_path in self._dfs_client.list_dir_and_wait_for_contents(
-                self._staging_table_location
-            ):
+            for file_path in self._dfs_client.list_dir_and_wait_for_contents(self._staging_table_location):
                 uri_attribs = self._dfs_client.stat(file_path)
                 self.debug("%s attributes: %s" % (file_path, uri_attribs))
                 file_bytes = None
@@ -1417,20 +1259,18 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
     def warning(self, msg):
         self._messages.warning(msg)
 
-    def get_transport_bytes(self) -> Union[int, None]:
+    def get_transport_bytes(self) -> int | None:
         """Return a dict used to pass contextual information back from transport()"""
         return self._transport_context.get(TRANSPORT_CXT_BYTES)
 
-    def get_transport_snapshot(self) -> Union[int, None]:
+    def get_transport_snapshot(self) -> int | None:
         """Return RDBMS SCN applied to this operation."""
         return self._offload_transport_snapshot
 
     def get_staging_file(self):
         return self._staging_file
 
-    def transport(
-        self, partition_chunk: Optional["OffloadSourcePartitions"] = None
-    ) -> Union[int, None]:
+    def transport(self, partition_chunk: Optional["OffloadSourcePartitions"] = None) -> int | None:
         """Run data transport for the implemented transport method and return the number of rows transported."""
 
     @abstractmethod
@@ -1451,7 +1291,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
         dfs_client,
     ):
         """CONSTRUCTOR"""
-        super(OffloadTransportSpark, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -1460,9 +1300,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             dfs_client,
         )
         self._OffloadTransportSqlStatsThread = None
-        self._convert_nans_to_nulls = convert_nans_to_nulls(
-            offload_target_table, offload_operation
-        )
+        self._convert_nans_to_nulls = convert_nans_to_nulls(offload_target_table, offload_operation)
         self._spark_files_csv = offload_options.offload_transport_spark_files
         self._spark_jars_csv = offload_options.offload_transport_spark_jars
 
@@ -1474,17 +1312,13 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
         return self._offload_transport_type_remappings(return_as_list=False)
 
     def _standalone_spark(self) -> bool:
-        return bool(
-            self._offload_options.backend_distribution
-            not in HADOOP_BASED_BACKEND_DISTRIBUTIONS
-        )
+        return bool(self._offload_options.backend_distribution not in HADOOP_BASED_BACKEND_DISTRIBUTIONS)
 
     def _option_from_properties(self, option_name, property_name) -> list:
         """Small helper function to pluck a property value from self._spark_config_properties"""
         if property_name in self._spark_config_properties:
             return [option_name, self._spark_config_properties[property_name]]
-        else:
-            return []
+        return []
 
     def _jdbc_option_clauses(self) -> str:
         jdbc_option_clauses = ""
@@ -1492,17 +1326,9 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             jdbc_option_clauses = ".option('oracle.jdbc.timezoneAsRegion', 'false')"
         return jdbc_option_clauses
 
-    def _get_id_range(
-        self, split_row_source_by, id_range_column, partition_chunk
-    ) -> tuple:
-        col_name = (
-            id_range_column
-            if isinstance(id_range_column, str)
-            else id_range_column.name
-        )
-        predicate_offload_clause = self._rdbms_table.predicate_to_where_clause(
-            self._rdbms_offload_predicate
-        )
+    def _get_id_range(self, split_row_source_by, id_range_column, partition_chunk) -> tuple:
+        col_name = id_range_column if isinstance(id_range_column, str) else id_range_column.name
+        predicate_offload_clause = self._rdbms_table.predicate_to_where_clause(self._rdbms_offload_predicate)
         id_col_min, id_col_max = self._rdbms_api.get_id_range(
             col_name, predicate_offload_clause, partition_chunk=partition_chunk
         )
@@ -1519,9 +1345,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
     def _get_id_column_for_range_splitting(self) -> "ColumnMetadataInterface":
         return self._rdbms_api.get_id_column_for_range_splitting(self._rdbms_table)
 
-    def _get_pyspark_body(
-        self, partition_chunk=None, create_spark_context=True, canary_query=None
-    ) -> str:
+    def _get_pyspark_body(self, partition_chunk=None, create_spark_context=True, canary_query=None) -> str:
         """Return pyspark code to copy data to the load table.
         Shared by multiple sub-classes.
         When defining the parallel chunks we set the upperBound (batch_col_max) one higher than the actual value.
@@ -1539,30 +1363,20 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
         def get_password_snippet():
             password_python = []
             if self._offload_transport_password_alias:
-                password_python.append(
-                    "hconf = spark.sparkContext._jsc.hadoopConfiguration()"
-                )
+                password_python.append("hconf = spark.sparkContext._jsc.hadoopConfiguration()")
                 if self._offload_transport_credential_provider_path:
                     # provider_path is optional because a customer may define it in their Hadoop config rather than GOE config
                     password_python.append(
                         "hconf.set('hadoop.security.credential.provider.path', '%s')"
                         % self._offload_transport_credential_provider_path
                     )
+                password_python.append("pw = hconf.getPassword('%s')" % self._offload_transport_password_alias)
                 password_python.append(
-                    "pw = hconf.getPassword('%s')"
-                    % self._offload_transport_password_alias
+                    "assert pw, 'Unable to retrieve password for alias: %s'" % self._offload_transport_password_alias
                 )
-                password_python.append(
-                    "assert pw, 'Unable to retrieve password for alias: %s'"
-                    % self._offload_transport_password_alias
-                )
-                password_python.append(
-                    "jdbc_password = ''.join(str(pw.__getitem__(i)) for i in range(pw.__len__()))"
-                )
+                password_python.append("jdbc_password = ''.join(str(pw.__getitem__(i)) for i in range(pw.__len__()))")
             else:
-                password_python.append(
-                    "jdbc_password = spark.conf.get('spark.jdbc.password')"
-                )
+                password_python.append("jdbc_password = spark.conf.get('spark.jdbc.password')")
             return "\n".join(password_python)
 
         batch_col_min = 0
@@ -1575,9 +1389,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             transport_app_name = "GOE Connect"
             load_db_name, load_table_name = "", ""
         else:
-            split_row_source_by = self._get_transport_split_type(
-                partition_chunk, native_range_split_available=True
-            )
+            split_row_source_by = self._get_transport_split_type(partition_chunk, native_range_split_available=True)
             if split_row_source_by in (
                 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE,
                 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE,
@@ -1587,10 +1399,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
                     split_row_source_by, id_range_column, partition_chunk
                 )
 
-                if (
-                    split_row_source_by
-                    == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE
-                ):
+                if split_row_source_by == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE:
                     batch_col_min = id_col_min
                     batch_col_max = id_col_max
 
@@ -1605,14 +1414,11 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             transport_app_name = self._get_transport_app_name()
             load_db_name, load_table_name = self._load_db_name, self._load_table_name
 
-        session_init_statements = "".join(
-            self._get_rdbms_session_setup_commands(for_plsql=True)
-        )
+        session_init_statements = "".join(self._get_rdbms_session_setup_commands(for_plsql=True))
         session_init_statement_opt = ""
         if session_init_statements:
-            session_init_statement_opt = (
-                "\n    sessionInitStatement='BEGIN %s END;',"
-                % self._spark_sql_option_safe(session_init_statements)
+            session_init_statement_opt = "\n    sessionInitStatement='BEGIN %s END;'," % self._spark_sql_option_safe(
+                session_init_statements
             )
 
         jdbc_option_clauses = self._jdbc_option_clauses()
@@ -1620,9 +1426,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
         if self._offload_transport_auth_using_oracle_wallet:
             rdbms_app_user_opt = rdbms_app_pass_opt = password_snippet = ""
         else:
-            rdbms_app_user_opt = (
-                "\n    user='%s'," % self._offload_options.rdbms_app_user
-            )
+            rdbms_app_user_opt = "\n    user='%s'," % self._offload_options.rdbms_app_user
             rdbms_app_pass_opt = "\n    password=jdbc_password,"
             password_snippet = get_password_snippet()
 
@@ -1664,13 +1468,9 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             # batch_col_max is one higher than reality, see header comment
             "batch_col_max": PysparkLiteral.format_literal(batch_col_max),
             "parallelism": self._offload_transport_parallelism,
-            "custom_schema_clause": (
-                (",\n    " + custom_schema_clause) if custom_schema_clause else ""
-            ),
+            "custom_schema_clause": ((",\n    " + custom_schema_clause) if custom_schema_clause else ""),
             "write_format": self._staging_format,
-            "uri": (
-                "" if canary_query else self._target_table.get_staging_table_location()
-            ),
+            "uri": ("" if canary_query else self._target_table.get_staging_table_location()),
             "fetch_size": self._offload_transport_fetch_size,
             "session_init_statement_opt": session_init_statement_opt,
             "debug_conf_snippet": debug_conf_snippet,
@@ -1704,20 +1504,15 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             )
 
         if create_spark_context:
-            pyspark_body += (
-                dedent(
-                    """\
+            pyspark_body += dedent(
+                """\
                                    from pyspark.sql import SparkSession
                                    spark = SparkSession.builder.appName('%(app_name)s')%(hive_support)s.getOrCreate()
                                    """
-                )
-                % {
-                    "app_name": transport_app_name,
-                    "hive_support": (
-                        "" if self._standalone_spark() else ".enableHiveSupport()"
-                    ),
-                }
-            )
+            ) % {
+                "app_name": transport_app_name,
+                "hive_support": ("" if self._standalone_spark() else ".enableHiveSupport()"),
+            }
 
         if canary_query:
             # Just testing connectivity and will drop out with no write of data
@@ -1766,17 +1561,13 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             def proj_col(col_name):
                 if match_table_column(col_name, self._base64_staged_columns()):
                     return "base64(df.%(col)s).alias('%(col)s')" % {"col": col_name}
-                else:
-                    return "'%s'" % col_name
+                return "'%s'" % col_name
 
-            pyspark_body += (
-                dedent(
-                    """\
+            pyspark_body += dedent(
+                """\
             projection = [%s]
             """
-                )
-                % ",".join(proj_col(_.name) for _ in self._rdbms_columns)
-            )
+            ) % ",".join(proj_col(_.name) for _ in self._rdbms_columns)
         else:
             # Remove any synthetic split/partition column from the projection.
             pyspark_body += (
@@ -1813,28 +1604,21 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
         self.debug("_get_rows_imported_from_spark_log()")
         if not spark_log_text:
             return None
-        assert isinstance(spark_log_text, str), "{} is not str".format(
-            type(spark_log_text)
-        )
+        assert isinstance(spark_log_text, str), f"{type(spark_log_text)} is not str"
         # Now look for the row count marker
-        m = re.findall(
-            SPARK_LOG_ROW_COUNT_PATTERN, spark_log_text, re.IGNORECASE | re.MULTILINE
-        )
+        m = re.findall(SPARK_LOG_ROW_COUNT_PATTERN, spark_log_text, re.IGNORECASE | re.MULTILINE)
         if m:
             self.log(
-                "Found {} recordsWritten matches in Spark log: {}".format(
-                    len(m), str(m)
-                ),
+                f"Found {len(m)} recordsWritten matches in Spark log: {m!s}",
                 detail=VVERBOSE,
             )
             records_written = sum([int(_) for _ in m if _])
             self.log(
-                "Spark recordsWritten total: {}".format(str(records_written)),
+                f"Spark recordsWritten total: {records_written!s}",
                 detail=VVERBOSE,
             )
             return records_written
-        else:
-            return None
+        return None
 
     def _load_table_compression_pyspark_settings(self):
         if self._compress_load_table:
@@ -1843,13 +1627,9 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
         else:
             codec = "uncompressed"
             true_or_false = "false"
-        prm_format = (
-            "avro" if self._staging_format == FILE_STORAGE_FORMAT_AVRO else "parquet"
-        )
+        prm_format = "avro" if self._staging_format == FILE_STORAGE_FORMAT_AVRO else "parquet"
         if self._standalone_spark():
-            self._spark_config_properties.update(
-                {"spark.sql.%s.compression.codec" % prm_format: codec}
-            )
+            self._spark_config_properties.update({"spark.sql.%s.compression.codec" % prm_format: codec})
         else:
             # Spark is part of Hadoop
             self._spark_config_properties.update(
@@ -1866,9 +1646,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
         else:
             codec = "uncompressed"
             true_or_false = "false"
-        prm_format = (
-            "avro" if self._staging_format == FILE_STORAGE_FORMAT_AVRO else "parquet"
-        )
+        prm_format = "avro" if self._staging_format == FILE_STORAGE_FORMAT_AVRO else "parquet"
         # These settings work whether Spark is stand-alone or part of Hadoop
         self._spark_config_properties.update(
             {
@@ -1883,16 +1661,13 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
         assert offload_home, "OFFLOAD_HOME is not set, environment is not correct"
         jar_path = os.path.join(offload_home, "lib", GOE_LISTENER_JAR)
         # We should never be missing the JAR file as it is bundled with the code that we are part of.
-        assert os.path.exists(
-            jar_path
-        ), f"{jar_path} cannot be found, environment is not correct"
+        assert os.path.exists(jar_path), f"{jar_path} cannot be found, environment is not correct"
         return jar_path
 
     def _start_validation_polling_thread(self):
         if (
             self._validation_polling_interval
-            and self._validation_polling_interval
-            != OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
+            and self._validation_polling_interval != OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
         ):
             self._OffloadTransportSqlStatsThread = PollingThread(
                 run_function=self._rdbms_api.get_offload_transport_sql_stats_function(
@@ -1906,10 +1681,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             self._OffloadTransportSqlStatsThread.start()
 
     def _stop_validation_polling_thread(self):
-        if (
-            self._OffloadTransportSqlStatsThread
-            and self._OffloadTransportSqlStatsThread.is_alive()
-        ):
+        if self._OffloadTransportSqlStatsThread and self._OffloadTransportSqlStatsThread.is_alive():
             self._OffloadTransportSqlStatsThread.stop()
 
     def _drain_validation_polling_thread_queue(self):
@@ -1926,26 +1698,24 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
                     VVERBOSE,
                 )
                 return None
-            elif self._OffloadTransportSqlStatsThread.get_queue_length() == 0:
+            if self._OffloadTransportSqlStatsThread.get_queue_length() == 0:
                 self.log(
-                    "Empty results queue from %s polling method"
-                    % self._OffloadTransportSqlStatsThread.name,
+                    "Empty results queue from %s polling method" % self._OffloadTransportSqlStatsThread.name,
                     VVERBOSE,
                 )
                 return None
-            else:
-                self.log(
-                    POLLING_VALIDATION_TEXT % self._OffloadTransportSqlStatsThread.name,
-                    VVERBOSE,
+            self.log(
+                POLLING_VALIDATION_TEXT % self._OffloadTransportSqlStatsThread.name,
+                VVERBOSE,
+            )
+            self.debug(
+                "Parsing %s snapshots taken at %s second intervals"
+                % (
+                    self._OffloadTransportSqlStatsThread.get_queue_length(),
+                    self._OffloadTransportSqlStatsThread.interval,
                 )
-                self.debug(
-                    "Parsing %s snapshots taken at %s second intervals"
-                    % (
-                        self._OffloadTransportSqlStatsThread.get_queue_length(),
-                        self._OffloadTransportSqlStatsThread.interval,
-                    )
-                )
-                return self._OffloadTransportSqlStatsThread.drain_queue()
+            )
+            return self._OffloadTransportSqlStatsThread.drain_queue()
 
 
 class OffloadTransportSparkThrift(OffloadTransportSpark):
@@ -1962,7 +1732,7 @@ class OffloadTransportSparkThrift(OffloadTransportSpark):
     ):
         """CONSTRUCTOR"""
         self._offload_transport_method = OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT
-        super(OffloadTransportSparkThrift, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -1971,8 +1741,7 @@ class OffloadTransportSparkThrift(OffloadTransportSpark):
             dfs_client,
         )
         assert (
-            offload_options.offload_transport_spark_thrift_host
-            and offload_options.offload_transport_spark_thrift_port
+            offload_options.offload_transport_spark_thrift_host and offload_options.offload_transport_spark_thrift_port
         )
 
         self._load_table_compression_spark_sql_settings()
@@ -2020,9 +1789,7 @@ class OffloadTransportSparkThrift(OffloadTransportSpark):
         self.debug("_get_create_temp_view_sql()")
 
         session_init_statements = "".join(
-            self._get_rdbms_session_setup_commands(
-                for_plsql=True, escape_semi_colons=True
-            )
+            self._get_rdbms_session_setup_commands(for_plsql=True, escape_semi_colons=True)
         )
 
         if self._offload_transport_auth_using_oracle_wallet:
@@ -2045,13 +1812,9 @@ class OffloadTransportSparkThrift(OffloadTransportSpark):
             # batch_col_max is one higher than reality, see header comment
             "batch_col_max": self._offload_transport_parallelism,
             "parallelism": self._offload_transport_parallelism,
-            "custom_schema_clause": (
-                (",\n " + custom_schema_clause) if custom_schema_clause else ""
-            ),
+            "custom_schema_clause": ((",\n " + custom_schema_clause) if custom_schema_clause else ""),
             "fetch_size": self._offload_transport_fetch_size,
-            "session_init_statements": self._spark_sql_option_safe(
-                session_init_statements
-            ),
+            "session_init_statements": self._spark_sql_option_safe(session_init_statements),
         }
         if connectivity_test_only:
             temp_vw_sql = (
@@ -2086,10 +1849,7 @@ class OffloadTransportSparkThrift(OffloadTransportSpark):
 
     def _spark_thrift_import(self, partition_chunk=None):
         """Transport data using the Spark2 Thrift Server"""
-        self.debug(
-            "_spark_thrift_import(%s, %s)"
-            % (self._spark_thrift_host, self._spark_thrift_port)
-        )
+        self.debug("_spark_thrift_import(%s, %s)" % (self._spark_thrift_host, self._spark_thrift_port))
         self._log_connection_details()
 
         if self._nothing_to_do(partition_chunk):
@@ -2119,9 +1879,7 @@ class OffloadTransportSparkThrift(OffloadTransportSpark):
         )
         custom_schema_clause = self._column_type_read_remappings()
 
-        spark_api = backend_api_factory(
-            DBTYPE_SPARK, self._offload_options, self._messages, dry_run=self._dry_run
-        )
+        spark_api = backend_api_factory(DBTYPE_SPARK, self._offload_options, self._messages, dry_run=self._dry_run)
 
         temp_vw_sql = self._get_create_temp_view_sql(
             temp_vw_name,
@@ -2141,16 +1899,13 @@ FROM   %(temp_vw_name)s""" % {
 
         if self._standalone_spark():
             # For stand-alone Spark we need a load db and table in the Derby DB in order to stage to cloud storage
-            self.log(
-                "%s: START Prepare Spark load table" % self._str_time(), detail=VVERBOSE
-            )
+            self.log("%s: START Prepare Spark load table" % self._str_time(), detail=VVERBOSE)
             if not spark_api.database_exists(self._load_db_name):
                 spark_api.create_database(self._load_db_name)
             if spark_api.table_exists(self._load_db_name, self._load_table_name):
                 spark_api.drop_table(self._load_db_name, self._load_table_name)
             spark_columns = [
-                spark_api.from_canonical_column(_)
-                for _ in self._staging_file.get_canonical_staging_columns()
+                spark_api.from_canonical_column(_) for _ in self._staging_file.get_canonical_staging_columns()
             ]
             spark_api.create_table(
                 self._load_db_name,
@@ -2161,16 +1916,12 @@ FROM   %(temp_vw_name)s""" % {
                 location=self._target_table.get_staging_table_location(),
                 external=True,
             )
-            self.log(
-                "%s: END Prepare Spark load table" % self._str_time(), detail=VVERBOSE
-            )
+            self.log("%s: END Prepare Spark load table" % self._str_time(), detail=VVERBOSE)
 
         query_options = self._spark_properties_thrift_server_exclusions()
 
         # We don't want passwords on screen so request API to sub the password for ?
-        hive_jdbc_pass_clause = "password '%s'" % self._spark_sql_option_safe(
-            self._offload_options.rdbms_app_pass
-        )
+        hive_jdbc_pass_clause = "password '%s'" % self._spark_sql_option_safe(self._offload_options.rdbms_app_pass)
 
         self._start_validation_polling_thread()
 
@@ -2196,13 +1947,9 @@ FROM   %(temp_vw_name)s""" % {
 
         if self._standalone_spark() and not self._preserve_load_table:
             # Drop the Spark stand alone load table
-            self.log(
-                "%s: START Remove Spark load table" % self._str_time(), detail=VVERBOSE
-            )
+            self.log("%s: START Remove Spark load table" % self._str_time(), detail=VVERBOSE)
             spark_api.drop_table(self._load_db_name, self._load_table_name)
-            self.log(
-                "%s: END Remove Spark load table" % self._str_time(), detail=VVERBOSE
-            )
+            self.log("%s: END Remove Spark load table" % self._str_time(), detail=VVERBOSE)
 
         self._check_rows_imported(rows_imported)
         return rows_imported
@@ -2210,45 +1957,28 @@ FROM   %(temp_vw_name)s""" % {
     def _spark_properties_thrift_server_exclusions(self, with_warnings=True):
         query_options = {}
         if self._spark_config_properties:
-            if (
-                bool(
-                    [_ for _ in self._spark_config_properties if "memory" in _.lower()]
-                )
-                and with_warnings
-            ):
-                self._messages.warning(
-                    "Memory configuration overrides are ignored when using Thrift Server"
-                )
+            if bool([_ for _ in self._spark_config_properties if "memory" in _.lower()]) and with_warnings:
+                self._messages.warning("Memory configuration overrides are ignored when using Thrift Server")
                 # In truth many settings are ignored but we'll still go through the motions as some,
                 # compression for example, do work
             # Remove any properties we know to be incompatible with the Thrift Server
             for property_name in [
-                _
-                for _ in self._spark_config_properties
-                if _ not in SPARK_THRIFT_SERVER_PROPERTY_EXCLUDE_LIST
+                _ for _ in self._spark_config_properties if _ not in SPARK_THRIFT_SERVER_PROPERTY_EXCLUDE_LIST
             ]:
-                query_options[property_name] = self._spark_config_properties[
-                    property_name
-                ]
+                query_options[property_name] = self._spark_config_properties[property_name]
         return query_options
 
     def _verify_rdbms_connectivity(self):
         """Use a simple canary query for verification test"""
         rdbms_source_query = "(%s) v" % self._rdbms_api.get_rdbms_canary_query()
         temp_vw_name = "goe_canary_jdbc_vw"
-        spark_api = backend_api_factory(
-            DBTYPE_SPARK, self._offload_options, self._messages, dry_run=self._dry_run
-        )
+        spark_api = backend_api_factory(DBTYPE_SPARK, self._offload_options, self._messages, dry_run=self._dry_run)
         temp_vw_sql = self._get_create_temp_view_sql(
             temp_vw_name, rdbms_source_query, spark_api, connectivity_test_only=True
         )
-        hive_jdbc_pass_clause = "password '%s'" % self._spark_sql_option_safe(
-            self._offload_options.rdbms_app_pass
-        )
+        hive_jdbc_pass_clause = "password '%s'" % self._spark_sql_option_safe(self._offload_options.rdbms_app_pass)
         test_sql = "SELECT COUNT(*) FROM %s" % temp_vw_name
-        query_options = self._spark_properties_thrift_server_exclusions(
-            with_warnings=False
-        )
+        query_options = self._spark_properties_thrift_server_exclusions(with_warnings=False)
         # Do not log temp_vw_sql - it may contain a password
         spark_api.execute_ddl(
             temp_vw_sql,
@@ -2263,9 +1993,7 @@ FROM   %(temp_vw_name)s""" % {
     # PUBLIC METHODS
     ###########################################################################
 
-    def transport(
-        self, partition_chunk: Optional["OffloadSourcePartitions"] = None
-    ) -> Union[int, None]:
+    def transport(self, partition_chunk: Optional["OffloadSourcePartitions"] = None) -> int | None:
         """Spark Thriftserver transport"""
         self._reset_transport_context()
 
@@ -2277,9 +2005,7 @@ FROM   %(temp_vw_name)s""" % {
             self._target_table.post_transport_tasks(self._staging_file)
             return row_count
 
-        return self._messages.offload_step(
-            command_steps.STEP_STAGING_TRANSPORT, step_fn, execute=(not self._dry_run)
-        )
+        return self._messages.offload_step(command_steps.STEP_STAGING_TRANSPORT, step_fn, execute=(not self._dry_run))
 
     def ping_source_rdbms(self):
         return self._verify_rdbms_connectivity()
@@ -2302,21 +2028,13 @@ class OffloadTransportSparkThriftCanary(OffloadTransportSparkThrift):
 
         self._create_basic_connectivity_attributes(offload_options)
 
-        self._offload_transport_consistent_read = (
-            orchestration_defaults.bool_option_from_string(
-                "OFFLOAD_TRANSPORT_CONSISTENT_READ",
-                orchestration_defaults.offload_transport_consistent_read_default(),
-            )
+        self._offload_transport_consistent_read = orchestration_defaults.bool_option_from_string(
+            "OFFLOAD_TRANSPORT_CONSISTENT_READ",
+            orchestration_defaults.offload_transport_consistent_read_default(),
         )
-        self._offload_transport_fetch_size = (
-            orchestration_defaults.offload_transport_fetch_size_default()
-        )
-        self._offload_transport_jvm_overrides = (
-            orchestration_defaults.offload_transport_spark_overrides_default()
-        )
-        self._offload_transport_queue_name = (
-            orchestration_defaults.offload_transport_spark_queue_name_default()
-        )
+        self._offload_transport_fetch_size = orchestration_defaults.offload_transport_fetch_size_default()
+        self._offload_transport_jvm_overrides = orchestration_defaults.offload_transport_spark_overrides_default()
+        self._offload_transport_queue_name = orchestration_defaults.offload_transport_spark_queue_name_default()
         self._offload_transport_parallelism = 1
         self._validation_polling_interval = (
             orchestration_defaults.offload_transport_validation_polling_interval_default()
@@ -2363,7 +2081,7 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
     ):
         """CONSTRUCTOR"""
         self._offload_transport_method = OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT
-        super(OffloadTransportSparkSubmit, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -2373,12 +2091,8 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
         )
         # For spark-submit we need to pass compression in as a config to the driver program
         self._load_table_compression_pyspark_settings()
-        self._spark_submit_executable = (
-            offload_options.offload_transport_spark_submit_executable
-        )
-        self._offload_transport_spark_submit_master_url = (
-            offload_options.offload_transport_spark_submit_master_url
-        )
+        self._spark_submit_executable = offload_options.offload_transport_spark_submit_executable
+        self._offload_transport_spark_submit_master_url = offload_options.offload_transport_spark_submit_master_url
         assert self._spark_submit_executable
 
     ###########################################################################
@@ -2389,9 +2103,7 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
         return self._ssh_cli_safe_value(cmd_option_string)
 
     def _column_type_read_remappings(self):
-        return self._offload_transport_type_remappings(
-            return_as_list=False, remap_sep="="
-        )
+        return self._offload_transport_type_remappings(return_as_list=False, remap_sep="=")
 
     def _remote_copy_spark_control_file(self, options_file_local_path, suffix=""):
         return self._remote_copy_transport_control_file(
@@ -2406,18 +2118,14 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
         Otherwise fall back to normal executable but trying to influence Spark version via env var
         Retruns a list suitable for building a command for _run_os_cmd()
         """
-        if (
-            self._spark_submit_executable == "spark-submit"
-            and not self._standalone_spark()
-        ):
+        if self._spark_submit_executable == "spark-submit" and not self._standalone_spark():
             return [
                 "export",
                 "SPARK_MAJOR_VERSION=2",
                 ";",
                 self._spark_submit_executable,
             ]
-        else:
-            return [self._spark_submit_executable]
+        return [self._spark_submit_executable]
 
     def _get_spark_submit_command(self, pyspark_body):
         """Submit PySpark code via spark-submit
@@ -2437,13 +2145,10 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
         def cli_safe_the_password(k, v):
             if k == "spark.jdbc.password":
                 return self._spark_cli_safe_value(v)
-            else:
-                return v
+            return v
 
         self.log("PySpark: " + pyspark_body, detail=VVERBOSE)
-        options_file_local_path = write_temp_file(
-            pyspark_body, prefix=SPARK_OPTIONS_FILE_PREFIX, suffix="py"
-        )
+        options_file_local_path = write_temp_file(pyspark_body, prefix=SPARK_OPTIONS_FILE_PREFIX, suffix="py")
         py_rm_commands, options_file_remote_path = self._remote_copy_spark_control_file(
             options_file_local_path, suffix="py"
         )
@@ -2465,9 +2170,7 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
 
         if spark_listener_jar_remote_path:
             if remote_spark_jars_csv:
-                remote_spark_jars_csv = (
-                    f"{spark_listener_jar_remote_path},{remote_spark_jars_csv}"
-                )
+                remote_spark_jars_csv = f"{spark_listener_jar_remote_path},{remote_spark_jars_csv}"
             else:
                 remote_spark_jars_csv = spark_listener_jar_remote_path
 
@@ -2480,22 +2183,14 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
         spark_master_opt = ["--master", spark_master] if spark_master else []
         spark_config_props, no_log_password = [], []
         [
-            spark_config_props.extend(
-                ["--conf", "%s=%s" % (k, cli_safe_the_password(k, v))]
-            )
+            spark_config_props.extend(["--conf", "%s=%s" % (k, cli_safe_the_password(k, v))])
             for k, v in self._spark_config_properties.items()
         ]
-        if (
-            "spark.jdbc.password" in self._spark_config_properties
-            and not self._offload_transport_password_alias
-        ):
+        if "spark.jdbc.password" in self._spark_config_properties and not self._offload_transport_password_alias:
             # If the rdbms app password is visible in the CLI then obscure it from any logging
-            password_config_to_obscure = (
-                "spark.jdbc.password=%s"
-                % cli_safe_the_password(
-                    "spark.jdbc.password",
-                    self._spark_config_properties["spark.jdbc.password"],
-                )
+            password_config_to_obscure = "spark.jdbc.password=%s" % cli_safe_the_password(
+                "spark.jdbc.password",
+                self._spark_config_properties["spark.jdbc.password"],
             )
             no_log_password = [{"item": password_config_to_obscure, "prior": "--conf"}]
         if (
@@ -2508,18 +2203,12 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
             spark_config_props.extend(
                 [
                     "--conf",
-                    "spark.cores.max={}".format(
-                        str(self._offload_transport_parallelism)
-                    ),
+                    f"spark.cores.max={self._offload_transport_parallelism!s}",
                 ]
             )
 
-        driver_memory_opt = self._option_from_properties(
-            "--driver-memory", "spark.driver.memory"
-        )
-        executor_memory_opt = self._option_from_properties(
-            "--executor-memory", "spark.executor.memory"
-        )
+        driver_memory_opt = self._option_from_properties("--driver-memory", "spark.driver.memory")
+        executor_memory_opt = self._option_from_properties("--executor-memory", "spark.executor.memory")
 
         jvm_opts = (
             ["--driver-java-options", """%s""" % self._offload_transport_jvm_overrides]
@@ -2527,9 +2216,7 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
             else []
         )
         jars_opt = ["--jars", remote_spark_jars_csv] if remote_spark_jars_csv else []
-        files_opt = (
-            ["--files", remote_spark_files_csv] if remote_spark_files_csv else []
-        )
+        files_opt = ["--files", remote_spark_files_csv] if remote_spark_files_csv else []
         spark_submit_cmd = (
             spark_submit_binary
             + jvm_opts
@@ -2563,9 +2250,7 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
         ) = self._get_spark_submit_command(pyspark_body)
 
         self._start_validation_polling_thread()
-        rc, cmd_out = self._run_os_cmd(
-            self._ssh_cmd_prefix() + spark_submit_cmd, no_log_items=no_log_password
-        )
+        rc, cmd_out = self._run_os_cmd(self._ssh_cmd_prefix() + spark_submit_cmd, no_log_items=no_log_password)
         self._stop_validation_polling_thread()
 
         if not self._dry_run:
@@ -2580,9 +2265,7 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
                 if rows_imported_from_sql_stats is None:
                     self.warning(MISSING_ROWS_SPARK_WARNING)
                 else:
-                    self.warning(
-                        f"{MISSING_ROWS_SPARK_WARNING}, falling back on RDBMS SQL statistics"
-                    )
+                    self.warning(f"{MISSING_ROWS_SPARK_WARNING}, falling back on RDBMS SQL statistics")
                     rows_imported = rows_imported_from_sql_stats
 
         # Remove any pyspark scripts we created
@@ -2602,9 +2285,7 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
             no_log_password,
             py_rm_commands,
         ) = self._get_spark_submit_command(pyspark_body)
-        rc, cmd_out = self._run_os_cmd(
-            self._ssh_cmd_prefix() + spark_submit_cmd, no_log_items=no_log_password
-        )
+        rc, cmd_out = self._run_os_cmd(self._ssh_cmd_prefix() + spark_submit_cmd, no_log_items=no_log_password)
         # Remove any pyspark scripts we created
         if py_rm_commands:
             [self._run_os_cmd(_) for _ in py_rm_commands]
@@ -2615,9 +2296,7 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
     # PUBLIC METHODS
     ###########################################################################
 
-    def transport(
-        self, partition_chunk: Optional["OffloadSourcePartitions"] = None
-    ) -> Union[int, None]:
+    def transport(self, partition_chunk: Optional["OffloadSourcePartitions"] = None) -> int | None:
         """Spark by spark-submit transport"""
         self._reset_transport_context()
 
@@ -2629,9 +2308,7 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
             self._target_table.post_transport_tasks(self._staging_file)
             return row_count
 
-        return self._messages.offload_step(
-            command_steps.STEP_STAGING_TRANSPORT, step_fn, execute=(not self._dry_run)
-        )
+        return self._messages.offload_step(command_steps.STEP_STAGING_TRANSPORT, step_fn, execute=(not self._dry_run))
 
     def ping_source_rdbms(self):
         return self._verify_rdbms_connectivity()
@@ -2644,9 +2321,7 @@ class OffloadTransportSparkSubmitCanary(OffloadTransportSparkSubmit):
         """CONSTRUCTOR
         This does not call up the stack to parent constructor because we only want a subset of functionality
         """
-        self._spark_submit_executable = (
-            offload_options.offload_transport_spark_submit_executable
-        )
+        self._spark_submit_executable = offload_options.offload_transport_spark_submit_executable
         assert self._spark_submit_executable
         self._offload_options = offload_options
         self._messages = messages
@@ -2656,21 +2331,13 @@ class OffloadTransportSparkSubmitCanary(OffloadTransportSparkSubmit):
 
         self._create_basic_connectivity_attributes(offload_options)
 
-        self._offload_transport_consistent_read = (
-            orchestration_defaults.bool_option_from_string(
-                "OFFLOAD_TRANSPORT_CONSISTENT_READ",
-                orchestration_defaults.offload_transport_consistent_read_default(),
-            )
+        self._offload_transport_consistent_read = orchestration_defaults.bool_option_from_string(
+            "OFFLOAD_TRANSPORT_CONSISTENT_READ",
+            orchestration_defaults.offload_transport_consistent_read_default(),
         )
-        self._offload_transport_fetch_size = (
-            orchestration_defaults.offload_transport_fetch_size_default()
-        )
-        self._offload_transport_jvm_overrides = (
-            orchestration_defaults.offload_transport_spark_overrides_default()
-        )
-        self._offload_transport_queue_name = (
-            orchestration_defaults.offload_transport_spark_queue_name_default()
-        )
+        self._offload_transport_fetch_size = orchestration_defaults.offload_transport_fetch_size_default()
+        self._offload_transport_jvm_overrides = orchestration_defaults.offload_transport_spark_overrides_default()
+        self._offload_transport_queue_name = orchestration_defaults.offload_transport_spark_queue_name_default()
         self._offload_transport_parallelism = 1
         self._validation_polling_interval = (
             orchestration_defaults.offload_transport_validation_polling_interval_default()
@@ -2690,9 +2357,7 @@ class OffloadTransportSparkSubmitCanary(OffloadTransportSparkSubmit):
         self._rdbms_module = FRONTEND_TRACE_MODULE
         self._rdbms_action = self._rdbms_api.generate_transport_action()
 
-        self._offload_transport_spark_submit_master_url = (
-            offload_options.offload_transport_spark_submit_master_url
-        )
+        self._offload_transport_spark_submit_master_url = offload_options.offload_transport_spark_submit_master_url
         self._spark_files_csv = offload_options.offload_transport_spark_files
         self._spark_jars_csv = offload_options.offload_transport_spark_jars
 
@@ -2723,7 +2388,7 @@ class OffloadTransportQueryImport(OffloadTransport):
     ):
         """CONSTRUCTOR"""
         self._offload_transport_method = OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
-        super(OffloadTransportQueryImport, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -2733,12 +2398,8 @@ class OffloadTransportQueryImport(OffloadTransport):
         )
         self._offload_transport_parallelism = 1
         # Cap fetch size at 1000
-        self._offload_transport_fetch_size = min(
-            int(self._offload_transport_fetch_size), 1000
-        )
-        self._convert_nans_to_nulls = convert_nans_to_nulls(
-            offload_target_table, offload_operation
-        )
+        self._offload_transport_fetch_size = min(int(self._offload_transport_fetch_size), 1000)
+        self._convert_nans_to_nulls = convert_nans_to_nulls(offload_target_table, offload_operation)
 
     ###########################################################################
     # PRIVATE METHODS
@@ -2751,7 +2412,8 @@ class OffloadTransportQueryImport(OffloadTransport):
     def _query_import_to_local_fs(self, partition_chunk=None) -> tuple:
         """Execute Query Import transport.
 
-        Query Import is not partition aware therefore partition_chunk is ignored"""
+        Query Import is not partition aware therefore partition_chunk is ignored
+        """
 
         if self._nothing_to_do(partition_chunk):
             return 0
@@ -2762,14 +2424,8 @@ class OffloadTransportQueryImport(OffloadTransport):
             self._offload_options,
             "." + self._staging_format.lower(),
         )
-        dfs_load_path = os.path.join(
-            self._staging_table_location, "part-m-00000." + self._staging_format.lower()
-        )
-        qi_fetch_size = (
-            self._offload_transport_fetch_size
-            if self._fetchmany_takes_fetch_size
-            else None
-        )
+        dfs_load_path = os.path.join(self._staging_table_location, "part-m-00000." + self._staging_format.lower())
+        qi_fetch_size = self._offload_transport_fetch_size if self._fetchmany_takes_fetch_size else None
 
         staging_columns = self._staging_file.get_staging_columns()
 
@@ -2784,15 +2440,11 @@ class OffloadTransportQueryImport(OffloadTransport):
             for_qi=True,
         )
 
-        sql_projection = self._sql_projection_from_offload_query_expression_list(
-            colexpressions, colnames
-        )
+        sql_projection = self._sql_projection_from_offload_query_expression_list(colexpressions, colnames)
         table_name = ('"%s"."%s"' % (self._rdbms_owner, self._rdbms_table_name)).upper()
         if partition_chunk:
             split_row_source_by = self._get_transport_split_type(partition_chunk)
-            row_source = self._get_transport_row_source_query(
-                split_row_source_by, partition_chunk
-            )
+            row_source = self._get_transport_row_source_query(split_row_source_by, partition_chunk)
             source_query = "SELECT %s\nFROM (%s)" % (sql_projection, row_source)
         else:
             snapshot_clause = self._rdbms_api.get_snapshot_clause(
@@ -2805,12 +2457,7 @@ class OffloadTransportQueryImport(OffloadTransport):
                 snapshot_clause,
             )
         if self._rdbms_offload_predicate:
-            source_query += (
-                "\nWHERE (%s)"
-                % self._rdbms_table.predicate_to_where_clause(
-                    self._rdbms_offload_predicate
-                )
-            )
+            source_query += "\nWHERE (%s)" % self._rdbms_table.predicate_to_where_clause(self._rdbms_offload_predicate)
         source_binds = None
 
         self._refresh_rdbms_action()
@@ -2842,22 +2489,16 @@ class OffloadTransportQueryImport(OffloadTransport):
     def _query_import_copy_to_dfs(self, local_staging_path, dfs_load_path):
         rm_local_file = ["rm", "-f", local_staging_path]
         # Simulate Sqoop's use of recreate load dir
-        self.log_dfs_cmd(
-            'copy_from_local("%s", "%s")' % (local_staging_path, dfs_load_path)
-        )
+        self.log_dfs_cmd('copy_from_local("%s", "%s")' % (local_staging_path, dfs_load_path))
         if not self._dry_run:
-            self._dfs_client.copy_from_local(
-                local_staging_path, dfs_load_path, overwrite=True
-            )
+            self._dfs_client.copy_from_local(local_staging_path, dfs_load_path, overwrite=True)
             self._run_os_cmd(rm_local_file)
 
     ###########################################################################
     # PUBLIC METHODS
     ###########################################################################
 
-    def transport(
-        self, partition_chunk: Optional["OffloadSourcePartitions"] = None
-    ) -> Union[int, None]:
+    def transport(self, partition_chunk: Optional["OffloadSourcePartitions"] = None) -> int | None:
         """Run the data transport"""
         self._reset_transport_context()
 

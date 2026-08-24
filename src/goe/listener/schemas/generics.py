@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Standard Library
-from typing import Generic, List, TypeVar
+from typing import Generic, TypeVar
 
 # Third Party Libraries
 from pydantic.generics import GenericModel
@@ -28,7 +28,7 @@ class TotaledResults(GenericModel, Generic[BaseSchemaType]):
     """Provides count and result of resultset"""
 
     count: int
-    results: List[BaseSchemaType]
+    results: list[BaseSchemaType]
 
 
 class PaginatedResults(GenericModel, Generic[BaseSchemaType]):
@@ -37,4 +37,4 @@ class PaginatedResults(GenericModel, Generic[BaseSchemaType]):
     count: int
     limit: int
     offset: int
-    results: List[BaseSchemaType]
+    results: list[BaseSchemaType]

@@ -19,19 +19,17 @@ from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
-from goe.offload.offload_messages import VVERBOSE
 from goe.offload.offload_metadata_functions import OFFLOAD_TYPE_FULL
 from goe.offload.offload_source_data import NO_MAXVALUE_PARTITION_NOTICE_TEXT
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
+from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import (
     hint_text_in_log,
     sales_based_fact_assertion,
     text_in_messages,
 )
-from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.scenario_runner import (
     run_offload,
     run_setup,
@@ -49,7 +47,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 PARALLEL_V_DIM = "STORY_PARALLEL_VER_DIM"
 MAXVAL_FACT = "STORY_MAXVALUE_FACT"
@@ -78,9 +75,10 @@ def test_offload_misc_verification_parallel(config, schema, data_db):
     if config.db_type != offload_constants.DBTYPE_ORACLE:
         pytest.skip(f"Skipping {id} for system: {config.db_type}")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         # Setup
@@ -89,13 +87,9 @@ def test_offload_misc_verification_parallel(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, PARALLEL_V_DIM
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, PARALLEL_V_DIM),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, PARALLEL_V_DIM
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, PARALLEL_V_DIM),
             ],
         )
 
@@ -153,13 +147,12 @@ def test_offload_misc_maxvalue_partition(config, schema, data_db):
     if config.db_type != offload_constants.DBTYPE_ORACLE:
         pytest.skip(f"Skipping {id} for system: {config.db_type}")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -167,13 +160,9 @@ def test_offload_misc_maxvalue_partition(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.sales_based_fact_create_ddl(
-                schema, MAXVAL_FACT, maxval_partition=True
-            ),
+            frontend_sqls=frontend_api.sales_based_fact_create_ddl(schema, MAXVAL_FACT, maxval_partition=True),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, MAXVAL_FACT
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, MAXVAL_FACT),
             ],
         )
 
@@ -221,9 +210,7 @@ def test_offload_misc_maxvalue_partition(config, schema, data_db):
             offload_pattern=scenario_constants.OFFLOAD_PATTERN_90_10,
             offload_messages=offload_messages,
         )
-        assert text_in_messages(
-            offload_messages, NO_MAXVALUE_PARTITION_NOTICE_TEXT, messages
-        )
+        assert text_in_messages(offload_messages, NO_MAXVALUE_PARTITION_NOTICE_TEXT, messages)
 
         # Offload 90/10 fact to 100/0.
         # Offloads all partitions from a fact table including MAXVALUE partition.

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """TestOffloadTransportRdbmsApi: Unit tests for each Offload Transport RDBMS API."""
+
 import pytest
 
 from goe.offload.factory.offload_transport_rdbms_api_factory import (
@@ -29,14 +30,14 @@ from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
 )
 from tests.unit.test_functions import (
-    build_mock_options,
-    build_fake_oracle_table,
-    build_fake_oracle_subpartitioned_table,
     FAKE_MSSQL_ENV,
     FAKE_ORACLE_ENV,
-    FAKE_TERADATA_ENV,
-    FAKE_ORACLE_PARTITIONS,
     FAKE_ORACLE_LIST_RANGE_PARTITIONS,
+    FAKE_ORACLE_PARTITIONS,
+    FAKE_TERADATA_ENV,
+    build_fake_oracle_subpartitioned_table,
+    build_fake_oracle_table,
+    build_mock_options,
 )
 
 
@@ -86,9 +87,7 @@ def test_mssql_ot_rdbms_api(messages):
     config = build_mock_options(FAKE_MSSQL_ENV)
     rdbms_owner = "SH_TEST"
     rdbms_table = "SALES"
-    api = offload_transport_rdbms_api_factory(
-        rdbms_owner, rdbms_table, config, messages, dry_run=True
-    )
+    api = offload_transport_rdbms_api_factory(rdbms_owner, rdbms_table, config, messages, dry_run=True)
     non_connecting_tests(api)
 
 
@@ -97,9 +96,7 @@ def test_oracle_ot_rdbms_api(oracle_config, messages):
     oracle_config = build_mock_options(FAKE_ORACLE_ENV)
     rdbms_owner = "SH_TEST"
     rdbms_table = "SALES"
-    api = offload_transport_rdbms_api_factory(
-        rdbms_owner, rdbms_table, oracle_config, messages, dry_run=True
-    )
+    api = offload_transport_rdbms_api_factory(rdbms_owner, rdbms_table, oracle_config, messages, dry_run=True)
     non_connecting_tests(api)
     assert isinstance(api.get_snapshot_clause(123456, True), str)
     assert "123456" in api.get_snapshot_clause(123456, True)
@@ -111,9 +108,7 @@ def test_teradata_ot_rdbms_api(messages):
     config = build_mock_options(FAKE_TERADATA_ENV)
     rdbms_owner = "SH_TEST"
     rdbms_table = "SALES"
-    api = offload_transport_rdbms_api_factory(
-        rdbms_owner, rdbms_table, config, messages, dry_run=True
-    )
+    api = offload_transport_rdbms_api_factory(rdbms_owner, rdbms_table, config, messages, dry_run=True)
     non_connecting_tests(api)
 
 
@@ -269,9 +264,7 @@ def test_get_transport_split_type_oracle_partitioned(
         # Offload 1 top level partition with parallelism of 2.
         (
             2,
-            offload_partitions_from_rdbms_partitions(
-                FAKE_ORACLE_LIST_RANGE_PARTITIONS[:1]
-            ),
+            offload_partitions_from_rdbms_partitions(FAKE_ORACLE_LIST_RANGE_PARTITIONS[:1]),
             False,
             # 4 subpartitions with parallel 2 should split by subpartition.
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
@@ -280,9 +273,7 @@ def test_get_transport_split_type_oracle_partitioned(
         # Offload 1 top level partition with parallelism of 5, greater than 4 subpartitions.
         (
             5,
-            offload_partitions_from_rdbms_partitions(
-                FAKE_ORACLE_LIST_RANGE_PARTITIONS[:1]
-            ),
+            offload_partitions_from_rdbms_partitions(FAKE_ORACLE_LIST_RANGE_PARTITIONS[:1]),
             False,
             # 4 subpartitions with parallel 2 should split by subpartition.
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_EXTENT,
@@ -291,9 +282,7 @@ def test_get_transport_split_type_oracle_partitioned(
         # Offload 2 top level partitions with parallelism of 2.
         (
             2,
-            offload_partitions_from_rdbms_partitions(
-                FAKE_ORACLE_LIST_RANGE_PARTITIONS[:2]
-            ),
+            offload_partitions_from_rdbms_partitions(FAKE_ORACLE_LIST_RANGE_PARTITIONS[:2]),
             False,
             # 2 is enough for top-level partitions, no need to split by subpartition.
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
@@ -302,9 +291,7 @@ def test_get_transport_split_type_oracle_partitioned(
         # Offload 2 top level partitions with parallelism of 2.
         (
             2,
-            offload_partitions_from_rdbms_partitions(
-                FAKE_ORACLE_LIST_RANGE_PARTITIONS[:2]
-            ),
+            offload_partitions_from_rdbms_partitions(FAKE_ORACLE_LIST_RANGE_PARTITIONS[:2]),
             True,
             # 2 is enough for top-level partitions but we asked for subpartition therefore split by subpartition.
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,

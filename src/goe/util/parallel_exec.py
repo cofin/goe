@@ -14,12 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" ParallelExecutor: Parallel execution of tasks with various methods
-"""
-
-import logging
+"""ParallelExecutor: Parallel execution of tasks with various methods"""
 
 import concurrent.futures
+import logging
 
 from goe.util.misc_functions import typed_property
 
@@ -47,7 +45,7 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())  # Disabling logging by default
 
 
-class ParallelExecutor(object):
+class ParallelExecutor:
     """Execute 'tasks' in parallel"""
 
     submitted = typed_property("submitted", int)
@@ -101,9 +99,7 @@ class ParallelExecutor(object):
             task, args = None, []
             if not isinstance(task_item, list):
                 if ids:
-                    raise ParallelExecException(
-                        "'ids' parameter is incompatible with 'simple task' mode"
-                    )
+                    raise ParallelExecException("'ids' parameter is incompatible with 'simple task' mode")
                 task = task_item
             else:
                 task, args = task_item[0], task_item[1:]
@@ -117,7 +113,7 @@ class ParallelExecutor(object):
             self._tasks[job_id] = st
 
             self._executed += 1
-            if STATUS_NOOP == st:
+            if st == STATUS_NOOP:
                 self._noop += 1
             elif st:
                 self._successful += 1
@@ -139,9 +135,7 @@ class ParallelExecutor(object):
 
         return list(self._tasks.values())
 
-    def execute_in_threads(
-        self, parallel, job_tasks, kill_on_first_error=True, ids=False
-    ):
+    def execute_in_threads(self, parallel, job_tasks, kill_on_first_error=True, ids=False):
         """Execute 'job_tasks' in multiple parallel threads
 
         'job_tasks': List of [callable, arg1, arg2, ...]
@@ -166,9 +160,7 @@ class ParallelExecutor(object):
             for thread_id, task_item in enumerate(job_tasks):
                 if not isinstance(task_item, list):
                     if ids:
-                        raise ParallelExecException(
-                            "'ids' parameter is incompatible with 'simple task' mode"
-                        )
+                        raise ParallelExecException("'ids' parameter is incompatible with 'simple task' mode")
                     task = task_item
                     submitted_threads[executor.submit(task)] = thread_id
                 else:
@@ -187,7 +179,7 @@ class ParallelExecutor(object):
                     logger.debug("Result for thread: %s is: %s" % (thread_id, st))
                     self._tasks[thread_id] = st
                     self._executed += 1
-                    if STATUS_NOOP == st:
+                    if st == STATUS_NOOP:
                         self._noop += 1
                     elif st:
                         self._successful += 1
@@ -200,8 +192,7 @@ class ParallelExecutor(object):
                     )
                     if kill_on_first_error:
                         raise ParallelExecException(msg)
-                    else:
-                        logger.warn(msg)
+                    logger.warning(msg)
                     self._tasks[thread_id] = False
                     self._executed += 1
                     self._failed += 1

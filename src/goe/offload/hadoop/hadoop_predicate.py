@@ -14,10 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-    Offload predicate specialisations for Impala/Hive SQL dialects.
+"""Offload predicate specialisations for Impala/Hive SQL dialects.
 
-    Includes transformer for inserting synthetic partition predicates.
+Includes transformer for inserting synthetic partition predicates.
 """
 
 import numpy as np
@@ -28,30 +27,20 @@ from goe.offload.hadoop.impala_literal import ImpalaLiteral
 
 def predicate_to_template(backend_columns):
     generic_to_typed = predicate_offload.GenericPredicateToTyped(backend_columns)
-    insert_synthetic_partition_clauses = (
-        predicate_offload.InsertSyntheticPartitionClauses(backend_columns)
-    )
-    return (
-        generic_to_typed
-        * insert_synthetic_partition_clauses
-        * TypedPredicateToHadoopTemplate()
-    )
+    insert_synthetic_partition_clauses = predicate_offload.InsertSyntheticPartitionClauses(backend_columns)
+    return generic_to_typed * insert_synthetic_partition_clauses * TypedPredicateToHadoopTemplate()
 
 
 def predicate_to_where_clause(backend_columns, predicate):
     with predicate_offload.handle_parse_errors():
-        to_literal_ast = (
-            predicate_to_template(backend_columns) * TypedPredicateToHadoopLiterals()
-        )
+        to_literal_ast = predicate_to_template(backend_columns) * TypedPredicateToHadoopLiterals()
         to_sql = GenericPredicateToHadoopSQL()
         return (to_literal_ast * to_sql).transform(predicate.ast)
 
 
 def predicate_to_where_clause_with_binds(backend_columns, predicate):
     with predicate_offload.handle_parse_errors():
-        to_bind_ast = (
-            predicate_to_template(backend_columns) * TypedPredicateToHadoopBinds()
-        )
+        to_bind_ast = predicate_to_template(backend_columns) * TypedPredicateToHadoopBinds()
         to_sql = GenericPredicateToHadoopSQL()
         bind_ast = to_bind_ast.transform(predicate.ast)
         return to_sql.transform(bind_ast), bind_ast.meta

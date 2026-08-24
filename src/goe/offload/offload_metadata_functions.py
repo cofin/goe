@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Library for logic/interaction with hybrid metadata
-    For now a handy location for like minded functions, in the future this might become a class
+"""Library for logic/interaction with hybrid metadata
+For now a handy location for like minded functions, in the future this might become a class
 """
 
 from typing import TYPE_CHECKING
@@ -26,17 +26,17 @@ from goe.offload.column_metadata import (
     valid_column_list,
 )
 from goe.offload.offload_source_table import (
-    OffloadSourceTableInterface,
-    convert_high_values_to_python,
     OFFLOAD_PARTITION_TYPE_LIST,
     OFFLOAD_PARTITION_TYPE_RANGE,
+    OffloadSourceTableInterface,
+    convert_high_values_to_python,
 )
 from goe.orchestration import command_steps
 from goe.persistence.orchestration_metadata import (
-    OrchestrationMetadata,
-    INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_LIST,
+    INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
+    OrchestrationMetadata,
 )
 from goe.util.misc_functions import csv_split, nvl, unsurround
 
@@ -93,16 +93,12 @@ def gen_offload_metadata(
     we cannot uppercase all values for consistency (which is what we used to do).
     """
     if offload_operation.sort_columns:
-        assert isinstance(
-            offload_operation.sort_columns, list
-        ), "{} is not of type list".format(
-            type(offload_operation.offload_partition_functions)
+        assert isinstance(offload_operation.sort_columns, list), (
+            f"{type(offload_operation.offload_partition_functions)} is not of type list"
         )
     if offload_operation.offload_partition_functions:
-        assert isinstance(
-            offload_operation.offload_partition_functions, list
-        ), "{} is not of type list".format(
-            type(offload_operation.offload_partition_functions)
+        assert isinstance(offload_operation.offload_partition_functions, list), (
+            f"{type(offload_operation.offload_partition_functions)} is not of type list"
         )
 
     incremental_predicate_type = None
@@ -115,34 +111,22 @@ def gen_offload_metadata(
         incremental_range = pre_offload_metadata.incremental_range
         incremental_predicate_type = pre_offload_metadata.incremental_predicate_type
         if pre_offload_metadata.offload_partition_functions:
-            offload_partition_functions = csv_split(
-                pre_offload_metadata.offload_partition_functions
-            )
+            offload_partition_functions = csv_split(pre_offload_metadata.offload_partition_functions)
     else:
         bucket_hash_column = offload_operation.bucket_hash_col
 
     # Predicate type might be changing so need to take it from the currently-executing operation...
-    incremental_predicate_type = (
-        offload_operation.ipa_predicate_type or incremental_predicate_type
-    )
+    incremental_predicate_type = offload_operation.ipa_predicate_type or incremental_predicate_type
 
     if not incremental_range:
         if offload_operation.offload_by_subpartition:
             incremental_range = "SUBPARTITION"
-        elif (
-            threshold_cols
-            and incremental_predicate_type != INCREMENTAL_PREDICATE_TYPE_PREDICATE
-        ):
+        elif threshold_cols and incremental_predicate_type != INCREMENTAL_PREDICATE_TYPE_PREDICATE:
             incremental_range = "PARTITION"
 
-    offload_partition_functions = (
-        offload_partition_functions or offload_operation.offload_partition_functions
-    )
+    offload_partition_functions = offload_partition_functions or offload_operation.offload_partition_functions
 
-    if (
-        offload_operation.hwm_in_hybrid_view
-        and incremental_predicate_type != INCREMENTAL_PREDICATE_TYPE_PREDICATE
-    ):
+    if offload_operation.hwm_in_hybrid_view and incremental_predicate_type != INCREMENTAL_PREDICATE_TYPE_PREDICATE:
         # incremental_predicate_type PREDICATE has a UNION ALL hybrid view but no incremental keys
         incremental_key_csv = incremental_key_csv_from_part_keys(threshold_cols)
         incremental_hv_csv = incremental_hv_csv_from_list(offload_high_values)
@@ -151,13 +135,9 @@ def gen_offload_metadata(
         incremental_hv_csv = None
 
     offload_sort_csv = column_name_list_to_csv(offload_operation.sort_columns)
-    offload_partition_functions_csv = offload_partition_functions_to_csv(
-        offload_partition_functions
-    )
+    offload_partition_functions_csv = offload_partition_functions_to_csv(offload_partition_functions)
     incremental_predicate_value = (
-        [p.dsl for p in incremental_predicate_values]
-        if incremental_predicate_values
-        else None
+        [p.dsl for p in incremental_predicate_values] if incremental_predicate_values else None
     )
 
     return OrchestrationMetadata.from_attributes(
@@ -237,9 +217,7 @@ def incremental_key_csv_from_part_keys(incremental_keys):
     """Takes partition columns list of tuples and formats metadata CSV.
     Broken out as a function as formatting should be consistent.
     """
-    assert valid_column_list(incremental_keys), invalid_column_list_message(
-        incremental_keys
-    )
+    assert valid_column_list(incremental_keys), invalid_column_list_message(incremental_keys)
     return ", ".join([_.name for _ in incremental_keys]) if incremental_keys else None
 
 
@@ -249,8 +227,7 @@ def unknown_to_str(ch):
     """
     if not isinstance(ch, str):
         return str(ch)
-    else:
-        return ch
+    return ch
 
 
 def incremental_hv_csv_from_list(incremental_high_values):
@@ -264,14 +241,9 @@ def incremental_hv_csv_from_list(incremental_high_values):
     def hv_to_str(hv):
         if type(hv) in (tuple, list):
             return "(%s)" % ", ".join(unknown_to_str(_) for _ in hv)
-        else:
-            return unknown_to_str(hv)
+        return unknown_to_str(hv)
 
-    return (
-        ", ".join(hv_to_str(_) for _ in incremental_high_values)
-        if incremental_high_values
-        else None
-    )
+    return ", ".join(hv_to_str(_) for _ in incremental_high_values) if incremental_high_values else None
 
 
 def incremental_hv_list_from_csv(metadata_high_value_string, ipa_predicate_type):
@@ -315,8 +287,7 @@ def incremental_hv_list_from_csv(metadata_high_value_string, ipa_predicate_type)
         # for list each token is surrounded by brackets so we should remove those
         tokens = [unsurround(_, "(", ")") for _ in tokens]
         return tokens
-    else:
-        return metadata_high_value_string
+    return metadata_high_value_string
 
 
 def decode_metadata_incremental_high_values_from_metadata(
@@ -327,9 +298,9 @@ def decode_metadata_incremental_high_values_from_metadata(
     ideal.
     """
     assert isinstance(base_metadata, OrchestrationMetadata)
-    assert isinstance(
-        rdbms_base_table, OffloadSourceTableInterface
-    ), "%s is not of type OffloadSourceTableInterface" % str(type(rdbms_base_table))
+    assert isinstance(rdbms_base_table, OffloadSourceTableInterface), (
+        "%s is not of type OffloadSourceTableInterface" % str(type(rdbms_base_table))
+    )
     if not base_metadata or not base_metadata.incremental_high_value:
         return [], [], []
     return decode_metadata_incremental_high_values(
@@ -358,18 +329,12 @@ def decode_metadata_incremental_high_values(
             if ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_RANGE
             else OFFLOAD_PARTITION_TYPE_LIST
         )
-        hv_python = convert_high_values_to_python(
-            partition_columns, hv_literals, partition_type, rdbms_base_table
-        )
+        hv_python = convert_high_values_to_python(partition_columns, hv_literals, partition_type, rdbms_base_table)
         return tuple(hv_python), tuple(hv_literals)
 
     ipa_predicate_type = incremental_predicate_type or INCREMENTAL_PREDICATE_TYPE_RANGE
-    partition_columns = partition_columns_from_metadata(
-        incremental_key, rdbms_base_table.columns
-    )
-    partitionwise_hvs = incremental_hv_list_from_csv(
-        incremental_high_value, ipa_predicate_type
-    )
+    partition_columns = partition_columns_from_metadata(incremental_key, rdbms_base_table.columns)
+    partitionwise_hvs = incremental_hv_list_from_csv(incremental_high_value, ipa_predicate_type)
     if ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST:
         hv_real_list, hv_indiv_list = [], []
         for partitionwise_hv in partitionwise_hvs:
@@ -382,35 +347,24 @@ def decode_metadata_incremental_high_values(
             hv_real_list.append(hv_real_vals)
             hv_indiv_list.append(hv_indiv_vals)
         return partition_columns, hv_real_list, hv_indiv_list
-    else:
-        hv_real_vals, hv_indiv_vals = hvs_to_python(
-            partitionwise_hvs, partition_columns, rdbms_base_table, ipa_predicate_type
-        )
-        return partition_columns, hv_real_vals, hv_indiv_vals
+    hv_real_vals, hv_indiv_vals = hvs_to_python(
+        partitionwise_hvs, partition_columns, rdbms_base_table, ipa_predicate_type
+    )
+    return partition_columns, hv_real_vals, hv_indiv_vals
 
 
-def split_metadata_incremental_high_values(
-    base_metadata: OrchestrationMetadata, frontend_api
-):
+def split_metadata_incremental_high_values(base_metadata: OrchestrationMetadata, frontend_api):
     """Equivalent of decode_metadata_incremental_high_values() above but for when we don't have access
     to an RDBMS base table.
     This means we can only decode as far as string HVs, no conversion to real Python values.
     """
     if not base_metadata or not base_metadata.incremental_high_value:
         return None
-    ipa_predicate_type = (
-        base_metadata.incremental_predicate_type or INCREMENTAL_PREDICATE_TYPE_RANGE
-    )
-    partitionwise_hvs = incremental_hv_list_from_csv(
-        base_metadata.incremental_high_value, ipa_predicate_type
-    )
+    ipa_predicate_type = base_metadata.incremental_predicate_type or INCREMENTAL_PREDICATE_TYPE_RANGE
+    partitionwise_hvs = incremental_hv_list_from_csv(base_metadata.incremental_high_value, ipa_predicate_type)
     if ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST:
-        return [
-            tuple(frontend_api.split_partition_high_value_string(_))
-            for _ in partitionwise_hvs
-        ]
-    else:
-        return frontend_api.split_partition_high_value_string(partitionwise_hvs)
+        return [tuple(frontend_api.split_partition_high_value_string(_)) for _ in partitionwise_hvs]
+    return frontend_api.split_partition_high_value_string(partitionwise_hvs)
 
 
 def flatten_lpa_individual_high_values(incremental_high_values, to_str=True):
@@ -423,13 +377,10 @@ def flatten_lpa_individual_high_values(incremental_high_values, to_str=True):
 
     ['A', 'B', 'C']
     """
-    assert type(incremental_high_values) is list, "Type %s is not list" % type(
-        incremental_high_values
-    )
+    assert type(incremental_high_values) is list, "Type %s is not list" % type(incremental_high_values)
     if to_str:
         return [unknown_to_str(v) for hv in incremental_high_values for v in hv]
-    else:
-        return [v for hv in incremental_high_values for v in hv]
+    return [v for hv in incremental_high_values for v in hv]
 
 
 def flatten_lpa_high_values(incremental_high_values):

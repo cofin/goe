@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Unit tests for SyntheticPartitionLiteral
-"""
-from datetime import datetime
+"""Unit tests for SyntheticPartitionLiteral"""
+
 import decimal
-from numpy import datetime64
+from datetime import datetime
 from unittest import TestCase, main
+
+from numpy import datetime64
 
 from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
 
@@ -26,15 +27,9 @@ class TestSyntheticPartitionLiteral(TestCase):
     def test__gen_synthetic_part_date_as_string_expr(self):
         """Double underscore because we are unit testing a private method."""
         dt = datetime(2020, 10, 31, 12, 12, 00)
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_date_as_string_literal(dt, "Y"), "2020"
-        )
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_date_as_string_literal(dt, "M"), "2020-10"
-        )
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_date_as_string_literal(dt, "D"), "2020-10-31"
-        )
+        self.assertEqual(SyntheticPartitionLiteral._gen_date_as_string_literal(dt, "Y"), "2020")
+        self.assertEqual(SyntheticPartitionLiteral._gen_date_as_string_literal(dt, "M"), "2020-10")
+        self.assertEqual(SyntheticPartitionLiteral._gen_date_as_string_literal(dt, "D"), "2020-10-31")
         self.assertEqual(
             SyntheticPartitionLiteral._gen_date_as_string_literal(datetime64(dt), "Y"),
             "2020",
@@ -108,9 +103,7 @@ class TestSyntheticPartitionLiteral(TestCase):
             "0000-12350",
         )
         self.assertEqual(
-            SyntheticPartitionLiteral._gen_number_string_literal(
-                -12345.12345, 1000, 10
-            ),
+            SyntheticPartitionLiteral._gen_number_string_literal(-12345.12345, 1000, 10),
             "0000-13000",
         )
         self.assertEqual(
@@ -151,24 +144,12 @@ class TestSyntheticPartitionLiteral(TestCase):
             "000001999987308865045632949658",
         )
         # Synthetic column is numeric
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_number_integral_literal(12345, 10), 12340
-        )
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_number_integral_literal(12345, 1000), 12000
-        )
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_number_integral_literal(-12345, 10), -12350
-        )
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_number_integral_literal(-12345, 1000), -13000
-        )
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_number_integral_literal(12399.6, 10), 12390
-        )
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_number_integral_literal(-12399.6, 10), -12400
-        )
+        self.assertEqual(SyntheticPartitionLiteral._gen_number_integral_literal(12345, 10), 12340)
+        self.assertEqual(SyntheticPartitionLiteral._gen_number_integral_literal(12345, 1000), 12000)
+        self.assertEqual(SyntheticPartitionLiteral._gen_number_integral_literal(-12345, 10), -12350)
+        self.assertEqual(SyntheticPartitionLiteral._gen_number_integral_literal(-12345, 1000), -13000)
+        self.assertEqual(SyntheticPartitionLiteral._gen_number_integral_literal(12399.6, 10), 12390)
+        self.assertEqual(SyntheticPartitionLiteral._gen_number_integral_literal(-12399.6, 10), -12400)
         self.assertEqual(
             SyntheticPartitionLiteral._gen_number_integral_literal(99999999, 10),
             99999990,
@@ -225,29 +206,19 @@ class TestSyntheticPartitionLiteral(TestCase):
                     pad_with = pad_with[1:]
                 trim_off = len(str(granularity)) - 1
                 # String check
-                synth_val = SyntheticPartitionLiteral._gen_number_string_literal(
-                    num, granularity, pad_to
-                )
+                synth_val = SyntheticPartitionLiteral._gen_number_string_literal(num, granularity, pad_to)
                 check_val = pad_with + str(integral_part)[:-trim_off] + ("0" * trim_off)
                 self.assertEqual(synth_val, check_val)
                 # Numeric check
-                synth_val = SyntheticPartitionLiteral._gen_number_integral_literal(
-                    num, granularity
-                )
+                synth_val = SyntheticPartitionLiteral._gen_number_integral_literal(num, granularity)
                 check_val = int(str(integral_part)[:-trim_off] + ("0" * trim_off))
                 self.assertEqual(synth_val, check_val)
 
     def test__gen_synthetic_part_string_expr(self):
         """Double underscore because we are unit testing a private method"""
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_string_literal("S1234", 2), "S1"
-        )
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_string_literal("S1234", 4), "S123"
-        )
-        self.assertEqual(
-            SyntheticPartitionLiteral._gen_string_literal("S1234", 6), "S1234"
-        )
+        self.assertEqual(SyntheticPartitionLiteral._gen_string_literal("S1234", 2), "S1")
+        self.assertEqual(SyntheticPartitionLiteral._gen_string_literal("S1234", 4), "S123")
+        self.assertEqual(SyntheticPartitionLiteral._gen_string_literal("S1234", 6), "S1234")
 
 
 if __name__ == "__main__":

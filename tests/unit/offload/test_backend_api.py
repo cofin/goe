@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestBackendApi: Unit test library to test API for all supported backends
-    This is split into two categories
-    1) For all possible backends test API calls that do not need to connect to the system
-       Because there is no connection we can fake any backend and test functionality
-       These classes have the system in the name: TestHiveBackendApi, TestImpalaBackendApi, etc
+"""TestBackendApi: Unit test library to test API for all supported backends
+This is split into two categories
+1) For all possible backends test API calls that do not need to connect to the system
+   Because there is no connection we can fake any backend and test functionality
+   These classes have the system in the name: TestHiveBackendApi, TestImpalaBackendApi, etc
 """
 
+import re
 from datetime import datetime
 from unittest import TestCase, main
-import re
-import pytest
 
+import pytest
 from numpy import datetime64
 
 from goe.connect.connect_constants import (
@@ -46,8 +46,8 @@ from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
     DBTYPE_HIVE,
     DBTYPE_IMPALA,
-    DBTYPE_SPARK,
     DBTYPE_SNOWFLAKE,
+    DBTYPE_SPARK,
     DBTYPE_SYNAPSE,
     FILE_STORAGE_FORMAT_AVRO,
     FILE_STORAGE_FORMAT_PARQUET,
@@ -58,21 +58,21 @@ from tests.testlib.test_framework.factory.backend_testing_api_factory import (
     backend_testing_api_factory,
 )
 from tests.unit.test_functions import (
-    build_mock_options,
-    optional_hadoop_dependency_exception,
-    optional_snowflake_dependency_exception,
-    optional_synapse_dependency_exception,
     FAKE_ORACLE_BQ_ENV,
     FAKE_ORACLE_HIVE_ENV,
     FAKE_ORACLE_IMPALA_ENV,
     FAKE_ORACLE_SNOWFLAKE_ENV,
     FAKE_ORACLE_SYNAPSE_ENV,
+    build_mock_options,
+    optional_hadoop_dependency_exception,
+    optional_snowflake_dependency_exception,
+    optional_synapse_dependency_exception,
 )
 
 
 class TestBackendApi(TestCase):
     def __init__(self, *args, **kwargs):
-        super(TestBackendApi, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.test_api = None
         self.config = None
@@ -109,16 +109,13 @@ class TestBackendApi(TestCase):
         return self.api.gen_column_object(
             name,
             data_type=string_type,
-            data_length=(
-                10 if self.test_api.data_type_accepts_length(string_type) else None
-            ),
+            data_length=(10 if self.test_api.data_type_accepts_length(string_type) else None),
         )
 
     def _get_udf_db(self):
         if self.target in [DBTYPE_IMPALA, DBTYPE_HIVE]:
             return "default"
-        else:
-            return self.db
+        return self.db
 
     def _test_add_columns(self):
         if self.connect_to_backend:
@@ -136,16 +133,11 @@ class TestBackendApi(TestCase):
 
     def _test_bigquery_dataset_project(self):
         if self.config.bigquery_dataset_project:
-            self.assertEqual(
-                self.api._backend_project_name(), self.config.bigquery_dataset_project
-            )
-            self.assertIn(
-                self.config.bigquery_dataset_project, self.api._bq_dataset_id("some-db")
-            )
-        else:
-            if self.connect_to_backend:
-                # The project should still be set, it will come from the client default.
-                self.assertIsNotNone(self.api._backend_project_name())
+            self.assertEqual(self.api._backend_project_name(), self.config.bigquery_dataset_project)
+            self.assertIn(self.config.bigquery_dataset_project, self.api._bq_dataset_id("some-db"))
+        elif self.connect_to_backend:
+            # The project should still be set, it will come from the client default.
+            self.assertIsNotNone(self.api._backend_project_name())
 
     def _test_check_backend_supporting_objects(self):
         if self.connect_to_backend:
@@ -172,9 +164,7 @@ class TestBackendApi(TestCase):
     def _test_create_database(self):
         try:
             self.assertIsInstance(self.api.create_database(self.db), list)
-            self.assertIsInstance(
-                self.api.create_database(self.db, comment="Some comment"), list
-            )
+            self.assertIsInstance(self.api.create_database(self.db, comment="Some comment"), list)
             self.assertIsInstance(
                 self.api.create_database(
                     self.db,
@@ -187,9 +177,7 @@ class TestBackendApi(TestCase):
 
     def _test_create_table(self):
         column_list = [
-            self.api.gen_column_object(
-                "col1", data_type=self.test_api.backend_test_type_canonical_int_8()
-            ),
+            self.api.gen_column_object("col1", data_type=self.test_api.backend_test_type_canonical_int_8()),
             self.api.gen_default_numeric_column("col2"),
             self._gen_string_column("col3"),
         ]
@@ -224,9 +212,7 @@ class TestBackendApi(TestCase):
 
         if self.api.partition_by_column_supported():
             if self.target == DBTYPE_BIGQUERY:
-                partition_info = ColumnPartitionInfo(
-                    position=0, granularity=10, range_start=0, range_end=1000
-                )
+                partition_info = ColumnPartitionInfo(position=0, granularity=10, range_start=0, range_end=1000)
                 partition_column = self.api.gen_column_object(
                     "part_col",
                     data_type=self.test_api.backend_test_type_canonical_int_8(),
@@ -272,11 +258,7 @@ class TestBackendApi(TestCase):
     def _test_current_date_sql_expression(self):
         self.assertIsNotNone(self.api.current_date_sql_expression())
         if self.connect_to_backend:
-            self.assertIsNotNone(
-                self.api.execute_query_fetch_one(
-                    "SELECT %s" % self.api.current_date_sql_expression()
-                )
-            )
+            self.assertIsNotNone(self.api.execute_query_fetch_one("SELECT %s" % self.api.current_date_sql_expression()))
 
     def _test_database_exists(self):
         if self.connect_to_backend:
@@ -288,18 +270,12 @@ class TestBackendApi(TestCase):
             part_cols = get_partition_columns(
                 self.api.get_partition_columns(self.db, self.part_table),
             )
-            part_cols = [
-                _ for _ in part_cols if not self.api.is_synthetic_partition_column(_)
-            ]
+            part_cols = [_ for _ in part_cols if not self.api.is_synthetic_partition_column(_)]
             if part_cols:
-                part_info = self.api.derive_native_partition_info(
-                    self.db, self.part_table, part_cols[0], 1
-                )
+                part_info = self.api.derive_native_partition_info(self.db, self.part_table, part_cols[0], 1)
                 self.assertIsNotNone(part_info)
                 self.assertEqual(part_info.position, 1)
-                part_info = self.api.derive_native_partition_info(
-                    self.db, self.part_table, part_cols[0].name, 2
-                )
+                part_info = self.api.derive_native_partition_info(self.db, self.part_table, part_cols[0].name, 2)
                 self.assertIsNotNone(part_info)
                 self.assertEqual(part_info.position, 2)
 
@@ -312,19 +288,12 @@ class TestBackendApi(TestCase):
                     if _.data_type in [BIGQUERY_TYPE_DATETIME, BIGQUERY_TYPE_TIMESTAMP]
                 ]
             else:
-                ts_column = [
-                    _
-                    for _ in self.api.get_columns(self.db, self.table)
-                    if _.is_date_based()
-                ]
+                ts_column = [_ for _ in self.api.get_columns(self.db, self.table) if _.is_date_based()]
             if not ts_column:
                 # No date based column available so don't test it
                 return
-            else:
-                use_column = ts_column[0]
-                self.api.detect_column_has_fractional_seconds(
-                    self.db, self.table, use_column
-                )
+            use_column = ts_column[0]
+            self.api.detect_column_has_fractional_seconds(self.db, self.table, use_column)
 
     def _test_drop_table(self):
         if self.connect_to_backend:
@@ -360,27 +329,17 @@ class TestBackendApi(TestCase):
         )
 
     def _test_execute_query_text(self, column_name, limit):
-        return self.test_api.unit_test_single_row_sql_text(
-            self.db, self.table, column_name, row_limit=limit
-        )
+        return self.test_api.unit_test_single_row_sql_text(self.db, self.table, column_name, row_limit=limit)
 
     def _test_execute_query_fetch_all(self):
         if self.connect_to_backend:
-            num_columns = [
-                _
-                for _ in self.api.get_columns(self.db, self.table)
-                if _.is_number_based()
-            ]
+            num_columns = [_ for _ in self.api.get_columns(self.db, self.table) if _.is_number_based()]
             column_name = num_columns[0].name if num_columns else "*"
-            rows = self.api.execute_query_fetch_all(
-                self._test_execute_query_text(column_name, 10)
-            )
+            rows = self.api.execute_query_fetch_all(self._test_execute_query_text(column_name, 10))
             self.assertIsInstance(rows, list)
             if rows:
                 self.assertIsInstance(rows[0], (list, tuple))
-            rows = self.api.execute_query_fetch_all(
-                self._test_execute_query_text(column_name, 10), as_dict=True
-            )
+            rows = self.api.execute_query_fetch_all(self._test_execute_query_text(column_name, 10), as_dict=True)
             self.assertIsInstance(rows, list)
             if rows:
                 self.assertIsInstance(rows[0], dict)
@@ -401,10 +360,7 @@ class TestBackendApi(TestCase):
                         self.api.format_query_parameter("not-applicable"),
                     )
                 else:
-                    raise NotImplementedError(
-                        "Missing a test for implementation: %s"
-                        % self.api.backend_type()
-                    )
+                    raise NotImplementedError("Missing a test for implementation: %s" % self.api.backend_type())
                 sql = self.test_api.unit_test_single_row_sql_text(
                     self.db,
                     self.table,
@@ -417,15 +373,9 @@ class TestBackendApi(TestCase):
 
     def _test_execute_query_fetch_one(self):
         if self.connect_to_backend:
-            num_columns = [
-                _
-                for _ in self.api.get_columns(self.db, self.table)
-                if _.is_number_based()
-            ]
+            num_columns = [_ for _ in self.api.get_columns(self.db, self.table) if _.is_number_based()]
             column_name = num_columns[0].name if num_columns else "*"
-            row = self.api.execute_query_fetch_one(
-                self._test_execute_query_text(column_name, 1), time_sql=True
-            )
+            row = self.api.execute_query_fetch_one(self._test_execute_query_text(column_name, 1), time_sql=True)
             if row:
                 self.assertIsInstance(row, (list, tuple))
             row = self.api.execute_query_fetch_one(
@@ -452,10 +402,7 @@ class TestBackendApi(TestCase):
                         self.api.format_query_parameter("not-applicable"),
                     )
                 else:
-                    raise NotImplementedError(
-                        "Missing a test for implementation: %s"
-                        % self.api.backend_type()
-                    )
+                    raise NotImplementedError("Missing a test for implementation: %s" % self.api.backend_type())
                 sql = self.test_api.unit_test_single_row_sql_text(
                     self.db,
                     self.table,
@@ -476,13 +423,9 @@ class TestBackendApi(TestCase):
             lambda: self.api.extract_date_part_sql_expression("YEAR", 123),
         )
         for date_part in ["YEAR", "MONTH", "YEAR"]:
+            self.assertIsInstance(self.api.extract_date_part_sql_expression(date_part, "col_name"), str)
             self.assertIsInstance(
-                self.api.extract_date_part_sql_expression(date_part, "col_name"), str
-            )
-            self.assertIsInstance(
-                self.api.extract_date_part_sql_expression(
-                    date_part.lower(), "col_name"
-                ),
+                self.api.extract_date_part_sql_expression(date_part.lower(), "col_name"),
                 str,
             )
 
@@ -490,17 +433,13 @@ class TestBackendApi(TestCase):
         col1 = self.api.gen_default_numeric_column("some_col")
         self.assertIsInstance(self.api.format_column_comparison(col1, "=", col1), str)
         self.assertIsInstance(
-            self.api.format_column_comparison(
-                col1, "=", col1, left_alias="a", right_alias="b"
-            ),
+            self.api.format_column_comparison(col1, "=", col1, left_alias="a", right_alias="b"),
             str,
         )
         col2 = self._gen_string_column("str_col")
         self.assertIsInstance(self.api.format_column_comparison(col2, "=", col2), str)
         self.assertIsInstance(
-            self.api.format_column_comparison(
-                col2, "=", col2, left_alias="a", right_alias="b"
-            ),
+            self.api.format_column_comparison(col2, "=", col2, left_alias="a", right_alias="b"),
             str,
         )
 
@@ -546,9 +485,7 @@ class TestBackendApi(TestCase):
             )
 
     def _test_gen_default_numeric_column(self):
-        self.assertIsInstance(
-            self.api.gen_default_numeric_column("some_col"), ColumnMetadataInterface
-        )
+        self.assertIsInstance(self.api.gen_default_numeric_column("some_col"), ColumnMetadataInterface)
 
     def _test_gen_native_range_partition_key_cast(self):
         def test_granularity_query(source_col, partition_info):
@@ -556,9 +493,7 @@ class TestBackendApi(TestCase):
             part_col.partition_info = partition_info
             cast_expr = self.api.gen_native_range_partition_key_cast(part_col)
             self.assertIsNotNone(cast_expr)
-            row = self.api.execute_query_fetch_one(
-                "SELECT %s FROM %s.%s LIMIT 1" % (cast_expr, self.db, self.table)
-            )
+            row = self.api.execute_query_fetch_one("SELECT %s FROM %s.%s LIMIT 1" % (cast_expr, self.db, self.table))
             self.assertTrue(bool(row))
 
         try:
@@ -567,19 +502,11 @@ class TestBackendApi(TestCase):
                 date_column = [_ for _ in column_list if _.is_date_based()]
                 if date_column:
                     date_column = date_column[0]
-                    test_granularity_query(
-                        date_column, ColumnPartitionInfo(position=0, granularity="Y")
-                    )
-                    test_granularity_query(
-                        date_column, ColumnPartitionInfo(position=0, granularity="M")
-                    )
-                    test_granularity_query(
-                        date_column, ColumnPartitionInfo(position=0, granularity="D")
-                    )
+                    test_granularity_query(date_column, ColumnPartitionInfo(position=0, granularity="Y"))
+                    test_granularity_query(date_column, ColumnPartitionInfo(position=0, granularity="M"))
+                    test_granularity_query(date_column, ColumnPartitionInfo(position=0, granularity="D"))
                 if self.api.backend_type() == DBTYPE_BIGQUERY:
-                    int_column = [
-                        _ for _ in column_list if _.data_type == BIGQUERY_TYPE_INT64
-                    ]
+                    int_column = [_ for _ in column_list if _.data_type == BIGQUERY_TYPE_INT64]
                     if int_column:
                         int_column = int_column[0]
                         test_granularity_query(
@@ -662,9 +589,7 @@ class TestBackendApi(TestCase):
                 tuple,
             )
             self.assertIsInstance(
-                self.api.get_max_column_values(
-                    self.db, self.table, [one_col_name], optimistic_prune_clause="1 = 2"
-                ),
+                self.api.get_max_column_values(self.db, self.table, [one_col_name], optimistic_prune_clause="1 = 2"),
                 tuple,
             )
             self.assertIsInstance(
@@ -680,25 +605,13 @@ class TestBackendApi(TestCase):
 
     def _test_get_max_column_length(self):
         if self.connect_to_backend:
-            string_columns = [
-                _
-                for _ in self.api.get_columns(self.db, self.table)
-                if _.is_string_based()
-            ]
+            string_columns = [_ for _ in self.api.get_columns(self.db, self.table) if _.is_string_based()]
             if string_columns:
-                self.assertIsNotNone(
-                    self.api.get_max_column_length(
-                        self.db, self.table, string_columns[0].name
-                    )
-                )
+                self.assertIsNotNone(self.api.get_max_column_length(self.db, self.table, string_columns[0].name))
 
     def _test_get_missing_hive_table_stats(self):
-        if self.connect_to_backend and hasattr(
-            self.api, "get_missing_hive_table_stats"
-        ):
-            self.api.get_missing_hive_table_stats(
-                self.db, self.table, colstats=True, as_dict=True
-            )
+        if self.connect_to_backend and hasattr(self.api, "get_missing_hive_table_stats"):
+            self.api.get_missing_hive_table_stats(self.db, self.table, colstats=True, as_dict=True)
 
     def _test_get_partition_columns(self):
         if self.connect_to_backend:
@@ -711,29 +624,17 @@ class TestBackendApi(TestCase):
         if self.connect_to_backend:
             test_option = self.test_api.unit_test_query_options()
             if test_option:
-                self.assertIsNotNone(
-                    self.api.get_session_option(list(test_option.keys()).pop())
-                )
+                self.assertIsNotNone(self.api.get_session_option(list(test_option.keys()).pop()))
 
     def _test_get_table_ddl(self):
         if self.connect_to_backend:
             self.assertIsInstance(self.api.get_table_ddl(self.db, self.table), str)
-            self.assertIsInstance(
-                self.api.get_table_ddl(self.db, self.table, as_list=True), list
-            )
+            self.assertIsInstance(self.api.get_table_ddl(self.db, self.table, as_list=True), list)
             # All current backends use ; to terminate SQL
             self.api.drop_state()
-            self.assertFalse(
-                self.api.get_table_ddl(
-                    self.db, self.table, terminate_sql=False
-                ).endswith(";")
-            )
+            self.assertFalse(self.api.get_table_ddl(self.db, self.table, terminate_sql=False).endswith(";"))
             self.api.drop_state()
-            self.assertTrue(
-                self.api.get_table_ddl(
-                    self.db, self.table, terminate_sql=True
-                ).endswith(";")
-            )
+            self.assertTrue(self.api.get_table_ddl(self.db, self.table, terminate_sql=True).endswith(";"))
 
     def _test_get_table_partitions(self):
         if self.connect_to_backend:
@@ -747,26 +648,16 @@ class TestBackendApi(TestCase):
 
     def _test_get_table_partition_count(self):
         if self.connect_to_backend:
-            self.assertIsNotNone(
-                self.api.get_table_partition_count(self.db, self.table)
-            )
-            self.assertIsNotNone(
-                self.api.get_table_partition_count(self.db, self.part_table)
-            )
+            self.assertIsNotNone(self.api.get_table_partition_count(self.db, self.table))
+            self.assertIsNotNone(self.api.get_table_partition_count(self.db, self.part_table))
 
     def _test_get_table_row_count(self):
         if self.connect_to_backend:
-            self.assertIsNotNone(
-                self.api.get_table_row_count(
-                    self.db, self.table, filter_clause="123 = 123"
-                )
-            )
+            self.assertIsNotNone(self.api.get_table_row_count(self.db, self.table, filter_clause="123 = 123"))
 
     def _test_get_table_row_count_from_metadata(self):
         if self.connect_to_backend:
-            self.assertIsNotNone(
-                self.api.get_table_row_count_from_metadata(self.db, self.table)
-            )
+            self.assertIsNotNone(self.api.get_table_row_count_from_metadata(self.db, self.table))
 
     def _test_get_table_size(self):
         if self.connect_to_backend:
@@ -800,12 +691,8 @@ class TestBackendApi(TestCase):
 
     def _test_get_table_and_partition_stats(self):
         if self.connect_to_backend:
-            self.assertIsNotNone(
-                self.api.get_table_and_partition_stats(self.db, self.table)
-            )
-            self.assertIsNotNone(
-                self.api.get_table_and_partition_stats(self.db, self.part_table)
-            )
+            self.assertIsNotNone(self.api.get_table_and_partition_stats(self.db, self.table))
+            self.assertIsNotNone(self.api.get_table_and_partition_stats(self.db, self.part_table))
 
     def _test_get_user_name(self):
         if self.connect_to_backend:
@@ -829,9 +716,7 @@ class TestBackendApi(TestCase):
         self.assertIn(self.config.google_kms_key_name, self.api.kms_key_name())
 
         if self.config.google_kms_key_ring_project:
-            self.assertIn(
-                self.config.google_kms_key_ring_project, self.api.kms_key_name()
-            )
+            self.assertIn(self.config.google_kms_key_ring_project, self.api.kms_key_name())
 
     def _test_identifier_contains_invalid_characters(self):
         self.api.identifier_contains_invalid_characters("some_name")
@@ -854,9 +739,7 @@ class TestBackendApi(TestCase):
 
     def _test_length_sql_expression(self):
         for literal, expected_length in [("ABCDEF", 6), ("", 0)]:
-            length_expr = self.api.length_sql_expression(
-                self.api.to_backend_literal(literal)
-            )
+            length_expr = self.api.length_sql_expression(self.api.to_backend_literal(literal))
             self.assertIsNotNone(length_expr)
             if self.connect_to_backend:
                 self.assertEqual(
@@ -877,16 +760,10 @@ class TestBackendApi(TestCase):
     def _test_list_tables(self):
         if self.connect_to_backend:
             self.assertIsInstance(self.api.list_tables(self.db), list)
+            self.assertIsInstance(self.api.list_tables(self.db, table_name_filter="*"), list)
+            self.assertIsInstance(self.api.list_tables(self.db, table_name_filter=self.table), list)
             self.assertIsInstance(
-                self.api.list_tables(self.db, table_name_filter="*"), list
-            )
-            self.assertIsInstance(
-                self.api.list_tables(self.db, table_name_filter=self.table), list
-            )
-            self.assertIsInstance(
-                self.api.list_tables(
-                    self.db, table_name_filter=self.table, case_sensitive=False
-                ),
+                self.api.list_tables(self.db, table_name_filter=self.table, case_sensitive=False),
                 list,
             )
 
@@ -894,20 +771,14 @@ class TestBackendApi(TestCase):
         if self.connect_to_backend:
             all_udfs_in_db = self.api.list_udfs(self._get_udf_db())
             self.assertIsInstance(all_udfs_in_db, list)
-            self.assertIsInstance(
-                self.api.list_udfs(self._get_udf_db(), udf_name_filter="*"), list
-            )
+            self.assertIsInstance(self.api.list_udfs(self._get_udf_db(), udf_name_filter="*"), list)
             if all_udfs_in_db:
                 row = all_udfs_in_db[0]
                 # Expect 2 fields in a row
                 self.assertEqual(len(row), 2)
+                self.assertIsInstance(self.api.list_udfs(self._get_udf_db(), udf_name_filter=row[0]), list)
                 self.assertIsInstance(
-                    self.api.list_udfs(self._get_udf_db(), udf_name_filter=row[0]), list
-                )
-                self.assertIsInstance(
-                    self.api.list_udfs(
-                        self._get_udf_db(), udf_name_filter=row[0], case_sensitive=False
-                    ),
+                    self.api.list_udfs(self._get_udf_db(), udf_name_filter=row[0], case_sensitive=False),
                     list,
                 )
                 # While we are here we can test udf_exists() and udf_details() too
@@ -923,12 +794,8 @@ class TestBackendApi(TestCase):
         if self.connect_to_backend:
             try:
                 self.assertIsInstance(self.api.list_views(self.db), list)
-                self.assertIsInstance(
-                    self.api.list_views(self.db, view_name_filter="*"), list
-                )
-                self.assertIsInstance(
-                    self.api.list_views(self.db, view_name_filter=self.table), list
-                )
+                self.assertIsInstance(self.api.list_views(self.db, view_name_filter="*"), list)
+                self.assertIsInstance(self.api.list_views(self.db, view_name_filter=self.table), list)
             except NotImplementedError:
                 pass
 
@@ -954,11 +821,7 @@ class TestBackendApi(TestCase):
 
     def _test_max_decimal_scale(self):
         self.assertIsNotNone(self.api.max_decimal_scale())
-        self.assertIsNotNone(
-            self.api.max_decimal_scale(
-                self.test_api.backend_test_type_canonical_decimal()
-            )
-        )
+        self.assertIsNotNone(self.api.max_decimal_scale(self.test_api.backend_test_type_canonical_decimal()))
 
     def _test_max_partition_columns(self):
         self.assertIsNotNone(self.api.max_partition_columns())
@@ -1022,9 +885,7 @@ class TestBackendApi(TestCase):
                     self.api.to_backend_literal(test_str),
                     self.api.regexp_extract_decimal_scale_pattern(),
                 )
-                extracted_scale = self.api.execute_query_fetch_one(
-                    "SELECT %s" % regexp_expr
-                )[0]
+                extracted_scale = self.api.execute_query_fetch_one("SELECT %s" % regexp_expr)[0]
                 if expected_scale is None:
                     self.assertIn(extracted_scale, [None, ""])
                 else:
@@ -1042,9 +903,7 @@ class TestBackendApi(TestCase):
 
     def _test_snowflake_file_format_exists(self):
         if self.connect_to_backend:
-            self.assertFalse(
-                self.api.snowflake_file_format_exists(self.db, "test-no-ff")
-            )
+            self.assertFalse(self.api.snowflake_file_format_exists(self.db, "test-no-ff"))
             file_format = add_suffix_in_same_case(
                 self.config.snowflake_file_format_prefix,
                 "_" + self.config.offload_staging_format,
@@ -1053,12 +912,8 @@ class TestBackendApi(TestCase):
 
     def _test_snowflake_integration_exists(self):
         if self.connect_to_backend:
-            self.assertFalse(
-                self.api.snowflake_integration_exists("test-no-integration")
-            )
-            self.assertTrue(
-                self.api.snowflake_integration_exists(self.config.snowflake_integration)
-            )
+            self.assertFalse(self.api.snowflake_integration_exists("test-no-integration"))
+            self.assertTrue(self.api.snowflake_integration_exists(self.config.snowflake_integration))
 
     def _test_snowflake_stage_exists(self):
         if self.connect_to_backend:
@@ -1074,30 +929,18 @@ class TestBackendApi(TestCase):
 
     def _test_supported_partition_function_data_types(self):
         if self.api.partition_by_column_supported():
-            self.assertIsInstance(
-                self.api.supported_partition_function_parameter_data_types(), list
-            )
-            self.assertIsInstance(
-                self.api.supported_partition_function_return_data_types(), list
-            )
+            self.assertIsInstance(self.api.supported_partition_function_parameter_data_types(), list)
+            self.assertIsInstance(self.api.supported_partition_function_return_data_types(), list)
 
     def _test_synapse_external_data_source_exists(self):
         if self.connect_to_backend:
-            self.assertFalse(
-                self.api.synapse_external_data_source_exists("no-data-source")
-            )
-            self.assertTrue(
-                self.api.synapse_external_data_source_exists(
-                    self.config.synapse_data_source
-                )
-            )
+            self.assertFalse(self.api.synapse_external_data_source_exists("no-data-source"))
+            self.assertTrue(self.api.synapse_external_data_source_exists(self.config.synapse_data_source))
 
     def _test_synapse_file_format_exists(self):
         if self.connect_to_backend:
             self.assertFalse(self.api.synapse_file_format_exists("no-file-format"))
-            self.assertTrue(
-                self.api.synapse_file_format_exists(self.config.synapse_file_format)
-            )
+            self.assertTrue(self.api.synapse_file_format_exists(self.config.synapse_file_format))
 
     def _test_table_exists(self):
         if self.connect_to_backend:
@@ -1106,9 +949,7 @@ class TestBackendApi(TestCase):
 
     def _test_table_has_rows(self):
         if self.connect_to_backend:
-            self.assertTrue(
-                self.api.table_has_rows(self.db, self.table) in (True, False)
-            )
+            self.assertTrue(self.api.table_has_rows(self.db, self.table) in (True, False))
 
     def _test_target_version(self):
         if self.connect_to_backend:
@@ -1119,37 +960,27 @@ class TestBackendApi(TestCase):
         def test_by_select(literal):
             self.assertIsNotNone(literal)
             if self.connect_to_backend:
-                self.assertIsNotNone(
-                    self.api.execute_query_fetch_one("SELECT %s" % literal)
-                )
+                self.assertIsNotNone(self.api.execute_query_fetch_one("SELECT %s" % literal))
 
         # Test without data type qualifier
-        self.assertIsNotNone(self.api.to_backend_literal(int(123)))
-        self.assertIsNotNone(self.api.to_backend_literal(float(1.23)))
-        self.assertIsNotNone(self.api.to_backend_literal(int(12345678901234567)))
-        self.assertIsNotNone(self.api.to_backend_literal(str("123")))
-        self.assertIsNotNone(self.api.to_backend_literal(str("123")))
+        self.assertIsNotNone(self.api.to_backend_literal(123))
+        self.assertIsNotNone(self.api.to_backend_literal(1.23))
+        self.assertIsNotNone(self.api.to_backend_literal(12345678901234567))
+        self.assertIsNotNone(self.api.to_backend_literal("123"))
+        self.assertIsNotNone(self.api.to_backend_literal("123"))
         self.assertIsNotNone(self.api.to_backend_literal(datetime.now()))
         self.assertIsNotNone(self.api.to_backend_literal(datetime64(datetime.now())))
         # Test with column data type qualifier
-        literal = self.api.to_backend_literal(
-            int(123456), self.test_api.backend_test_type_canonical_int_8()
-        )
+        literal = self.api.to_backend_literal(123456, self.test_api.backend_test_type_canonical_int_8())
         self.assertIn("123456", str(literal))
         test_by_select(literal)
-        literal = self.api.to_backend_literal(
-            float(1.23), self.test_api.backend_test_type_canonical_decimal()
-        )
+        literal = self.api.to_backend_literal(1.23, self.test_api.backend_test_type_canonical_decimal())
         self.assertIn("1.23", str(literal))
         test_by_select(literal)
-        literal = self.api.to_backend_literal(
-            int(12345678901234567), self.test_api.backend_test_type_canonical_decimal()
-        )
+        literal = self.api.to_backend_literal(12345678901234567, self.test_api.backend_test_type_canonical_decimal())
         self.assertIn("12345678901234567", str(literal))
         test_by_select(literal)
-        literal = self.api.to_backend_literal(
-            datetime.now(), self.test_api.backend_test_type_canonical_timestamp()
-        )
+        literal = self.api.to_backend_literal(datetime.now(), self.test_api.backend_test_type_canonical_timestamp())
         test_by_select(literal)
         literal = self.api.to_backend_literal(
             datetime64(datetime.now()),
@@ -1157,9 +988,7 @@ class TestBackendApi(TestCase):
         )
         test_by_select(literal)
         try:
-            literal = self.api.to_backend_literal(
-                datetime.now(), self.test_api.backend_test_type_canonical_time()
-            )
+            literal = self.api.to_backend_literal(datetime.now(), self.test_api.backend_test_type_canonical_time())
             test_by_select(literal)
             literal = self.api.to_backend_literal(
                 datetime64(datetime.now()),
@@ -1173,29 +1002,19 @@ class TestBackendApi(TestCase):
         self.assertIsNotNone(self.api.transform_encrypt_data_type())
 
     def _test_transform_null_cast(self):
-        self.assertIsNotNone(
-            self.api.transform_null_cast(
-                self.api.gen_default_numeric_column("some_col")
-            )
-        )
+        self.assertIsNotNone(self.api.transform_null_cast(self.api.gen_default_numeric_column("some_col")))
 
     def _test_transform_tokenize_data_type(self):
         self.assertIsNotNone(self.api.transform_tokenize_data_type())
 
     def _test_transform_regexp_replace_expression(self):
         backend_column = self.api.gen_default_numeric_column("some_col")
-        self.assertIsNotNone(
-            self.api.transform_regexp_replace_expression(
-                backend_column, "[a-z]+", "[A-Z]+"
-            )
-        )
+        self.assertIsNotNone(self.api.transform_regexp_replace_expression(backend_column, "[a-z]+", "[A-Z]+"))
 
     def _test_transform_translate_expression(self):
         backend_column = self.api.gen_default_numeric_column("some_col")
         try:
-            self.assertIsNotNone(
-                self.api.transform_translate_expression(backend_column, "abc", "ABC")
-            )
+            self.assertIsNotNone(self.api.transform_translate_expression(backend_column, "abc", "ABC"))
         except NotImplementedError:
             pass
 
@@ -1333,7 +1152,7 @@ class TestHiveBackendApi(TestBackendApi):
         self.target = DBTYPE_HIVE
         self.config = self._get_mock_config(FAKE_ORACLE_HIVE_ENV)
         try:
-            super(TestHiveBackendApi, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if optional_hadoop_dependency_exception(e):
                 pytest.skip("Skipping TestHiveBackendApi due to missing dependencies")
@@ -1350,7 +1169,7 @@ class TestImpalaBackendApi(TestBackendApi):
         self.target = DBTYPE_IMPALA
         self.config = self._get_mock_config(FAKE_ORACLE_IMPALA_ENV)
         try:
-            super(TestImpalaBackendApi, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if optional_hadoop_dependency_exception(e):
                 pytest.skip("Skipping TestImpalaBackendApi due to missing dependencies")
@@ -1366,7 +1185,7 @@ class TestBigQueryBackendApi(TestBackendApi):
         self.connect_to_backend = False
         self.target = DBTYPE_BIGQUERY
         self.config = self._get_mock_config(FAKE_ORACLE_BQ_ENV)
-        super(TestBigQueryBackendApi, self).setUp()
+        super().setUp()
 
     def test_all_non_connecting_bigquery_tests(self):
         self._run_all_tests()
@@ -1378,12 +1197,10 @@ class TestSparkThriftBackendApi(TestBackendApi):
         self.target = DBTYPE_SPARK
         self.config = self._get_mock_config(FAKE_ORACLE_HIVE_ENV)
         try:
-            super(TestSparkThriftBackendApi, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if optional_hadoop_dependency_exception(e):
-                pytest.skip(
-                    "Skipping TestSparkThriftBackendApi due to missing dependencies"
-                )
+                pytest.skip("Skipping TestSparkThriftBackendApi due to missing dependencies")
             else:
                 raise
 
@@ -1399,12 +1216,10 @@ class TestSnowflakeBackendApi(TestBackendApi):
         if self.config.snowflake_database is None:
             self.config.snowflake_database = "any-db"
         try:
-            super(TestSnowflakeBackendApi, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if optional_snowflake_dependency_exception(e):
-                pytest.skip(
-                    "Skipping TestSnowflakeBackendApi due to missing dependencies"
-                )
+                pytest.skip("Skipping TestSnowflakeBackendApi due to missing dependencies")
             else:
                 raise
 
@@ -1420,14 +1235,11 @@ class TestSynapseBackendApi(TestBackendApi):
         if self.config.synapse_database is None:
             self.config.synapse_database = "any-db"
         try:
-            super(TestSynapseBackendApi, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if not optional_synapse_dependency_exception(e):
                 raise
-            else:
-                pytest.skip(
-                    "Skipping TestSynapseBackendApi due to missing configuration"
-                )
+            pytest.skip("Skipping TestSynapseBackendApi due to missing configuration")
 
     def test_all_non_connecting_synapse_tests(self):
         self._run_all_tests()

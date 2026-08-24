@@ -14,35 +14,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendHiveTable: Library for logic/interaction with a table that will
-    be either:
-      1) The target of an offload
-      2) The source of a present
+"""BackendHiveTable: Library for logic/interaction with a table that will
+be either:
+  1) The target of an offload
+  2) The source of a present
 """
 
 import logging
 
 from goe.offload.column_metadata import get_column_names, valid_column_list
-from goe.offload.hadoop.hadoop_column import HADOOP_TYPE_BIGINT, HADOOP_TYPE_DECIMAL
 from goe.offload.hadoop.hadoop_backend_api import (
     hive_enable_dynamic_partitions_for_insert_sqls,
 )
 from goe.offload.hadoop.hadoop_backend_table import BackendHadoopTable
+from goe.offload.hadoop.hadoop_column import HADOOP_TYPE_BIGINT, HADOOP_TYPE_DECIMAL
 from goe.offload.offload_constants import (
-    FILE_STORAGE_FORMAT_ORC,
     FILE_STORAGE_COMPRESSION_CODEC_ZLIB,
+    FILE_STORAGE_FORMAT_ORC,
+    OFFLOAD_STATS_METHOD_HISTORY,
     OFFLOAD_STATS_METHOD_NATIVE,
     OFFLOAD_STATS_METHOD_NONE,
-    OFFLOAD_STATS_METHOD_HISTORY,
 )
 
 ###############################################################################
 # CONSTANTS
 ###############################################################################
 
-HASH_BUCKET_EXPRESSION = (
-    "CAST(COALESCE(PMOD(HASH(%(dividend)s),%(divisor)s),0) AS SMALLINT)"
-)
+HASH_BUCKET_EXPRESSION = "CAST(COALESCE(PMOD(HASH(%(dividend)s),%(divisor)s),0) AS SMALLINT)"
 
 
 logger = logging.getLogger(__name__)
@@ -74,7 +72,7 @@ class BackendHiveTable(BackendHadoopTable):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendHiveTable, self).__init__(
+        super().__init__(
             db_name,
             table_name,
             backend_type,
@@ -111,10 +109,7 @@ class BackendHiveTable(BackendHadoopTable):
         location = self._get_data_table_hdfs_dir()
         if self._orchestration_config.storage_format == FILE_STORAGE_FORMAT_ORC:
             table_properties = {
-                "orc.compress": (
-                    self._user_requested_storage_compression
-                    or FILE_STORAGE_COMPRESSION_CODEC_ZLIB
-                )
+                "orc.compress": (self._user_requested_storage_compression or FILE_STORAGE_COMPRESSION_CODEC_ZLIB)
             }
         else:
             table_properties = {}
@@ -142,15 +137,10 @@ class BackendHiveTable(BackendHadoopTable):
             assert isinstance(filter_clauses, list)
 
         # Data is already distributed to reducers (shuffled) based on "hive.optimize.sort.dynamic.partition"
-        dist_cols = (
-            get_column_names(self.get_partition_columns())
-            if self._offload_distribute_enabled
-            else []
-        )
+        dist_cols = get_column_names(self.get_partition_columns()) if self._offload_distribute_enabled else []
 
         partition_expr_tuples = [
-            (self.get_final_table_cast(_), _)
-            for _ in get_column_names(self.get_partition_columns())
+            (self.get_final_table_cast(_), _) for _ in get_column_names(self.get_partition_columns())
         ]
 
         return self._db_api.gen_insert_select_sql_text(
@@ -172,16 +162,13 @@ class BackendHiveTable(BackendHadoopTable):
             max_dynamic_partitions_pernode=self._hive_max_dynamic_partitions_pernode,
             as_dict=True,
         )
-        stats_autogather = bool(
-            not self._db_api.get_session_option("hive.stats.autogather") == "false"
-        )
+        stats_autogather = bool(not self._db_api.get_session_option("hive.stats.autogather") == "false")
         if self._hive_optimize_sort_dynamic_partition:
             query_options["hive.optimize.sort.dynamic.partition"] = "true"
         if self._offload_stats_method == OFFLOAD_STATS_METHOD_NONE and stats_autogather:
             query_options["hive.stats.autogather"] = "false"
         if (
-            self._offload_stats_method
-            in [OFFLOAD_STATS_METHOD_NATIVE, OFFLOAD_STATS_METHOD_HISTORY]
+            self._offload_stats_method in [OFFLOAD_STATS_METHOD_NATIVE, OFFLOAD_STATS_METHOD_HISTORY]
             and not stats_autogather
         ):
             query_options["hive.stats.autogather"] = "true"
@@ -199,12 +186,8 @@ class BackendHiveTable(BackendHadoopTable):
         with_padding=True,
     ):
         """On Hadoop CAST(DECIMAL as *INT) truncates decimal places, no rounding"""
-        decimal_int = bool(
-            backend_col.data_type == HADOOP_TYPE_DECIMAL and backend_col.data_scale == 0
-        )
-        cast_type = (
-            backend_col.format_data_type() if decimal_int else HADOOP_TYPE_BIGINT
-        )
+        decimal_int = bool(backend_col.data_type == HADOOP_TYPE_DECIMAL and backend_col.data_scale == 0)
+        cast_type = backend_col.format_data_type() if decimal_int else HADOOP_TYPE_BIGINT
         to_synth_expr = "CAST(FLOOR(CAST(%s AS %s) / %s) * %s AS STRING)" % (
             column_expr,
             cast_type,
@@ -216,14 +199,11 @@ class BackendHiveTable(BackendHadoopTable):
                 to_synth_expr,
                 synthetic_partition_digits,
             )
-        else:
-            return to_synth_expr
+        return to_synth_expr
 
     def _tzoffset_to_timestamp_sql_expression(self, col_name):
         """Hive tzoffset SQL expression"""
-        raise NotImplementedError(
-            "_tzoffset_to_timestamp_sql_expression() is not implemented for Hive class"
-        )
+        raise NotImplementedError("_tzoffset_to_timestamp_sql_expression() is not implemented for Hive class")
         # The original code for this method is below.
         # If we decide to ressurect Hive support we'll need to revisit this but for
         # now it has been removed because it was a blocker to removing UDF_DB configuration.
@@ -240,8 +220,7 @@ class BackendHiveTable(BackendHadoopTable):
         """Hive override facilitating Load Table stats."""
         if not self._user_requested_compute_load_table_stats:
             return {"hive.compute.query.using.stats": "false"}
-        else:
-            return {}
+        return {}
 
     ###########################################################################
     # PUBLIC METHODS - HIGH LEVEL STEP METHODS
@@ -249,9 +228,7 @@ class BackendHiveTable(BackendHadoopTable):
 
     def compute_final_table_stats(self, incremental_stats, materialized_join=False):
         if self.table_stats_compute_supported():
-            self._compute_hive_table_statistics(
-                incremental_stats, materialized_join=materialized_join
-            )
+            self._compute_hive_table_statistics(incremental_stats, materialized_join=materialized_join)
 
     ###########################################################################
     # PUBLIC METHODS

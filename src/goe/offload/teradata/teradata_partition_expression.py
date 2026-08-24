@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TeradataPartitionExpression: Parse a Teradata partition check constraint into it's component parts.
-    We only support offload of top-level RANGE_N() schemes so CASE_N() is only in the grammer in order to ignore it.
+"""TeradataPartitionExpression: Parse a Teradata partition check constraint into it's component parts.
+We only support offload of top-level RANGE_N() schemes so CASE_N() is only in the grammer in order to ignore it.
 """
 
 import logging
@@ -27,7 +27,6 @@ from goe.offload.offload_source_table import (
     OFFLOAD_PARTITION_TYPE_LIST,
     OFFLOAD_PARTITION_TYPE_RANGE,
 )
-
 
 logger = logging.getLogger(__name__)
 # Disabling logging by default
@@ -145,9 +144,7 @@ class TeradataPartitionExpression:
         try:
             self._ast = get_parser().parse(constraint_text)
         except UnexpectedInput as exc:
-            raise UnsupportedPartitionExpression(
-                f"Unsupported partition expression: {constraint_text}"
-            ) from exc
+            raise UnsupportedPartitionExpression(f"Unsupported partition expression: {constraint_text}") from exc
 
         self.column = None
         self.partition_type = None
@@ -155,22 +152,19 @@ class TeradataPartitionExpression:
         self.ranges = None
 
         matched_nodes = [_.data for _ in self._ast.children]
-        if not matched_nodes or not set(matched_nodes).issubset(
-            {RANGE_NODE, COLUMNAR_NODE}
-        ):
+        if not matched_nodes or not set(matched_nodes).issubset({RANGE_NODE, COLUMNAR_NODE}):
             # Currently we only support RANGE_N or RANGE_N combined with columnar.
             if COLUMNAR_NODE in matched_nodes:
                 raise UnsupportedPartitionExpression(
                     f"Only single RANGE_N partition expressions combined with columnar partitioning are supported: {constraint_text}"
                 )
-            elif CASE_NODE in matched_nodes:
+            if CASE_NODE in matched_nodes:
                 raise UnsupportedCaseNPartitionExpression(
                     f"CASE_N partition expressions are not currently supported ({matched_nodes}): {constraint_text}"
                 )
-            else:
-                raise UnsupportedPartitionExpression(
-                    f"Only single RANGE_N partition expressions are supported ({matched_nodes}): {constraint_text}"
-                )
+            raise UnsupportedPartitionExpression(
+                f"Only single RANGE_N partition expressions are supported ({matched_nodes}): {constraint_text}"
+            )
 
         if RANGE_NODE not in matched_nodes and COLUMNAR_NODE in matched_nodes:
             # Columnar alone so we can drop out here without ranges.
@@ -196,9 +190,7 @@ class TeradataPartitionExpression:
             # We expect 3 children of ranges nodes
             if len(range_node.children) != 3:
                 raise UnsupportedPartitionExpression(
-                    "RANGE_N BETWEEN expression does not contain 3 elements: {}".format(
-                        [_.value for _ in range_node.children]
-                    )
+                    f"RANGE_N BETWEEN expression does not contain 3 elements: {[_.value for _ in range_node.children]}"
                 )
             ranges.append([_.value for _ in range_node.children])
 

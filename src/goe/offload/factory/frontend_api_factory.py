@@ -15,6 +15,7 @@
 # limitations under the License.
 
 from contextlib import contextmanager
+
 from goe.offload.offload_constants import (
     DBTYPE_MSSQL,
     DBTYPE_ORACLE,
@@ -51,7 +52,7 @@ def frontend_api_factory(
             do_not_connect=do_not_connect,
             trace_action=trace_action,
         )
-    elif frontend_type == DBTYPE_ORACLE:
+    if frontend_type == DBTYPE_ORACLE:
         from goe.offload.oracle.oracle_frontend_api import OracleFrontendApi
 
         return OracleFrontendApi(
@@ -64,7 +65,7 @@ def frontend_api_factory(
             do_not_connect=do_not_connect,
             trace_action=trace_action,
         )
-    elif frontend_type == DBTYPE_TERADATA:
+    if frontend_type == DBTYPE_TERADATA:
         from goe.offload.teradata.teradata_frontend_api import TeradataFrontendApi
 
         return TeradataFrontendApi(
@@ -77,8 +78,7 @@ def frontend_api_factory(
             do_not_connect=do_not_connect,
             trace_action=trace_action,
         )
-    else:
-        raise NotImplementedError("Unsupported RDBMS: %s" % frontend_type)
+    raise NotImplementedError("Unsupported RDBMS: %s" % frontend_type)
 
 
 @contextmanager

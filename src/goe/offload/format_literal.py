@@ -14,11 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" FormatLiteralInterface: Base interface for SQL engine specific implementations to format literals based on data type
-"""
+"""FormatLiteralInterface: Base interface for SQL engine specific implementations to format literals based on data type"""
 
-from abc import ABCMeta, abstractmethod
 import logging
+from abc import ABCMeta, abstractmethod
 
 ###############################################################################
 # CONSTANTS
@@ -50,7 +49,6 @@ class FormatLiteralInterface(metaclass=ABCMeta):
         """Return a string containing a correctly formatted literal for data_type.
         Without a data type the code should infer a literal from the Python type.
         """
-        pass
 
     @classmethod
     def _strip_unused_time_scale(cls, str_val, trim_unnecessary_subseconds=False):
@@ -66,5 +64,4 @@ class FormatLiteralInterface(metaclass=ABCMeta):
                 else:
                     new_val += "0"
             return new_val
-        else:
-            return str_val
+        return str_val

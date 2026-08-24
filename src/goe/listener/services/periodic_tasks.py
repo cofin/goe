@@ -17,6 +17,8 @@ import logging
 
 # Third Party Libraries
 import anyio
+from goelib_contrib.asyncer import asyncify
+from goelib_contrib.worker import monitored_job
 from pydantic import UUID3
 
 # GOE
@@ -24,8 +26,6 @@ from goe.listener import schemas, utils
 from goe.listener.config import settings
 from goe.listener.services.system import system
 from goe.orchestration.execution_id import ExecutionId
-from goelib_contrib.asyncer import asyncify
-from goelib_contrib.worker import monitored_job
 
 group_id: UUID3 = system.generate_listener_group_id()
 endpoint_id: UUID3 = system.generate_listener_endpoint_id()
@@ -52,6 +52,7 @@ async def publish_schemas(context) -> None:
         environment_id (int): The id of the environment to offload.
         options (dict): The options to pass to the offload command.
         db: The database connection.
+
     Returns:
         dict: The result of the offload command.
     """
@@ -70,9 +71,7 @@ async def publish_schemas(context) -> None:
         for schema in offloadable_schemas:
             schema_name = schema.get("schema_name", None)
             if schema_name:
-                tg.start_soon(
-                    _publish_schema, listener_group_id, schema_name, concurrency_limit
-                )
+                tg.start_soon(_publish_schema, listener_group_id, schema_name, concurrency_limit)
 
 
 # all functions take in context dict and kwargs
@@ -84,6 +83,7 @@ async def publish_schema_tables(context) -> None:
         environment_id (int): The id of the environment to offload.
         options (dict): The options to pass to the offload command.
         db: The database connection.
+
     Returns:
         dict: The result of the offload command.
     """
@@ -117,6 +117,7 @@ async def publish_command_executions(context) -> None:
         environment_id (int): The id of the environment to offload.
         options (dict): The options to pass to the offload command.
         db: The database connection.
+
     Returns:
         dict: The result of the offload command.
     """
@@ -140,9 +141,7 @@ async def publish_command_executions(context) -> None:
         )
     await utils.cache.set(
         f"goe:listener:metadata:{listener_group_id}:command-executions",
-        schemas.CommandExecutions.parse_obj(
-            {"count": len(command_executions), "results": command_executions}
-        ).json(),
+        schemas.CommandExecutions.parse_obj({"count": len(command_executions), "results": command_executions}).json(),
         ttl=10000,
     )
 
@@ -156,9 +155,7 @@ async def _publish_schema(
         schema_tables = await asyncify(system.get_schema_tables)(schema_name)
         await utils.cache.set(
             f"goe:listener:metadata:{listener_group_id}:schemas:{schema_name}",
-            schemas.TableDetails.parse_obj(
-                {"count": len(schema_tables), "results": schema_tables}
-            ).json(),
+            schemas.TableDetails.parse_obj({"count": len(schema_tables), "results": schema_tables}).json(),
             ttl=86400,
         )
 
@@ -170,9 +167,7 @@ async def _publish_schema_tables(
     concurrency_limit: anyio.Semaphore,
 ) -> None:
     async with concurrency_limit:
-        schema_table_columns = await asyncify(system.get_table_columns)(
-            schema_name, table_name
-        )
+        schema_table_columns = await asyncify(system.get_table_columns)(schema_name, table_name)
 
         await utils.cache.set(
             f"goe:listener:metadata:{listener_group_id}:schemas:{schema_name}:{table_name}:columns",
@@ -181,9 +176,7 @@ async def _publish_schema_tables(
             ).json(),
             ttl=86400,
         )
-        schema_table_partitions = await asyncify(system.get_table_partitions)(
-            schema_name, table_name
-        )
+        schema_table_partitions = await asyncify(system.get_table_partitions)(schema_name, table_name)
         await utils.cache.set(
             f"goe:listener:metadata:{listener_group_id}:schemas:{schema_name}:{table_name}:partitions",
             schemas.PartitionDetails.parse_obj(

@@ -21,8 +21,33 @@ processing and verification of integration tests with a Synapse backend.
 
 import logging
 
+from goe.offload.column_metadata import (
+    CANONICAL_CHAR_SEMANTICS_BYTE,
+    CANONICAL_CHAR_SEMANTICS_CHAR,
+    CANONICAL_CHAR_SEMANTICS_UNICODE,
+    GOE_TYPE_BINARY,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_FLOAT,
+    GOE_TYPE_INTEGER_1,
+    GOE_TYPE_INTEGER_2,
+    GOE_TYPE_INTEGER_4,
+    GOE_TYPE_INTEGER_8,
+    GOE_TYPE_INTEGER_38,
+    GOE_TYPE_INTERVAL_DS,
+    GOE_TYPE_INTERVAL_YM,
+    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_LARGE_STRING,
+    GOE_TYPE_TIME,
+    GOE_TYPE_TIMESTAMP,
+    GOE_TYPE_TIMESTAMP_TZ,
+    GOE_TYPE_VARIABLE_STRING,
+    CanonicalColumn,
+    ColumnPartitionInfo,
+)
 from goe.offload.microsoft.synapse_column import (
-    SynapseColumn,
     SYNAPSE_TYPE_BIGINT,
     SYNAPSE_TYPE_BINARY,
     SYNAPSE_TYPE_CHAR,
@@ -46,36 +71,9 @@ from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_UNIQUEIDENTIFIER,
     SYNAPSE_TYPE_VARBINARY,
     SYNAPSE_TYPE_VARCHAR,
-)
-from goe.offload.column_metadata import (
-    CanonicalColumn,
-    ColumnPartitionInfo,
-    CANONICAL_CHAR_SEMANTICS_BYTE,
-    CANONICAL_CHAR_SEMANTICS_CHAR,
-    CANONICAL_CHAR_SEMANTICS_UNICODE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_VARIABLE_STRING,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
+    SynapseColumn,
 )
 from tests.testlib.test_framework.backend_testing_api import (
-    BackendTestingApiInterface,
-    BackendTestingApiException,
     STORY_TEST_BACKEND_BLOB_COL,
     STORY_TEST_BACKEND_DATE_COL,
     STORY_TEST_BACKEND_DECIMAL_DEF_COL,
@@ -86,25 +84,27 @@ from tests.testlib.test_framework.backend_testing_api import (
     STORY_TEST_BACKEND_INT_2_COL,
     STORY_TEST_BACKEND_INT_4_COL,
     STORY_TEST_BACKEND_INT_8_COL,
-    STORY_TEST_BACKEND_VAR_STR_COL,
-    STORY_TEST_BACKEND_VAR_STR_LONG_COL,
+    STORY_TEST_BACKEND_NULL_STR_COL,
+    STORY_TEST_BACKEND_RAW_COL,
     STORY_TEST_BACKEND_TIMESTAMP_COL,
     STORY_TEST_BACKEND_TIMESTAMP_TZ_COL,
-    STORY_TEST_BACKEND_NULL_STR_COL,
-    STORY_TEST_OFFLOAD_NUMS_BARE_NUM,
+    STORY_TEST_BACKEND_VAR_STR_COL,
+    STORY_TEST_BACKEND_VAR_STR_LONG_COL,
     STORY_TEST_OFFLOAD_NUMS_BARE_FLT,
-    STORY_TEST_OFFLOAD_NUMS_NUM_4,
-    STORY_TEST_OFFLOAD_NUMS_NUM_18,
-    STORY_TEST_OFFLOAD_NUMS_NUM_19,
-    STORY_TEST_OFFLOAD_NUMS_NUM_3_2,
-    STORY_TEST_OFFLOAD_NUMS_NUM_STAR_4,
-    STORY_TEST_OFFLOAD_NUMS_NUM_3_5,
-    STORY_TEST_OFFLOAD_NUMS_NUM_10_M5,
+    STORY_TEST_OFFLOAD_NUMS_BARE_NUM,
     STORY_TEST_OFFLOAD_NUMS_DEC_10_0,
-    STORY_TEST_OFFLOAD_NUMS_DEC_38_3,
     STORY_TEST_OFFLOAD_NUMS_DEC_36_3,
     STORY_TEST_OFFLOAD_NUMS_DEC_37_3,
-    STORY_TEST_BACKEND_RAW_COL,
+    STORY_TEST_OFFLOAD_NUMS_DEC_38_3,
+    STORY_TEST_OFFLOAD_NUMS_NUM_3_2,
+    STORY_TEST_OFFLOAD_NUMS_NUM_3_5,
+    STORY_TEST_OFFLOAD_NUMS_NUM_4,
+    STORY_TEST_OFFLOAD_NUMS_NUM_10_M5,
+    STORY_TEST_OFFLOAD_NUMS_NUM_18,
+    STORY_TEST_OFFLOAD_NUMS_NUM_19,
+    STORY_TEST_OFFLOAD_NUMS_NUM_STAR_4,
+    BackendTestingApiException,
+    BackendTestingApiInterface,
 )
 from tests.testlib.test_framework.test_constants import UNICODE_NAME_TOKEN
 
@@ -144,7 +144,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendSynapseTestingApi, self).__init__(
+        super().__init__(
             connection_options,
             backend_type,
             messages,
@@ -159,9 +159,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
 
     def _define_test_partition_function(self, udf_name):
         # Partition functions are not implemented for Synapse.
-        raise NotImplementedError(
-            "_define_test_partition_function() not implemented for Synapse"
-        )
+        raise NotImplementedError("_define_test_partition_function() not implemented for Synapse")
 
     def _goe_type_mapping_column_definitions(self, filter_column=None):
         """Returns a dict of dicts defining columns for GOE_BACKEND_TYPE_MAPPING test table.
@@ -202,11 +200,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     GOE_TYPE_FIXED_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
                 ),
-                "present_options": {
-                    "unicode_string_columns_csv": name(
-                        SYNAPSE_TYPE_CHAR, "3", UNICODE_NAME_TOKEN
-                    )
-                },
+                "present_options": {"unicode_string_columns_csv": name(SYNAPSE_TYPE_CHAR, "3", UNICODE_NAME_TOKEN)},
             },
             name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_STRING): {
                 "column": SynapseColumn(
@@ -219,11 +213,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
-                "present_options": {
-                    "large_string_columns_csv": name(
-                        SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_STRING
-                    )
-                },
+                "present_options": {"large_string_columns_csv": name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_STRING)},
             },
             name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
                 "column": SynapseColumn(
@@ -272,9 +262,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 "expected_canonical_column": CanonicalColumn(
                     name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_BINARY), GOE_TYPE_BINARY
                 ),
-                "present_options": {
-                    "binary_columns_csv": name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_BINARY)
-                },
+                "present_options": {"binary_columns_csv": name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_BINARY)},
             },
             name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_BINARY): {
                 "column": SynapseColumn(
@@ -287,11 +275,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
-                "present_options": {
-                    "large_binary_columns_csv": name(
-                        SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_BINARY
-                    )
-                },
+                "present_options": {"large_binary_columns_csv": name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_BINARY)},
             },
             #
             # Synapse NCHAR
@@ -323,11 +307,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     GOE_TYPE_FIXED_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
                 ),
-                "present_options": {
-                    "unicode_string_columns_csv": name(
-                        SYNAPSE_TYPE_NCHAR, "3", UNICODE_NAME_TOKEN
-                    )
-                },
+                "present_options": {"unicode_string_columns_csv": name(SYNAPSE_TYPE_NCHAR, "3", UNICODE_NAME_TOKEN)},
             },
             name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_STRING): {
                 "column": SynapseColumn(
@@ -340,11 +320,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
-                "present_options": {
-                    "large_string_columns_csv": name(
-                        SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_STRING
-                    )
-                },
+                "present_options": {"large_string_columns_csv": name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_STRING)},
             },
             name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
                 "column": SynapseColumn(
@@ -393,9 +369,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
-                "present_options": {
-                    "binary_columns_csv": name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_BINARY)
-                },
+                "present_options": {"binary_columns_csv": name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_BINARY)},
             },
             name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_BINARY): {
                 "column": SynapseColumn(
@@ -408,11 +382,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
-                "present_options": {
-                    "large_binary_columns_csv": name(
-                        SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_BINARY
-                    )
-                },
+                "present_options": {"large_binary_columns_csv": name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_BINARY)},
             },
             #
             # Synapse VARCHAR
@@ -444,11 +414,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
                 ),
-                "present_options": {
-                    "unicode_string_columns_csv": name(
-                        SYNAPSE_TYPE_VARCHAR, "30", UNICODE_NAME_TOKEN
-                    )
-                },
+                "present_options": {"unicode_string_columns_csv": name(SYNAPSE_TYPE_VARCHAR, "30", UNICODE_NAME_TOKEN)},
             },
             name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING): {
                 "column": SynapseColumn(
@@ -462,14 +428,10 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     GOE_TYPE_LARGE_STRING,
                 ),
                 "present_options": {
-                    "large_string_columns_csv": name(
-                        SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING
-                    )
+                    "large_string_columns_csv": name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING)
                 },
             },
-            name(
-                SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN
-            ): {
+            name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
                 "column": SynapseColumn(
                     name(
                         SYNAPSE_TYPE_VARCHAR,
@@ -517,11 +479,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
-                "present_options": {
-                    "binary_columns_csv": name(
-                        SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_BINARY
-                    )
-                },
+                "present_options": {"binary_columns_csv": name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_BINARY)},
             },
             name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_BINARY): {
                 "column": SynapseColumn(
@@ -535,9 +493,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     GOE_TYPE_LARGE_BINARY,
                 ),
                 "present_options": {
-                    "large_binary_columns_csv": name(
-                        SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_BINARY
-                    )
+                    "large_binary_columns_csv": name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_BINARY)
                 },
             },
             name(
@@ -633,9 +589,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
                 ),
                 "present_options": {
-                    "unicode_string_columns_csv": name(
-                        SYNAPSE_TYPE_NVARCHAR, "30", UNICODE_NAME_TOKEN
-                    )
+                    "unicode_string_columns_csv": name(SYNAPSE_TYPE_NVARCHAR, "30", UNICODE_NAME_TOKEN)
                 },
             },
             name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_STRING): {
@@ -650,9 +604,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     GOE_TYPE_LARGE_STRING,
                 ),
                 "present_options": {
-                    "large_string_columns_csv": name(
-                        SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_STRING
-                    )
+                    "large_string_columns_csv": name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_STRING)
                 },
             },
             name(
@@ -708,11 +660,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
-                "present_options": {
-                    "binary_columns_csv": name(
-                        SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_BINARY
-                    )
-                },
+                "present_options": {"binary_columns_csv": name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_BINARY)},
             },
             name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_BINARY): {
                 "column": SynapseColumn(
@@ -726,17 +674,13 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     GOE_TYPE_LARGE_BINARY,
                 ),
                 "present_options": {
-                    "large_binary_columns_csv": name(
-                        SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_BINARY
-                    )
+                    "large_binary_columns_csv": name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_BINARY)
                 },
             },
             #
             # Synapse UNIQUEIDENTIFIER
             name(SYNAPSE_TYPE_UNIQUEIDENTIFIER): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_UNIQUEIDENTIFIER), SYNAPSE_TYPE_UNIQUEIDENTIFIER
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_UNIQUEIDENTIFIER), SYNAPSE_TYPE_UNIQUEIDENTIFIER),
                 "expected_canonical_column": CanonicalColumn(
                     name(SYNAPSE_TYPE_UNIQUEIDENTIFIER),
                     GOE_TYPE_FIXED_STRING,
@@ -749,12 +693,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #   TestBackendSynapseDataTypeMappings.test_synapse_to_canonical()
             #   TestOracleDataTypeMappings.test_canonical_to_oracle()
             name(SYNAPSE_TYPE_BINARY, "10"): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_BINARY, "10"), SYNAPSE_TYPE_BINARY, data_length=10
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_BINARY, "10"), GOE_TYPE_BINARY
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_BINARY, "10"), SYNAPSE_TYPE_BINARY, data_length=10),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_BINARY, "10"), GOE_TYPE_BINARY),
             },
             name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_LARGE_BINARY): {
                 "column": SynapseColumn(
@@ -766,11 +706,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
-                "present_options": {
-                    "large_binary_columns_csv": name(
-                        SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_LARGE_BINARY
-                    )
-                },
+                "present_options": {"large_binary_columns_csv": name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_LARGE_BINARY)},
             },
             # Initially we had this column at length 2001 (like the VARBINARY equivalent), the idea was to prove
             # a column length >2000 can be forced to smaller BINARY (and not end up as Oracle BLOB).
@@ -786,11 +722,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
-                "present_options": {
-                    "binary_columns_csv": name(
-                        SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_BINARY
-                    )
-                },
+                "present_options": {"binary_columns_csv": name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_BINARY)},
             },
             #
             # Synapse VARBINARY
@@ -803,9 +735,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     SYNAPSE_TYPE_VARBINARY,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_VARBINARY, "30"), GOE_TYPE_BINARY
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_VARBINARY, "30"), GOE_TYPE_BINARY),
             },
             name(SYNAPSE_TYPE_VARBINARY, "30", GOE_TYPE_LARGE_BINARY): {
                 "column": SynapseColumn(
@@ -818,9 +748,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     GOE_TYPE_LARGE_BINARY,
                 ),
                 "present_options": {
-                    "large_binary_columns_csv": name(
-                        SYNAPSE_TYPE_VARBINARY, "30", GOE_TYPE_LARGE_BINARY
-                    )
+                    "large_binary_columns_csv": name(SYNAPSE_TYPE_VARBINARY, "30", GOE_TYPE_LARGE_BINARY)
                 },
             },
             # We need this test here to prove >2000 can be forced to smaller BINARY (and not end up as Oracle BLOB).
@@ -835,41 +763,25 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_VARBINARY, "2001", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
-                "present_options": {
-                    "binary_columns_csv": name(
-                        SYNAPSE_TYPE_VARBINARY, "2001", GOE_TYPE_BINARY
-                    )
-                },
+                "present_options": {"binary_columns_csv": name(SYNAPSE_TYPE_VARBINARY, "2001", GOE_TYPE_BINARY)},
             },
             #
             # Synapse *INTs
             name(SYNAPSE_TYPE_TINYINT): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_TINYINT), SYNAPSE_TYPE_TINYINT
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_TINYINT), GOE_TYPE_INTEGER_2
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_TINYINT), SYNAPSE_TYPE_TINYINT),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_TINYINT), GOE_TYPE_INTEGER_2),
             },
             name(SYNAPSE_TYPE_SMALLINT): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_SMALLINT), SYNAPSE_TYPE_SMALLINT
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_SMALLINT), GOE_TYPE_INTEGER_2
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_SMALLINT), SYNAPSE_TYPE_SMALLINT),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_SMALLINT), GOE_TYPE_INTEGER_2),
             },
             name(SYNAPSE_TYPE_INT): {
                 "column": SynapseColumn(name(SYNAPSE_TYPE_INT), SYNAPSE_TYPE_INT),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_INT), GOE_TYPE_INTEGER_4
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_INT), GOE_TYPE_INTEGER_4),
             },
             name(SYNAPSE_TYPE_BIGINT): {
                 "column": SynapseColumn(name(SYNAPSE_TYPE_BIGINT), SYNAPSE_TYPE_BIGINT),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_BIGINT), GOE_TYPE_INTEGER_8
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_BIGINT), GOE_TYPE_INTEGER_8),
             },
             #
             # Synapse DECIMAL
@@ -880,9 +792,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DECIMAL, "2", "0"), GOE_TYPE_INTEGER_1
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DECIMAL, "2", "0"), GOE_TYPE_INTEGER_1),
             },
             name(SYNAPSE_TYPE_DECIMAL, "4", "0"): {
                 "column": SynapseColumn(
@@ -891,9 +801,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DECIMAL, "4", "0"), GOE_TYPE_INTEGER_2
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DECIMAL, "4", "0"), GOE_TYPE_INTEGER_2),
             },
             name(SYNAPSE_TYPE_DECIMAL, "9", "0"): {
                 "column": SynapseColumn(
@@ -902,9 +810,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DECIMAL, "9", "0"), GOE_TYPE_INTEGER_4
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DECIMAL, "9", "0"), GOE_TYPE_INTEGER_4),
             },
             name(SYNAPSE_TYPE_DECIMAL, "18", "0"): {
                 "column": SynapseColumn(
@@ -913,9 +819,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DECIMAL, "18", "0"), GOE_TYPE_INTEGER_8
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DECIMAL, "18", "0"), GOE_TYPE_INTEGER_8),
             },
             # Trimmed down to NUMBER(36) because cx_Oracle has issues beyond that
             name(SYNAPSE_TYPE_DECIMAL, "36", "0"): {
@@ -940,11 +844,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_1_columns_csv": name(
-                        SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_1
-                    )
-                },
+                "present_options": {"integer_1_columns_csv": name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_1)},
             },
             name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_2): {
                 "column": SynapseColumn(
@@ -957,11 +857,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
-                "present_options": {
-                    "integer_2_columns_csv": name(
-                        SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_2
-                    )
-                },
+                "present_options": {"integer_2_columns_csv": name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_2)},
             },
             name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_4): {
                 "column": SynapseColumn(
@@ -974,11 +870,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_4_columns_csv": name(
-                        SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_4
-                    )
-                },
+                "present_options": {"integer_4_columns_csv": name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_4)},
             },
             name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_8): {
                 "column": SynapseColumn(
@@ -991,11 +883,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_8_columns_csv": name(
-                        SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_8
-                    )
-                },
+                "present_options": {"integer_8_columns_csv": name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_8)},
             },
             name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_38): {
                 "column": SynapseColumn(
@@ -1008,11 +896,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_38_columns_csv": name(
-                        SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_38
-                    )
-                },
+                "present_options": {"integer_38_columns_csv": name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_38)},
             },
             name(SYNAPSE_TYPE_DECIMAL, "10", "3"): {
                 "column": SynapseColumn(
@@ -1037,9 +921,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_NUMERIC, "2", "0"), GOE_TYPE_INTEGER_1
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_NUMERIC, "2", "0"), GOE_TYPE_INTEGER_1),
             },
             name(SYNAPSE_TYPE_NUMERIC, "4", "0"): {
                 "column": SynapseColumn(
@@ -1048,9 +930,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_NUMERIC, "4", "0"), GOE_TYPE_INTEGER_2
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_NUMERIC, "4", "0"), GOE_TYPE_INTEGER_2),
             },
             name(SYNAPSE_TYPE_NUMERIC, "9", "0"): {
                 "column": SynapseColumn(
@@ -1059,9 +939,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_NUMERIC, "9", "0"), GOE_TYPE_INTEGER_4
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_NUMERIC, "9", "0"), GOE_TYPE_INTEGER_4),
             },
             name(SYNAPSE_TYPE_NUMERIC, "18", "0"): {
                 "column": SynapseColumn(
@@ -1070,9 +948,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_NUMERIC, "18", "0"), GOE_TYPE_INTEGER_8
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_NUMERIC, "18", "0"), GOE_TYPE_INTEGER_8),
             },
             # Trimmed down to NUMBER(36) because cx_Oracle has issues beyond that
             name(SYNAPSE_TYPE_NUMERIC, "36", "0"): {
@@ -1097,11 +973,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_1_columns_csv": name(
-                        SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_1
-                    )
-                },
+                "present_options": {"integer_1_columns_csv": name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_1)},
             },
             name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_2): {
                 "column": SynapseColumn(
@@ -1114,11 +986,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
-                "present_options": {
-                    "integer_2_columns_csv": name(
-                        SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_2
-                    )
-                },
+                "present_options": {"integer_2_columns_csv": name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_2)},
             },
             name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_4): {
                 "column": SynapseColumn(
@@ -1131,11 +999,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_4_columns_csv": name(
-                        SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_4
-                    )
-                },
+                "present_options": {"integer_4_columns_csv": name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_4)},
             },
             name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_8): {
                 "column": SynapseColumn(
@@ -1148,11 +1012,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_8_columns_csv": name(
-                        SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_8
-                    )
-                },
+                "present_options": {"integer_8_columns_csv": name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_8)},
             },
             name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_38): {
                 "column": SynapseColumn(
@@ -1165,11 +1025,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_38_columns_csv": name(
-                        SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_38
-                    )
-                },
+                "present_options": {"integer_38_columns_csv": name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_38)},
             },
             name(SYNAPSE_TYPE_NUMERIC, "10", "3"): {
                 "column": SynapseColumn(
@@ -1195,9 +1051,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     data_precision=9,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_SMALLMONEY), GOE_TYPE_DECIMAL
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_SMALLMONEY), GOE_TYPE_DECIMAL),
             },
             name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_1): {
                 "column": SynapseColumn(
@@ -1210,11 +1064,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_1_columns_csv": name(
-                        SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_1
-                    )
-                },
+                "present_options": {"integer_1_columns_csv": name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_1)},
             },
             name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_2): {
                 "column": SynapseColumn(
@@ -1227,11 +1077,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
-                "present_options": {
-                    "integer_2_columns_csv": name(
-                        SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_2
-                    )
-                },
+                "present_options": {"integer_2_columns_csv": name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_2)},
             },
             name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_4): {
                 "column": SynapseColumn(
@@ -1244,11 +1090,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_4_columns_csv": name(
-                        SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_4
-                    )
-                },
+                "present_options": {"integer_4_columns_csv": name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_4)},
             },
             name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_8): {
                 "column": SynapseColumn(
@@ -1261,11 +1103,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_8_columns_csv": name(
-                        SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_8
-                    )
-                },
+                "present_options": {"integer_8_columns_csv": name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_8)},
             },
             name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_38): {
                 "column": SynapseColumn(
@@ -1278,11 +1116,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_38_columns_csv": name(
-                        SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_38
-                    )
-                },
+                "present_options": {"integer_38_columns_csv": name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_38)},
             },
             # Using precision 18 for MONEY because it cannot hold the full 19 digits due to being byte sized
             name(SYNAPSE_TYPE_MONEY): {
@@ -1292,9 +1126,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     data_precision=18,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_MONEY), GOE_TYPE_DECIMAL
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_MONEY), GOE_TYPE_DECIMAL),
             },
             name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_1): {
                 "column": SynapseColumn(
@@ -1307,11 +1139,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_1_columns_csv": name(
-                        SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_1
-                    )
-                },
+                "present_options": {"integer_1_columns_csv": name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_1)},
             },
             name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_2): {
                 "column": SynapseColumn(
@@ -1324,11 +1152,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
-                "present_options": {
-                    "integer_2_columns_csv": name(
-                        SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_2
-                    )
-                },
+                "present_options": {"integer_2_columns_csv": name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_2)},
             },
             name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_4): {
                 "column": SynapseColumn(
@@ -1341,11 +1165,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_4_columns_csv": name(
-                        SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_4
-                    )
-                },
+                "present_options": {"integer_4_columns_csv": name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_4)},
             },
             name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_8): {
                 "column": SynapseColumn(
@@ -1358,11 +1178,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_8_columns_csv": name(
-                        SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_8
-                    )
-                },
+                "present_options": {"integer_8_columns_csv": name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_8)},
             },
             name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_38): {
                 "column": SynapseColumn(
@@ -1375,31 +1191,21 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_38_columns_csv": name(
-                        SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_38
-                    )
-                },
+                "present_options": {"integer_38_columns_csv": name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_38)},
             },
             #
             # Synapse REAL
             name(SYNAPSE_TYPE_REAL): {
                 "column": SynapseColumn(name(SYNAPSE_TYPE_REAL), SYNAPSE_TYPE_REAL),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_REAL), GOE_TYPE_FLOAT
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_REAL), GOE_TYPE_FLOAT),
             },
             name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL), SYNAPSE_TYPE_REAL
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL), SYNAPSE_TYPE_REAL),
                 "expected_canonical_column": CanonicalColumn(
                     name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
                 ),
                 "present_options": {
-                    "decimal_columns_csv_list": [
-                        name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL)
-                    ],
+                    "decimal_columns_csv_list": [name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL)],
                     "decimal_columns_type_list": ["38,18"],
                 },
             },
@@ -1407,21 +1213,15 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             # Synapse FLOAT
             name(SYNAPSE_TYPE_FLOAT): {
                 "column": SynapseColumn(name(SYNAPSE_TYPE_FLOAT), SYNAPSE_TYPE_FLOAT),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_FLOAT), GOE_TYPE_DOUBLE
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_FLOAT), GOE_TYPE_DOUBLE),
             },
             name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL), SYNAPSE_TYPE_FLOAT
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL), SYNAPSE_TYPE_FLOAT),
                 "expected_canonical_column": CanonicalColumn(
                     name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
                 ),
                 "present_options": {
-                    "decimal_columns_csv_list": [
-                        name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL)
-                    ],
+                    "decimal_columns_csv_list": [name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL)],
                     "decimal_columns_type_list": ["38,18"],
                 },
             },
@@ -1429,28 +1229,20 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             # DATE
             name(SYNAPSE_TYPE_DATE): {
                 "column": SynapseColumn(name(SYNAPSE_TYPE_DATE), SYNAPSE_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DATE), GOE_TYPE_DATE
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DATE), GOE_TYPE_DATE),
             },
             name(SYNAPSE_TYPE_DATE, GOE_TYPE_TIMESTAMP): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_DATE, GOE_TYPE_TIMESTAMP), SYNAPSE_TYPE_DATE
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_DATE, GOE_TYPE_TIMESTAMP), SYNAPSE_TYPE_DATE),
                 "expected_canonical_column": CanonicalColumn(
                     name(SYNAPSE_TYPE_DATE, GOE_TYPE_TIMESTAMP),
                     GOE_TYPE_TIMESTAMP,
                 ),
-                "present_options": {
-                    "timestamp_columns_csv": name(SYNAPSE_TYPE_DATE, GOE_TYPE_TIMESTAMP)
-                },
+                "present_options": {"timestamp_columns_csv": name(SYNAPSE_TYPE_DATE, GOE_TYPE_TIMESTAMP)},
             },
             #
             # DATETIMEs
             name(SYNAPSE_TYPE_SMALLDATETIME): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_SMALLDATETIME), SYNAPSE_TYPE_SMALLDATETIME
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_SMALLDATETIME), SYNAPSE_TYPE_SMALLDATETIME),
                 "expected_canonical_column": CanonicalColumn(
                     name(SYNAPSE_TYPE_SMALLDATETIME),
                     GOE_TYPE_TIMESTAMP,
@@ -1465,36 +1257,20 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 "expected_canonical_column": CanonicalColumn(
                     name(SYNAPSE_TYPE_SMALLDATETIME, GOE_TYPE_DATE), GOE_TYPE_DATE
                 ),
-                "present_options": {
-                    "date_columns_csv": name(SYNAPSE_TYPE_SMALLDATETIME, GOE_TYPE_DATE)
-                },
+                "present_options": {"date_columns_csv": name(SYNAPSE_TYPE_SMALLDATETIME, GOE_TYPE_DATE)},
             },
             name(SYNAPSE_TYPE_DATETIME): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_DATETIME), SYNAPSE_TYPE_DATETIME
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DATETIME), GOE_TYPE_TIMESTAMP
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_DATETIME), SYNAPSE_TYPE_DATETIME),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DATETIME), GOE_TYPE_TIMESTAMP),
             },
             name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE), SYNAPSE_TYPE_DATETIME
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE), GOE_TYPE_DATE
-                ),
-                "present_options": {
-                    "date_columns_csv": name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE)
-                },
+                "column": SynapseColumn(name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE), SYNAPSE_TYPE_DATETIME),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE), GOE_TYPE_DATE),
+                "present_options": {"date_columns_csv": name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE)},
             },
             name(SYNAPSE_TYPE_DATETIME2): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_DATETIME2), SYNAPSE_TYPE_DATETIME2
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DATETIME2), GOE_TYPE_TIMESTAMP
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_DATETIME2), SYNAPSE_TYPE_DATETIME2),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DATETIME2), GOE_TYPE_TIMESTAMP),
             },
             name(SYNAPSE_TYPE_DATETIME2, "3"): {
                 "column": SynapseColumn(
@@ -1516,19 +1292,13 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 "expected_canonical_column": CanonicalColumn(
                     name(SYNAPSE_TYPE_DATETIME2, GOE_TYPE_DATE), GOE_TYPE_DATE
                 ),
-                "present_options": {
-                    "date_columns_csv": name(SYNAPSE_TYPE_DATETIME2, GOE_TYPE_DATE)
-                },
+                "present_options": {"date_columns_csv": name(SYNAPSE_TYPE_DATETIME2, GOE_TYPE_DATE)},
             },
             #
             # DATETIMEOFFSET
             name(SYNAPSE_TYPE_DATETIMEOFFSET): {
-                "column": SynapseColumn(
-                    name(SYNAPSE_TYPE_DATETIMEOFFSET), SYNAPSE_TYPE_DATETIMEOFFSET
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DATETIMEOFFSET), GOE_TYPE_TIMESTAMP_TZ
-                ),
+                "column": SynapseColumn(name(SYNAPSE_TYPE_DATETIMEOFFSET), SYNAPSE_TYPE_DATETIMEOFFSET),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DATETIMEOFFSET), GOE_TYPE_TIMESTAMP_TZ),
             },
             name(SYNAPSE_TYPE_DATETIMEOFFSET, "3"): {
                 "column": SynapseColumn(
@@ -1551,9 +1321,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_DATE),
                     GOE_TYPE_DATE,
                 ),
-                "present_options": {
-                    "date_columns_csv": name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_DATE)
-                },
+                "present_options": {"date_columns_csv": name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_DATE)},
             },
             name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_TIMESTAMP): {
                 "column": SynapseColumn(
@@ -1564,25 +1332,18 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_TIMESTAMP),
                     GOE_TYPE_TIMESTAMP,
                 ),
-                "present_options": {
-                    "timestamp_columns_csv": name(
-                        SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_TIMESTAMP
-                    )
-                },
+                "present_options": {"timestamp_columns_csv": name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_TIMESTAMP)},
             },
             #
             # TIME
             name(SYNAPSE_TYPE_TIME): {
                 "column": SynapseColumn(name(SYNAPSE_TYPE_TIME), SYNAPSE_TYPE_TIME),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_TIME), GOE_TYPE_TIME
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_TIME), GOE_TYPE_TIME),
             },
         }
         if filter_column:
             return all_columns[filter_column]
-        else:
-            return all_columns
+        return all_columns
 
     def _select_single_non_null_value_sql_template(self):
         return "SELECT TOP(1) %s FROM %s WHERE %s IS NOT NULL%s"
@@ -1620,9 +1381,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
 
     def create_backend_offload_location(self, goe_user=None):
         """Unsupported/irrelevant for Synapse"""
-        raise NotImplementedError(
-            "create_backend_offload_location() unsupported for Synapse"
-        )
+        raise NotImplementedError("create_backend_offload_location() unsupported for Synapse")
 
     def create_partitioned_test_table(
         self,
@@ -1644,14 +1403,10 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             range_end=999999,
         )
         create_cols.append(
-            self.gen_column_object(
-                "YEARMON", data_type=SYNAPSE_TYPE_BIGINT, partition_info=partition_info
-            )
+            self.gen_column_object("YEARMON", data_type=SYNAPSE_TYPE_BIGINT, partition_info=partition_info)
         )
         partition_column_names = ["YEARMON"]
-        partition_source_column = (
-            self._find_source_column_for_create_partitioned_test_table(create_cols)
-        )
+        partition_source_column = self._find_source_column_for_create_partitioned_test_table(create_cols)
         insert_col_tuples.append(
             (
                 "CAST(CONVERT(VARCHAR(6), %(source_name)s, 112) AS %(cast_type)s)"
@@ -1663,9 +1418,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             )
         )
 
-        cmds = self._db_api.create_table(
-            db_name, table_name, create_cols, partition_column_names
-        )
+        cmds = self._db_api.create_table(db_name, table_name, create_cols, partition_column_names)
         cmds.extend(
             self.insert_table_as_select(
                 db_name,
@@ -1707,9 +1460,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             # NJ@2021-10-07 Using for_columns=True below to force stats creating on Synapse. I suspect the
             # stats creation should be driver by a create_stats parameter and not for_columns but I haven't
             # changed that for Synapse MVP.
-            executed_sqls.extend(
-                self._db_api.compute_stats(db_name, table_name, for_columns=True)
-            )
+            executed_sqls.extend(self._db_api.compute_stats(db_name, table_name, for_columns=True))
         return executed_sqls
 
     def drop_column(self, db_name, table_name, column_name, sync=None):
@@ -1739,12 +1490,10 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
         )
         return self.execute_ddl(sqls, sync=sync)
 
-    def expected_backend_column(
-        self, canonical_column, override_used=None, decimal_padding_digits=None
-    ):
-        expected_data_type = self.expected_canonical_to_backend_type_map(
-            override_used=override_used
-        ).get(canonical_column.data_type)
+    def expected_backend_column(self, canonical_column, override_used=None, decimal_padding_digits=None):
+        expected_data_type = self.expected_canonical_to_backend_type_map(override_used=override_used).get(
+            canonical_column.data_type
+        )
         expected_precision_scale = self.expected_backend_precision_scale(
             canonical_column, decimal_padding_digits=decimal_padding_digits
         )
@@ -1755,43 +1504,29 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 data_precision=expected_precision_scale[0],
                 data_scale=expected_precision_scale[1],
             )
-        else:
-            return SynapseColumn(canonical_column.name, expected_data_type)
+        return SynapseColumn(canonical_column.name, expected_data_type)
 
-    def expected_backend_precision_scale(
-        self, canonical_column, decimal_padding_digits=None
-    ):
+    def expected_backend_precision_scale(self, canonical_column, decimal_padding_digits=None):
         if canonical_column.data_type == GOE_TYPE_DECIMAL:
-            if (
-                canonical_column.data_precision is None
-                and canonical_column.data_scale is None
-            ):
+            if canonical_column.data_precision is None and canonical_column.data_scale is None:
                 # We can't check this because these columns are sampled and have an unreliable spec
                 return None
-            else:
-                # This should be a one-to-one mapping
-                return canonical_column.data_precision, canonical_column.data_scale
-        elif canonical_column.data_type == GOE_TYPE_INTEGER_38:
+            # This should be a one-to-one mapping
+            return canonical_column.data_precision, canonical_column.data_scale
+        if canonical_column.data_type == GOE_TYPE_INTEGER_38:
             return 38, 0
-        else:
-            return None
+        return None
 
     def expected_canonical_to_backend_type_map(self, override_used=None):
         return {
             GOE_TYPE_FIXED_STRING: (
-                SYNAPSE_TYPE_NCHAR
-                if "unicode_string_columns_csv" in (override_used or {})
-                else SYNAPSE_TYPE_CHAR
+                SYNAPSE_TYPE_NCHAR if "unicode_string_columns_csv" in (override_used or {}) else SYNAPSE_TYPE_CHAR
             ),
             GOE_TYPE_LARGE_STRING: (
-                SYNAPSE_TYPE_NVARCHAR
-                if "unicode_string_columns_csv" in (override_used or {})
-                else SYNAPSE_TYPE_VARCHAR
+                SYNAPSE_TYPE_NVARCHAR if "unicode_string_columns_csv" in (override_used or {}) else SYNAPSE_TYPE_VARCHAR
             ),
             GOE_TYPE_VARIABLE_STRING: (
-                SYNAPSE_TYPE_NVARCHAR
-                if "unicode_string_columns_csv" in (override_used or {})
-                else SYNAPSE_TYPE_VARCHAR
+                SYNAPSE_TYPE_NVARCHAR if "unicode_string_columns_csv" in (override_used or {}) else SYNAPSE_TYPE_VARCHAR
             ),
             GOE_TYPE_BINARY: SYNAPSE_TYPE_VARBINARY,
             GOE_TYPE_LARGE_BINARY: SYNAPSE_TYPE_VARBINARY,
@@ -1846,9 +1581,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
     def goe_wide_max_test_column_count(self):
         return 400
 
-    def partition_has_stats(
-        self, db_name, table_name, partition_tuples, colstats=False
-    ):
+    def partition_has_stats(self, db_name, table_name, partition_tuples, colstats=False):
         """SS@2021-09-14 Revisit if we provide support for backend partitioning in the future"""
         return False
 
@@ -1863,33 +1596,22 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
 
         if not self.get_column(db_name, table_name, column_name):
             raise BackendTestingApiException(
-                "Table %s.%s does not have a column %s to rename"
-                % (db_name, table_name, column_name)
+                "Table %s.%s does not have a column %s to rename" % (db_name, table_name, column_name)
             )
-        sql = (
-            "EXEC sp_rename '%(db_name)s.%(table_name)s.%(orig_name)s', '%(new_name)s', 'COLUMN'"
-            % {
-                "db_name": db_name,
-                "table_name": table_name,
-                "orig_name": column_name,
-                "new_name": new_name,
-            }
-        )
+        sql = "EXEC sp_rename '%(db_name)s.%(table_name)s.%(orig_name)s', '%(new_name)s', 'COLUMN'" % {
+            "db_name": db_name,
+            "table_name": table_name,
+            "orig_name": column_name,
+            "new_name": new_name,
+        }
         return self.execute_ddl(sql, sync=sync)
 
-    def select_single_non_null_value(
-        self, db_name, table_name, column_name, project_expression
-    ):
-        return self._select_single_non_null_value_common(
-            db_name, table_name, column_name, project_expression
-        )
+    def select_single_non_null_value(self, db_name, table_name, column_name, project_expression):
+        return self._select_single_non_null_value_common(db_name, table_name, column_name, project_expression)
 
     def sql_median_expression(self, db_name, table_name, column_name):
         """Synapse PERCENTILE_DISC suits all data types."""
-        return (
-            "PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY %s) OVER ()"
-            % self.enclose_identifier(column_name)
-        )
+        return "PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY %s) OVER ()" % self.enclose_identifier(column_name)
 
     def story_test_offload_nums_expected_backend_types(self, sampling_enabled=True):
         def number(p, s):
@@ -1897,12 +1619,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
 
         non_sampled_type = self.gen_default_numeric_column("x").format_data_type()
         return {
-            STORY_TEST_OFFLOAD_NUMS_BARE_NUM: (
-                number(4, 3) if sampling_enabled else non_sampled_type
-            ),
-            STORY_TEST_OFFLOAD_NUMS_BARE_FLT: (
-                SYNAPSE_TYPE_SMALLINT if sampling_enabled else non_sampled_type
-            ),
+            STORY_TEST_OFFLOAD_NUMS_BARE_NUM: (number(4, 3) if sampling_enabled else non_sampled_type),
+            STORY_TEST_OFFLOAD_NUMS_BARE_FLT: (SYNAPSE_TYPE_SMALLINT if sampling_enabled else non_sampled_type),
             STORY_TEST_OFFLOAD_NUMS_NUM_4: SYNAPSE_TYPE_SMALLINT,
             STORY_TEST_OFFLOAD_NUMS_NUM_18: SYNAPSE_TYPE_BIGINT,
             STORY_TEST_OFFLOAD_NUMS_NUM_19: number(38, 0),
@@ -1911,18 +1629,10 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             STORY_TEST_OFFLOAD_NUMS_NUM_3_5: number(5, 5),
             # NUM_10_M5 is NUMBER(10,0) which maps to 8-BYTE integer
             STORY_TEST_OFFLOAD_NUMS_NUM_10_M5: SYNAPSE_TYPE_BIGINT,
-            STORY_TEST_OFFLOAD_NUMS_DEC_10_0: (
-                number(10, 0) if sampling_enabled else non_sampled_type
-            ),
-            STORY_TEST_OFFLOAD_NUMS_DEC_36_3: (
-                number(36, 3) if sampling_enabled else non_sampled_type
-            ),
-            STORY_TEST_OFFLOAD_NUMS_DEC_37_3: (
-                number(37, 3) if sampling_enabled else non_sampled_type
-            ),
-            STORY_TEST_OFFLOAD_NUMS_DEC_38_3: (
-                number(38, 3) if sampling_enabled else non_sampled_type
-            ),
+            STORY_TEST_OFFLOAD_NUMS_DEC_10_0: (number(10, 0) if sampling_enabled else non_sampled_type),
+            STORY_TEST_OFFLOAD_NUMS_DEC_36_3: (number(36, 3) if sampling_enabled else non_sampled_type),
+            STORY_TEST_OFFLOAD_NUMS_DEC_37_3: (number(37, 3) if sampling_enabled else non_sampled_type),
+            STORY_TEST_OFFLOAD_NUMS_DEC_38_3: (number(38, 3) if sampling_enabled else non_sampled_type),
         }
 
     def story_test_table_extra_col_info(self):
@@ -1935,72 +1645,50 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             'scale': Scale for number columns that support it
         """
         extra_cols = {
-            STORY_TEST_BACKEND_DOUBLE_COL: {
-                "sql_expression": "CAST(123.123 AS %s)" % SYNAPSE_TYPE_FLOAT
-            },
+            STORY_TEST_BACKEND_DOUBLE_COL: {"sql_expression": "CAST(123.123 AS %s)" % SYNAPSE_TYPE_FLOAT},
             STORY_TEST_BACKEND_DECIMAL_PS_COL: {
                 "sql_expression": "CAST(123.123 AS %s(10,3))" % SYNAPSE_TYPE_NUMERIC,
                 "precision": 10,
                 "scale": 3,
             },
-            STORY_TEST_BACKEND_DECIMAL_DEF_COL: {
-                "sql_expression": "CAST(123 AS %s)" % SYNAPSE_TYPE_NUMERIC
-            },
-            STORY_TEST_BACKEND_INT_1_COL: {
-                "sql_expression": "CAST(1 AS %s)" % SYNAPSE_TYPE_TINYINT
-            },
-            STORY_TEST_BACKEND_INT_2_COL: {
-                "sql_expression": "CAST(1234 AS %s)" % SYNAPSE_TYPE_SMALLINT
-            },
-            STORY_TEST_BACKEND_INT_4_COL: {
-                "sql_expression": "CAST(123456 AS %s)" % SYNAPSE_TYPE_INT
-            },
-            STORY_TEST_BACKEND_INT_8_COL: {
-                "sql_expression": "CAST(1234567890123 AS %s)" % SYNAPSE_TYPE_BIGINT
-            },
+            STORY_TEST_BACKEND_DECIMAL_DEF_COL: {"sql_expression": "CAST(123 AS %s)" % SYNAPSE_TYPE_NUMERIC},
+            STORY_TEST_BACKEND_INT_1_COL: {"sql_expression": "CAST(1 AS %s)" % SYNAPSE_TYPE_TINYINT},
+            STORY_TEST_BACKEND_INT_2_COL: {"sql_expression": "CAST(1234 AS %s)" % SYNAPSE_TYPE_SMALLINT},
+            STORY_TEST_BACKEND_INT_4_COL: {"sql_expression": "CAST(123456 AS %s)" % SYNAPSE_TYPE_INT},
+            STORY_TEST_BACKEND_INT_8_COL: {"sql_expression": "CAST(1234567890123 AS %s)" % SYNAPSE_TYPE_BIGINT},
             STORY_TEST_BACKEND_FIX_STR_COL: {
                 "sql_expression": "CAST('this is char' AS %s(15))" % SYNAPSE_TYPE_CHAR,
                 "length": 15,
                 "char_semantics": CANONICAL_CHAR_SEMANTICS_CHAR,
             },
             STORY_TEST_BACKEND_VAR_STR_COL: {
-                "sql_expression": "CAST('this is text' AS %s(50))"
-                % SYNAPSE_TYPE_VARCHAR,
+                "sql_expression": "CAST('this is text' AS %s(50))" % SYNAPSE_TYPE_VARCHAR,
                 "length": 50,
                 "char_semantics": CANONICAL_CHAR_SEMANTICS_CHAR,
             },
             STORY_TEST_BACKEND_VAR_STR_LONG_COL: {
-                "sql_expression": "CAST('very long text' AS %s(5000))"
-                % SYNAPSE_TYPE_VARCHAR,
+                "sql_expression": "CAST('very long text' AS %s(5000))" % SYNAPSE_TYPE_VARCHAR,
                 "length": 5000,
                 "char_semantics": CANONICAL_CHAR_SEMANTICS_CHAR,
             },
             STORY_TEST_BACKEND_DATE_COL: {"sql_expression": "CAST(GETDATE() AS DATE)"},
             STORY_TEST_BACKEND_TIMESTAMP_COL: {"sql_expression": "SYSDATETIME()"},
-            STORY_TEST_BACKEND_TIMESTAMP_TZ_COL: {
-                "sql_expression": "SYSDATETIMEOFFSET()"
-            },
+            STORY_TEST_BACKEND_TIMESTAMP_TZ_COL: {"sql_expression": "SYSDATETIMEOFFSET()"},
             STORY_TEST_BACKEND_BLOB_COL: {
-                "sql_expression": "CAST('this is binary' AS %s(2001))"
-                % SYNAPSE_TYPE_VARBINARY
+                "sql_expression": "CAST('this is binary' AS %s(2001))" % SYNAPSE_TYPE_VARBINARY
             },
             STORY_TEST_BACKEND_RAW_COL: {
-                "sql_expression": "CAST('this is binary' AS %s(100))"
-                % SYNAPSE_TYPE_VARBINARY,
+                "sql_expression": "CAST('this is binary' AS %s(100))" % SYNAPSE_TYPE_VARBINARY,
                 "length": 100,
             },
-            STORY_TEST_BACKEND_NULL_STR_COL: {
-                "sql_expression": "CAST(NULL AS %s(30))" % SYNAPSE_TYPE_VARCHAR
-            },
+            STORY_TEST_BACKEND_NULL_STR_COL: {"sql_expression": "CAST(NULL AS %s(30))" % SYNAPSE_TYPE_VARCHAR},
         }
         return extra_cols
 
     def unit_test_query_options(self):
         return {"DATEFIRST": 7}
 
-    def unit_test_single_row_sql_text(
-        self, db_name, table_name, column_name, row_limit=None, where_clause=None
-    ):
+    def unit_test_single_row_sql_text(self, db_name, table_name, column_name, row_limit=None, where_clause=None):
         """Simple SQL query text. Synapse implementation."""
         db_table = self.enclose_object_reference(db_name, table_name)
         where_clause = where_clause or ""

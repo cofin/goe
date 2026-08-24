@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Unit test library to test modules in offload.operation package
-"""
+"""Unit test library to test modules in offload.operation package"""
 
 from unittest import TestCase, main
 
+from goe.offload.column_metadata import (
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_INTEGER_2,
+    GOE_TYPE_INTEGER_4,
+    CanonicalColumn,
+)
 from goe.offload.offload_constants import (
     NOT_NULL_PROPAGATION_AUTO,
     NOT_NULL_PROPAGATION_NONE,
@@ -29,12 +34,6 @@ from goe.offload.operation.data_type_controls import (
 from goe.offload.operation.not_null_columns import (
     OffloadNotNullControlsException,
     apply_not_null_columns_csv,
-)
-from goe.offload.column_metadata import (
-    CanonicalColumn,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
 )
 
 
@@ -50,19 +49,13 @@ class TestOperationDataTypeControls(TestCase):
             CanonicalColumn("COL5_YEAR", GOE_TYPE_INTEGER_2),
             CanonicalColumn("COL6_MONTH", GOE_TYPE_INTEGER_2),
         ]
-        col_list = canonical_columns_from_columns_csv(
-            GOE_TYPE_INTEGER_4, "COL1_ID,COL2_ID", [], reference_columns
-        )
+        col_list = canonical_columns_from_columns_csv(GOE_TYPE_INTEGER_4, "COL1_ID,COL2_ID", [], reference_columns)
         self.assertEqual(len(col_list), 2)
         self.assertEqual(col_list[0].data_type, GOE_TYPE_INTEGER_4)
-        col_list = canonical_columns_from_columns_csv(
-            GOE_TYPE_INTEGER_4, "*_ID", [], reference_columns
-        )
+        col_list = canonical_columns_from_columns_csv(GOE_TYPE_INTEGER_4, "*_ID", [], reference_columns)
         self.assertEqual(len(col_list), 2)
         self.assertEqual(col_list[0].data_type, GOE_TYPE_INTEGER_4)
-        col_list = canonical_columns_from_columns_csv(
-            GOE_TYPE_INTEGER_4, "*_ID,*KEY", [], reference_columns
-        )
+        col_list = canonical_columns_from_columns_csv(GOE_TYPE_INTEGER_4, "*_ID,*KEY", [], reference_columns)
         self.assertEqual(len(col_list), 4)
         col_list = canonical_columns_from_columns_csv(
             GOE_TYPE_DECIMAL,
@@ -76,9 +69,7 @@ class TestOperationDataTypeControls(TestCase):
         self.assertEqual(col_list[0].data_type, GOE_TYPE_DECIMAL)
         self.assertEqual(col_list[0].data_precision, 4)
         self.assertEqual(col_list[0].data_scale, 0)
-        col_list = canonical_columns_from_columns_csv(
-            GOE_TYPE_INTEGER_4, "*", [], reference_columns
-        )
+        col_list = canonical_columns_from_columns_csv(GOE_TYPE_INTEGER_4, "*", [], reference_columns)
         self.assertEqual(len(col_list), len(reference_columns))
         # Ensure overlaps are caught
         self.assertRaises(
@@ -105,9 +96,7 @@ class TestOperationNotNullColumns(TestCase):
     def test_not_null_columns_auto(self):
         messages = OffloadMessages()
         names = [_.name for _ in self.reference_columns]
-        new_cols = apply_not_null_columns_csv(
-            self.reference_columns, None, NOT_NULL_PROPAGATION_AUTO, names, messages
-        )
+        new_cols = apply_not_null_columns_csv(self.reference_columns, None, NOT_NULL_PROPAGATION_AUTO, names, messages)
         # Nullable should be unchanged for AUTO
         for new_col, ref_col in zip(new_cols, self.reference_columns):
             self.assertEqual(new_col.name, ref_col.name)
@@ -116,9 +105,7 @@ class TestOperationNotNullColumns(TestCase):
     def test_not_null_columns_none(self):
         messages = OffloadMessages()
         names = [_.name for _ in self.reference_columns]
-        new_cols = apply_not_null_columns_csv(
-            self.reference_columns, None, NOT_NULL_PROPAGATION_NONE, names, messages
-        )
+        new_cols = apply_not_null_columns_csv(self.reference_columns, None, NOT_NULL_PROPAGATION_NONE, names, messages)
         # Nullable should be True for all columns for NONE
         for new_col, ref_col in zip(new_cols, self.reference_columns):
             self.assertEqual(new_col.name, ref_col.name)
@@ -133,13 +120,9 @@ class TestOperationNotNullColumns(TestCase):
         for new_col, ref_col in zip(new_cols, self.reference_columns):
             self.assertEqual(new_col.name, ref_col.name)
             if new_col.name.endswith("_NN"):
-                self.assertFalse(
-                    new_col.nullable, f"Nullable incorrect for {new_col.name}"
-                )
+                self.assertFalse(new_col.nullable, f"Nullable incorrect for {new_col.name}")
             else:
-                self.assertTrue(
-                    new_col.nullable, f"Nullable incorrect for {new_col.name}"
-                )
+                self.assertTrue(new_col.nullable, f"Nullable incorrect for {new_col.name}")
 
         # Ensure nonsense values are caught.
         self.assertRaises(

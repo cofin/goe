@@ -22,13 +22,12 @@ from goe.offload.offload_constants import (
     DBTYPE_TERADATA,
 )
 
-
 logger = logging.getLogger(__name__)
 # Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
 
-class OffloadSourceTable(object):
+class OffloadSourceTable:
     """OffloadSourceTable sits in front of third party database specific implementations.
     Depending on value in connection_options.db_type the construct method will return
     the appropriate class for the DB in use.
@@ -46,9 +45,7 @@ class OffloadSourceTable(object):
         conn=None,
         do_not_connect=False,
     ):
-        logger.info(
-            "OffloadSourceTable constructing for %s" % connection_options.db_type
-        )
+        logger.info("OffloadSourceTable constructing for %s" % connection_options.db_type)
         if connection_options.db_type == DBTYPE_ORACLE:
             from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
 
@@ -64,7 +61,7 @@ class OffloadSourceTable(object):
             if offload_by_subpartition:
                 rdbms_table.enable_offload_by_subpartition()
             return rdbms_table
-        elif connection_options.db_type == DBTYPE_MSSQL:
+        if connection_options.db_type == DBTYPE_MSSQL:
             from goe.offload.microsoft.mssql_offload_source_table import (
                 MSSQLSourceTable,
             )
@@ -77,7 +74,7 @@ class OffloadSourceTable(object):
                 dry_run=dry_run,
                 do_not_connect=do_not_connect,
             )
-        elif connection_options.db_type == DBTYPE_TERADATA:
+        if connection_options.db_type == DBTYPE_TERADATA:
             from goe.offload.teradata.teradata_offload_source_table import (
                 TeradataSourceTable,
             )

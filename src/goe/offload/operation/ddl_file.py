@@ -37,13 +37,9 @@ DDL_FILE_HEADER_TEMPLATE = f"""-- {DDL_FILE_HEADER}
 """
 
 
-def generate_ddl_file_path(
-    owner: str, table_name: str, config: "OrchestrationConfig"
-) -> str:
+def generate_ddl_file_path(owner: str, table_name: str, config: "OrchestrationConfig") -> str:
     """Generates a default path when DDL file option == AUTO."""
-    file_name = standard_file_name(
-        f"{owner}.{table_name}", extension=".sql", with_datetime=True
-    )
+    file_name = standard_file_name(f"{owner}.{table_name}", extension=".sql", with_datetime=True)
     log_path = os.path.join(config.log_path, file_name)
     return log_path
 
@@ -52,7 +48,8 @@ def validate_ddl_file(ddl_file: str):
     """Simple validation that a value supplied via ddl_file looks good.
 
     Only local paths are fully validated at this point because paths to cloud storage are
-    prefixes and may not exist until the object is created."""
+    prefixes and may not exist until the object is created.
+    """
     # Simplistic check that the file path looks like a cloud storage one.
     if ":" in ddl_file:
         # We don't need to know the scheme right now, just validation that it is supported.
@@ -89,15 +86,13 @@ def normalise_ddl_file(
         offload_operation.ddl_file = generate_ddl_file_path(
             offload_operation.owner, offload_operation.table_name, config
         )
-        return
+        return None
 
     validate_ddl_file(offload_operation.ddl_file)
 
 
 def ddl_file_header() -> str:
-    return DDL_FILE_HEADER_TEMPLATE.format(
-        datetime.datetime.now().replace(microsecond=0).isoformat(), package_version
-    )
+    return DDL_FILE_HEADER_TEMPLATE.format(datetime.datetime.now().replace(microsecond=0).isoformat(), package_version)
 
 
 def write_ddl_to_ddl_file(

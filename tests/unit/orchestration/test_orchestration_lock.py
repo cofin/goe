@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestOrchestrationLock: Unit test library to test OrchestrationLock functionality
-"""
+"""TestOrchestrationLock: Unit test library to test OrchestrationLock functionality"""
+
 import os
 import threading
 import time
@@ -26,9 +26,7 @@ from goe.orchestration.orchestration_lock import (
     orchestration_lock_from_hybrid_metadata,
 )
 from goe.persistence.orchestration_metadata import OrchestrationMetadata
-
 from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV
-
 
 LOCK_OWNER = "SH_TEST"
 LOCK_TABLE1 = "UNIT_TABLE1"
@@ -105,8 +103,5 @@ def test_orchestration_blocking_lock():
     t2.join()
     assert "blocker" not in exceptions_caught_in_threads
     assert "waiter" in exceptions_caught_in_threads
-    assert (
-        exceptions_caught_in_threads["waiter"]["exception"]["type"]
-        == OrchestrationLockTimeout
-    )
+    assert exceptions_caught_in_threads["waiter"]["exception"]["type"] == OrchestrationLockTimeout
     t1.join()

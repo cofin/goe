@@ -41,8 +41,6 @@ from goe.offload.offload_transport import (
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
-
 from tests.integration.scenarios.assertion_functions import (
     backend_table_exists,
     sales_based_fact_assertion,
@@ -70,7 +68,6 @@ from tests.testlib.test_framework.test_functions import (
     get_test_messages_ctx,
 )
 
-
 KEYWORD_COL_TABLE = "KEYWORD_COLS"
 BAD_CHAR_COL_TABLE = "BAD_CHAR_COLS"
 CASE_DIM = "CASE_DIM"
@@ -90,9 +87,7 @@ def gen_keyword_col_table_ddl(config, frontend_api, schema, table_name) -> list:
         ,      CAST('ABC' AS VARCHAR(5))  AS "SELECT" """
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
-    return frontend_api.gen_ctas_from_subquery(
-        schema, table_name, subquery, with_stats_collection=True
-    )
+    return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=True)
 
 
 @pytest.fixture
@@ -112,9 +107,7 @@ def data_db(schema, config):
     return db
 
 
-def backend_case_offload_assertion(
-    offload_messages, test_messages, search_token: str
-) -> bool:
+def backend_case_offload_assertion(offload_messages, test_messages, search_token: str) -> bool:
     search_string = f"{ADJUSTED_BACKEND_IDENTIFIER_MESSAGE_TEXT}: {search_token}"
     result = text_in_log(offload_messages, search_string, test_messages)
     if not result:
@@ -124,9 +117,10 @@ def backend_case_offload_assertion(
 
 def test_identifiers_keyword_column_names(config, schema, data_db):
     id = "test_identifiers_keyword_column_names"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         # Setup
@@ -135,13 +129,9 @@ def test_identifiers_keyword_column_names(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=gen_keyword_col_table_ddl(
-                config, frontend_api, schema, KEYWORD_COL_TABLE
-            ),
+            frontend_sqls=gen_keyword_col_table_ddl(config, frontend_api, schema, KEYWORD_COL_TABLE),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, KEYWORD_COL_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, KEYWORD_COL_TABLE),
             ],
         )
 
@@ -214,9 +204,10 @@ def test_identifiers_keyword_column_names(config, schema, data_db):
 
 def test_identifiers_bad_char_column_names(config, schema, data_db):
     id = "test_identifiers_bad_char_column_names"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         if config.target == DBTYPE_IMPALA:
             pytest.skip(f"Skipping {id} for Impala")
 
@@ -228,13 +219,9 @@ def test_identifiers_bad_char_column_names(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=gen_keyword_col_table_ddl(
-                config, frontend_api, schema, BAD_CHAR_COL_TABLE
-            ),
+            frontend_sqls=gen_keyword_col_table_ddl(config, frontend_api, schema, BAD_CHAR_COL_TABLE),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, BAD_CHAR_COL_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, BAD_CHAR_COL_TABLE),
             ],
         )
         if is_query_import_available(None, config):
@@ -273,9 +260,10 @@ def test_identifiers_bad_char_column_names(config, schema, data_db):
 
 def test_identifiers_table_name_case(config, schema, data_db):
     id = "test_identifiers_table_name_case"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         if not backend_api.case_sensitive_identifiers():
@@ -287,13 +275,9 @@ def test_identifiers_table_name_case(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, CASE_DIM
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, CASE_DIM),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, CASE_DIM
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, CASE_DIM),
             ],
         )
 
@@ -311,9 +295,7 @@ def test_identifiers_table_name_case(config, schema, data_db):
             messages,
             config_overrides={"backend_identifier_case": "LOWER"},
         )
-        assert backend_case_offload_assertion(
-            offload_messages, messages, f"{data_db}.{CASE_DIM}".lower()
-        )
+        assert backend_case_offload_assertion(offload_messages, messages, f"{data_db}.{CASE_DIM}".lower())
 
         options = {
             "owner_table": schema + "." + CASE_DIM.lower(),
@@ -326,9 +308,7 @@ def test_identifiers_table_name_case(config, schema, data_db):
             messages,
             config_overrides={"backend_identifier_case": "UPPER"},
         )
-        assert backend_case_offload_assertion(
-            offload_messages, messages, f"{data_db}.{CASE_DIM}".upper()
-        )
+        assert backend_case_offload_assertion(offload_messages, messages, f"{data_db}.{CASE_DIM}".upper())
 
         options = {
             "owner_table": schema.upper() + "." + CASE_DIM.capitalize(),
@@ -350,9 +330,10 @@ def test_identifiers_table_name_case(config, schema, data_db):
 
 def test_identifiers_table_name_change_100_0(config, schema, data_db):
     id = "test_identifiers_table_name_change_100_0"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         repo_client = orchestration_repo_client_factory(
             config, messages, dry_run=False, trace_action=f"repo_client({id})"
@@ -364,13 +345,9 @@ def test_identifiers_table_name_change_100_0(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, NEW_NAME_DIM1
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, NEW_NAME_DIM1),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, NEW_NAME_DIM2
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, NEW_NAME_DIM2),
             ],
         )
 
@@ -399,9 +376,7 @@ def test_identifiers_table_name_change_100_0(config, schema, data_db):
             backend_table=NEW_NAME_DIM2,
             offload_messages=offload_messages,
         )
-        assert not backend_table_exists(
-            config, backend_api, messages, data_db, NEW_NAME_DIM1
-        )
+        assert not backend_table_exists(config, backend_api, messages, data_db, NEW_NAME_DIM1)
 
         # Attempt re-offload of already renamed dimension.
         # Used to confirm that attempted re-offload exits early and doesn\'t lose sight of previous --target-name.
@@ -421,13 +396,12 @@ def test_identifiers_table_name_change_100_0(config, schema, data_db):
 
 def test_identifiers_table_name_change_90_10(config, schema, data_db):
     id = "test_identifiers_table_name_change_90_10"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -435,12 +409,8 @@ def test_identifiers_table_name_change_90_10(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.sales_based_fact_create_ddl(
-                schema, NEW_NAME_FACT1, simple_partition_names=True
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, NEW_NAME_FACT2
-            ),
+            frontend_sqls=frontend_api.sales_based_fact_create_ddl(schema, NEW_NAME_FACT1, simple_partition_names=True),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, NEW_NAME_FACT2),
         )
 
         if config.db_type == DBTYPE_IMPALA:
@@ -470,9 +440,7 @@ def test_identifiers_table_name_change_90_10(config, schema, data_db):
             backend_table=NEW_NAME_FACT2,
             offload_messages=offload_messages,
         )
-        assert not backend_table_exists(
-            config, backend_api, messages, data_db, NEW_NAME_DIM1
-        )
+        assert not backend_table_exists(config, backend_api, messages, data_db, NEW_NAME_DIM1)
 
         # Offloads more partitions from a fact table but to a backend table with a different name.
         options = {

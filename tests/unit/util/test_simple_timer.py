@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestSimpleTimer: Unit test library to test SimpleTimer functionality
-"""
+"""TestSimpleTimer: Unit test library to test SimpleTimer functionality"""
+
 import time
 from unittest import TestCase, main
 

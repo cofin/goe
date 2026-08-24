@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Constants for use in both goelib modules and goe.py
-    We needed a new home that would avoid circular dependencies
+"""Constants for use in both goelib modules and goe.py
+We needed a new home that would avoid circular dependencies
 """
 
 # Try not to import any modules in here, this module is widely imported and we've previously had subtle side effects
@@ -121,15 +121,9 @@ DDL_FILE_AUTO = "AUTO"
 ADJUSTED_BACKEND_IDENTIFIER_MESSAGE_TEXT = "Using adjusted backend table name"
 CONFLICTING_DATA_ID_OPTIONS_EXCEPTION_TEXT = "Conflicting data identification options"
 INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT = "Invalid data type conversion for column"
-IPA_PREDICATE_TYPE_CHANGE_EXCEPTION_TEXT = (
-    "INCREMENTAL_PREDICATE_TYPE cannot be changed for offloaded table"
-)
-IPA_PREDICATE_TYPE_EXCEPTION_TEXT = (
-    "--offload-predicate-type/RDBMS partition type combination is not valid"
-)
-IPA_PREDICATE_TYPE_FILTER_EXCEPTION_TEXT = (
-    "partition identification options are not compatible"
-)
+IPA_PREDICATE_TYPE_CHANGE_EXCEPTION_TEXT = "INCREMENTAL_PREDICATE_TYPE cannot be changed for offloaded table"
+IPA_PREDICATE_TYPE_EXCEPTION_TEXT = "--offload-predicate-type/RDBMS partition type combination is not valid"
+IPA_PREDICATE_TYPE_FILTER_EXCEPTION_TEXT = "partition identification options are not compatible"
 IPA_PREDICATE_TYPE_FIRST_OFFLOAD_EXCEPTION_TEXT = (
     "--offload-predicate-type is not valid for a first time predicate-based offload"
 )
@@ -137,21 +131,25 @@ IPA_PREDICATE_TYPE_REQUIRES_PREDICATE_EXCEPTION_TEXT = (
     "Missing --offload-predicate option. "
     "This option is mandatory to offload tables with an INCREMENTAL_PREDICATE_TYPE configuration of PREDICATE"
 )
-MISSING_METADATA_EXCEPTION_TEMPLATE = "Missing metadata for table %s.%s. Offload with --reset-backend-table to overwrite table data"
-METADATA_EMPTY_TABLE_EXCEPTION_TEMPLATE = "Empty table %s.%s has metadata. Offload with --reuse-backend-table to populate this table"
-OFFLOAD_TYPE_CHANGE_FOR_LIST_EXCEPTION_TEXT = "Switching to offload type INCREMENTAL for LIST partitioned table requires --equal-to-values/--partition-names"
-OFFLOAD_TYPE_CHANGE_FOR_LIST_MESSAGE_TEXT = (
-    "Switching to INCREMENTAL for LIST partitioned table"
+MISSING_METADATA_EXCEPTION_TEMPLATE = (
+    "Missing metadata for table %s.%s. Offload with --reset-backend-table to overwrite table data"
 )
-OFFLOAD_TYPE_CHANGE_FOR_SUBPART_EXCEPTION_TEXT = "Switching from offload type FULL to INCREMENTAL is not supported for Subpartition-Based Offload"
-RESET_HYBRID_VIEW_EXCEPTION_TEXT = (
-    "Offload data identification options required with --reset-hybrid-view"
+METADATA_EMPTY_TABLE_EXCEPTION_TEMPLATE = (
+    "Empty table %s.%s has metadata. Offload with --reuse-backend-table to populate this table"
 )
-TARGET_HAS_DATA_MESSAGE_TEMPLATE = "Target table %s.%s already has data. Offload with --reset-backend-table to overwrite table data"
+OFFLOAD_TYPE_CHANGE_FOR_LIST_EXCEPTION_TEXT = (
+    "Switching to offload type INCREMENTAL for LIST partitioned table requires --equal-to-values/--partition-names"
+)
+OFFLOAD_TYPE_CHANGE_FOR_LIST_MESSAGE_TEXT = "Switching to INCREMENTAL for LIST partitioned table"
+OFFLOAD_TYPE_CHANGE_FOR_SUBPART_EXCEPTION_TEXT = (
+    "Switching from offload type FULL to INCREMENTAL is not supported for Subpartition-Based Offload"
+)
+RESET_HYBRID_VIEW_EXCEPTION_TEXT = "Offload data identification options required with --reset-hybrid-view"
+TARGET_HAS_DATA_MESSAGE_TEMPLATE = (
+    "Target table %s.%s already has data. Offload with --reset-backend-table to overwrite table data"
+)
 TOTAL_ROWS_OFFLOADED_LOG_TEXT = "Total rows offloaded"
-DDL_FILE_EXECUTE_MESSAGE_TEXT = (
-    "Switching command to non-execute mode due to --ddl-file option"
-)
+DDL_FILE_EXECUTE_MESSAGE_TEXT = "Switching command to non-execute mode due to --ddl-file option"
 DDL_FILE_WRITE_MESSAGE_TEMPLATE = "Table DDL has been written to file: {}"
 
 # Offload capabilities we can switch on/off by backend db type

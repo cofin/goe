@@ -15,8 +15,8 @@
 from random import randint
 from textwrap import dedent
 
-from numpy import datetime64
 import pytest
+from numpy import datetime64
 
 from goe.offload import offload_constants
 from goe.offload.backend_table import (
@@ -25,16 +25,16 @@ from goe.offload.backend_table import (
     DATA_VALIDATION_SCALE_EXCEPTION_TEXT,
 )
 from goe.offload.column_metadata import (
-    match_table_column,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
     GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_VARIABLE_STRING,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
+    GOE_TYPE_VARIABLE_STRING,
+    match_table_column,
 )
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
@@ -42,9 +42,9 @@ from goe.offload.offload_functions import (
     load_db_name,
 )
 from goe.offload.offload_source_table import (
+    COLUMNS_FAILED_SAMPLING_EXCEPTION_TEXT,
     DATA_SAMPLE_SIZE_AUTO,
     DATETIME_STATS_SAMPLING_OPT_ACTION_TEXT,
-    COLUMNS_FAILED_SAMPLING_EXCEPTION_TEXT,
 )
 from goe.offload.offload_transport import OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
 from goe.offload.operation.data_type_controls import (
@@ -54,7 +54,6 @@ from goe.offload.operation.data_type_controls import (
 from goe.offload.operation.not_null_columns import (
     UNKNOWN_NOT_NULL_COLUMN_EXCEPTION_TEXT,
 )
-
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
     frontend_column_exists,
@@ -66,41 +65,40 @@ from tests.integration.scenarios.scenario_runner import (
     run_offload,
     run_setup,
 )
-from tests.integration.test_functions import (
-    cached_current_options,
-    cached_default_test_user,
-)
 from tests.integration.scenarios.setup_functions import (
     drop_backend_test_load_table,
     drop_backend_test_table,
     no_query_import_transport_method,
 )
+from tests.integration.test_functions import (
+    cached_current_options,
+    cached_default_test_user,
+)
 from tests.testlib.test_framework.backend_testing_api import (
-    STORY_TEST_OFFLOAD_NUMS_BARE_NUM,
     STORY_TEST_OFFLOAD_NUMS_BARE_FLT,
-    STORY_TEST_OFFLOAD_NUMS_NUM_4,
-    STORY_TEST_OFFLOAD_NUMS_NUM_18,
-    STORY_TEST_OFFLOAD_NUMS_NUM_19,
-    STORY_TEST_OFFLOAD_NUMS_NUM_3_2,
-    STORY_TEST_OFFLOAD_NUMS_NUM_13_3,
-    STORY_TEST_OFFLOAD_NUMS_NUM_16_1,
-    STORY_TEST_OFFLOAD_NUMS_NUM_20_5,
-    STORY_TEST_OFFLOAD_NUMS_NUM_STAR_4,
-    STORY_TEST_OFFLOAD_NUMS_NUM_3_5,
-    STORY_TEST_OFFLOAD_NUMS_NUM_10_M5,
+    STORY_TEST_OFFLOAD_NUMS_BARE_NUM,
     STORY_TEST_OFFLOAD_NUMS_DEC_10_0,
     STORY_TEST_OFFLOAD_NUMS_DEC_13_9,
     STORY_TEST_OFFLOAD_NUMS_DEC_15_9,
     STORY_TEST_OFFLOAD_NUMS_DEC_36_3,
     STORY_TEST_OFFLOAD_NUMS_DEC_37_3,
     STORY_TEST_OFFLOAD_NUMS_DEC_38_3,
+    STORY_TEST_OFFLOAD_NUMS_NUM_3_2,
+    STORY_TEST_OFFLOAD_NUMS_NUM_3_5,
+    STORY_TEST_OFFLOAD_NUMS_NUM_4,
+    STORY_TEST_OFFLOAD_NUMS_NUM_10_M5,
+    STORY_TEST_OFFLOAD_NUMS_NUM_13_3,
+    STORY_TEST_OFFLOAD_NUMS_NUM_16_1,
+    STORY_TEST_OFFLOAD_NUMS_NUM_18,
+    STORY_TEST_OFFLOAD_NUMS_NUM_19,
+    STORY_TEST_OFFLOAD_NUMS_NUM_20_5,
+    STORY_TEST_OFFLOAD_NUMS_NUM_STAR_4,
 )
 from tests.testlib.test_framework.test_functions import (
     get_backend_testing_api,
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 DATE_DIM = "STORY_DATES"
 DATE_SDIM = "STORY_SDATES"
@@ -150,9 +148,7 @@ def num_of_size(digits):
     return "".join([str(randint(1, 9)) for _ in range(digits)])
 
 
-def nums_setup_frontend_ddl(
-    frontend_api, backend_api, config, schema, table_name
-) -> list:
+def nums_setup_frontend_ddl(frontend_api, backend_api, config, schema, table_name) -> list:
     if config.db_type == offload_constants.DBTYPE_ORACLE:
         setup_casts = {
             STORY_TEST_OFFLOAD_NUMS_BARE_NUM: "CAST(1.101 AS NUMBER)",
@@ -170,12 +166,9 @@ def nums_setup_frontend_ddl(
             STORY_TEST_OFFLOAD_NUMS_DEC_10_0: "CAST(1234567890 AS NUMBER)",
             STORY_TEST_OFFLOAD_NUMS_DEC_13_9: "CAST(1234.123456789 AS NUMBER)",
             STORY_TEST_OFFLOAD_NUMS_DEC_15_9: "CAST(123456.123456789 AS NUMBER)",
-            STORY_TEST_OFFLOAD_NUMS_DEC_36_3: "CAST(%s.123 AS NUMBER)"
-            % num_of_size(20),
-            STORY_TEST_OFFLOAD_NUMS_DEC_37_3: "CAST(%s.123 AS NUMBER)"
-            % num_of_size(20),
-            STORY_TEST_OFFLOAD_NUMS_DEC_38_3: "CAST(%s.123 AS NUMBER)"
-            % num_of_size(20),
+            STORY_TEST_OFFLOAD_NUMS_DEC_36_3: "CAST(%s.123 AS NUMBER)" % num_of_size(20),
+            STORY_TEST_OFFLOAD_NUMS_DEC_37_3: "CAST(%s.123 AS NUMBER)" % num_of_size(20),
+            STORY_TEST_OFFLOAD_NUMS_DEC_38_3: "CAST(%s.123 AS NUMBER)" % num_of_size(20),
         }
         select_template = "SELECT {} FROM dual"
     elif config.db_type == offload_constants.DBTYPE_TERADATA:
@@ -192,26 +185,21 @@ def nums_setup_frontend_ddl(
             STORY_TEST_OFFLOAD_NUMS_DEC_10_0: "CAST(1234567890 AS NUMBER)",
             STORY_TEST_OFFLOAD_NUMS_DEC_13_9: "CAST(1234.123456789 AS NUMBER)",
             STORY_TEST_OFFLOAD_NUMS_DEC_15_9: "CAST(123456.123456789 AS NUMBER)",
-            STORY_TEST_OFFLOAD_NUMS_DEC_36_3: "CAST(%s.123 AS NUMBER)"
-            % num_of_size(20),
-            STORY_TEST_OFFLOAD_NUMS_DEC_37_3: "CAST(%s.123 AS NUMBER)"
-            % num_of_size(20),
-            STORY_TEST_OFFLOAD_NUMS_DEC_38_3: "CAST(%s.123 AS NUMBER)"
-            % num_of_size(20),
+            STORY_TEST_OFFLOAD_NUMS_DEC_36_3: "CAST(%s.123 AS NUMBER)" % num_of_size(20),
+            STORY_TEST_OFFLOAD_NUMS_DEC_37_3: "CAST(%s.123 AS NUMBER)" % num_of_size(20),
+            STORY_TEST_OFFLOAD_NUMS_DEC_38_3: "CAST(%s.123 AS NUMBER)" % num_of_size(20),
         }
         select_template = "SELECT {}"
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     subquery = select_template.format(
         "\n,      ".join(
-            "{} AS {}".format(setup_casts[_], _)
+            f"{setup_casts[_]} AS {_}"
             for _ in setup_casts
             if _ in backend_api.story_test_offload_nums_expected_backend_types()
         )
     )
-    return frontend_api.gen_ctas_from_subquery(
-        schema, table_name, subquery, with_stats_collection=True
-    )
+    return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=True)
 
 
 def dates_setup_frontend_ddl(frontend_api, config, schema, table_name) -> list:
@@ -236,16 +224,13 @@ def dates_setup_frontend_ddl(frontend_api, config, schema, table_name) -> list:
         )
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
-    return frontend_api.gen_ctas_from_subquery(
-        schema, table_name, subquery, with_stats_collection=True
-    )
+    return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=True)
 
 
 def samp_dates_setup_frontend_ddl(frontend_api, config, schema, table_name) -> list:
     if config.db_type == offload_constants.DBTYPE_ORACLE:
-        subquery = (
-            dedent(
-                """\
+        subquery = dedent(
+            """\
         SELECT DATE' %(bad_dt)s'                             AS bad_date
         ,      TIMESTAMP'%(bad_dt)s 00:00:00.000000'         AS bad_ts
         --,      TIMESTAMP'1400-01-01 01:00:00 +5:00'          AS bad_tstz
@@ -253,59 +238,40 @@ def samp_dates_setup_frontend_ddl(frontend_api, config, schema, table_name) -> l
         ,      CAST(SYSDATE AS TIMESTAMP(6))                 AS good_ts
         ,      TIMESTAMP'1400-01-01 01:00:00 -5:00'          AS good_tstz
         FROM   dual"""
-            )
-            % {"bad_dt": BAD_DT}
-        )
+        ) % {"bad_dt": BAD_DT}
     elif config.db_type == offload_constants.DBTYPE_TERADATA:
-        subquery = (
-            dedent(
-                """\
+        subquery = dedent(
+            """\
         SELECT DATE '%(bad_dt)s'                             AS bad_date
         ,      TIMESTAMP '%(bad_dt)s 00:00:00.000000'         AS bad_ts
         --,      TIMESTAMP'1400-01-01 01:00:00 +5:00'           AS bad_tstz
         ,      CURRENT_DATE                                  AS good_date
         ,      CAST(CURRENT_DATE AS TIMESTAMP(6))            AS good_ts
         ,      TO_TIMESTAMP_TZ('1400-01-01 01:00:00 -5:00','YYYY-MM-DD HH24:MI:SS TZH:TZM') AS good_tstz"""
-            )
-            % {"bad_dt": BAD_DT}
-        )
+        ) % {"bad_dt": BAD_DT}
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
-    return frontend_api.gen_ctas_from_subquery(
-        schema, table_name, subquery, with_stats_collection=True
-    )
+    return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=True)
 
 
-def num_overflow_setup_frontend_ddl(
-    frontend_api, config, schema, table_name, with_stats=True
-) -> list:
+def num_overflow_setup_frontend_ddl(frontend_api, config, schema, table_name, with_stats=True) -> list:
     if config.db_type in offload_constants.DBTYPE_ORACLE:
-        subquery = "SELECT 1 AS id, CAST(%s AS NUMBER(38)) AS num FROM dual" % (
-            "123".ljust(38, "0")
-        )
+        subquery = "SELECT 1 AS id, CAST(%s AS NUMBER(38)) AS num FROM dual" % ("123".ljust(38, "0"))
     elif config.db_type == offload_constants.DBTYPE_TERADATA:
-        subquery = "SELECT 1 AS id, CAST(%s AS NUMBER(38)) AS num" % (
-            "123".ljust(38, "0"),
-        )
+        subquery = "SELECT 1 AS id, CAST(%s AS NUMBER(38)) AS num" % ("123".ljust(38, "0"),)
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
-    return frontend_api.gen_ctas_from_subquery(
-        schema, table_name, subquery, with_stats_collection=with_stats
-    )
+    return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=with_stats)
 
 
-def num_scale_overflow_setup_frontend_ddl(
-    frontend_api, config, schema, table_name
-) -> list:
+def num_scale_overflow_setup_frontend_ddl(frontend_api, config, schema, table_name) -> list:
     if config.db_type == offload_constants.DBTYPE_ORACLE:
         subquery = "SELECT CAST(1 AS NUMBER(4)) AS id, CAST(12.0123456789 AS NUMBER(20,10)) AS num FROM dual"
     elif config.db_type == offload_constants.DBTYPE_TERADATA:
         subquery = "SELECT CAST(1 AS NUMBER(4)) AS id, CAST(12.0123456789 AS NUMBER(20,10)) AS num"
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
-    return frontend_api.gen_ctas_from_subquery(
-        schema, table_name, subquery, with_stats_collection=True
-    )
+    return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=True)
 
 
 def wildcard_setup_frontend_ddl(frontend_api, config, schema, table_name) -> list:
@@ -332,9 +298,7 @@ def wildcard_setup_frontend_ddl(frontend_api, config, schema, table_name) -> lis
     )
     if config.db_type == offload_constants.DBTYPE_ORACLE:
         subquery += " FROM dual"
-    return frontend_api.gen_ctas_from_subquery(
-        schema, table_name, subquery, with_stats_collection=True
-    )
+    return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=True)
 
 
 def gen_not_null_table_ddl(config, schema, table_name):
@@ -399,15 +363,11 @@ def nums_assertion(
     for (
         col_name,
         expected_type,
-    ) in backend_api.story_test_offload_nums_expected_backend_types(
-        sampling_enabled=detect
-    ).items():
+    ) in backend_api.story_test_offload_nums_expected_backend_types(sampling_enabled=detect).items():
         if col_name == STORY_TEST_OFFLOAD_NUMS_DEC_10_0 and not check_dec_10_0:
             # This test only makes sense when we force it to a decimal via options (nums_on test)
             continue
-        if not frontend_column_exists(
-            frontend_api, messages, data_db, table_name, col_name
-        ):
+        if not frontend_column_exists(frontend_api, messages, data_db, table_name, col_name):
             # Not all test columns are valid in all frontends
             continue
         if not backend_column_exists(
@@ -461,9 +421,7 @@ def date_assertion(
         "dt",
         search_type=expected_dt_data_type,
     ):
-        raise ScenarioRunnerException(
-            "Backend column does not exist: %s (%s)" % ("dt", expected_dt_data_type)
-        )
+        raise ScenarioRunnerException("Backend column does not exist: %s (%s)" % ("dt", expected_dt_data_type))
     if not backend_column_exists(
         config,
         backend_api,
@@ -473,9 +431,7 @@ def date_assertion(
         "ts0",
         search_type=expected_ts_data_type,
     ):
-        raise ScenarioRunnerException(
-            "Backend column does not exist: %s (%s)" % ("ts0", expected_ts_data_type)
-        )
+        raise ScenarioRunnerException("Backend column does not exist: %s (%s)" % ("ts0", expected_ts_data_type))
     if not backend_column_exists(
         config,
         backend_api,
@@ -485,10 +441,7 @@ def date_assertion(
         "ts0tz",
         search_type=expected_tstz_data_type,
     ):
-        raise ScenarioRunnerException(
-            "Backend column does not exist: %s (%s)"
-            % ("ts0tz", expected_tstz_data_type)
-        )
+        raise ScenarioRunnerException("Backend column does not exist: %s (%s)" % ("ts0tz", expected_tstz_data_type))
     return True
 
 
@@ -526,10 +479,7 @@ def samp_date_assertion(
         "bad_date",
         search_type=expected_bad_data_type,
     ):
-        raise ScenarioRunnerException(
-            "Backend column does not exist: %s (%s)"
-            % ("bad_date", expected_bad_data_type)
-        )
+        raise ScenarioRunnerException("Backend column does not exist: %s (%s)" % ("bad_date", expected_bad_data_type))
     if not backend_column_exists(
         config,
         backend_api,
@@ -539,10 +489,7 @@ def samp_date_assertion(
         "bad_ts",
         search_type=expected_bad_data_type,
     ):
-        raise ScenarioRunnerException(
-            "Backend column does not exist: %s (%s)"
-            % ("bad_ts", expected_bad_data_type)
-        )
+        raise ScenarioRunnerException("Backend column does not exist: %s (%s)" % ("bad_ts", expected_bad_data_type))
     if not backend_column_exists(
         config,
         backend_api,
@@ -552,10 +499,7 @@ def samp_date_assertion(
         "good_date",
         search_type=expected_good_data_type,
     ):
-        raise ScenarioRunnerException(
-            "Backend column does not exist: %s (%s)"
-            % ("good_date", expected_good_data_type)
-        )
+        raise ScenarioRunnerException("Backend column does not exist: %s (%s)" % ("good_date", expected_good_data_type))
     if not backend_column_exists(
         config,
         backend_api,
@@ -565,18 +509,11 @@ def samp_date_assertion(
         "good_ts",
         search_type=expected_good_data_type,
     ):
-        raise ScenarioRunnerException(
-            "Backend column does not exist: %s (%s)"
-            % ("good_ts", expected_good_data_type)
-        )
+        raise ScenarioRunnerException("Backend column does not exist: %s (%s)" % ("good_ts", expected_good_data_type))
     if expected_bad_data_type != expected_good_data_type:
-        text_match = text_in_messages(
-            offload_messages, DATETIME_STATS_SAMPLING_OPT_ACTION_TEXT, messages
-        )
+        text_match = text_in_messages(offload_messages, DATETIME_STATS_SAMPLING_OPT_ACTION_TEXT, messages)
         if text_match != from_stats:
-            raise ScenarioRunnerException(
-                "text_match != from_stats: %s != %s" % (text_match, from_stats)
-            )
+            raise ScenarioRunnerException("text_match != from_stats: %s != %s" % (text_match, from_stats))
     return True
 
 
@@ -603,9 +540,7 @@ def wildcard_assertion(backend_api, data_db, backend_name):
             )[GOE_TYPE_INTEGER_1]
             if not check_data_type(backend_column, expected_backend_type):
                 raise ScenarioRunnerException
-        if backend_column.name.lower().endswith(
-            "_year"
-        ) or backend_column.name.lower().endswith("_qtr"):
+        if backend_column.name.lower().endswith("_year") or backend_column.name.lower().endswith("_qtr"):
             expected_backend_type = backend_api.expected_canonical_to_backend_type_map(
                 override_used={"integer_2_columns_csv": backend_column.name}
             )[GOE_TYPE_INTEGER_2]
@@ -643,9 +578,7 @@ def wildcard_assertion(backend_api, data_db, backend_name):
                 raise ScenarioRunnerException
         if backend_column.name.lower().endswith("_desc"):
             input_type = (
-                GOE_TYPE_FIXED_STRING
-                if backend_column.name.lower() == "sale_desc"
-                else GOE_TYPE_VARIABLE_STRING
+                GOE_TYPE_FIXED_STRING if backend_column.name.lower() == "sale_desc" else GOE_TYPE_VARIABLE_STRING
             )
             expected_backend_type = backend_api.expected_canonical_to_backend_type_map(
                 override_used={"unicode_string_columns_csv": backend_column.name}
@@ -659,9 +592,7 @@ def unicode_assertion(backend_api, data_db, backend_name, asserted_unicode_colum
     assert isinstance(asserted_unicode_columns, dict)
     unicode_column_names = [_.upper() for _ in asserted_unicode_columns.keys()]
     backend_columns = [
-        _
-        for _ in backend_api.get_columns(data_db, backend_name)
-        if _.name.upper() in unicode_column_names
+        _ for _ in backend_api.get_columns(data_db, backend_name) if _.name.upper() in unicode_column_names
     ]
     expected_backend_types = backend_api.expected_canonical_to_backend_type_map(
         override_used=["unicode_string_columns_csv"]
@@ -680,9 +611,7 @@ def unicode_assertion(backend_api, data_db, backend_name, asserted_unicode_colum
     return True
 
 
-def offload_not_null_assertion(
-    data_db, table_name, config, backend_api, messages, not_null_col_list=None
-):
+def offload_not_null_assertion(data_db, table_name, config, backend_api, messages, not_null_col_list=None):
     if not_null_col_list is None:
         not_null_col_list = ["DT_NN", "TS_NN", "NUM_NN", "VC_NN"]
     be_table_name = convert_backend_identifier_case(config, table_name)
@@ -690,32 +619,26 @@ def offload_not_null_assertion(
         if backend_column.name.upper() == "ID":
             continue
         expected_nullable = bool(
-            not (
-                backend_api.not_null_column_supported()
-                and backend_column.name.upper() in not_null_col_list
-            )
+            not (backend_api.not_null_column_supported() and backend_column.name.upper() in not_null_col_list)
         )
         column_nullable = backend_column.nullable
         if column_nullable is None:
             column_nullable = True
         if column_nullable != expected_nullable:
-            messages.log(
-                f"{backend_column.name}.nullable: {column_nullable} when should be {expected_nullable}"
-            )
+            messages.log(f"{backend_column.name}.nullable: {column_nullable} when should be {expected_nullable}")
             return False
     return True
 
 
 def test_numeric_controls(config, schema, data_db):
     id = "test_numeric_controls"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
-        max_decimal_precision = (
-            backend_api.max_decimal_precision() if backend_api else None
-        )
+        max_decimal_precision = backend_api.max_decimal_precision() if backend_api else None
         max_decimal_scale = backend_api.max_decimal_scale() if backend_api else None
 
         # Setup
@@ -724,12 +647,8 @@ def test_numeric_controls(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=nums_setup_frontend_ddl(
-                frontend_api, backend_api, config, schema, NUMS_DIM
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, NUMS_DIM
-            ),
+            frontend_sqls=nums_setup_frontend_ddl(frontend_api, backend_api, config, schema, NUMS_DIM),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, NUMS_DIM),
         )
 
         # Offload table with assorted number columns with number detection disabled, offloads to defaults.
@@ -742,9 +661,7 @@ def test_numeric_controls(config, schema, data_db):
             "execute": True,
         }
         run_offload(options, config, messages)
-        nums_assertion(
-            config, frontend_api, backend_api, messages, data_db, NUMS_DIM, detect=False
-        )
+        nums_assertion(config, frontend_api, backend_api, messages, data_db, NUMS_DIM, detect=False)
 
         # Query Import Offload with assorted number columns with number detection enabled and type overrides.
         options = {
@@ -771,18 +688,11 @@ def test_numeric_controls(config, schema, data_db):
             "execute": True,
         }
         run_offload(options, config, messages)
-        nums_assertion(
-            config, frontend_api, backend_api, messages, data_db, NUMS_DIM, detect=True
-        )
+        nums_assertion(config, frontend_api, backend_api, messages, data_db, NUMS_DIM, detect=True)
 
-        if (
-            no_query_import_transport_method(config)
-            != OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
-        ):
+        if no_query_import_transport_method(config) != OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT:
             # Offload table with assorted number columns with number detection enabled and type overrides.
-            options["offload_transport_method"] = no_query_import_transport_method(
-                config
-            )
+            options["offload_transport_method"] = no_query_import_transport_method(config)
             run_offload(options, config, messages)
             nums_assertion(
                 config,
@@ -912,9 +822,10 @@ def test_numeric_controls(config, schema, data_db):
 
 def test_date_controls(config, schema, data_db):
     id = "test_date_controls"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         # Setup
@@ -923,12 +834,8 @@ def test_date_controls(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=dates_setup_frontend_ddl(
-                frontend_api, config, schema, DATE_DIM
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, DATE_DIM
-            ),
+            frontend_sqls=dates_setup_frontend_ddl(frontend_api, config, schema, DATE_DIM),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, DATE_DIM),
         )
 
         # Offload dimension with dates to defaults.
@@ -984,9 +891,10 @@ def test_date_controls(config, schema, data_db):
 
 def test_date_sampling(config, schema, data_db):
     id = "test_date_sampling"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         # Create Dimension containing dates that need sampling.
@@ -996,12 +904,8 @@ def test_date_sampling(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=samp_dates_setup_frontend_ddl(
-                frontend_api, config, schema, DATE_SDIM
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, DATE_SDIM
-            ),
+            frontend_sqls=samp_dates_setup_frontend_ddl(frontend_api, config, schema, DATE_SDIM),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, DATE_SDIM),
         )
 
         # Offload Dimension containing bad dates with stats, detection should be done from stats.
@@ -1030,11 +934,7 @@ def test_date_sampling(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=[
-                frontend_api.remove_table_stats_sql_text(
-                    schema.upper(), DATE_SDIM.upper()
-                )
-            ],
+            frontend_sqls=[frontend_api.remove_table_stats_sql_text(schema.upper(), DATE_SDIM.upper())],
         )
 
         # Offload Dimension containing bad dates without stats, detection should be done using SQL.
@@ -1064,11 +964,7 @@ def test_date_sampling(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=[
-                frontend_api.remove_table_stats_sql_text(
-                    schema.upper(), DATE_SDIM.upper()
-                )
-            ],
+            frontend_sqls=[frontend_api.remove_table_stats_sql_text(schema.upper(), DATE_SDIM.upper())],
         )
 
         # Offload Dimension containing dates and influence canonical type using --date-columns.
@@ -1096,9 +992,10 @@ def test_date_sampling(config, schema, data_db):
 
 def test_precision_scale_overflow(config, schema, data_db):
     id = "test_precision_scale_overflow"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         if backend_api.max_decimal_integral_magnitude() < 38:
@@ -1113,9 +1010,7 @@ def test_precision_scale_overflow(config, schema, data_db):
                 frontend_sqls=num_overflow_setup_frontend_ddl(
                     frontend_api, config, schema, NUM_TOO_BIG_DIM, with_stats=False
                 ),
-                python_fns=lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, NUM_TOO_BIG_DIM
-                ),
+                python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, NUM_TOO_BIG_DIM),
             )
 
             # Offload NUM_TOO_BIG_DIM with number overflow (expect to fail).
@@ -1139,11 +1034,7 @@ def test_precision_scale_overflow(config, schema, data_db):
                 backend_api,
                 config,
                 messages,
-                frontend_sqls=[
-                    frontend_api.collect_table_stats_sql_text(
-                        schema.upper(), NUM_TOO_BIG_DIM.upper()
-                    )
-                ],
+                frontend_sqls=[frontend_api.collect_table_stats_sql_text(schema.upper(), NUM_TOO_BIG_DIM.upper())],
             )
 
             # Offload NUM_TOO_BIG_DIM with number overflow (expect to fail).
@@ -1181,12 +1072,8 @@ def test_precision_scale_overflow(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=num_scale_overflow_setup_frontend_ddl(
-                frontend_api, config, schema, NUM_TOO_BIG_DIM
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, NUM_TOO_BIG_DIM
-            ),
+            frontend_sqls=num_scale_overflow_setup_frontend_ddl(frontend_api, config, schema, NUM_TOO_BIG_DIM),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, NUM_TOO_BIG_DIM),
         )
 
         # Offload NUM_TOO_BIG_DIM with scale overflow based on backend column spec (expect to fail).
@@ -1225,14 +1112,13 @@ def test_precision_scale_overflow(config, schema, data_db):
 
 def test_column_controls_column_name_checks(config, schema, data_db, load_db):
     id = "test_column_controls_column_name_checks"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
-        wildcard_dim_be, offload_dim_be = convert_backend_identifier_case(
-            config, WILDCARD_DIM, OFFLOAD_DIM
-        )
+        wildcard_dim_be, offload_dim_be = convert_backend_identifier_case(config, WILDCARD_DIM, OFFLOAD_DIM)
 
         # Create table with column name patterns as discussed in GOE-1670.
         run_setup(
@@ -1240,12 +1126,8 @@ def test_column_controls_column_name_checks(config, schema, data_db, load_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=wildcard_setup_frontend_ddl(
-                frontend_api, config, schema, WILDCARD_DIM
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, WILDCARD_DIM
-            ),
+            frontend_sqls=wildcard_setup_frontend_ddl(frontend_api, config, schema, WILDCARD_DIM),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, WILDCARD_DIM),
         )
 
         # Offload with wildcards in data type controls.
@@ -1289,16 +1171,10 @@ def test_column_controls_column_name_checks(config, schema, data_db, load_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, OFFLOAD_DIM
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, OFFLOAD_DIM),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, OFFLOAD_DIM
-                ),
-                lambda: drop_backend_test_load_table(
-                    config, backend_api, messages, load_db, OFFLOAD_DIM
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, OFFLOAD_DIM),
+                lambda: drop_backend_test_load_table(config, backend_api, messages, load_db, OFFLOAD_DIM),
             ],
         )
 
@@ -1413,22 +1289,19 @@ def test_column_controls_column_name_checks(config, schema, data_db, load_db):
             config,
             messages,
         )
-        assert unicode_assertion(
-            backend_api, data_db, offload_dim_be, {"TXN_DESC": GOE_TYPE_VARIABLE_STRING}
-        )
+        assert unicode_assertion(backend_api, data_db, offload_dim_be, {"TXN_DESC": GOE_TYPE_VARIABLE_STRING})
 
 
 def test_column_controls_not_null(config, schema, data_db):
     id = "test_column_controls_not_null"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         if not backend_api.not_null_column_supported():
-            messages.log(
-                f"Skipping {id} for backend that does not support NOT NULL columns"
-            )
+            messages.log(f"Skipping {id} for backend that does not support NOT NULL columns")
             return
 
         # Create table with column name patterns as discussed in GOE-1670.
@@ -1438,9 +1311,7 @@ def test_column_controls_not_null(config, schema, data_db):
             config,
             messages,
             frontend_sqls=gen_not_null_table_ddl(config, schema, NOT_NULL_DIM),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, NOT_NULL_DIM
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, NOT_NULL_DIM),
         )
         # Ensure NOT NULL is propagated to backend automatically.
         options = {
@@ -1453,13 +1324,9 @@ def test_column_controls_not_null(config, schema, data_db):
             options,
             config,
             messages,
-            config_overrides={
-                "not_null_propagation": offload_constants.NOT_NULL_PROPAGATION_AUTO
-            },
+            config_overrides={"not_null_propagation": offload_constants.NOT_NULL_PROPAGATION_AUTO},
         )
-        assert offload_not_null_assertion(
-            data_db, NOT_NULL_DIM, config, backend_api, messages
-        )
+        assert offload_not_null_assertion(data_db, NOT_NULL_DIM, config, backend_api, messages)
 
         # Ensure NOT NULL is not propagated to backend if config dictates it should not be.
         options = {
@@ -1471,13 +1338,9 @@ def test_column_controls_not_null(config, schema, data_db):
             options,
             config,
             messages,
-            config_overrides={
-                "not_null_propagation": offload_constants.NOT_NULL_PROPAGATION_NONE
-            },
+            config_overrides={"not_null_propagation": offload_constants.NOT_NULL_PROPAGATION_NONE},
         )
-        assert offload_not_null_assertion(
-            data_db, NOT_NULL_DIM, config, backend_api, messages, not_null_col_list=[]
-        )
+        assert offload_not_null_assertion(data_db, NOT_NULL_DIM, config, backend_api, messages, not_null_col_list=[])
 
         # Ensure NOT NULL is not propagated to backend if --not-null-columns option dictates it should be.
         options = {

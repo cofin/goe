@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Gunicorn configuration file.
+"""Gunicorn configuration file.
 
 List of all available settings:
 https://docs.gunicorn.org/en/latest/settings.html
 
 """
+
 # Standard Library
 import os
 
@@ -40,10 +40,7 @@ logger = Logger.configure_logger()
 #       Must be a positive integer. Generally set in the 64-2048
 #       range.
 
-bind = "{host}:{port}".format(
-    host=settings.host,
-    port=settings.port,
-)
+bind = f"{settings.host}:{settings.port}"
 backlog = 2048
 certfile = settings.certfile
 keyfile = settings.keyfile
@@ -176,7 +173,7 @@ errorlog = "-"
 accesslog = "-"
 access_log_format = os.getenv(
     "OFFLOAD_LISTENER_GUNICORN_LOG_FORMAT",
-    '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"',  # noqa: WPS323
+    '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"',
 )
 logger_class = StubbedGunicornLogger
 
@@ -194,7 +191,7 @@ logger_class = StubbedGunicornLogger
 #         },
 #         "access": {
 #             "()": "uvicorn.logging.AccessFormatter",
-#             "fmt": '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',  # noqa: WPS323 E501
+#             "fmt": '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',
 #         },
 #     },
 #     "handlers": {
@@ -278,7 +275,7 @@ def on_exit(server):
 
 def post_worker_init(worker):
     # Standard Library
-    import atexit  # noqa: WPS433
-    from multiprocessing.util import _exit_function  # noqa: WPS433 WPS450
+    import atexit
+    from multiprocessing.util import _exit_function
 
     atexit.unregister(_exit_function)

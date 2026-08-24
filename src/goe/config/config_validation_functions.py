@@ -19,25 +19,26 @@
 import json
 import random
 import re
+
 import oracledb
 
 from goe.config import orchestration_defaults
 from goe.filesystem.goe_dfs import (
     AZURE_OFFLOAD_FS_SCHEMES,
     OFFLOAD_FS_SCHEME_MAPRFS,
-    VALID_OFFLOAD_FS_SCHEMES,
     OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER,
+    VALID_OFFLOAD_FS_SCHEMES,
 )
 from goe.offload.microsoft.synapse_constants import (
     SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL,
-    SYNAPSE_VALID_AUTH_MECHANISMS,
     SYNAPSE_USER_PASS_AUTH_MECHANISMS,
+    SYNAPSE_VALID_AUTH_MECHANISMS,
 )
 from goe.offload.offload_constants import (
     BACKEND_DISTRO_GCP,
     BACKEND_DISTRO_MAPR,
-    BACKEND_DISTRO_SNOWFLAKE,
     BACKEND_DISTRO_MSAZURE,
+    BACKEND_DISTRO_SNOWFLAKE,
     DBTYPE_HIVE,
     DBTYPE_IMPALA,
     DBTYPE_MSSQL,
@@ -46,10 +47,10 @@ from goe.offload.offload_constants import (
     HADOOP_BASED_BACKEND_DISTRIBUTIONS,
 )
 from goe.offload.offload_transport import (
-    derive_rest_api_verify_value_from_url,
     SPARK_SUBMIT_SPARK_YARN_MASTER,
     VALID_OFFLOAD_TRANSPORTS,
     VALID_SPARK_SUBMIT_EXECUTABLES,
+    derive_rest_api_verify_value_from_url,
 )
 from goe.util.goe_log_fh import is_valid_path_for_logs
 from goe.util.misc_functions import human_size_to_bytes
@@ -70,23 +71,16 @@ def verify_json_option(option_name, option_value):
         try:
             properties = json.loads(option_value)
 
-            invalid_props = [
-                k for k, v in properties.items() if type(v) not in (str, int, float)
-            ]
+            invalid_props = [k for k, v in properties.items() if type(v) not in (str, int, float)]
             if invalid_props:
                 prop_details = "\n".join(
-                    f"Invalid property value for key/value pair: {k}: {properties[k]}"
-                    for k in invalid_props
+                    f"Invalid property value for key/value pair: {k}: {properties[k]}" for k in invalid_props
                 )
                 raise OrchestrationConfigException(
-                    "Invalid property value in {} for keys: {}\n{}".format(
-                        option_name, str(invalid_props), prop_details
-                    )
+                    f"Invalid property value in {option_name} for keys: {invalid_props!s}\n{prop_details}"
                 )
         except ValueError as ve:
-            raise OrchestrationConfigException(
-                "Invalid JSON value for %s: %s" % (option_name, str(ve))
-            ) from ve
+            raise OrchestrationConfigException("Invalid JSON value for %s: %s" % (option_name, str(ve))) from ve
 
 
 ###########################################################################
@@ -105,9 +99,7 @@ def normalise_backend_options(options):
     if options.backend_identifier_case:
         options.backend_identifier_case = options.backend_identifier_case.upper()
     else:
-        options.backend_identifier_case = (
-            orchestration_defaults.backend_identifier_case_default()
-        )
+        options.backend_identifier_case = orchestration_defaults.backend_identifier_case_default()
     if options.backend_identifier_case not in ["UPPER", "LOWER", "NO_MODIFY"]:
         raise OrchestrationConfigException(
             "Invalid value for BACKEND_IDENTIFIER_CASE, valid values: UPPER|LOWER|NO_MODIFY"
@@ -120,34 +112,24 @@ def normalise_db_prefix_and_paths(options, frontend_api=None):
         options.db_name_prefix = frontend_api.get_db_unique_name()
 
     if options.db_name_prefix and options.db_name_prefix != "":
-        options.db_name_pattern = (
-            options.db_name_prefix.lower() + "_" + options.db_name_pattern
-        )
-        options.load_db_name_pattern = (
-            options.db_name_prefix.lower() + "_" + options.load_db_name_pattern
-        )
+        options.db_name_pattern = options.db_name_prefix.lower() + "_" + options.db_name_pattern
+        options.load_db_name_pattern = options.db_name_prefix.lower() + "_" + options.load_db_name_pattern
 
     if not is_valid_path_for_logs(options.log_path):
-        raise OrchestrationConfigException(
-            f"Invalid value for OFFLOAD_LOGDIR: {options.log_path}"
-        )
+        raise OrchestrationConfigException(f"Invalid value for OFFLOAD_LOGDIR: {options.log_path}")
 
 
 def normalise_bigquery_options(options, exc_cls=OrchestrationConfigException):
     if options.backend_distribution != BACKEND_DISTRO_GCP:
         return
     if options.google_dataproc_batches_version:
-        if not re.match(
-            r"^[1-9]\.[0-9](\.[0-9])?$", options.google_dataproc_batches_version
-        ):
+        if not re.match(r"^[1-9]\.[0-9](\.[0-9])?$", options.google_dataproc_batches_version):
             raise exc_cls(
                 f"Invalid value for GOOGLE_DATAPROC_BATCHES_VERSION: {options.google_dataproc_batches_version}"
             )
     if options.google_dataproc_batches_ttl:
         if not re.match(r"^[1-9][0-9]*[mhd]$", options.google_dataproc_batches_ttl):
-            raise exc_cls(
-                f"Invalid value for GOOGLE_DATAPROC_BATCHES_TTL: {options.google_dataproc_batches_ttl}"
-            )
+            raise exc_cls(f"Invalid value for GOOGLE_DATAPROC_BATCHES_TTL: {options.google_dataproc_batches_ttl}")
 
 
 def normalise_hadoop_options(options, exc_cls=OrchestrationConfigException):
@@ -175,41 +157,21 @@ def normalise_backend_session_parameters(opts):
     if not opts.backend_session_parameters:
         opts.backend_session_parameters = {}
     elif isinstance(opts.backend_session_parameters, str):
-        verify_json_option(
-            "OFFLOAD_BACKEND_SESSION_PARAMETERS", opts.backend_session_parameters
-        )
+        verify_json_option("OFFLOAD_BACKEND_SESSION_PARAMETERS", opts.backend_session_parameters)
         opts.backend_session_parameters = json.loads(opts.backend_session_parameters)
 
 
 def normalise_filesystem_options(options, exc_cls=OrchestrationConfigException):
     options.offload_fs_scheme = (
-        options.offload_fs_scheme.lower()
-        if options.offload_fs_scheme
-        else options.offload_fs_scheme
+        options.offload_fs_scheme.lower() if options.offload_fs_scheme else options.offload_fs_scheme
     )
-    if (
-        options.offload_fs_scheme
-        and options.offload_fs_scheme not in VALID_OFFLOAD_FS_SCHEMES
-    ):
+    if options.offload_fs_scheme and options.offload_fs_scheme not in VALID_OFFLOAD_FS_SCHEMES:
+        raise exc_cls("OFFLOAD_FS_SCHEME/--offload-fs-scheme must be one of: %s" % VALID_OFFLOAD_FS_SCHEMES)
+    if options.offload_fs_scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER and not options.offload_fs_container:
+        raise exc_cls("OFFLOAD_FS_CONTAINER/--offload-fs-container required for scheme: %s" % options.offload_fs_scheme)
+    if options.offload_fs_scheme == OFFLOAD_FS_SCHEME_MAPRFS and options.backend_distribution != BACKEND_DISTRO_MAPR:
         raise exc_cls(
-            "OFFLOAD_FS_SCHEME/--offload-fs-scheme must be one of: %s"
-            % VALID_OFFLOAD_FS_SCHEMES
-        )
-    if (
-        options.offload_fs_scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER
-        and not options.offload_fs_container
-    ):
-        raise exc_cls(
-            "OFFLOAD_FS_CONTAINER/--offload-fs-container required for scheme: %s"
-            % options.offload_fs_scheme
-        )
-    if (
-        options.offload_fs_scheme == OFFLOAD_FS_SCHEME_MAPRFS
-        and options.backend_distribution != BACKEND_DISTRO_MAPR
-    ):
-        raise exc_cls(
-            "OFFLOAD_FS_SCHEME/--offload-fs-scheme %s not valid for this backend system"
-            % options.offload_fs_scheme
+            "OFFLOAD_FS_SCHEME/--offload-fs-scheme %s not valid for this backend system" % options.offload_fs_scheme
         )
 
     if options.backend_distribution in HADOOP_BASED_BACKEND_DISTRIBUTIONS:
@@ -220,29 +182,14 @@ def normalise_filesystem_options(options, exc_cls=OrchestrationConfigException):
 
     # Not ideal to hardcode SNOWFLAKE here but we don't have a backend_api in normalise* to get the supported schemes
     if options.backend_distribution == BACKEND_DISTRO_SNOWFLAKE:
-        if (
-            options.offload_fs_scheme in AZURE_OFFLOAD_FS_SCHEMES
-            and not options.offload_fs_azure_account_name
-        ):
+        if options.offload_fs_scheme in AZURE_OFFLOAD_FS_SCHEMES and not options.offload_fs_azure_account_name:
             raise exc_cls(
-                "OFFLOAD_FS_AZURE_ACCOUNT_NAME required for scheme: %s"
-                % options.offload_fs_azure_account_name
+                "OFFLOAD_FS_AZURE_ACCOUNT_NAME required for scheme: %s" % options.offload_fs_azure_account_name
             )
-        if (
-            options.offload_fs_scheme in AZURE_OFFLOAD_FS_SCHEMES
-            and not options.offload_fs_azure_account_key
-        ):
-            raise exc_cls(
-                "OFFLOAD_FS_AZURE_ACCOUNT_KEY required for scheme: %s"
-                % options.offload_fs_azure_account_key
-            )
-        if (
-            options.offload_fs_azure_account_domain
-            and not options.offload_fs_azure_account_domain.startswith(".")
-        ):
-            options.offload_fs_azure_account_domain = (
-                "." + options.offload_fs_azure_account_domain
-            )
+        if options.offload_fs_scheme in AZURE_OFFLOAD_FS_SCHEMES and not options.offload_fs_azure_account_key:
+            raise exc_cls("OFFLOAD_FS_AZURE_ACCOUNT_KEY required for scheme: %s" % options.offload_fs_azure_account_key)
+        if options.offload_fs_azure_account_domain and not options.offload_fs_azure_account_domain.startswith("."):
+            options.offload_fs_azure_account_domain = "." + options.offload_fs_azure_account_domain
 
 
 def normalise_listener_options(options):
@@ -252,23 +199,17 @@ def normalise_listener_options(options):
             "OFFLOAD_LISTENER_PORT", options.listener_port
         )
     if options.listener_heartbeat_interval:
-        options.listener_heartbeat_interval = (
-            orchestration_defaults.posint_option_from_string(
-                "OFFLOAD_LISTENER_HEARTBEAT_INTERVAL",
-                options.listener_heartbeat_interval,
-            )
+        options.listener_heartbeat_interval = orchestration_defaults.posint_option_from_string(
+            "OFFLOAD_LISTENER_HEARTBEAT_INTERVAL",
+            options.listener_heartbeat_interval,
         )
     if options.password_key_file:
         pass_tool = PasswordTools()
         goe_key = pass_tool.get_password_key_from_key_file(options.password_key_file)
         if options.listener_shared_token:
-            options.listener_shared_token = pass_tool.b64decrypt(
-                options.listener_shared_token, goe_key
-            )
+            options.listener_shared_token = pass_tool.b64decrypt(options.listener_shared_token, goe_key)
         if options.listener_redis_password:
-            options.listener_redis_password = pass_tool.b64decrypt(
-                options.listener_redis_password, goe_key
-            )
+            options.listener_redis_password = pass_tool.b64decrypt(options.listener_redis_password, goe_key)
 
 
 def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigException):
@@ -285,19 +226,15 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
 
     if (
         options.offload_transport_spark_submit_executable
-        and options.offload_transport_spark_submit_executable
-        not in VALID_SPARK_SUBMIT_EXECUTABLES
+        and options.offload_transport_spark_submit_executable not in VALID_SPARK_SUBMIT_EXECUTABLES
     ):
         raise exc_cls(
             "Invalid value for OFFLOAD_TRANSPORT_SPARK_SUBMIT_EXECUTABLE: %s"
             % options.offload_transport_spark_submit_executable
         )
     if options.offload_transport_spark_submit_master_url and not (
-        options.offload_transport_spark_submit_master_url
-        == SPARK_SUBMIT_SPARK_YARN_MASTER
-        or re.match(
-            r"^local(\[[0-9]\])?$", options.offload_transport_spark_submit_master_url
-        )
+        options.offload_transport_spark_submit_master_url == SPARK_SUBMIT_SPARK_YARN_MASTER
+        or re.match(r"^local(\[[0-9]\])?$", options.offload_transport_spark_submit_master_url)
         or re.match(
             r"^(spark|mesos|k8s)://.+$",
             options.offload_transport_spark_submit_master_url,
@@ -309,14 +246,10 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
         )
 
     if options.offload_transport_spark_files:
-        simple_file_csv(
-            options.offload_transport_spark_files, "OFFLOAD_TRANSPORT_SPARK_FILES"
-        )
+        simple_file_csv(options.offload_transport_spark_files, "OFFLOAD_TRANSPORT_SPARK_FILES")
 
     if options.offload_transport_spark_jars:
-        simple_file_csv(
-            options.offload_transport_spark_jars, "OFFLOAD_TRANSPORT_SPARK_JARS"
-        )
+        simple_file_csv(options.offload_transport_spark_jars, "OFFLOAD_TRANSPORT_SPARK_JARS")
 
     # Spark thriftserver config
     if options.offload_transport_spark_thrift_host:
@@ -324,11 +257,9 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
             options.offload_transport_spark_thrift_host.split(",")
         )
     if options.offload_transport_spark_thrift_port:
-        options.offload_transport_spark_thrift_port = (
-            orchestration_defaults.posint_option_from_string(
-                "OFFLOAD_TRANSPORT_SPARK_THRIFT_PORT",
-                options.offload_transport_spark_thrift_port,
-            )
+        options.offload_transport_spark_thrift_port = orchestration_defaults.posint_option_from_string(
+            "OFFLOAD_TRANSPORT_SPARK_THRIFT_PORT",
+            options.offload_transport_spark_thrift_port,
         )
 
     # Livy config
@@ -336,9 +267,7 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
         type(options.offload_transport_livy_api_verify_ssl) is not bool
         and options.offload_transport_livy_api_verify_ssl is not None
     ):
-        options.offload_transport_livy_api_verify_ssl = str(
-            options.offload_transport_livy_api_verify_ssl
-        ).strip()
+        options.offload_transport_livy_api_verify_ssl = str(options.offload_transport_livy_api_verify_ssl).strip()
         if options.offload_transport_livy_api_verify_ssl == "":
             options.offload_transport_livy_api_verify_ssl = None
         elif options.offload_transport_livy_api_verify_ssl.lower() in ["true", "false"]:
@@ -346,38 +275,24 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
                 options.offload_transport_livy_api_verify_ssl.lower() == "true"
             )
     if options.offload_transport_livy_api_verify_ssl is None:
-        options.offload_transport_livy_api_verify_ssl = (
-            derive_rest_api_verify_value_from_url(
-                options.offload_transport_livy_api_url
-            )
+        options.offload_transport_livy_api_verify_ssl = derive_rest_api_verify_value_from_url(
+            options.offload_transport_livy_api_url
         )
-    options.offload_transport_livy_max_sessions = (
-        orchestration_defaults.posint_option_from_string(
-            "OFFLOAD_TRANSPORT_LIVY_MAX_SESSIONS",
-            options.offload_transport_livy_max_sessions,
-        )
+    options.offload_transport_livy_max_sessions = orchestration_defaults.posint_option_from_string(
+        "OFFLOAD_TRANSPORT_LIVY_MAX_SESSIONS",
+        options.offload_transport_livy_max_sessions,
     )
-    options.offload_transport_livy_idle_session_timeout = (
-        orchestration_defaults.posint_option_from_string(
-            "OFFLOAD_TRANSPORT_LIVY_IDLE_SESSION_TIMEOUT",
-            options.offload_transport_livy_idle_session_timeout,
-        )
+    options.offload_transport_livy_idle_session_timeout = orchestration_defaults.posint_option_from_string(
+        "OFFLOAD_TRANSPORT_LIVY_IDLE_SESSION_TIMEOUT",
+        options.offload_transport_livy_idle_session_timeout,
     )
 
     # Generic transport config
     if options.offload_transport:
         options.offload_transport = options.offload_transport.upper()
-    if (
-        not options.offload_transport
-        or options.offload_transport not in VALID_OFFLOAD_TRANSPORTS
-    ):
-        raise exc_cls(
-            "Invalid value for OFFLOAD_TRANSPORT/--offload-transport: %s"
-            % options.offload_transport
-        )
-    options.offload_transport_cmd_host = (
-        options.offload_transport_cmd_host or options.hdfs_host
-    )
+    if not options.offload_transport or options.offload_transport not in VALID_OFFLOAD_TRANSPORTS:
+        raise exc_cls("Invalid value for OFFLOAD_TRANSPORT/--offload-transport: %s" % options.offload_transport)
+    options.offload_transport_cmd_host = options.offload_transport_cmd_host or options.hdfs_host
 
     if not options.offload_transport_dsn:
         if options.db_type == DBTYPE_MSSQL:
@@ -391,9 +306,7 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
         options.offload_staging_format = options.offload_staging_format.upper()
 
     # For backward compatibility
-    options.offload_transport_user = (
-        options.offload_transport_user or options.hadoop_ssh_user
-    )
+    options.offload_transport_user = options.offload_transport_user or options.hadoop_ssh_user
     if not options.offload_transport_user:
         raise exc_cls("OFFLOAD_TRANSPORT_USER is mandatory")
 
@@ -422,22 +335,17 @@ def normalise_rdbms_oracle_options(options, exc_cls=OrchestrationConfigException
             try:
                 oracledb.init_oracle_client()
             except Exception as exc:
-                raise exc_cls(
-                    f"Failed to initialize oracledb thick mode: {exc}"
-                ) from exc
+                raise exc_cls(f"Failed to initialize oracledb thick mode: {exc}") from exc
 
     if not options.oracle_dsn:
         raise exc_cls("Oracle connection options required")
-    elif not options.use_oracle_wallet and (
-        not options.ora_adm_user
-        or not options.ora_adm_pass
-        or not options.ora_app_user
-        or not options.ora_app_pass
+    if not options.use_oracle_wallet and (
+        not options.ora_adm_user or not options.ora_adm_pass or not options.ora_app_user or not options.ora_app_pass
     ):
         raise exc_cls(
             "Oracle username and password must be supplied for app and admin users unless Oracle Wallet is used"
         )
-    elif not options.ora_repo_user:
+    if not options.ora_repo_user:
         raise exc_cls("Oracle repository username required")
 
     options.rdbms_app_user = options.ora_app_user
@@ -451,9 +359,7 @@ def normalise_rdbms_oracle_options(options, exc_cls=OrchestrationConfigException
         return
     pass_tool = PasswordTools()
     goe_key = pass_tool.get_password_key_from_key_file(options.password_key_file)
-    options.rdbms_app_pass = options.ora_app_pass = pass_tool.b64decrypt(
-        options.rdbms_app_pass, goe_key
-    )
+    options.rdbms_app_pass = options.ora_app_pass = pass_tool.b64decrypt(options.rdbms_app_pass, goe_key)
     options.ora_adm_pass = pass_tool.b64decrypt(options.ora_adm_pass, goe_key)
 
 
@@ -466,11 +372,7 @@ def normalise_rdbms_wallet_options(options, frontend_api=None):
 
 
 def normalise_mssql_options(options, exc_cls=OrchestrationConfigException):
-    if (
-        not options.mssql_app_user
-        or not options.mssql_app_pass
-        or not options.mssql_dsn
-    ):
+    if not options.mssql_app_user or not options.mssql_app_pass or not options.mssql_dsn:
         raise exc_cls("Microsoft SQL Server connection options required")
 
     options.rdbms_app_user = options.mssql_app_user
@@ -483,11 +385,7 @@ def normalise_mssql_options(options, exc_cls=OrchestrationConfigException):
 
 
 def normalise_teradata_options(options, exc_cls=OrchestrationConfigException):
-    if (
-        not options.teradata_adm_user
-        or not options.teradata_adm_pass
-        or not options.teradata_server
-    ):
+    if not options.teradata_adm_user or not options.teradata_adm_pass or not options.teradata_server:
         raise exc_cls("Teradata connection options required")
     if not options.teradata_app_user or not options.teradata_app_pass:
         raise exc_cls("Teradata connection options required")
@@ -505,15 +403,11 @@ def normalise_teradata_options(options, exc_cls=OrchestrationConfigException):
         return
     pass_tool = PasswordTools()
     goe_key = pass_tool.get_password_key_from_key_file(options.password_key_file)
-    options.rdbms_app_pass = options.teradata_app_pass = pass_tool.b64decrypt(
-        options.teradata_app_pass, goe_key
-    )
+    options.rdbms_app_pass = options.teradata_app_pass = pass_tool.b64decrypt(options.teradata_app_pass, goe_key)
     options.teradata_adm_pass = pass_tool.b64decrypt(options.teradata_adm_pass, goe_key)
 
 
-def normalise_size_option(
-    opt_val, binary_sizes=False, strict_name=None, exc_cls=OrchestrationConfigException
-):
+def normalise_size_option(opt_val, binary_sizes=False, strict_name=None, exc_cls=OrchestrationConfigException):
     """strict_name can be used to raise an exception if incorrectly formatted inputs are
     passed in. Otherwise we just return 0.
     strict_name is the name of the option to include in the exception
@@ -597,9 +491,7 @@ def normalise_webhdfs(options):
         return
     if options.webhdfs_verify_ssl is not None:
         if options.webhdfs_verify_ssl.lower() in ["true", "false"]:
-            options.webhdfs_verify_ssl = (
-                True if options.webhdfs_verify_ssl.lower() == "true" else False
-            )
+            options.webhdfs_verify_ssl = True if options.webhdfs_verify_ssl.lower() == "true" else False
         elif not str(options.webhdfs_verify_ssl).strip():
             options.webhdfs_verify_ssl = None
 
@@ -613,7 +505,7 @@ def normalise_webhdfs(options):
 def check_offload_fs_scheme_supported_in_backend(offload_fs_scheme, backend_api):
     if offload_fs_scheme not in backend_api.valid_offload_fs_schemes():
         display_version = backend_api.target_version()
-        display_version = " ({})".format(display_version) if display_version else ""
+        display_version = f" ({display_version})" if display_version else ""
         raise OrchestrationConfigException(
             "Offload to %s%s does not support filesystem scheme: %s"
             % (backend_api.backend_db_name(), display_version, offload_fs_scheme)

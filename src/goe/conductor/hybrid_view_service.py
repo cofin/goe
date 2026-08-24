@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" HybridViewService: API over orchestration code that fetches information based on a hybrid view
-"""
+"""HybridViewService: API over orchestration code that fetches information based on a hybrid view"""
 
 import json
 import logging
@@ -25,19 +24,18 @@ from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_constants import LOG_LEVEL_DEBUG
-from goe.offload.offload_messages import OffloadMessages, VVERBOSE
+from goe.offload.offload_messages import VVERBOSE, OffloadMessages
 from goe.offload.offload_validation import (
     CrossDbValidator,
     build_verification_clauses,
 )
 from goe.persistence.orchestration_metadata import (
-    OrchestrationMetadata,
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
+    OrchestrationMetadata,
 )
 from goe.util.simple_timer import SimpleTimer
-
 
 ###############################################################################
 # EXCEPTIONS
@@ -81,7 +79,7 @@ logger.addHandler(logging.NullHandler())
 ###############################################################################
 
 
-class HybridViewService(object):
+class HybridViewService:
     """API over orchestration code that fetches information based on a hybrid view"""
 
     def __init__(self, hybrid_schema, hybrid_view, dry_run=False, existing_log_fh=None):
@@ -92,16 +90,9 @@ class HybridViewService(object):
         self._dry_run = dry_run
         self._connection_options = self._build_connection_options()
         self._messages = OffloadMessages(log_fh=existing_log_fh)
-        if (
-            self._connection_options.log_level == LOG_LEVEL_DEBUG
-            and not existing_log_fh
-        ):
-            self._messages.init_log(
-                self._connection_options.log_path, "hybrid_view_service"
-            )
-        self._debug(
-            "Initializing HybridViewService(%s.%s)" % (hybrid_schema, hybrid_view)
-        )
+        if self._connection_options.log_level == LOG_LEVEL_DEBUG and not existing_log_fh:
+            self._messages.init_log(self._connection_options.log_path, "hybrid_view_service")
+        self._debug("Initializing HybridViewService(%s.%s)" % (hybrid_schema, hybrid_view))
         self._offload_metadata = OrchestrationMetadata.from_name(
             hybrid_schema,
             hybrid_view,
@@ -110,9 +101,7 @@ class HybridViewService(object):
         )
         if not self._offload_metadata:
             self._debug("Hybrid view has no metadata")
-            raise HybridViewServiceException(
-                "Hybrid view has no metadata: %s.%s" % (hybrid_schema, hybrid_view)
-            )
+            raise HybridViewServiceException("Hybrid view has no metadata: %s.%s" % (hybrid_schema, hybrid_view))
         self._debug("Hybrid View metadata:\n%r" % self._offload_metadata)
         self.hybrid_schema = self._offload_metadata.hybrid_owner
         self.hybrid_view = self._offload_metadata.hybrid_view
@@ -133,8 +122,7 @@ class HybridViewService(object):
 
     def _backend_table_does_not_exist_exception(self):
         raise HybridViewServiceException(
-            "Backend table does not exist: %s.%s"
-            % (self._backend_table_owner, self._backend_table_name)
+            "Backend table does not exist: %s.%s" % (self._backend_table_owner, self._backend_table_name)
         )
 
     def _bind_in_predicates(self):
@@ -172,8 +160,7 @@ class HybridViewService(object):
         if as_json:
             json_payload = json.dumps(payload)
             return json_payload
-        else:
-            return payload
+        return payload
 
     def _get_backend_api(self):
         logger.debug("_get_backend_api(%s)" % self._connection_options.target)
@@ -214,14 +201,10 @@ class HybridViewService(object):
             }
         if attribute_name:
             return self._backend_info[attribute_name]
-        else:
-            return self._backend_info
+        return self._backend_info
 
     def _get_frontend_table(self):
-        logger.debug(
-            "_get_frontend_table(%s.%s)"
-            % (self._frontend_table_owner, self._frontend_table_name)
-        )
+        logger.debug("_get_frontend_table(%s.%s)" % (self._frontend_table_owner, self._frontend_table_name))
         return OffloadSourceTable.create(
             self._frontend_table_owner,
             self._frontend_table_name,
@@ -259,9 +242,7 @@ class HybridViewService(object):
         partition_key_values results in a backend query which can take some time so is excluded by default.
         """
         payload = self._get_backend_detail()
-        filtered_payload = {
-            k: v for k, v in payload.items() if k in JSON_ALL_BACKEND_KEYS
-        }
+        filtered_payload = {k: v for k, v in payload.items() if k in JSON_ALL_BACKEND_KEYS}
         return self._format_payload(filtered_payload, as_json)
 
     def validate_by_aggregation(self, lower_hv=None, upper_hv=None, as_json=True):
@@ -275,8 +256,7 @@ class HybridViewService(object):
         logger.debug("validate_by_aggregation(%r, %r)" % (upper_hv, lower_hv))
         if not self._frontend_table_owner or not self._frontend_table_name:
             raise HybridViewServiceException(
-                "Hybrid view is not for an offloaded table: %s.%s"
-                % (self.hybrid_schema, self.hybrid_view)
+                "Hybrid view is not for an offloaded table: %s.%s" % (self.hybrid_schema, self.hybrid_view)
             )
         self._debug("Running Hybrid View validation by aggregation")
         t = SimpleTimer("validate_by_aggregation")
@@ -284,9 +264,7 @@ class HybridViewService(object):
         if not backend_table.exists():
             self._backend_table_does_not_exist_exception()
         frontend_table = self._get_frontend_table()
-        upper_hvs, prior_hvs = self._decode_high_values(
-            frontend_table, lower_hv_str=lower_hv, upper_hv_str=upper_hv
-        )
+        upper_hvs, prior_hvs = self._decode_high_values(frontend_table, lower_hv_str=lower_hv, upper_hv_str=upper_hv)
         if self._ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST and upper_hvs:
             # HVs for LIST are lists of tuples, not just a tuple as per RANGE
             upper_hvs = [upper_hvs]

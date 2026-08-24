@@ -12,16 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-OrchestrationRunner: Library providing simple entry point for orchestration commands.
-                     Utilized by both CLI and Orchestration Listener.
+"""OrchestrationRunner: Library providing simple entry point for orchestration commands.
+Utilized by both CLI and Orchestration Listener.
 """
 
 # Standard Library
 import logging
 import sys
 import traceback
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
+
+from goe.config import orchestration_defaults
+from goe.config.orchestration_config import OrchestrationConfig
 
 # GOE
 from goe.goe import (
@@ -29,18 +31,16 @@ from goe.goe import (
     get_log_fh,
     get_offload_target_table,
     init,
-    init_redis_execution_id,
     init_log,
+    init_redis_execution_id,
     offload_table,
 )
-from goe.config import orchestration_defaults
-from goe.config.orchestration_config import OrchestrationConfig
 from goe.offload.factory.frontend_api_factory import frontend_api_factory
 from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_messages import (
-    OffloadMessages,
     NORMAL,
     VVERBOSE,
+    OffloadMessages,
 )
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
@@ -92,13 +92,11 @@ class OrchestrationRunner:
     """OrchestrationRunner: Library providing simple entry point for orchestration commands."""
 
     def __init__(self, config_overrides=None, suppress_stdout=False):
-        self._config = self._gen_config(
-            config_overrides, suppress_stdout=suppress_stdout
-        )
+        self._config = self._gen_config(config_overrides, suppress_stdout=suppress_stdout)
         # State refreshed by each command, not necessarily static.
-        self._execution_id: Optional[ExecutionId] = None
-        self._messages: Optional[OffloadMessages] = None
-        self._max_hybrid_name_length: Optional[int] = None
+        self._execution_id: ExecutionId | None = None
+        self._messages: OffloadMessages | None = None
+        self._max_hybrid_name_length: int | None = None
 
     ###########################################################################
     # PRIVATE METHODS
@@ -113,9 +111,7 @@ class OrchestrationRunner:
             dry_run=(not operation.execute),
         )
 
-    def _build_repo_client(
-        self, messages, dry_run=False
-    ) -> "OrchestrationRepoClientInterface":
+    def _build_repo_client(self, messages, dry_run=False) -> "OrchestrationRepoClientInterface":
         return orchestration_repo_client_factory(
             self._config,
             messages,
@@ -132,7 +128,7 @@ class OrchestrationRunner:
             repo_client.close()
         except Exception as exc:
             self._log_error(
-                "Exception cleaning up connections: {}".format(str(exc)),
+                f"Exception cleaning up connections: {exc!s}",
                 detail=VVERBOSE,
             )
 
@@ -154,11 +150,7 @@ class OrchestrationRunner:
             else:
                 command_input = " ".join(sys.argv)
 
-            operation_dict = (
-                operation
-                if isinstance(operation, (dict, type(None)))
-                else operation.vars()
-            )
+            operation_dict = operation if isinstance(operation, (dict, type(None))) else operation.vars()
 
             command_id = repo_client.start_command(
                 self._execution_id,
@@ -172,28 +164,20 @@ class OrchestrationRunner:
             )
         except Exception as exc:
             self._log_error(
-                f"Exception starting command {self._execution_id}: {str(exc)}",
+                f"Exception starting command {self._execution_id}: {exc!s}",
                 detail=VVERBOSE,
             )
-            self._log(
-                "Exception stack: {}".format(traceback.format_exc()), detail=VVERBOSE
-            )
+            self._log(f"Exception stack: {traceback.format_exc()}", detail=VVERBOSE)
             raise
         return command_id
 
-    def _command_end(
-        self, command_id: int, repo_client: "OrchestrationRepoClientInterface"
-    ):
+    def _command_end(self, command_id: int, repo_client: "OrchestrationRepoClientInterface"):
         assert repo_client
         try:
             repo_client.end_command(command_id, orchestration_constants.COMMAND_SUCCESS)
         except Exception as exc:
-            self._log_error(
-                f"Exception closing command {command_id}: {str(exc)}", detail=VVERBOSE
-            )
-            self._log(
-                "Exception stack: {}".format(traceback.format_exc()), detail=VVERBOSE
-            )
+            self._log_error(f"Exception closing command {command_id}: {exc!s}", detail=VVERBOSE)
+            self._log(f"Exception stack: {traceback.format_exc()}", detail=VVERBOSE)
             raise
 
     def _command_fail(
@@ -203,36 +187,27 @@ class OrchestrationRunner:
         repo_client: "OrchestrationRepoClientInterface",
     ):
         assert repo_client
-        self._log_error(
-            f"Failing command due to exception: {str(external_exc)}", detail=VVERBOSE
-        )
+        self._log_error(f"Failing command due to exception: {external_exc!s}", detail=VVERBOSE)
         self._log(
-            "External exception stack: {}".format(
-                traceback.format_tb(external_exc.__traceback__)
-            ),
+            f"External exception stack: {traceback.format_tb(external_exc.__traceback__)}",
             detail=VVERBOSE,
         )
         try:
             repo_client.end_command(command_id, orchestration_constants.COMMAND_ERROR)
         except Exception as local_exc:
             self._log_error(
-                f"Exception failing command {command_id}: {str(local_exc)}",
+                f"Exception failing command {command_id}: {local_exc!s}",
                 detail=VVERBOSE,
             )
-            self._log(
-                "Exception stack: {}".format(traceback.format_exc()), detail=VVERBOSE
-            )
+            self._log(f"Exception stack: {traceback.format_exc()}", detail=VVERBOSE)
             raise
 
     def _execute_from_params(self, params) -> bool:
         if isinstance(params, dict):
             return params["execute"]
-        else:
-            return params.execute
+        return params.execute
 
-    def _gen_config(
-        self, config_overrides, suppress_stdout=False
-    ) -> OrchestrationConfig:
+    def _gen_config(self, config_overrides, suppress_stdout=False) -> OrchestrationConfig:
         overrides = config_overrides or {}
         if suppress_stdout:
             overrides["suppress_stdout"] = suppress_stdout
@@ -282,17 +257,13 @@ class OrchestrationRunner:
             return op
         except Exception as exc:
             self._log_error(
-                f"Exception generating offload operation {self._execution_id}: {str(exc)}",
+                f"Exception generating offload operation {self._execution_id}: {exc!s}",
                 detail=VVERBOSE,
             )
-            self._log(
-                "Exception stack: {}".format(traceback.format_exc()), detail=VVERBOSE
-            )
+            self._log(f"Exception stack: {traceback.format_exc()}", detail=VVERBOSE)
             raise
 
-    def _get_execution_id(
-        self, execution_id: Optional[ExecutionId] = None
-    ) -> ExecutionId:
+    def _get_execution_id(self, execution_id: ExecutionId | None = None) -> ExecutionId:
         """Return an ID to uniquely identify an orchestration command."""
         if execution_id is None:
             execution_id = ExecutionId()
@@ -320,20 +291,17 @@ class OrchestrationRunner:
         self,
         command: str,
         params,
-        execution_id: Optional[ExecutionId] = None,
+        execution_id: ExecutionId | None = None,
         reuse_log: bool = False,
-        messages_override: Optional[OffloadMessages] = None,
+        messages_override: OffloadMessages | None = None,
     ) -> "OrchestrationRepoClientInterface":
-        """
-        Initialize an orchestration command.
+        """Initialize an orchestration command.
         Sets execution_id, messages in state and returns repo_client.
         We do NOT store repo_client in state because of multiprocess issues with oracledb.
         """
         self._init_command_log(command, params, reuse_log=reuse_log)
         self._execution_id = self._get_execution_id(execution_id=execution_id)
-        self._messages = messages_override or self._gen_messages(
-            self._execution_id, command
-        )
+        self._messages = messages_override or self._gen_messages(self._execution_id, command)
         try:
             if messages_override and self._messages.execution_id is None:
                 # We are testing and have no execution id.
@@ -346,16 +314,10 @@ class OrchestrationRunner:
                 detail=VVERBOSE,
             )
             init_redis_execution_id(self._execution_id)
-            return self._build_repo_client(
-                self._messages, dry_run=(not self._execute_from_params(params))
-            )
+            return self._build_repo_client(self._messages, dry_run=(not self._execute_from_params(params)))
         except Exception as exc:
-            self._log_error(
-                f"Exception initializing command {command}: {str(exc)}", detail=VVERBOSE
-            )
-            self._log(
-                "Exception stack: {}".format(traceback.format_exc()), detail=VVERBOSE
-            )
+            self._log_error(f"Exception initializing command {command}: {exc!s}", detail=VVERBOSE)
+            self._log(f"Exception stack: {traceback.format_exc()}", detail=VVERBOSE)
             raise
 
     def _init_command_log(self, command: str, params, reuse_log=False) -> None:
@@ -364,20 +326,13 @@ class OrchestrationRunner:
         def get_owner_table_for_command():
             if command == COMMAND_ID_CONNECT:
                 return None
-            else:
-                # We need to create the log before doing anything else, which means haven't rationalised the
-                # contents of params yet. It could be a dict or a namespace.
-                param_name = "owner_table"
-                owner_table = (
-                    params.get(param_name)
-                    if isinstance(params, dict)
-                    else getattr(params, param_name, None)
-                )
-                if not owner_table:
-                    raise OrchestrationRunnerException(
-                        f"Missing owner/table parameter for command: {command}"
-                    )
-                return owner_table
+            # We need to create the log before doing anything else, which means haven't rationalised the
+            # contents of params yet. It could be a dict or a namespace.
+            param_name = "owner_table"
+            owner_table = params.get(param_name) if isinstance(params, dict) else getattr(params, param_name, None)
+            if not owner_table:
+                raise OrchestrationRunnerException(f"Missing owner/table parameter for command: {command}")
+            return owner_table
 
         # Install current config as global goe.py options.
         init(self._config)
@@ -434,9 +389,7 @@ class OrchestrationRunner:
                 )
             except Exception as exc:
                 try:
-                    self._log_error(
-                        "Unhandled exception in offload_table(): {}".format(str(exc))
-                    )
+                    self._log_error(f"Unhandled exception in offload_table(): {exc!s}")
                     self._log_error(traceback.format_exc(), detail=VVERBOSE)
                 except:
                     pass
@@ -454,12 +407,11 @@ class OrchestrationRunner:
     def offload(
         self,
         params,
-        execution_id: Optional[ExecutionId] = None,
+        execution_id: ExecutionId | None = None,
         reuse_log: bool = False,
-        messages_override: Optional[OffloadMessages] = None,
+        messages_override: OffloadMessages | None = None,
     ):
-        """
-        Run an offload based on incoming params.
+        """Run an offload based on incoming params.
         params: Can be a dict or an OptParse object.
         execution_id: A UUID used to uniquely identify the Offload. Can be generted internally or provided as
                       an override.
@@ -477,24 +429,14 @@ class OrchestrationRunner:
         )
 
         operation = self._gen_offload_operation(params, repo_client)
-        command_id = self._command_begin(
-            orchestration_constants.COMMAND_OFFLOAD, params, repo_client, operation
-        )
+        command_id = self._command_begin(orchestration_constants.COMMAND_OFFLOAD, params, repo_client, operation)
         try:
             offload_source_table = self._build_offload_source_table(operation)
-            offload_target_table = get_offload_target_table(
-                operation, self._config, self._messages
-            )
+            offload_target_table = get_offload_target_table(operation, self._config, self._messages)
 
-            self._log(
-                "Offloading to {}".format(
-                    self._target_version_string(offload_target_table)
-                )
-            )
+            self._log(f"Offloading to {self._target_version_string(offload_target_table)}")
 
-            status = self._offload(
-                operation, offload_source_table, offload_target_table
-            )
+            status = self._offload(operation, offload_source_table, offload_target_table)
             self._log_final_messages(orchestration_constants.COMMAND_OFFLOAD, dry_run)
 
             self._command_end(command_id, repo_client)
@@ -516,13 +458,11 @@ class OrchestrationRunner:
     def schema_sync(
         self,
         params,
-        execution_id: Optional[ExecutionId] = None,
+        execution_id: ExecutionId | None = None,
         reuse_log: bool = False,
-        messages_override: Optional[OffloadMessages] = None,
+        messages_override: OffloadMessages | None = None,
     ):
-        """
-        Run Schema Sync using incoming params.
-        """
+        """Run Schema Sync using incoming params."""
         repo_client = self._init_command(
             orchestration_constants.COMMAND_SCHEMA_SYNC,
             params,
@@ -533,9 +473,7 @@ class OrchestrationRunner:
 
         # TODO schema_sync() currently only supports params of type Opt/Argparse, not a dict. When we
         #      add Schema Sync to Listener we'll need to change this.
-        command_id = self._command_begin(
-            orchestration_constants.COMMAND_SCHEMA_SYNC, params, repo_client
-        )
+        command_id = self._command_begin(orchestration_constants.COMMAND_SCHEMA_SYNC, params, repo_client)
         try:
             raise OrchestrationRunnerException("Schema Sync no longer exists")
         except Exception as exc:

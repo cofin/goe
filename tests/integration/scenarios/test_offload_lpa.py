@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+
 import pytest
 
 from goe.offload import offload_constants
@@ -35,14 +36,13 @@ from goe.offload.oracle import oracle_column
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
+from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
     backend_table_count,
     check_metadata,
     synthetic_part_col_name,
 )
-from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.scenario_runner import (
     run_offload,
     run_setup,
@@ -61,7 +61,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 LPA_NUM_PART_KEY_TABLE = "STORY_LPA_NUM_KEY"
 LPA_VC2_PART_KEY_TABLE = "STORY_LPA_VC2_KEY"
@@ -99,9 +98,7 @@ def data_db(schema, config):
     return data_db
 
 
-def gen_list_multi_part_value_create_ddl(
-    schema, table_name, part_key_type, part_key_chars
-):
+def gen_list_multi_part_value_create_ddl(schema, table_name, part_key_type, part_key_chars):
     """Create a LIST partitioned table with multiple values per partition.
     Can create using NUMBER, DATE, TIMESTAMP, VARCHAR2 and NVARCHAR2.
     Purpose is to prove that complex values options.equal_to_values works.
@@ -115,9 +112,7 @@ def gen_list_multi_part_value_create_ddl(
         "DATE": "DATE",
         "TIMESTAMP": "TIMESTAMP",
     }
-    assert part_key_type in part_key_type_mappings, (
-        "Unsupported part_key_type: %s" % part_key_type
-    )
+    assert part_key_type in part_key_type_mappings, "Unsupported part_key_type: %s" % part_key_type
     assert part_key_chars and type(part_key_chars) is list and len(part_key_chars) == 3
     part_key_type_defaults = {
         "NUMBER": "-1",
@@ -217,19 +212,13 @@ def offload_lpa_fact_assertion(
         def check_fn(mt):
             if all(_ in mt.incremental_high_value for _ in hwm_literals):
                 return True
-            else:
-                messages.log(
-                    "Metadata check_fn False for: %s"
-                    % str(
-                        [_ for _ in hwm_literals if _ not in mt.incremental_high_value]
-                    )
-                )
-                return False
+            messages.log(
+                "Metadata check_fn False for: %s" % str([_ for _ in hwm_literals if _ not in mt.incremental_high_value])
+            )
+            return False
 
     else:
-        check_fn = lambda mt: bool(
-            not mt.incremental_key and not mt.incremental_high_value
-        )
+        check_fn = lambda mt: bool(not mt.incremental_key and not mt.incremental_high_value)
 
     if not check_metadata(
         schema,
@@ -249,17 +238,11 @@ def offload_lpa_fact_assertion(
         return False
 
     if backend_table_count_check is not None:
-        if (
-            backend_table_count(config, backend_api, messages, data_db, backend_table)
-            != backend_table_count_check
-        ):
+        if backend_table_count(config, backend_api, messages, data_db, backend_table) != backend_table_count_check:
             messages.log(f"Backend count != {backend_table_count_check}")
             return False
 
-    if (
-        synthetic_partition_column_name
-        and backend_api.synthetic_partitioning_supported()
-    ):
+    if synthetic_partition_column_name and backend_api.synthetic_partitioning_supported():
         if not backend_column_exists(
             config,
             backend_api,
@@ -268,9 +251,7 @@ def offload_lpa_fact_assertion(
             backend_table,
             synthetic_partition_column_name,
         ):
-            messages.log(
-                f"Backend column {synthetic_partition_column_name} does not exist"
-            )
+            messages.log(f"Backend column {synthetic_partition_column_name} does not exist")
             return False
 
     return True
@@ -278,13 +259,12 @@ def offload_lpa_fact_assertion(
 
 def test_offload_lpa_num(config, schema, data_db):
     id = "test_offload_lpa_num"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -299,9 +279,7 @@ def test_offload_lpa_num(config, schema, data_db):
                 [LPA_PART1_KEY1, LPA_PART1_KEY2, LPA_PART2_KEY1],
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LPA_NUM_PART_KEY_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_NUM_PART_KEY_TABLE),
             ],
         )
 
@@ -351,13 +329,12 @@ def test_offload_lpa_num(config, schema, data_db):
 
 def test_offload_lpa_vc2(config, schema, data_db):
     id = "test_offload_lpa_vc2"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -372,9 +349,7 @@ def test_offload_lpa_vc2(config, schema, data_db):
                 [LPA_PART1_KEY1, LPA_PART1_KEY2, LPA_PART2_KEY1],
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LPA_VC2_PART_KEY_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_VC2_PART_KEY_TABLE),
             ],
         )
 
@@ -422,13 +397,12 @@ def test_offload_lpa_vc2(config, schema, data_db):
 
 def test_offload_lpa_char(config, schema, data_db):
     id = "test_offload_lpa_char"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -443,9 +417,7 @@ def test_offload_lpa_char(config, schema, data_db):
                 [LPA_PART1_KEY1, LPA_PART1_KEY2, LPA_PART2_KEY1],
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LPA_CHR_PART_KEY_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_CHR_PART_KEY_TABLE),
             ],
         )
 
@@ -493,13 +465,12 @@ def test_offload_lpa_char(config, schema, data_db):
 
 def test_offload_lpa_date(config, schema, data_db):
     id = "test_offload_lpa_date"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -514,9 +485,7 @@ def test_offload_lpa_date(config, schema, data_db):
                 [LPA_DT_PART1_KEY1, LPA_DT_PART1_KEY2, LPA_DT_PART2_KEY1],
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LPA_DT_PART_KEY_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_DT_PART_KEY_TABLE),
             ],
         )
 
@@ -564,13 +533,12 @@ def test_offload_lpa_date(config, schema, data_db):
 
 def test_offload_lpa_ts(config, schema, data_db):
     id = "test_offload_lpa_ts"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -585,9 +553,7 @@ def test_offload_lpa_ts(config, schema, data_db):
                 [LPA_DT_PART1_KEY1, LPA_DT_PART1_KEY2, LPA_DT_PART2_KEY1],
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LPA_TS_PART_KEY_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_TS_PART_KEY_TABLE),
             ],
         )
 
@@ -639,13 +605,12 @@ def test_offload_lpa_unicode(config, schema, data_db):
     if not os.environ.get("NLS_LANG"):
         pytest.skip(f"Skipping {id} because NLS_LANG is not set")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -664,9 +629,7 @@ def test_offload_lpa_unicode(config, schema, data_db):
                 ],
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LPA_UNICODE_FACT_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_UNICODE_FACT_TABLE),
             ],
         )
 
@@ -676,9 +639,7 @@ def test_offload_lpa_unicode(config, schema, data_db):
         options = {
             "owner_table": schema + "." + LPA_UNICODE_FACT_TABLE,
             "equal_to_values": [(LPA_UNICODE_PART1_KEY1, LPA_UNICODE_PART1_KEY2)],
-            "offload_partition_columns": partition_columns_if_supported(
-                backend_api, "id"
-            ),
+            "offload_partition_columns": partition_columns_if_supported(backend_api, "id"),
             "offload_partition_granularity": "100",
             "offload_partition_lower_value": 0,
             "offload_partition_upper_value": 10000,
@@ -722,13 +683,12 @@ def test_offload_lpa_unicode(config, schema, data_db):
 
 def test_offload_lpa_fact(config, schema, data_db):
     id = "test_offload_lpa_fact"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -741,9 +701,7 @@ def test_offload_lpa_fact(config, schema, data_db):
                 LPA_FACT_TABLE,
                 default_partition=True,
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, LPA_FACT_TABLE
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_FACT_TABLE),
         )
 
         # Offload empty LIST partition.
@@ -973,19 +931,16 @@ def test_offload_lpa_fact(config, schema, data_db):
 
 def test_offload_lpa_part_fn(config, schema, data_db):
     id = "test_offload_lpa_part_fn"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         if not backend_api.goe_partition_functions_supported():
-            pytest.skip(
-                f"Skipping {id} due to goe_partition_functions_supported() == False"
-            )
+            pytest.skip(f"Skipping {id} due to goe_partition_functions_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
         udf = data_db + "." + test_constants.PARTITION_FUNCTION_TEST_FROM_INT8
         udf_synth_name = synthetic_part_col_name("U0", "CAT")
         udf_synth_name = convert_backend_identifier_case(config, udf_synth_name)
@@ -1003,15 +958,11 @@ def test_offload_lpa_part_fn(config, schema, data_db):
                 [LPA_PART1_KEY1, LPA_PART1_KEY2, LPA_PART2_KEY1],
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LPA_NUM_PART_FUNC_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_NUM_PART_FUNC_TABLE),
             ],
         )
 
-        backend_api.create_test_partition_functions(
-            data_db, udf=test_constants.PARTITION_FUNCTION_TEST_FROM_INT8
-        )
+        backend_api.create_test_partition_functions(data_db, udf=test_constants.PARTITION_FUNCTION_TEST_FROM_INT8)
 
         # IPA 90/10 list partition with partition function.
         options = {
@@ -1063,13 +1014,12 @@ def test_offload_lpa_part_fn(config, schema, data_db):
 
 def test_offload_lpa_full(config, schema, data_db):
     id = "test_offload_lpa_full"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -1082,9 +1032,7 @@ def test_offload_lpa_full(config, schema, data_db):
                 LPA_FULL_TABLE,
                 default_partition=False,
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, LPA_FULL_TABLE
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_FULL_TABLE),
         )
 
         # Offload 100/0 LIST partitioned table.

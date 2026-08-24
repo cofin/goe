@@ -15,44 +15,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendApi: Library for logic/interaction with a remote backend.
-    This module enforces an interface with common, high level, methods and an implementation
-    for each supported remote system, e.g. Impala, Hive, Google BigQuery.
-    Comment from nj@2019-11-06:
-      The attraction in creating this module is that, at the time of writing, better_impyla
-      has a rich and robust set of methods but I don't know what needs an equivalent in each new
-      backend we introduce.
-      Via this interface we can get a clear picture of the top level methods required and ensure,
-      by using abstractmethod, that all backends offer the same functionality.
+"""BackendApi: Library for logic/interaction with a remote backend.
+This module enforces an interface with common, high level, methods and an implementation
+for each supported remote system, e.g. Impala, Hive, Google BigQuery.
+Comment from nj@2019-11-06:
+  The attraction in creating this module is that, at the time of writing, better_impyla
+  has a rich and robust set of methods but I don't know what needs an equivalent in each new
+  backend we introduce.
+  Via this interface we can get a clear picture of the top level methods required and ensure,
+  by using abstractmethod, that all backends offer the same functionality.
 
-      Justification for not dismantling better_impyla from PR:
+  Justification for not dismantling better_impyla from PR:
 
-        better_impyla is not only used by our main orchestration tools. It is also used by other
-        tools we have in the repo, such as cloud_sync. Retiring better_impyla completely would
-        extend the scope to these other scripts. That was only a secondary consideration though.
-        When I decided to use better_impyla as a lower level API rather than try and eliminate it
-        the decision was based on there being zero contribution towards the goal of easing
-        implementation of other backends. It was all risk and no reward. So I decided to treat that
-        as a lower level API, just like Google's big query python module.
+    better_impyla is not only used by our main orchestration tools. It is also used by other
+    tools we have in the repo, such as cloud_sync. Retiring better_impyla completely would
+    extend the scope to these other scripts. That was only a secondary consideration though.
+    When I decided to use better_impyla as a lower level API rather than try and eliminate it
+    the decision was based on there being zero contribution towards the goal of easing
+    implementation of other backends. It was all risk and no reward. So I decided to treat that
+    as a lower level API, just like Google's big query python module.
 
-        Same for HiveStats & HiveTableStats which are based on better_impyla. There's a lot of
-        mature/reliable code in there that contains branches between Hive and Impala but I’ve used
-        those as valid building blocks rather than try to move logic away from them.
+    Same for HiveStats & HiveTableStats which are based on better_impyla. There's a lot of
+    mature/reliable code in there that contains branches between Hive and Impala but I’ve used
+    those as valid building blocks rather than try to move logic away from them.
 """
 
-from abc import ABCMeta, abstractmethod
 import logging
+from abc import ABCMeta, abstractmethod
 
 from goe.filesystem.goe_dfs import (
+    OFFLOAD_FS_SCHEME_ABFS,
+    OFFLOAD_FS_SCHEME_ABFSS,
+    OFFLOAD_FS_SCHEME_ADL,
+    OFFLOAD_FS_SCHEME_GS,
+    OFFLOAD_FS_SCHEME_HDFS,
+    OFFLOAD_FS_SCHEME_INHERIT,
     OFFLOAD_FS_SCHEME_S3A,
     OFFLOAD_FS_SCHEME_WASB,
     OFFLOAD_FS_SCHEME_WASBS,
-    OFFLOAD_FS_SCHEME_ADL,
-    OFFLOAD_FS_SCHEME_ABFS,
-    OFFLOAD_FS_SCHEME_ABFSS,
-    OFFLOAD_FS_SCHEME_HDFS,
-    OFFLOAD_FS_SCHEME_INHERIT,
-    OFFLOAD_FS_SCHEME_GS,
 )
 from goe.offload.column_metadata import (
     ColumnMetadataInterface,
@@ -60,7 +60,6 @@ from goe.offload.column_metadata import (
     is_synthetic_partition_column,
     match_table_column,
 )
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_constants import (
     CAPABILITY_BUCKET_HASH_COLUMN,
     CAPABILITY_CANONICAL_DATE,
@@ -71,10 +70,10 @@ from goe.offload.offload_constants import (
     CAPABILITY_DROP_COLUMN,
     CAPABILITY_FS_SCHEME_ABFS,
     CAPABILITY_FS_SCHEME_ADL,
-    CAPABILITY_FS_SCHEME_S3A,
     CAPABILITY_FS_SCHEME_GS,
     CAPABILITY_FS_SCHEME_HDFS,
     CAPABILITY_FS_SCHEME_INHERIT,
+    CAPABILITY_FS_SCHEME_S3A,
     CAPABILITY_FS_SCHEME_WASB,
     CAPABILITY_GOE_COLUMN_TRANSFORMATIONS,
     CAPABILITY_GOE_PARTITION_FUNCTIONS,
@@ -97,12 +96,13 @@ from goe.offload.offload_constants import (
     CAPABILITY_TABLE_STATS_GET,
     CAPABILITY_TABLE_STATS_SET,
     DBTYPE_BIGQUERY,
-    DBTYPE_IMPALA,
     DBTYPE_HIVE,
+    DBTYPE_IMPALA,
     DBTYPE_SNOWFLAKE,
     DBTYPE_SPARK,
     DBTYPE_SYNAPSE,
 )
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_functions import run_os_cmd
 from goe.util.misc_functions import str_summary_of_self
 from goe.util.password_tools import PasswordTools
@@ -275,11 +275,9 @@ class BackendApiInterface(metaclass=ABCMeta):
 
     def _warning(self, msg):
         self._messages.warning(msg)
-        logger.warn(msg)
+        logger.warning(msg)
 
-    def _apply_decimal_padding_digits(
-        self, column_name, data_precision, data_scale, decimal_padding_digits
-    ):
+    def _apply_decimal_padding_digits(self, column_name, data_precision, data_scale, decimal_padding_digits):
         """Add decimal_padding_digits to scale if precision has headroom then pad precision if it has headroom for
         that too.
         Currently this has no max for scale, i.e. assumes the max is same as max precision. This may not be true
@@ -291,8 +289,7 @@ class BackendApiInterface(metaclass=ABCMeta):
 
         if data_precision is None or data_scale is None:
             self._log(
-                "No padding applied to %s for precision/scale: %s/%s"
-                % (column_name, data_precision, data_scale),
+                "No padding applied to %s for precision/scale: %s/%s" % (column_name, data_precision, data_scale),
                 detail=VVERBOSE,
             )
             return data_precision, data_scale
@@ -304,17 +301,11 @@ class BackendApiInterface(metaclass=ABCMeta):
 
         if new_precision <= self.max_decimal_precision() - decimal_padding_digits:
             # Change precision after scale
-            new_scale += min(
-                decimal_padding_digits, self.max_decimal_precision() - new_precision
-            )
-            new_precision += min(
-                decimal_padding_digits, self.max_decimal_precision() - new_precision
-            )
+            new_scale += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
+            new_precision += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
 
         if new_precision < self.max_decimal_precision():
-            new_precision += min(
-                decimal_padding_digits, self.max_decimal_precision() - new_precision
-            )
+            new_precision += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
 
         if new_precision != data_precision or new_scale != data_scale:
             self._log(
@@ -343,38 +334,26 @@ class BackendApiInterface(metaclass=ABCMeta):
         ]
         max_name = max(len(_[0]) for _ in sql_cols)
         col_template = f"%-{max_name}s %s%s"
-        return "    " + "\n,   ".join(
-            [col_template % (_[0], _[1], f" {_[2]}" if _[2] else "") for _ in sql_cols]
-        )
+        return "    " + "\n,   ".join([col_template % (_[0], _[1], f" {_[2]}" if _[2] else "") for _ in sql_cols])
 
-    def _create_table_column_nn_clause_common(
-        self, column: ColumnMetadataInterface, external: bool = False
-    ) -> str:
-        """
-        Return clause for a NOT NULL column if the backend supports it and it is not an external table.
+    def _create_table_column_nn_clause_common(self, column: ColumnMetadataInterface, external: bool = False) -> str:
+        """Return clause for a NOT NULL column if the backend supports it and it is not an external table.
         We don't want the constraint on external tables because we want to stage the data and then validate correctness.
         nullable of None is treated as True. i.e. we can't be sure of NOT NULL so go with the safe option.
         """
-        if (
-            not self.not_null_column_supported()
-            or column.nullable
-            or column.nullable is None
-            or external
-        ):
+        if not self.not_null_column_supported() or column.nullable or column.nullable is None or external:
             return ""
         return "NOT NULL"
 
     def _cursor_projection(self, cursor) -> list:
-        """
-        Returns a list of strings describing the projection of a cursor.
+        """Returns a list of strings describing the projection of a cursor.
         Names are coerced to lower case to give a standard output across different backend systems.
         This should be called after the query has been executed.
         """
         return [_[0].lower() for _ in cursor.description]
 
     def _cursor_row_to_dict(self, cursor_projection, row) -> dict:
-        """
-        Trivial function combining typical tuple/list row format with results of _cursor_projection() to
+        """Trivial function combining typical tuple/list row format with results of _cursor_projection() to
         generate a row dict.
         """
         return dict(zip(cursor_projection, row))
@@ -382,16 +361,11 @@ class BackendApiInterface(metaclass=ABCMeta):
     def _decrypt_password(self, password):
         if self._connection_options.password_key_file:
             pass_tool = PasswordTools()
-            goe_key = pass_tool.get_password_key_from_key_file(
-                self._connection_options.password_key_file
-            )
-            self._log(
-                "Decrypting %s password" % self.backend_db_name(), detail=VVERBOSE
-            )
+            goe_key = pass_tool.get_password_key_from_key_file(self._connection_options.password_key_file)
+            self._log("Decrypting %s password" % self.backend_db_name(), detail=VVERBOSE)
             clear_password = pass_tool.b64decrypt(password, goe_key)
             return clear_password
-        else:
-            return password
+        return password
 
     @staticmethod
     def _fixed_session_parameters():
@@ -400,10 +374,7 @@ class BackendApiInterface(metaclass=ABCMeta):
 
     def _format_select_projection(self, select_expr_tuples):
         """Return string of column-expr AS alias pairs formatted consistently across all usages"""
-        return "\n,      ".join(
-            "{} AS {}".format(e, self.enclose_identifier(n))
-            for e, n in select_expr_tuples
-        )
+        return "\n,      ".join(f"{e} AS {self.enclose_identifier(n)}" for e, n in select_expr_tuples)
 
     def _gen_max_column_values_sql(
         self,
@@ -455,9 +426,7 @@ class BackendApiInterface(metaclass=ABCMeta):
             # Analytic row_number() function tests very slow in Impala, group by method below much faster.
             # max() fastest but not multi column on supported backends at time of implementation.
             cols = ",".join(column_name_list)
-            proj_cols = ",".join(
-                [add_sql_cast(_, add_alias=True) for _ in column_name_list]
-            )
+            proj_cols = ",".join([add_sql_cast(_, add_alias=True) for _ in column_name_list])
             order_by = ",".join([_ + " DESC" for _ in column_name_list])
             where = (" WHERE " + filter_clause) if filter_clause else ""
             sql = "SELECT %s FROM %s%s GROUP BY %s ORDER BY %s LIMIT 1" % (
@@ -469,9 +438,7 @@ class BackendApiInterface(metaclass=ABCMeta):
             )
         return sql
 
-    def _gen_global_session_parameters(
-        self, backend_session_parameters, log_clashes=True
-    ):
+    def _gen_global_session_parameters(self, backend_session_parameters, log_clashes=True):
         """Merge user defined session parameters with our fixed session parameters.
         We remove any fixed parameters from custom list in a case insensitive way to prevent duplicates.
         Apply fixed parameters second so they have precedence.
@@ -480,14 +447,8 @@ class BackendApiInterface(metaclass=ABCMeta):
         if backend_session_parameters:
             global_session_parameters.update(backend_session_parameters)
         if self._fixed_session_parameters():
-            fixed_keys = [
-                _.lower() for _ in list(self._fixed_session_parameters().keys())
-            ]
-            for key_to_delete in [
-                _
-                for _ in list(global_session_parameters.keys())
-                if _.lower() in fixed_keys
-            ]:
+            fixed_keys = [_.lower() for _ in list(self._fixed_session_parameters().keys())]
+            for key_to_delete in [_ for _ in list(global_session_parameters.keys()) if _.lower() in fixed_keys]:
                 if log_clashes:
                     self._log(
                         "Removing OFFLOAD_BACKEND_SESSION_PARAMETERS[%s] because of fixed parameter clash"
@@ -512,19 +473,11 @@ class BackendApiInterface(metaclass=ABCMeta):
         assert db_name and table_name
         assert (from_db_name and from_table_name) or from_object_override
         assert select_expr_tuples
-        assert isinstance(select_expr_tuples, list), "%s is not list" % type(
-            select_expr_tuples
-        )
-        assert isinstance(select_expr_tuples[0], tuple), "%s is not tuple" % type(
-            select_expr_tuples[0]
-        )
+        assert isinstance(select_expr_tuples, list), "%s is not list" % type(select_expr_tuples)
+        assert isinstance(select_expr_tuples[0], tuple), "%s is not tuple" % type(select_expr_tuples[0])
         if partition_expr_tuples:
-            assert isinstance(partition_expr_tuples, list), "%s is not list" % type(
-                partition_expr_tuples
-            )
-            assert isinstance(
-                partition_expr_tuples[0], tuple
-            ), "%s is not tuple" % type(partition_expr_tuples[0])
+            assert isinstance(partition_expr_tuples, list), "%s is not list" % type(partition_expr_tuples)
+            assert isinstance(partition_expr_tuples[0], tuple), "%s is not tuple" % type(partition_expr_tuples[0])
         if filter_clauses:
             assert isinstance(filter_clauses, list)
 
@@ -543,52 +496,31 @@ class BackendApiInterface(metaclass=ABCMeta):
         """
         assert db_name and table_name
         if column_names:
-            assert isinstance(
-                column_names, (list, tuple)
-            ), "%s is not list/tuple" % type(column_names)
+            assert isinstance(column_names, (list, tuple)), "%s is not list/tuple" % type(column_names)
         if measures:
-            assert isinstance(measures, (list, tuple)), "%s is not list/tuple" % type(
-                measures
-            )
+            assert isinstance(measures, (list, tuple)), "%s is not list/tuple" % type(measures)
             assert agg_fns
-            assert isinstance(agg_fns, (list, tuple)), "%s is not list/tuple" % type(
-                agg_fns
-            )
+            assert isinstance(agg_fns, (list, tuple)), "%s is not list/tuple" % type(agg_fns)
 
         projection = []
         if column_names:
             projection += [self.enclose_identifier(_) for _ in column_names]
             self._debug("gen_sql_text base projection: %s" % str(projection))
         if measures and agg_fns:
-            projection += [
-                "%s(%s)" % (fn.upper(), self.enclose_identifier(m))
-                for m in measures
-                for fn in agg_fns
-            ]
+            projection += ["%s(%s)" % (fn.upper(), self.enclose_identifier(m)) for m in measures for fn in agg_fns]
             self._debug("gen_sql_text projection with measures: %s" % str(projection))
         if not projection:
-            raise BackendApiException(
-                "No columns have been specified for projection: %s.%s"
-                % (db_name, table_name)
-            )
+            raise BackendApiException("No columns have been specified for projection: %s.%s" % (db_name, table_name))
 
         projection_clause = "\n,      ".join(projection)
-        where_clause = (
-            "\nWHERE  " + "\nAND    ".join(filter_clauses) if filter_clauses else ""
-        )
+        where_clause = "\nWHERE  " + "\nAND    ".join(filter_clauses) if filter_clauses else ""
         group_by_clause = (
-            (
-                "\nGROUP BY "
-                + "\n,        ".join([self.enclose_identifier(_) for _ in column_names])
-            )
+            ("\nGROUP BY " + "\n,        ".join([self.enclose_identifier(_) for _ in column_names]))
             if measures and column_names
             else ""
         )
         order_by_clause = (
-            (
-                "\nORDER BY "
-                + "\n,        ".join([self.enclose_identifier(_) for _ in column_names])
-            )
+            ("\nORDER BY " + "\n,        ".join([self.enclose_identifier(_) for _ in column_names]))
             if agg_fns and column_names
             else ""
         )
@@ -603,15 +535,13 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         }
         return sql
 
-    def _gen_select_count_sql_text_common(
-        self, db_name, table_name, filter_clause=None
-    ):
+    def _gen_select_count_sql_text_common(self, db_name, table_name, filter_clause=None):
         """filter_clause does NOT include "WHERE" because that could be backend specific.
         At the point WHERE is not compatible with a backend we'll need to add an
         override method for this.
         """
         assert db_name and table_name
-        where_clause = " WHERE {}".format(filter_clause) if filter_clause else ""
+        where_clause = f" WHERE {filter_clause}" if filter_clause else ""
         return "SELECT COUNT(*) FROM %s%s" % (
             self.enclose_object_reference(db_name, table_name),
             where_clause,
@@ -686,11 +616,7 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
             self.enclose_object_reference(db_name, table_name),
             ",".join(self.enclose_identifier(_) for _ in column_names),
         )
-        sql = (
-            insert_template
-            + "\n "
-            + join_str.join("({})".format(_) for _ in literal_csv_list)
-        )
+        sql = insert_template + "\n " + join_str.join(f"({_})" for _ in literal_csv_list)
         return sql
 
     def _run_os_cmd(self, cmd):
@@ -708,9 +634,7 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
             silent=True,
         )
 
-    def _table_partition_info(
-        self, partition_id, data_format=None, num_rows=None, size_in_bytes=None
-    ):
+    def _table_partition_info(self, partition_id, data_format=None, num_rows=None, size_in_bytes=None):
         """We need a standard value to return from get_table_partitions() so we know what data to expect.
         All inputs, except partition_id, are optional because different backends will have different details.
         This method is to be used on a per partition basis with the intention that combined we'll have a dict
@@ -725,10 +649,7 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
 
     def _unsupported_decimal_precision_scale(self, data_precision, data_scale):
         return (
-            (
-                data_scale is not None
-                and (data_scale < 0 or data_scale > self.max_decimal_scale())
-            )
+            (data_scale is not None and (data_scale < 0 or data_scale > self.max_decimal_scale()))
             or (data_precision and data_precision > self.max_decimal_precision())
             or (data_precision and data_scale and data_scale > data_precision)
         )
@@ -753,13 +674,9 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         return no_log_items
 
     def _validate_connection_options(self, option_list):
-        missing_opts = [
-            _ for _ in option_list if not hasattr(self._connection_options, _)
-        ]
+        missing_opts = [_ for _ in option_list if not hasattr(self._connection_options, _)]
         if missing_opts:
-            raise BackendApiException(
-                "Missing connection options: %s" % ", ".join(missing_opts)
-            )
+            raise BackendApiException("Missing connection options: %s" % ", ".join(missing_opts))
 
     # enforced methods
 
@@ -785,21 +702,16 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
             query_options: key/value pairs for session settings.
             profile: if True we will log a profile (if possible) *after the first* SQL statement.
         """
-        pass
 
     @abstractmethod
     def _execute_global_session_parameters(self, log_level=VVERBOSE):
         """Use this to ensure global session parameters requested by the user are honoured in each backend."""
-        pass
 
     @abstractmethod
-    def _gen_sample_stats_sql_sample_clause(
-        self, db_name, table_name, sample_perc=None
-    ):
+    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
         """Return a sample clause to slot in after a FROM table clause.
         Some backends may have a completely different structure so this may need refactoring in the future.
         """
-        pass
 
     @abstractmethod
     def _get_query_profile(self, query_identifier=None):
@@ -807,7 +719,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         Optional query_id parameter for backends that need more information.
         This is defined as private because backends are inconsistent so we can't have a standard approach.
         """
-        pass
 
     @abstractmethod
     def _invalid_identifier_character_re(self):
@@ -902,9 +813,7 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         column_name = self.enclose_identifier(column_name)
         return f"EXTRACT({date_part.upper()} FROM {column_name})"
 
-    def format_column_comparison(
-        self, left_col, operator, right_col, left_alias=None, right_alias=None
-    ):
+    def format_column_comparison(self, left_col, operator, right_col, left_alias=None, right_alias=None):
         """Format a simple 'column operator column' string, generic for most backends but some may override.
         left_col and right_col are column objects, not names.
         """
@@ -912,15 +821,11 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         assert isinstance(right_col, ColumnMetadataInterface)
         left_identifier = self.enclose_identifier(left_col.name)
         if left_alias:
-            left_identifier = "{}.{}".format(
-                self.enclose_identifier(left_alias), left_identifier
-            )
+            left_identifier = f"{self.enclose_identifier(left_alias)}.{left_identifier}"
         right_identifier = self.enclose_identifier(right_col.name)
         if right_alias:
-            right_identifier = "{}.{}".format(
-                self.enclose_identifier(right_alias), right_identifier
-            )
-        return "{} {} {}".format(left_identifier, operator, right_identifier)
+            right_identifier = f"{self.enclose_identifier(right_alias)}.{right_identifier}"
+        return f"{left_identifier} {operator} {right_identifier}"
 
     def get_column(self, db_name, table_name, column_name):
         """Get a single column from get_columns()"""
@@ -944,19 +849,15 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         """
         assert expression_list and isinstance(expression_list, list)
         sql_template = "SELECT DISTINCT %(projection)s FROM %(db_table)s"
-        projection = ",".join(
-            ["{} AS c{}".format(_, i) for i, _ in enumerate(expression_list)]
-        )
+        projection = ",".join([f"{_} AS c{i}" for i, _ in enumerate(expression_list)])
         if order_results:
-            aliases = ",".join(["c{}".format(_) for _ in range(len(expression_list))])
-            sql_template += " ORDER BY {}".format(aliases)
+            aliases = ",".join([f"c{_}" for _ in range(len(expression_list))])
+            sql_template += f" ORDER BY {aliases}"
         sql = sql_template % {
             "projection": projection,
             "db_table": self.enclose_object_reference(db_name, table_name),
         }
-        rows = self.execute_query_fetch_all(
-            sql, not_when_dry_running=not_when_dry_running, log_level=VVERBOSE
-        )
+        rows = self.execute_query_fetch_all(sql, not_when_dry_running=not_when_dry_running, log_level=VVERBOSE)
         return rows
 
     def get_max_column_length(self, db_name, table_name, column_name):
@@ -975,22 +876,15 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         return row[0] if row else None
 
     def get_non_synthetic_columns(self, db_name, table_name):
-        return [
-            _
-            for _ in self.get_columns(db_name, table_name)
-            if not self.is_synthetic_partition_column(_)
-        ]
+        return [_ for _ in self.get_columns(db_name, table_name) if not self.is_synthetic_partition_column(_)]
 
     def identifier_contains_invalid_characters(self, identifier):
         """Checks that characters in identifier are valid for the backend system
         Returns a list of invalid characters which allows truthy use and use of details in logging
         """
         if self._invalid_identifier_character_re().search(identifier):
-            return list(
-                set(self._invalid_identifier_character_re().findall(identifier))
-            )
-        else:
-            return None
+            return list(set(self._invalid_identifier_character_re().findall(identifier)))
+        return None
 
     def is_synthetic_partition_column(self, column):
         """Is a column a synthetic partition column - based on its name.
@@ -1028,13 +922,13 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         """Maximum supported value for a numeric partition key range.
         Defaults to None (meaning not applicable) in this interface but some implementations may override.
         """
-        return None
+        return
 
     def partition_range_min(self):
         """Minimum supported value for a numeric partition key range.
         Defaults to None (meaning not applicable) in this interface but some implementations may override.
         """
-        return None
+        return
 
     def regexp_extract_decimal_scale_pattern(self):
         """Pattern to extract the scale from a numeric value inside a string.
@@ -1111,6 +1005,7 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
                 CONNECT_DETAIL: 'Some words to pass on to the consumer if the test failed',
             },
         }
+
         Example:
         {
             {   CONNECT_TEST: 'Offload role',
@@ -1144,9 +1039,7 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         """
 
     @abstractmethod
-    def create_database(
-        self, db_name, comment=None, properties=None, with_terminator=False
-    ):
+    def create_database(self, db_name, comment=None, properties=None, with_terminator=False):
         """Create a backend database or equivalent container for tables (such as dataset or schema).
         properties: An optional dictionary to pass information to different backends, e.g.:
                     properties={"location": "us-west"}
@@ -1222,12 +1115,10 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
     @abstractmethod
     def current_date_sql_expression(self):
         """Return a SQL expression that can be used to get the current date, probably a SQL function name"""
-        pass
 
     @abstractmethod
     def data_type_accepts_length(self, data_type):
         """Returns true when a data type accepts a length in its SQL spec, e.g. VARCHAR2(10) or NUMBER(5)"""
-        pass
 
     @abstractmethod
     def database_exists(self, db_name):
@@ -1470,7 +1361,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         The columns_to_cast_to_string parameter is because our HiveServer2 DBAPI does not support nanoseconds
         therefore we bring certain data types back as strings to avoid truncating to milliseconds.
         """
-        pass
 
     @abstractmethod
     def get_max_column_values(
@@ -1489,27 +1379,22 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         The columns_to_cast_to_string parameter is because our HiveServer2 DBAPI does not support nanoseconds
         therefore we bring certain data types back as strings to avoid truncating to milliseconds.
         """
-        pass
 
     @abstractmethod
     def get_partition_columns(self, db_name, table_name):
         """Returns a list of column objects for partition columns"""
-        pass
 
     @abstractmethod
     def get_session_option(self, option_name):
         pass
 
     @abstractmethod
-    def get_table_ddl(
-        self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False
-    ):
+    def get_table_ddl(self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False):
         """Return CREATE TABLE DDL as a string (or a list of strings split on CR if as_list=True)
         terminate_sql: Adds any executing character to the end of the SQL (e.g. a semi-colon)
         for_replace: If the backend supports it this includes the equivalent of:
             CREATE OR REPLACE TABLE
         """
-        pass
 
     @abstractmethod
     def get_table_location(self, db_name, table_name):
@@ -1618,7 +1503,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         """Return a SQL expression to get the length of column_expression, e.g.:
         LENGTH(column_name)
         """
-        pass
 
     @abstractmethod
     def list_databases(self, db_name_filter=None, case_sensitive=True):
@@ -1626,7 +1510,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         db_name_filter: A string used to filter db names. May contain wildcard character * but no other wildcards.
         case_sensitive: Defines case sensitivity of db_name_filter.
         """
-        pass
 
     @abstractmethod
     def list_tables(self, db_name, table_name_filter=None, case_sensitive=True):
@@ -1634,7 +1517,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         table_name_filter: A string used to filter names. May contain wildcard character * but no other wildcards.
         case_sensitive: Defines case sensitivity of table_name_filter.
         """
-        pass
 
     @abstractmethod
     def list_udfs(self, db_name, udf_name_filter=None, case_sensitive=True):
@@ -1643,7 +1525,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         udf_name_filter: A string used to filter names. May contain wildcard character * but no other wildcards.
         case_sensitive: Defines case sensitivity of table_name_filter.
         """
-        pass
 
     @abstractmethod
     def list_views(self, db_name, view_name_filter=None, case_sensitive=True):
@@ -1651,64 +1532,52 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         view_name_filter: A string used to filter names. May contain wildcard character * but no other wildcards.
         case_sensitive: Defines case sensitivity of table_name_filter.
         """
-        pass
 
     @abstractmethod
     def max_decimal_integral_magnitude(self):
         """The maximum number of digits permitted to the left of the decimal place for the DECIMAL based data type."""
-        pass
 
     @abstractmethod
     def max_decimal_precision(self):
         """The maximum value of precision permitted for the relevant DECIMAL/NUMBER based data type."""
-        pass
 
     @abstractmethod
     def max_decimal_scale(self, data_type=None):
         """The maximum value of data_scale permitted for the relevant DECIMAL/NUMBER based data type.
         Optional data type parameter for backends with multiple DECIMAL data types.
         """
-        pass
 
     @abstractmethod
     def max_datetime_value(self):
         """Return the maximum datetime value that can be stored by this backend as datetime64()."""
-        pass
 
     @abstractmethod
     def max_datetime_scale(self):
         """Return the maximum scale (number of decimal places for seconds) that can be stored by this backend."""
-        pass
 
     @abstractmethod
     def max_partition_columns(self):
         """Return the maximum number of partition columns for the backend system."""
-        pass
 
     @abstractmethod
     def max_sort_columns(self):
         """Return the maximum number of sort columns for the backend system"""
-        pass
 
     @abstractmethod
     def max_table_name_length(self):
         """The maximum number of characters permitted in a table name"""
-        pass
 
     @abstractmethod
     def min_datetime_value(self):
         """Return the minimum datetime value that can be stored by this backend as datetime64()."""
-        pass
 
     @abstractmethod
     def native_integer_types(self):
         """Return a list of native integer data types for the backend."""
-        pass
 
     @abstractmethod
     def partition_column_requires_synthetic_column(self, backend_column, granularity):
         """Returns True if the backend column requires a synthetic column if it is used for partitioning."""
-        pass
 
     @abstractmethod
     def refresh_table_files(self, db_name, table_name, sync=None):
@@ -1717,29 +1586,21 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
     @abstractmethod
     def regexp_extract_sql_expression(self, subject, pattern):
         """Return a SQL expression returning a REGEXP_EXTRACT SQL expression."""
-        pass
 
     @abstractmethod
-    def rename_table(
-        self, from_db_name, from_table_name, to_db_name, to_table_name, sync=None
-    ):
+    def rename_table(self, from_db_name, from_table_name, to_db_name, to_table_name, sync=None):
         pass
 
     @abstractmethod
     def role_exists(self, role_name):
         """Check the role exists, returns True/False"""
+
+    @abstractmethod
+    def set_column_stats(self, db_name, table_name, new_column_stats, ndv_cap, num_null_factor):
         pass
 
     @abstractmethod
-    def set_column_stats(
-        self, db_name, table_name, new_column_stats, ndv_cap, num_null_factor
-    ):
-        pass
-
-    @abstractmethod
-    def set_partition_stats(
-        self, db_name, table_name, new_partition_stats, additive_stats
-    ):
+    def set_partition_stats(self, db_name, table_name, new_partition_stats, additive_stats):
         pass
 
     @abstractmethod
@@ -1748,7 +1609,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         Code should always explicitly specify object prefixes therfore usage of this method ought to be rare.
         Typical SQL for this would be "USE ..."
         """
-        pass
 
     @abstractmethod
     def set_table_stats(self, db_name, table_name, new_table_stats, additive_stats):
@@ -1764,27 +1624,22 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         The list should be a subset of:
           [PART_COL_GRANULARITY_YEAR, PART_COL_GRANULARITY_MONTH, PART_COL_GRANULARITY_DAY]
         """
-        pass
 
     @abstractmethod
     def supported_partition_function_parameter_data_types(self):
         """Return a list of backend data types supported as partition function parameters"""
-        pass
 
     @abstractmethod
     def supported_partition_function_return_data_types(self):
         """Return a list of backend data types supported as the result of a partition function"""
-        pass
 
     @abstractmethod
     def synthetic_partition_numbers_are_string(self):
         """Are synthetic partition column values for numeric source columns stored as strings, True/False"""
-        pass
 
     @abstractmethod
     def table_distribution(self, db_name, table_name):
         """Get the distribution setting for a table. This may not apply to some backends, it was added for Synapse"""
-        pass
 
     @abstractmethod
     def table_exists(self, db_name: str, table_name: str) -> bool:
@@ -1799,7 +1654,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         """Return version of the backend SQL engine in x.y.z format that can be used by GOEVersion().
         This is different to backend_version() even though it appears similar in function.
         """
-        pass
 
     @abstractmethod
     def to_backend_literal(self, py_val, data_type=None):
@@ -1808,27 +1662,21 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         string (need quoting with a specific character).
         Other types are likely just a pass through.
         """
-        pass
 
     @abstractmethod
     def transform_encrypt_data_type(self):
         """Return a backend data type matching the output of an encryption expression."""
-        pass
 
     @abstractmethod
     def transform_null_cast(self, backend_column):
         """Return a SQL expression to cast a NULL value in place of a column."""
-        pass
 
     @abstractmethod
     def transform_tokenize_data_type(self):
         """Return a backend data type matching the output of a tokenization expression."""
-        pass
 
     @abstractmethod
-    def transform_regexp_replace_expression(
-        self, backend_column, regexp_replace_pattern, regexp_replace_string
-    ):
+    def transform_regexp_replace_expression(self, backend_column, regexp_replace_pattern, regexp_replace_string):
         pass
 
     @abstractmethod
@@ -1840,7 +1688,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         """Returns a list of UdfDetails for requested UDF name.
         We return a list because some backends can overload UDFs.
         """
-        pass
 
     @abstractmethod
     def valid_canonical_override(self, column, canonical_override):
@@ -1849,7 +1696,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         column: the source backend column object.
         canonical_override: either a canonical column object or a GOE_TYPE_... data type.
         """
-        pass
 
     @abstractmethod
     def valid_staging_formats(self):
@@ -1862,19 +1708,15 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
     @abstractmethod
     def to_canonical_column(self, column):
         """Translate a backend column to an internal GOE column."""
-        pass
 
     @abstractmethod
     def from_canonical_column(self, column, decimal_padding_digits=0):
         """Translate an internal GOE column to a backend column."""
-        pass
 
     # capability config
 
     def is_capability_supported(self, capability_constant):
-        assert capability_constant in self._backend_capabilities(), (
-            "Unknown capability: %s" % capability_constant
-        )
+        assert capability_constant in self._backend_capabilities(), "Unknown capability: %s" % capability_constant
         return self._backend_capabilities()[capability_constant]
 
     def bucket_hash_column_supported(self):
@@ -1981,10 +1823,7 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         return self.is_capability_supported(CAPABILITY_SORTED_TABLE)
 
     def sorted_table_modify_supported(self):
-        return bool(
-            self.sorted_table_supported()
-            and self.is_capability_supported(CAPABILITY_SORTED_TABLE_MODIFY)
-        )
+        return bool(self.sorted_table_supported() and self.is_capability_supported(CAPABILITY_SORTED_TABLE_MODIFY))
 
     def sql_microsecond_predicate_supported(self):
         """Can the orchestration SQL engine cope with literal predicates with microsecond precision"""

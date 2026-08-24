@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Constants used throughout test framework.
-"""
+"""Constants used throughout test framework."""
 
 # Keep these in sync with SALES_BASED_LIST_HV_s
 SALES_BASED_FACT_PRE_LOWER = "2011-12-01"
@@ -81,15 +80,9 @@ SALES_BASED_LIST_HV_8 = "201209"
 SALES_BASED_LIST_PNAME_8 = "P_" + SALES_BASED_LIST_HV_8
 SALES_BASED_LIST_HV_9 = "201210"
 SALES_BASED_LIST_PNAME_9 = "P_" + SALES_BASED_LIST_HV_9
-SALES_BASED_LIST_HV_DT_1 = (
-    SALES_BASED_LIST_HV_1[:4] + "-" + SALES_BASED_LIST_HV_1[4:] + "-01"
-)
-SALES_BASED_LIST_HV_DT_2 = (
-    SALES_BASED_LIST_HV_2[:4] + "-" + SALES_BASED_LIST_HV_2[4:] + "-01"
-)
-SALES_BASED_LIST_HV_DT_3 = (
-    SALES_BASED_LIST_HV_3[:4] + "-" + SALES_BASED_LIST_HV_3[4:] + "-01"
-)
+SALES_BASED_LIST_HV_DT_1 = SALES_BASED_LIST_HV_1[:4] + "-" + SALES_BASED_LIST_HV_1[4:] + "-01"
+SALES_BASED_LIST_HV_DT_2 = SALES_BASED_LIST_HV_2[:4] + "-" + SALES_BASED_LIST_HV_2[4:] + "-01"
+SALES_BASED_LIST_HV_DT_3 = SALES_BASED_LIST_HV_3[:4] + "-" + SALES_BASED_LIST_HV_3[4:] + "-01"
 SALES_BASED_LIST_PNAMES_BY_HV = {
     SALES_BASED_LIST_PRE_HV: SALES_BASED_LIST_PNAME_0,
     SALES_BASED_LIST_HV_1: SALES_BASED_LIST_PNAME_1,

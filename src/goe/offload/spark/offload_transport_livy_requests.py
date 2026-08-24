@@ -14,13 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" OffloadTransportLivyRequests: Helper class to handle requests calls for Livy messages
-"""
+"""OffloadTransportLivyRequests: Helper class to handle requests calls for Livy messages"""
 
 import requests
 
 try:
-    from requests_kerberos import HTTPKerberosAuth, REQUIRED
+    from requests_kerberos import REQUIRED, HTTPKerberosAuth
 except ModuleNotFoundError as e:
     if "requests_kerberos" in str(e):
         # We expect the hadoop dependencies when using Kerberos
@@ -28,8 +27,8 @@ except ModuleNotFoundError as e:
         REQUIRED = None
     else:
         raise
-from urllib3.exceptions import InsecureRequestWarning
 from urllib3 import disable_warnings
+from urllib3.exceptions import InsecureRequestWarning
 
 from goe.offload.offload_messages import VVERBOSE
 
@@ -47,7 +46,7 @@ class OffloadTransportLivyRequestsException(Exception):
 ###########################################################################
 
 
-class OffloadTransportLivyRequests(object):
+class OffloadTransportLivyRequests:
     """Helper class to handle requests calls for Livy REST API calls"""
 
     def __init__(self, offload_options, messages):
@@ -67,11 +66,7 @@ class OffloadTransportLivyRequests(object):
             "X-Requested-By": self._api_user,
         }
         messages.log("Livy transport headers: %s" % self._api_headers, detail=VVERBOSE)
-        self._api_auth = (
-            HTTPKerberosAuth(mutual_authentication=REQUIRED)
-            if offload_options.kerberos_service
-            else None
-        )
+        self._api_auth = HTTPKerberosAuth(mutual_authentication=REQUIRED) if offload_options.kerberos_service else None
         if offload_options.kerberos_service:
             messages.log("Livy transport is kerberized", detail=VVERBOSE)
         disable_warnings(InsecureRequestWarning)

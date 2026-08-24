@@ -15,23 +15,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendSparkThriftApi: BackendApi implementation for a Spark ThriftServer SQL backend.
+"""BackendSparkThriftApi: BackendApi implementation for a Spark ThriftServer SQL backend.
 
-    Spark ThriftServer is based on HiveQL and therefore subclassed from Hive
-    This has complications, Hive assumes it is in Hadoop but Spark ThriftServer can be in Hadoop,
-    with access to HDFS, or stand alone with no HDFS integration. For this reason we may, in the
-    future, choose to subclass again differentiating between the two Spark ThriftServer types.
+Spark ThriftServer is based on HiveQL and therefore subclassed from Hive
+This has complications, Hive assumes it is in Hadoop but Spark ThriftServer can be in Hadoop,
+with access to HDFS, or stand alone with no HDFS integration. For this reason we may, in the
+future, choose to subclass again differentiating between the two Spark ThriftServer types.
 """
 
 import logging
 
 from goe.offload.backend_api import (
-    BackendApiException,
     REPORT_ATTR_BACKEND_CLASS,
-    REPORT_ATTR_BACKEND_TYPE,
     REPORT_ATTR_BACKEND_DISPLAY_NAME,
-    REPORT_ATTR_BACKEND_HOST_INFO_TYPE,
     REPORT_ATTR_BACKEND_HOST_INFO,
+    REPORT_ATTR_BACKEND_HOST_INFO_TYPE,
+    REPORT_ATTR_BACKEND_TYPE,
+    BackendApiException,
 )
 from goe.offload.hadoop.hadoop_backend_api import BackendHadoopApi
 from goe.offload.hadoop.hive_backend_api import BackendHiveApi
@@ -126,8 +126,7 @@ class BackendSparkThriftApi(BackendHiveApi):
             REPORT_ATTR_BACKEND_TYPE: self._backend_type,
             REPORT_ATTR_BACKEND_DISPLAY_NAME: self.backend_db_name(),
             REPORT_ATTR_BACKEND_HOST_INFO_TYPE: "Host:port",
-            REPORT_ATTR_BACKEND_HOST_INFO: "%s:%s"
-            % (self._spark_thrift_host, self._spark_thrift_port),
+            REPORT_ATTR_BACKEND_HOST_INFO: "%s:%s" % (self._spark_thrift_host, self._spark_thrift_port),
         }
 
     def backend_version(self):
@@ -143,9 +142,7 @@ class BackendSparkThriftApi(BackendHiveApi):
         """
         assert db_name
         assert object_name
-        return bool(
-            self.database_exists(db_name) and self.list_tables(db_name, object_name)
-        )
+        return bool(self.database_exists(db_name) and self.list_tables(db_name, object_name))
 
     def get_columns(self, db_name, table_name):
         assert db_name and table_name
@@ -154,21 +151,15 @@ class BackendSparkThriftApi(BackendHiveApi):
         )
         return self._legacy_column_list_to_type(legacy_columns)
 
-    def get_missing_hive_table_stats(
-        self, db_name, table_name, colstats=True, as_dict=False
-    ):
+    def get_missing_hive_table_stats(self, db_name, table_name, colstats=True, as_dict=False):
         # See note in get_partition_columns() for commentary
-        raise NotImplementedError(
-            "get_missing_hive_table_stats() is not implemented for Spark"
-        )
+        raise NotImplementedError("get_missing_hive_table_stats() is not implemented for Spark")
 
     def get_partition_columns(self, db_name, table_name):
         # Hive relies on better_impyla.HiveTable to get this info and it doesn't work because
         # Impyla get_tables()/get_databases() methods don't work for Spark.
         # If Spark ever become a first class citizen we need address this.
-        raise NotImplementedError(
-            "get_partition_columns() is not implemented for Spark"
-        )
+        raise NotImplementedError("get_partition_columns() is not implemented for Spark")
 
     def get_session_option(self, option_name):
         """Get config variable from Spark, set returns tuple of (prm, value)"""
@@ -181,9 +172,7 @@ class BackendSparkThriftApi(BackendHiveApi):
             option_setting = None
         return option_setting
 
-    def get_table_ddl(
-        self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False
-    ):
+    def get_table_ddl(self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False):
         """Return table DDL as a string (or a list of strings split on CR if as_list=True)
         for_replace ignored on Spark
         """
@@ -193,15 +182,12 @@ class BackendSparkThriftApi(BackendHiveApi):
             "SHOW CREATE TABLE %s" % self.enclose_object_reference(db_name, table_name)
         )
         if not ddl_row:
-            raise BackendApiException(
-                "Table does not exist for DDL retrieval: %s.%s" % (db_name, table_name)
-            )
+            raise BackendApiException("Table does not exist for DDL retrieval: %s.%s" % (db_name, table_name))
         ddl_str = ddl_row[0]
         self._debug("Table DDL: %s" % ddl_str)
         if as_list:
             return ddl_str.split("\n")
-        else:
-            return ddl_str
+        return ddl_str
 
     def get_table_location(self, db_name, table_name):
         # See note in get_partition_columns() for commentary
@@ -209,9 +195,7 @@ class BackendSparkThriftApi(BackendHiveApi):
 
     def get_table_partition_count(self, db_name, table_name):
         # See note in get_partition_columns() for commentary
-        raise NotImplementedError(
-            "get_table_partition_count() is not implemented for Spark"
-        )
+        raise NotImplementedError("get_table_partition_count() is not implemented for Spark")
 
     def get_table_partitions(self, db_name, table_name):
         # See note in get_partition_columns() for commentary
@@ -219,9 +203,7 @@ class BackendSparkThriftApi(BackendHiveApi):
 
     def get_table_row_count_from_metadata(self, db_name, table_name):
         # See note in get_partition_columns() for commentary
-        raise NotImplementedError(
-            "get_table_row_count_from_metadata() is not implemented for Spark"
-        )
+        raise NotImplementedError("get_table_row_count_from_metadata() is not implemented for Spark")
 
     def get_table_size(self, db_name, table_name):
         # See note in get_partition_columns() for commentary
@@ -243,15 +225,12 @@ class BackendSparkThriftApi(BackendHiveApi):
         rows = self.execute_query_fetch_all(sql, log_level=VVERBOSE)
         if rows:
             return [_[1] for _ in rows]
-        else:
-            return []
+        return []
 
-    def rename_table(
-        self, from_db_name, from_table_name, to_db_name, to_table_name, sync=None
-    ):
+    def rename_table(self, from_db_name, from_table_name, to_db_name, to_table_name, sync=None):
         # See note in get_partition_columns() for commentary
         raise NotImplementedError("rename_table() is not implemented for Spark")
 
     def target_version(self):
         """No version available via SQL for Spark"""
-        return None
+        return

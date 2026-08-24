@@ -15,10 +15,8 @@
 import os
 import re
 import sys
-from typing import Optional
 
 from dotenv import load_dotenv
-
 
 CONFIG_FILE_NAME = "offload.env"
 KEY_VALUE_PATTERN = re.compile(r"#?[ ]*([A-Z_0-9]+)=(.*)")
@@ -47,7 +45,7 @@ def load_env(path: str = None):
     load_dotenv(path)
 
 
-def env_key_value_pair(line_from_file: str) -> Optional[tuple]:
+def env_key_value_pair(line_from_file: str) -> tuple | None:
     """Used by connect to get the key names from a configuration file"""
     m = KEY_VALUE_PATTERN.match(line_from_file)
     return m.groups() if m else None

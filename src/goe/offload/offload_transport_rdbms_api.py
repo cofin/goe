@@ -82,9 +82,7 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         self._dry_run = dry_run
         self._offload_transport_dsn = offload_options.offload_transport_dsn
         self._rdbms_adm_dsn = offload_options.rdbms_dsn
-        self._offload_transport_rdbms_session_parameters = (
-            offload_options.offload_transport_rdbms_session_parameters
-        )
+        self._offload_transport_rdbms_session_parameters = offload_options.offload_transport_rdbms_session_parameters
         self._rdbms_adm_conn = None
         self._rdbms_app_conn = None
         self._fixed_goe_parameters = None
@@ -98,9 +96,8 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         if pad is None:
             # All on one line, Sqoop needs this
             return " UNION ALL "
-        else:
-            crlf = "\n" + (" " * (pad or 0))
-            return crlf + "UNION ALL" + crlf
+        crlf = "\n" + (" " * (pad or 0))
+        return crlf + "UNION ALL" + crlf
 
     def _ssh_cli_safe_value(self, cmd_option_string):
         """If we are invoking Sqoop via SSH then we need extra protection for special characters on the command line
@@ -108,8 +105,7 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         """
         if self._ssh_cmd_prefix():
             return ansi_c_string_safe(cmd_option_string)
-        else:
-            return cmd_option_string
+        return cmd_option_string
 
     def _ssh_cmd_prefix(self, host=None):
         """Many calls to ssh_cmd_prefix() in this class use std inputs therefore abstract in this method"""
@@ -144,9 +140,7 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_id_range(
-        self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk=None
-    ) -> tuple:
+    def get_id_range(self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk=None) -> tuple:
         """Function to get the MIN and MAX values for an id column"""
 
     @abstractmethod
@@ -268,7 +262,7 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         """Return a query providing a value range for Sqoop --boundary-query option.
         Oracle has it's own override.
         """
-        return '"SELECT 0, {}"'.format(offload_transport_parallelism - 1)
+        return f'"SELECT 0, {offload_transport_parallelism - 1}"'
 
     @abstractmethod
     def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands) -> list:

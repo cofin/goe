@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Unit tests for TeradataPartitionExpression
-"""
+"""Unit tests for TeradataPartitionExpression"""
+
 from unittest import TestCase, main
 
 from goe.offload.offload_source_table import OFFLOAD_PARTITION_TYPE_RANGE
@@ -21,7 +21,6 @@ from goe.offload.teradata.teradata_partition_expression import (
     PARTITION_TYPE_COLUMNAR,
     TeradataPartitionExpression,
     UnsupportedCaseNPartitionExpression,
-    UnsupportedPartitionExpression,
 )
 
 

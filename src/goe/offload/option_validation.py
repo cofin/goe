@@ -12,28 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from optparse import OptionValueError
 import re
+from optparse import OptionValueError
 from typing import TYPE_CHECKING
 
 from goe.exceptions import OffloadException, OffloadOptionError
 from goe.offload import offload_constants
-from goe.offload.predicate_offload import GenericPredicate
 from goe.offload.offload_source_table import (
     DATA_SAMPLE_SIZE_AUTO,
-    OFFLOAD_PARTITION_TYPE_RANGE,
     OFFLOAD_PARTITION_TYPE_LIST,
+    OFFLOAD_PARTITION_TYPE_RANGE,
 )
+from goe.offload.predicate_offload import GenericPredicate
 from goe.persistence.orchestration_metadata import (
-    INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
+    INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )
 from goe.util.misc_functions import is_pos_int
 
 if TYPE_CHECKING:
-    from goe.config.orchestration_config import OrchestrationConfig
     from goe.offload.offload_source_table import OffloadSourceTableInterface
 
 
@@ -80,15 +79,10 @@ def active_data_append_options(
     return active_pa_opts
 
 
-def check_opt_is_posint(
-    opt_name, opt_val, exception_class=OptionValueError, allow_zero=False
-):
+def check_opt_is_posint(opt_name, opt_val, exception_class=OptionValueError, allow_zero=False):
     if is_pos_int(opt_val, allow_zero=allow_zero):
         return int(opt_val)
-    else:
-        raise exception_class(
-            "option %s: invalid positive integer value: %s" % (opt_name, opt_val)
-        )
+    raise exception_class("option %s: invalid positive integer value: %s" % (opt_name, opt_val))
 
 
 def check_ipa_predicate_type_option_conflicts(
@@ -143,23 +137,17 @@ def check_ipa_predicate_type_option_conflicts(
             )
     elif ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_PREDICATE:
         if not options.offload_predicate:
-            raise exc_cls(
-                offload_constants.IPA_PREDICATE_TYPE_REQUIRES_PREDICATE_EXCEPTION_TEXT
-            )
+            raise exc_cls(offload_constants.IPA_PREDICATE_TYPE_REQUIRES_PREDICATE_EXCEPTION_TEXT)
 
 
 def normalise_data_sampling_options(options):
     if hasattr(options, "data_sample_pct"):
-        if isinstance(options.data_sample_pct, str) and re.search(
-            r"^[\d\.]+$", options.data_sample_pct
-        ):
+        if isinstance(options.data_sample_pct, str) and re.search(r"^[\d\.]+$", options.data_sample_pct):
             options.data_sample_pct = float(options.data_sample_pct)
         elif options.data_sample_pct == "AUTO":
             options.data_sample_pct = DATA_SAMPLE_SIZE_AUTO
         elif type(options.data_sample_pct) not in (int, float):
-            raise OffloadOptionError(
-                'Invalid value "%s" for --data-sample-percent' % options.data_sample_pct
-            )
+            raise OffloadOptionError('Invalid value "%s" for --data-sample-percent' % options.data_sample_pct)
     else:
         options.data_sample_pct = 0
 
@@ -176,20 +164,14 @@ def normalise_offload_predicate_options(options):
         if isinstance(options.offload_predicate, str):
             options.offload_predicate = GenericPredicate(options.offload_predicate)
 
-        if (
-            options.less_than_value
-            or options.older_than_date
-            or options.older_than_days
-        ):
+        if options.less_than_value or options.older_than_date or options.older_than_days:
             raise OffloadOptionError(
                 "Predicate offload cannot be used with incremental partition offload options: (--less-than-value/--older-than-date/--older-than-days)"
             )
 
     no_modify_hybrid_view_option_used = not options.offload_predicate_modify_hybrid_view
     if no_modify_hybrid_view_option_used and not options.offload_predicate:
-        raise OffloadOptionError(
-            "--no-modify-hybrid-view can only be used with --offload-predicate"
-        )
+        raise OffloadOptionError("--no-modify-hybrid-view can only be used with --offload-predicate")
 
 
 def normalise_stats_options(options, target_backend: str):
@@ -199,9 +181,7 @@ def normalise_stats_options(options, target_backend: str):
         offload_constants.OFFLOAD_STATS_METHOD_COPY,
         offload_constants.OFFLOAD_STATS_METHOD_NONE,
     ]:
-        raise OffloadOptionError(
-            "Unsupported value for --offload-stats: %s" % options.offload_stats_method
-        )
+        raise OffloadOptionError("Unsupported value for --offload-stats: %s" % options.offload_stats_method)
 
     if (
         options.offload_stats_method == offload_constants.OFFLOAD_STATS_METHOD_HISTORY

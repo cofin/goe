@@ -12,10 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestColumnMetadata: Unit test TestColumnMetadata library to test all functions """
+"""TestColumnMetadata: Unit test TestColumnMetadata library to test all functions"""
+
 from unittest import TestCase, main
 
 from goe.offload.column_metadata import (
+    GOE_TYPE_BINARY,
+    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_FLOAT,
+    GOE_TYPE_INTEGER_2,
+    GOE_TYPE_TIME,
+    GOE_TYPE_VARIABLE_STRING,
+    SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE,
     CanonicalColumn,
     ColumnPartitionInfo,
     get_column_names,
@@ -26,15 +36,6 @@ from goe.offload.column_metadata import (
     match_table_column_position,
     regex_real_column_from_part_column,
     valid_column_list,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_BOOLEAN,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_TIME,
-    GOE_TYPE_VARIABLE_STRING,
-    SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE,
 )
 
 
@@ -45,9 +46,7 @@ class TestColumnMetadata(TestCase):
             CanonicalColumn("COL_NAME", GOE_TYPE_VARIABLE_STRING),
             CanonicalColumn("COL_DATA", GOE_TYPE_BINARY),
             CanonicalColumn("COL_OTHER_ID", GOE_TYPE_INTEGER_2),
-            CanonicalColumn(
-                "COL_COST", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2
-            ),
+            CanonicalColumn("COL_COST", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2),
             CanonicalColumn("COL_RATE", GOE_TYPE_FLOAT),
             CanonicalColumn("COL_DATE", GOE_TYPE_DATE),
             CanonicalColumn("COL_TIME", GOE_TYPE_TIME),
@@ -55,16 +54,12 @@ class TestColumnMetadata(TestCase):
             CanonicalColumn(
                 SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE % ("M", "COL_DATE"),
                 GOE_TYPE_VARIABLE_STRING,
-                partition_info=ColumnPartitionInfo(
-                    0, source_column_name="COL_DATE", granularity="M"
-                ),
+                partition_info=ColumnPartitionInfo(0, source_column_name="COL_DATE", granularity="M"),
             ),
             CanonicalColumn(
                 SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE % ("1", "COL_NAME"),
                 GOE_TYPE_VARIABLE_STRING,
-                partition_info=ColumnPartitionInfo(
-                    1, source_column_name="COL_NAME", granularity="1"
-                ),
+                partition_info=ColumnPartitionInfo(1, source_column_name="COL_NAME", granularity="1"),
             ),
             CanonicalColumn(
                 "NATIVE_PART_COL",
@@ -89,15 +84,11 @@ class TestColumnMetadata(TestCase):
     def test_get_partition_columns(self):
         self.assertIsInstance(get_partition_columns(self.canonical_columns()), list)
         self.assertIsInstance(
-            match_table_column(
-                "NATIVE_PART_COL", get_partition_columns(self.canonical_columns())
-            ),
+            match_table_column("NATIVE_PART_COL", get_partition_columns(self.canonical_columns())),
             CanonicalColumn,
         )
         self.assertIsNone(
-            match_table_column(
-                "COL_COST", get_partition_columns(self.canonical_columns())
-            ),
+            match_table_column("COL_COST", get_partition_columns(self.canonical_columns())),
             CanonicalColumn,
         )
 
@@ -143,7 +134,7 @@ class TestColumnMetadata(TestCase):
         for synth_name in [
             "time_id",
             "goe_part_p_time_id",
-            "goe_part_-1_time_id" "goe_part_year_time_id",
+            "goe_part_-1_time_idgoe_part_year_time_id",
             "goe_part_month_time_id",
             "goe_part_day_time_id",
             "goe_part_U_time_id",
@@ -153,31 +144,19 @@ class TestColumnMetadata(TestCase):
             self.assertFalse(is_synthetic_partition_column(synth_name))
 
     def test_match_table_column(self):
-        self.assertIsInstance(
-            match_table_column("iD", self.canonical_columns()), CanonicalColumn
-        )
+        self.assertIsInstance(match_table_column("iD", self.canonical_columns()), CanonicalColumn)
         self.assertIsNone(match_table_column("not_a_column", self.canonical_columns()))
 
     def test_match_partition_column_by_source(self):
-        part_col = match_partition_column_by_source(
-            "col_name", self.canonical_columns()
-        )
+        part_col = match_partition_column_by_source("col_name", self.canonical_columns())
         self.assertIsInstance(part_col, CanonicalColumn)
-        self.assertEqual(
-            part_col.name, SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE % ("1", "COL_NAME")
-        )
-        self.assertIsNone(
-            match_partition_column_by_source("not_a_column", self.canonical_columns())
-        )
-        self.assertIsNone(
-            match_partition_column_by_source("COL_BOOL", self.canonical_columns())
-        )
+        self.assertEqual(part_col.name, SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE % ("1", "COL_NAME"))
+        self.assertIsNone(match_partition_column_by_source("not_a_column", self.canonical_columns()))
+        self.assertIsNone(match_partition_column_by_source("COL_BOOL", self.canonical_columns()))
 
     def test_match_table_column_position(self):
         self.assertEqual(match_table_column_position("iD", self.canonical_columns()), 0)
-        self.assertIsNone(
-            match_table_column_position("not_a_column", self.canonical_columns())
-        )
+        self.assertIsNone(match_table_column_position("not_a_column", self.canonical_columns()))
 
     def test_valid_column_list(self):
         self.assertTrue(valid_column_list(self.canonical_columns()))

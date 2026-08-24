@@ -14,17 +14,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendSynapseTable: Library for logic/interaction with a table that will
-    be either:
-      1) The target of an offload
-      2) The source of a present
+"""BackendSynapseTable: Library for logic/interaction with a table that will
+be either:
+  1) The target of an offload
+  2) The source of a present
 """
 
 import logging
 import os
 
+from goe.offload.backend_table import BackendTableInterface
+from goe.offload.column_metadata import ColumnMetadataInterface
+from goe.offload.hadoop.hadoop_backend_table import COMPUTE_LOAD_TABLE_STATS_LOG_TEXT
+from goe.offload.microsoft import synapse_predicate
 from goe.offload.microsoft.synapse_column import (
-    SynapseColumn,
     SYNAPSE_TYPE_BIGINT,
     SYNAPSE_TYPE_DATETIME2,
     SYNAPSE_TYPE_FLOAT,
@@ -34,10 +37,9 @@ from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_REAL,
     SYNAPSE_TYPE_TIME,
     SYNAPSE_TYPE_VARBINARY,
+    SynapseColumn,
 )
-from goe.offload.microsoft import synapse_predicate
-from goe.offload.column_metadata import ColumnMetadataInterface
-from goe.offload.backend_table import BackendTableInterface
+from goe.offload.offload_constants import OFFLOAD_STATS_METHOD_NONE
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.staging.avro.avro_staging_file import (
     AVRO_TYPE_DOUBLE,
@@ -51,8 +53,6 @@ from goe.offload.staging.parquet.parquet_column import (
     PARQUET_TYPE_INT32,
     PARQUET_TYPE_INT64,
 )
-from goe.offload.hadoop.hadoop_backend_table import COMPUTE_LOAD_TABLE_STATS_LOG_TEXT
-from goe.offload.offload_constants import OFFLOAD_STATS_METHOD_NONE
 
 ###############################################################################
 # CONSTANTS
@@ -85,7 +85,7 @@ class BackendSynapseTable(BackendTableInterface):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendSynapseTable, self).__init__(
+        super().__init__(
             db_name,
             table_name,
             backend_type,
@@ -112,9 +112,7 @@ class BackendSynapseTable(BackendTableInterface):
         )
         self._log_profile_after_final_table_load = True
         self._log_profile_after_verification_queries = True
-        self._offload_stats_method = getattr(
-            orchestration_operation, "offload_stats_method", None
-        )
+        self._offload_stats_method = getattr(orchestration_operation, "offload_stats_method", None)
         self._sql_engine_name = "Synapse"
         self._synapse_data_source = orchestration_options.synapse_data_source
         self._synapse_file_format = orchestration_options.synapse_file_format
@@ -128,9 +126,7 @@ class BackendSynapseTable(BackendTableInterface):
         if not self._user_requested_compute_load_table_stats:
             return
         self._log(COMPUTE_LOAD_TABLE_STATS_LOG_TEXT, detail=VVERBOSE)
-        self._db_api.compute_stats(
-            self._load_db_name, self._load_table_name, for_columns=True
-        )
+        self._db_api.compute_stats(self._load_db_name, self._load_table_name, for_columns=True)
 
     def _create_load_table(self, staging_file, with_terminator=False) -> list:
         no_partition_cols = []
@@ -145,12 +141,8 @@ class BackendSynapseTable(BackendTableInterface):
             location=self._ext_table_location,
             external=True,
             table_properties={
-                "DATA_SOURCE": self._db_api.enclose_identifier(
-                    self._synapse_data_source
-                ),
-                "FILE_FORMAT": self._db_api.enclose_identifier(
-                    self._synapse_file_format
-                ),
+                "DATA_SOURCE": self._db_api.enclose_identifier(self._synapse_data_source),
+                "FILE_FORMAT": self._db_api.enclose_identifier(self._synapse_file_format),
             },
             sync=True,
             with_terminator=with_terminator,
@@ -188,23 +180,15 @@ class BackendSynapseTable(BackendTableInterface):
         )
 
     def _gen_synthetic_partition_column_object(self, synthetic_name, canonical_column):
-        raise NotImplementedError(
-            self._not_implemented_message("Synthetic partitioning")
-        )
+        raise NotImplementedError(self._not_implemented_message("Synthetic partitioning"))
 
     def _gen_synthetic_partition_date_truncated_sql_expr(
         self, synthetic_name, column_name, granularity, source_column_cast
     ):
-        raise NotImplementedError(
-            self._not_implemented_message("Synthetic partitioning")
-        )
+        raise NotImplementedError(self._not_implemented_message("Synthetic partitioning"))
 
-    def _gen_synthetic_partition_date_as_string_sql_expr(
-        self, extract_name, pad_size, source_column_cast
-    ):
-        raise NotImplementedError(
-            self._not_implemented_message("Synthetic partitioning")
-        )
+    def _gen_synthetic_partition_date_as_string_sql_expr(self, extract_name, pad_size, source_column_cast):
+        raise NotImplementedError(self._not_implemented_message("Synthetic partitioning"))
 
     def _gen_synthetic_part_number_granularity_sql_expr(
         self,
@@ -214,18 +198,12 @@ class BackendSynapseTable(BackendTableInterface):
         synthetic_partition_digits,
         with_padding=True,
     ):
-        raise NotImplementedError(
-            self._not_implemented_message("Synthetic partitioning")
-        )
+        raise NotImplementedError(self._not_implemented_message("Synthetic partitioning"))
 
     def _gen_synthetic_part_string_granularity_sql_expr(self, column_expr, granularity):
-        raise NotImplementedError(
-            self._not_implemented_message("Synthetic partitioning")
-        )
+        raise NotImplementedError(self._not_implemented_message("Synthetic partitioning"))
 
-    def _staging_to_backend_cast(
-        self, rdbms_column, backend_column, staging_column
-    ) -> tuple:
+    def _staging_to_backend_cast(self, rdbms_column, backend_column, staging_column) -> tuple:
         """Returns correctly cast or overridden columns ready for insert/select to final table.
         Synapse implementation.
         """
@@ -234,8 +212,7 @@ class BackendSynapseTable(BackendTableInterface):
             # CONVERT ( data_type [ ( length ) ] , expression [ , style ] )
             if try_convert:
                 return "TRY_CONVERT(%s, %s, %s)" % (data_type, expr, style)
-            else:
-                return "CONVERT(%s, %s, %s)" % (data_type, expr, style)
+            return "CONVERT(%s, %s, %s)" % (data_type, expr, style)
 
         def staging_file_int_match(backend_column, staging_column):
             return bool(
@@ -253,21 +230,17 @@ class BackendSynapseTable(BackendTableInterface):
             return bool(
                 (
                     backend_column.data_type == SYNAPSE_TYPE_REAL
-                    and staging_column.data_type
-                    in [AVRO_TYPE_FLOAT, PARQUET_TYPE_FLOAT]
+                    and staging_column.data_type in [AVRO_TYPE_FLOAT, PARQUET_TYPE_FLOAT]
                 )
                 or (
                     backend_column.data_type == SYNAPSE_TYPE_FLOAT
-                    and staging_column.data_type
-                    in [AVRO_TYPE_DOUBLE, PARQUET_TYPE_DOUBLE]
+                    and staging_column.data_type in [AVRO_TYPE_DOUBLE, PARQUET_TYPE_DOUBLE]
                 )
             )
 
         assert backend_column
         assert isinstance(backend_column, SynapseColumn)
-        assert rdbms_column, (
-            "RDBMS column missing for backend column: %s" % backend_column.name
-        )
+        assert rdbms_column, "RDBMS column missing for backend column: %s" % backend_column.name
         assert isinstance(rdbms_column, ColumnMetadataInterface)
         assert staging_column
         assert isinstance(staging_column, ColumnMetadataInterface)
@@ -276,10 +249,7 @@ class BackendSynapseTable(BackendTableInterface):
         return_vcast = None
         return_type = backend_column.format_data_type().upper()
 
-        if (
-            isinstance(staging_column, SynapseColumn)
-            and staging_column.data_type == backend_column.data_type
-        ):
+        if isinstance(staging_column, SynapseColumn) and staging_column.data_type == backend_column.data_type:
             # Same column type and data type so no need to CAST, this is only possible when materializing a join
             self._log(
                 "No cast of %s required for matching load data type: %s"
@@ -311,19 +281,17 @@ class BackendSynapseTable(BackendTableInterface):
             if backend_column.is_string_based():
                 # This is not a valid translation, time zoned data can not be offloaded to string.
                 raise NotImplementedError(
-                    "Offload of time zoned data to %s is not supported"
-                    % backend_column.data_type
+                    "Offload of time zoned data to %s is not supported" % backend_column.data_type
                 )
-            else:
-                return_cast = convert(
-                    self._format_staging_column_name(staging_column),
-                    backend_column.format_data_type().upper(),
-                )
-                return_vcast = convert(
-                    self._format_staging_column_name(staging_column),
-                    backend_column.format_data_type().upper(),
-                    try_convert=True,
-                )
+            return_cast = convert(
+                self._format_staging_column_name(staging_column),
+                backend_column.format_data_type().upper(),
+            )
+            return_vcast = convert(
+                self._format_staging_column_name(staging_column),
+                backend_column.format_data_type().upper(),
+                try_convert=True,
+            )
         elif rdbms_column.is_date_based():
             if backend_column.is_string_based():
                 # We need a string containing the full timestamp spec including microseconds and 4 digit year.
@@ -396,13 +364,10 @@ class BackendSynapseTable(BackendTableInterface):
 
         if return_cast:
             return return_cast, return_type, return_vcast
-        else:
-            return_cast = self._format_staging_column_name(staging_column)
-            return return_cast, None, return_cast
+        return_cast = self._format_staging_column_name(staging_column)
+        return return_cast, None, return_cast
 
-    def _validate_final_table_casts_verification_sql(
-        self, projection_list, predicate_or_list, limit=None
-    ):
+    def _validate_final_table_casts_verification_sql(self, projection_list, predicate_or_list, limit=None):
         """Verification SQL to display when final table casts have failed.
         Override for Synapse as it uses TOP(n) and not LIMIT n
         """
@@ -435,9 +400,7 @@ class BackendSynapseTable(BackendTableInterface):
         no_partition_columns = None
         table_properties = {}
         if self._bucket_hash_col:
-            table_properties["DISTRIBUTION"] = (
-                "HASH(%s)" % self._db_api.enclose_identifier(self._bucket_hash_col)
-            )
+            table_properties["DISTRIBUTION"] = "HASH(%s)" % self._db_api.enclose_identifier(self._bucket_hash_col)
 
         cmds = self._db_api.create_table(
             self.db_name,
@@ -448,15 +411,8 @@ class BackendSynapseTable(BackendTableInterface):
             sort_column_names=self._sort_columns,
             with_terminator=with_terminator,
         )
-        if (
-            self._offload_stats_method
-            and self._offload_stats_method != OFFLOAD_STATS_METHOD_NONE
-        ):
-            cmds.extend(
-                self._db_api.compute_stats(
-                    self.db_name, self.table_name, for_columns=True
-                )
-            )
+        if self._offload_stats_method and self._offload_stats_method != OFFLOAD_STATS_METHOD_NONE:
+            cmds.extend(self._db_api.compute_stats(self.db_name, self.table_name, for_columns=True))
 
         if not self._dry_run:
             self._drop_state()
@@ -470,11 +426,7 @@ class BackendSynapseTable(BackendTableInterface):
         """Return a list of columns that indicate the user requested were offloaded as unicode.
         Synapse override of common method.
         """
-        unicode_columns = [
-            _
-            for _ in self.get_columns()
-            if _.data_type in [SYNAPSE_TYPE_NCHAR, SYNAPSE_TYPE_NVARCHAR]
-        ]
+        unicode_columns = [_ for _ in self.get_columns() if _.data_type in [SYNAPSE_TYPE_NCHAR, SYNAPSE_TYPE_NVARCHAR]]
         return ",".join(_.name for _ in unicode_columns) if as_csv else unicode_columns
 
     def empty_staging_area(self, staging_file):
@@ -482,7 +434,7 @@ class BackendSynapseTable(BackendTableInterface):
 
     def get_default_location(self):
         """Not applicable to Synapse"""
-        return None
+        return
 
     def get_staging_table_location(self):
         # Use cached location to avoid re-doing same thing multiple times
@@ -499,10 +451,7 @@ class BackendSynapseTable(BackendTableInterface):
                 self._load_table_name,
             )
         )
-        select_expression_tuples = [
-            (self.get_final_table_cast(col), col.name.upper())
-            for col in self.get_columns()
-        ]
+        select_expression_tuples = [(self.get_final_table_cast(col), col.name.upper()) for col in self.get_columns()]
         sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples)
         self._execute_dml(
             sqls,
@@ -530,10 +479,7 @@ class BackendSynapseTable(BackendTableInterface):
                 self._load_table_name,
             )
         )
-        select_expression_tuples = [
-            (self.get_final_table_cast(col), col.name.upper())
-            for col in self.get_columns()
-        ]
+        select_expression_tuples = [(self.get_final_table_cast(col), col.name.upper()) for col in self.get_columns()]
         sqls, query_options = self._gen_mat_join_insert_sqls(
             select_expression_tuples,
             threshold_cols,
@@ -563,16 +509,10 @@ class BackendSynapseTable(BackendTableInterface):
             self._db_api.enclose_object_reference(self.db_name, self.table_name),
             synapse_predicate.predicate_to_where_clause(self.get_columns(), predicate),
         )
-        return bool(
-            self._execute_query_fetch_one(
-                sql, log_level=VERBOSE, not_when_dry_running=False
-            )
-        )
+        return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
 
     def predicate_to_where_clause(self, predicate, columns_override=None):
-        return synapse_predicate.predicate_to_where_clause(
-            columns_override or self.get_columns(), predicate
-        )
+        return synapse_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
 
     def result_cache_area_exists(self):
         return self._result_cache_db_exists()
@@ -585,18 +525,12 @@ class BackendSynapseTable(BackendTableInterface):
         d) the load schema exists
         """
         status = True
-        if not self._db_api.synapse_external_data_source_exists(
-            self._synapse_data_source
-        ):
-            self._warning(
-                "Synapse external data source does not exist: %s"
-                % self._synapse_data_source
-            )
+        if not self._db_api.synapse_external_data_source_exists(self._synapse_data_source):
+            self._warning("Synapse external data source does not exist: %s" % self._synapse_data_source)
             status = False
         if not self._db_api.synapse_file_format_exists(self._synapse_file_format):
             self._warning(
-                "Synapse file format does not exist or is not a supported format type: %s"
-                % self._synapse_data_source
+                "Synapse file format does not exist or is not a supported format type: %s" % self._synapse_data_source
             )
             status = False
         if not self.result_cache_area_exists():
@@ -623,9 +557,7 @@ class BackendSynapseTable(BackendTableInterface):
         Synapse catches overflowing casts but this way we can spot them beforehand and
         provide the user with SQL to view offending values.
         """
-        self._validate_final_table_casts(
-            staging_columns, log_profile=self._log_profile_after_verification_queries
-        )
+        self._validate_final_table_casts(staging_columns, log_profile=self._log_profile_after_verification_queries)
 
     def partition_function_requires_granularity(self):
         """Table partitioning not implemented at this stage on Synapse"""

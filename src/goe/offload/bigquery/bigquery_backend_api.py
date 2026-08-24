@@ -15,85 +15,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BigQueryBackendApi: Library for logic/interaction with a remote BigQuery backend.
-    This module enforces an interface with common, highlevel, methods and an implementation
-    for each supported remote system, e.g. Impala, Hive, Google BigQuery.
+"""BigQueryBackendApi: Library for logic/interaction with a remote BigQuery backend.
+This module enforces an interface with common, highlevel, methods and an implementation
+for each supported remote system, e.g. Impala, Hive, Google BigQuery.
 """
 
-from datetime import datetime
 import logging
-from math import ceil
 import re
-from textwrap import dedent
 import traceback
+from datetime import datetime
+from math import ceil
+from textwrap import dedent
 
 from google.cloud import bigquery, kms
 from google.cloud.exceptions import NotFound
 from numpy import datetime64
 
 from goe.connect.connect_constants import CONNECT_DETAIL, CONNECT_STATUS, CONNECT_TEST
-from goe.offload.column_metadata import (
-    CanonicalColumn,
-    ColumnMetadataInterface,
-    ColumnPartitionInfo,
-    is_safe_mapping,
-    match_table_column,
-    str_list_of_columns,
-    valid_column_list,
-    CANONICAL_CHAR_SEMANTICS_CHAR,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_VARIABLE_STRING,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_BOOLEAN,
-    ALL_CANONICAL_TYPES,
-    DATE_CANONICAL_TYPES,
-    NUMERIC_CANONICAL_TYPES,
-    STRING_CANONICAL_TYPES,
-)
 from goe.offload.backend_api import (
-    BackendApiInterface,
-    BackendApiException,
-    UdfDetails,
-    UdfParameter,
     FETCH_ACTION_ALL,
     FETCH_ACTION_ONE,
     REPORT_ATTR_BACKEND_CLASS,
-    REPORT_ATTR_BACKEND_TYPE,
     REPORT_ATTR_BACKEND_DISPLAY_NAME,
-    REPORT_ATTR_BACKEND_HOST_INFO_TYPE,
     REPORT_ATTR_BACKEND_HOST_INFO,
-)
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.offload_constants import (
-    EMPTY_BACKEND_TABLE_STATS_DICT,
-    EMPTY_BACKEND_COLUMN_STATS_LIST,
-    EMPTY_BACKEND_COLUMN_STATS_DICT,
-    FILE_STORAGE_FORMAT_AVRO,
-    FILE_STORAGE_FORMAT_BIGTABLE,
-    BIGQUERY_BACKEND_CAPABILITIES,
-    PART_COL_GRANULARITY_DAY,
-    PART_COL_GRANULARITY_MONTH,
-    PART_COL_GRANULARITY_YEAR,
-    FILE_STORAGE_FORMAT_PARQUET,
+    REPORT_ATTR_BACKEND_HOST_INFO_TYPE,
+    REPORT_ATTR_BACKEND_TYPE,
+    BackendApiException,
+    BackendApiInterface,
+    UdfDetails,
+    UdfParameter,
 )
 from goe.offload.bigquery.bigquery_column import (
-    BigQueryColumn,
     BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_BOOLEAN,
     BIGQUERY_TYPE_BYTES,
@@ -105,9 +57,56 @@ from goe.offload.bigquery.bigquery_column import (
     BIGQUERY_TYPE_STRING,
     BIGQUERY_TYPE_TIME,
     BIGQUERY_TYPE_TIMESTAMP,
+    BigQueryColumn,
 )
 from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
-
+from goe.offload.column_metadata import (
+    ALL_CANONICAL_TYPES,
+    CANONICAL_CHAR_SEMANTICS_CHAR,
+    DATE_CANONICAL_TYPES,
+    GOE_TYPE_BINARY,
+    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_FLOAT,
+    GOE_TYPE_INTEGER_1,
+    GOE_TYPE_INTEGER_2,
+    GOE_TYPE_INTEGER_4,
+    GOE_TYPE_INTEGER_8,
+    GOE_TYPE_INTEGER_38,
+    GOE_TYPE_INTERVAL_DS,
+    GOE_TYPE_INTERVAL_YM,
+    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_LARGE_STRING,
+    GOE_TYPE_TIME,
+    GOE_TYPE_TIMESTAMP,
+    GOE_TYPE_TIMESTAMP_TZ,
+    GOE_TYPE_VARIABLE_STRING,
+    NUMERIC_CANONICAL_TYPES,
+    STRING_CANONICAL_TYPES,
+    CanonicalColumn,
+    ColumnMetadataInterface,
+    ColumnPartitionInfo,
+    is_safe_mapping,
+    match_table_column,
+    str_list_of_columns,
+    valid_column_list,
+)
+from goe.offload.offload_constants import (
+    BIGQUERY_BACKEND_CAPABILITIES,
+    EMPTY_BACKEND_COLUMN_STATS_DICT,
+    EMPTY_BACKEND_COLUMN_STATS_LIST,
+    EMPTY_BACKEND_TABLE_STATS_DICT,
+    FILE_STORAGE_FORMAT_AVRO,
+    FILE_STORAGE_FORMAT_BIGTABLE,
+    FILE_STORAGE_FORMAT_PARQUET,
+    PART_COL_GRANULARITY_DAY,
+    PART_COL_GRANULARITY_MONTH,
+    PART_COL_GRANULARITY_YEAR,
+)
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.util.misc_functions import backtick_sandwich, format_list_for_logging
 
 ###############################################################################
@@ -115,7 +114,7 @@ from goe.util.misc_functions import backtick_sandwich, format_list_for_logging
 ###############################################################################
 
 # Regular expression matching invalid identifier characters, constant to ensure compiled only once
-BIGQUERY_INVALID_IDENTIFIER_CHARS_RE = re.compile(r"[^A-Z0-9_ ]", re.I)
+BIGQUERY_INVALID_IDENTIFIER_CHARS_RE = re.compile(r"[^A-Z0-9_ ]", re.IGNORECASE)
 
 SUPPORTED_BQ_DATE_PARTITIONING_TYPES = ["DAY", "MONTH", "YEAR"]
 # This is a surrogate for the lack of a type exposed within BigQuery RangePartitioning() object
@@ -144,7 +143,7 @@ class BackendBigQueryApi(BackendApiInterface):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendBigQueryApi, self).__init__(
+        super().__init__(
             connection_options,
             backend_type,
             messages,
@@ -158,22 +157,12 @@ class BackendBigQueryApi(BackendApiInterface):
             logger.info("* Dry run *")
 
         self._client = None
-        self._bigquery_dataset_location = (
-            connection_options.bigquery_dataset_location or None
-        )
-        self._bigquery_dataset_project = (
-            connection_options.bigquery_dataset_project or None
-        )
+        self._bigquery_dataset_location = connection_options.bigquery_dataset_location or None
+        self._bigquery_dataset_project = connection_options.bigquery_dataset_project or None
 
-        self._google_kms_key_ring_location = (
-            connection_options.google_kms_key_ring_location or None
-        )
-        self._google_kms_key_ring_name = (
-            connection_options.google_kms_key_ring_name or None
-        )
-        self._google_kms_key_ring_project = (
-            connection_options.google_kms_key_ring_project or None
-        )
+        self._google_kms_key_ring_location = connection_options.google_kms_key_ring_location or None
+        self._google_kms_key_ring_name = connection_options.google_kms_key_ring_name or None
+        self._google_kms_key_ring_project = connection_options.google_kms_key_ring_project or None
         self._google_kms_key_name = connection_options.google_kms_key_name or None
 
         self._sql_engine_name = "BigQuery"
@@ -207,9 +196,7 @@ class BackendBigQueryApi(BackendApiInterface):
                 "Setting job session option: kms_key_name=%s" % self._kms_key_name,
                 detail=VVERBOSE,
             )
-            encryption_config = bigquery.EncryptionConfiguration(
-                kms_key_name=self._kms_key_name
-            )
+            encryption_config = bigquery.EncryptionConfiguration(kms_key_name=self._kms_key_name)
             job_config.destination_encryption_configuration = encryption_config
 
     def _add_query_params_to_job_config(self, query_params, job_config):
@@ -219,9 +206,7 @@ class BackendBigQueryApi(BackendApiInterface):
             assert isinstance(query_params[0], tuple)
             param_list = []
             for param_name, param_type, param_value in query_params:
-                param_list.append(
-                    bigquery.ScalarQueryParameter(param_name, param_type, param_value)
-                )
+                param_list.append(bigquery.ScalarQueryParameter(param_name, param_type, param_value))
             job_config.query_parameters = param_list
 
     def _backend_capabilities(self) -> dict:
@@ -231,10 +216,9 @@ class BackendBigQueryApi(BackendApiInterface):
         """Get name of BigQuery project from client"""
         if self._bigquery_dataset_project:
             return self._bigquery_dataset_project
-        elif self._client:
+        if self._client:
             return self._client.project
-        else:
-            return None
+        return None
 
     def _bq_dataset_id(self, db_name: str) -> str:
         """Return a dataset id for a db name.
@@ -243,9 +227,8 @@ class BackendBigQueryApi(BackendApiInterface):
         assert db_name
         if self._backend_project_name():
             return str("%s.%s" % (self._backend_project_name(), db_name))
-        else:
-            # Non-connecting calls (for unit tests) will not have set _client
-            return str("%s.%s" % ("a-test-project", db_name))
+        # Non-connecting calls (for unit tests) will not have set _client
+        return str("%s.%s" % ("a-test-project", db_name))
 
     def _bq_table_id(self, db_name: str, table_name: str) -> str:
         assert db_name and table_name
@@ -259,12 +242,9 @@ class BackendBigQueryApi(BackendApiInterface):
             projects/goe-test/locations/us-west3/keyRings/krname/cryptoKeys/etl5/cryptoKeyVersions/1
         It's worth noting that this has not always been the case, BigQuery behaviour has changed in the past.
         """
-        if self._kms_key_name and not (kms_key_name or "").startswith(
-            self._kms_key_name
-        ):
+        if self._kms_key_name and not (kms_key_name or "").startswith(self._kms_key_name):
             self._warning(
-                "BigQuery %s KMS key: %s\n != expected KMS key: %s"
-                % (key_type, kms_key_name, self._kms_key_name)
+                "BigQuery %s KMS key: %s\n != expected KMS key: %s" % (key_type, kms_key_name, self._kms_key_name)
             )
 
     def _create_external_table(
@@ -284,15 +264,11 @@ class BackendBigQueryApi(BackendApiInterface):
         ), f"Unsupported staging format: {storage_format}"
         assert location
 
-        sql = """CREATE EXTERNAL TABLE {db_table}
-OPTIONS (format ='{format}',
+        sql = f"""CREATE EXTERNAL TABLE {self.enclose_object_reference(db_name, table_name)}
+OPTIONS (format ='{storage_format}',
          uris = ['{location}'],
          description = 'GOE staging table');
-""".format(
-            db_table=self.enclose_object_reference(db_name, table_name),
-            format=storage_format,
-            location=location,
-        )
+"""
         if with_terminator:
             sql += ";"
         return self.execute_ddl(sql)
@@ -305,31 +281,22 @@ OPTIONS (format ='{format}',
             table_properties = {}
 
         if self._kms_key_name:
-            table_properties["kms_key_name"] = self.to_backend_literal(
-                self._kms_key_name
-            )
+            table_properties["kms_key_name"] = self.to_backend_literal(self._kms_key_name)
 
         if table_properties:
             # We don't enforce literals for values as they can be of different forms, see the following for examples:
             # https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#table_option_list
-            table_prop_clause = "\nOPTIONS (%s)" % ", ".join(
-                "%s=%s" % (k, v) for k, v in table_properties.items()
-            )
+            table_prop_clause = "\nOPTIONS (%s)" % ", ".join("%s=%s" % (k, v) for k, v in table_properties.items())
         else:
             table_prop_clause = ""
         return table_prop_clause
 
-    def _default_job_config(
-        self, query_options: dict = None
-    ) -> bigquery.QueryJobConfig:
+    def _default_job_config(self, query_options: dict = None) -> bigquery.QueryJobConfig:
         """All connections are normalized to UTC to match data extractions."""
         if query_options and "use_legacy_sql" in query_options:
             # No time_zone manipulation for legacy_sql.
             return bigquery.QueryJobConfig()
-        else:
-            return bigquery.QueryJobConfig(
-                connection_properties=[bigquery.ConnectionProperty("time_zone", "UTC")]
-            )
+        return bigquery.QueryJobConfig(connection_properties=[bigquery.ConnectionProperty("time_zone", "UTC")])
 
     def _execute_ddl_or_dml(
         self,
@@ -365,17 +332,10 @@ OPTIONS (format ='{format}',
                 )
                 query_job.result()
                 if query_job.state != "DONE":
-                    raise BackendApiException(
-                        "Unexpected BigQuery job state: %s" % query_job.state
-                    )
+                    raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
 
-                if (
-                    query_options
-                    and "destination_encryption_configuration" in query_options
-                ):
-                    self._check_kms_key_name(
-                        query_job.destination_encryption_configuration.kms_key_name
-                    )
+                if query_options and "destination_encryption_configuration" in query_options:
+                    self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
 
                 if profile:
                     self._log(self._get_query_profile(query_job), detail=VVERBOSE)
@@ -390,9 +350,7 @@ OPTIONS (format ='{format}',
         if self._global_session_parameters:
             job_config = self._default_job_config()
             self._log("Setting global session options:", detail=log_level)
-            for k, v in [
-                (str(k).lower(), v) for k, v in self._global_session_parameters.items()
-            ]:
+            for k, v in [(str(k).lower(), v) for k, v in self._global_session_parameters.items()]:
                 if k not in default_config_white_list:
                     raise BackendApiException(
                         "Modification of job configuration %s is not permitted, valid values: %s"
@@ -401,12 +359,10 @@ OPTIONS (format ='{format}',
                 self._log("%s: %s" % (k, v), detail=log_level)
                 setattr(job_config, k, v)
             return job_config
-        else:
-            return None
+        return None
 
     def _cursor_projection(self, cursor) -> list:
-        """
-        Returns a list of strings describing the projection of a BigQuery result set.
+        """Returns a list of strings describing the projection of a BigQuery result set.
         Matches behaviour of interface _cursor_projection().
         """
         return [_.name.lower() for _ in cursor.schema]
@@ -434,9 +390,7 @@ OPTIONS (format ='{format}',
         assert sql
         assert fetch_action in (FETCH_ACTION_ALL, FETCH_ACTION_ONE)
 
-        self._log_or_not(
-            "%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level
-        )
+        self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
 
         if self._dry_run and not_when_dry_running:
             return None
@@ -448,21 +402,15 @@ OPTIONS (format ='{format}',
         self._add_query_options_to_job_config(query_options, job_config)
         self._add_query_params_to_job_config(query_params, job_config)
         query_job = self._client.query(sql, job_config=job_config)
-        self._log(
-            "%s: %s" % (self._log_query_id_tag, query_job.job_id), detail=VVERBOSE
-        )
+        self._log("%s: %s" % (self._log_query_id_tag, query_job.job_id), detail=VVERBOSE)
 
         if query_options and "destination_encryption_configuration" in query_options:
-            self._check_kms_key_name(
-                query_job.destination_encryption_configuration.kms_key_name
-            )
+            self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
 
         if fetch_action == FETCH_ACTION_ALL:
             results = query_job.result()
             if query_job.state != "DONE":
-                raise BackendApiException(
-                    "Unexpected BigQuery job state: %s" % query_job.state
-                )
+                raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
             rows = list(results)
             if as_dict:
                 columns = self._cursor_projection(results)
@@ -474,9 +422,7 @@ OPTIONS (format ='{format}',
             results = query_job.result(max_results=1)
             # lower() matching
             if query_job.state != "DONE":
-                raise BackendApiException(
-                    "Unexpected BigQuery job state: %s" % query_job.state
-                )
+                raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
             if results and results.total_rows == 0:
                 rows = None
             else:
@@ -514,11 +460,9 @@ OPTIONS (format ='{format}',
     def _get_kms_client(self):
         return kms.KeyManagementServiceClient()
 
-    def _gen_sample_stats_sql_sample_clause(
-        self, db_name, table_name, sample_perc=None
-    ):
+    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
         """No Query SAMPLE clause on BigQuery"""
-        return None
+        return
 
     def _gen_bigquery_create_table_sql_text(
         self,
@@ -534,20 +478,14 @@ OPTIONS (format ='{format}',
         assert db_name
         assert table_name
         assert column_list
-        assert valid_column_list(column_list), (
-            "Incorrectly formed column_list: %s" % column_list
-        )
+        assert valid_column_list(column_list), "Incorrectly formed column_list: %s" % column_list
         if partition_column_names:
             assert isinstance(partition_column_names, list)
-            assert (
-                len(partition_column_names) == 1
-            ), "Only a single partition column is supported"
+            assert len(partition_column_names) == 1, "Only a single partition column is supported"
         if table_properties:
             assert isinstance(table_properties, dict)
 
-        col_projection = self._create_table_columns_clause_common(
-            column_list, external=False
-        )
+        col_projection = self._create_table_columns_clause_common(column_list, external=False)
 
         if partition_column_names:
             real_col = match_table_column(partition_column_names[0], column_list)
@@ -556,14 +494,9 @@ OPTIONS (format ='{format}',
                     "Proposed table columns: %s" % str_list_of_columns(column_list),
                     detail=VERBOSE,
                 )
-                raise BackendApiException(
-                    "Partition column is not in table columns: %s"
-                    % partition_column_names[0]
-                )
+                raise BackendApiException("Partition column is not in table columns: %s" % partition_column_names[0])
             self._debug("Partitioning by: %s %s" % (real_col.name, real_col.data_type))
-            part_clause = (
-                "\nPARTITION BY %s" % self.gen_native_range_partition_key_cast(real_col)
-            )
+            part_clause = "\nPARTITION BY %s" % self.gen_native_range_partition_key_cast(real_col)
         else:
             part_clause = ""
 
@@ -610,20 +543,18 @@ OPTIONS (format ='{format}',
         assert table
         if table.time_partitioning and table.time_partitioning.field:
             return table.time_partitioning.field
-        elif table.range_partitioning and table.range_partitioning.field:
+        if table.range_partitioning and table.range_partitioning.field:
             return table.range_partitioning.field
-        else:
-            return None
+        return None
 
     def _get_bq_table_partition_type(self, table):
         """Return the partition type for a BigQuery client table object as returned by self._get_bq_table()."""
         assert table
         if table.time_partitioning and table.time_partitioning.type_:
             return table.time_partitioning.type_
-        elif table.range_partitioning and table.range_partitioning.range_:
+        if table.range_partitioning and table.range_partitioning.range_:
             return SUPPORTED_BQ_RANGE_PARTITIONING_TYPE
-        else:
-            return None
+        return None
 
     def _get_query_profile(self, query_identifier=None):
         """On BigQuery query_identifier is a QueryJob object.
@@ -644,21 +575,11 @@ OPTIONS (format ='{format}',
             ("Slot milliseconds", str(query_identifier.slot_millis)),
         ]
         if query_identifier.num_dml_affected_rows is not None:
-            stats.append(
-                ("Num DML affected rows", query_identifier.num_dml_affected_rows)
-            )
+            stats.append(("Num DML affected rows", query_identifier.num_dml_affected_rows))
         try:
-            if (
-                query_identifier.slot_millis
-                and query_identifier.started
-                and query_identifier.ended
-            ):
-                elapsed_ms = (
-                    query_identifier.ended - query_identifier.started
-                ).total_seconds() * 1000
-                stats.append(
-                    ("Slot usage", str(ceil(query_identifier.slot_millis / elapsed_ms)))
-                )
+            if query_identifier.slot_millis and query_identifier.started and query_identifier.ended:
+                elapsed_ms = (query_identifier.ended - query_identifier.started).total_seconds() * 1000
+                stats.append(("Slot usage", str(ceil(query_identifier.slot_millis / elapsed_ms))))
         except Exception as exc:
             self._log(
                 "Exception formatting BigQuery profile (non-fatal): %s" % str(exc),
@@ -674,9 +595,7 @@ OPTIONS (format ='{format}',
         assert table
         partitioning_type = self._get_bq_table_partition_type(table)
         if partitioning_type not in SUPPORTED_BQ_DATE_PARTITIONING_TYPES:
-            raise NotImplementedError(
-                "BigQuery partitioning type is not supported: %s" % partitioning_type
-            )
+            raise NotImplementedError("BigQuery partitioning type is not supported: %s" % partitioning_type)
         # BQ granularities start with same letter as GOE granularities
         return partitioning_type[0]
 
@@ -684,35 +603,26 @@ OPTIONS (format ='{format}',
         """Return DDL string for a table or view."""
         assert db_name and table_name
         self._log("Fetching DDL: %s.%s" % (db_name, table_name), detail=VVERBOSE)
-        sql = (
-            dedent(
-                """\
+        sql = dedent(
+            """\
                                 SELECT ddl
                                 FROM   `%s`.INFORMATION_SCHEMA.TABLES
                                 WHERE  table_catalog = @project
                                 AND    table_schema = @db_name
                                 AND    table_name = @table_name"""
-            )
-            % self._bq_dataset_id(db_name)
-        )
+        ) % self._bq_dataset_id(db_name)
         query_params = [
             ("project", BIGQUERY_TYPE_STRING, self._backend_project_name()),
             ("db_name", BIGQUERY_TYPE_STRING, db_name),
             ("table_name", BIGQUERY_TYPE_STRING, table_name),
         ]
         try:
-            row = self.execute_query_fetch_one(
-                sql, log_level=VVERBOSE, query_params=query_params
-            )
+            row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=query_params)
         except NotFound as exc:
-            self._log("NotFound exception: {}".format(str(exc)))
-            raise BackendApiException(
-                "BigQuery dataset not found: %s" % self._bq_dataset_id(db_name)
-            ) from None
+            self._log(f"NotFound exception: {exc!s}")
+            raise BackendApiException("BigQuery dataset not found: %s" % self._bq_dataset_id(db_name)) from None
         if not row:
-            raise BackendApiException(
-                "Object does not exist for DDL retrieval: %s.%s" % (db_name, table_name)
-            )
+            raise BackendApiException("Object does not exist for DDL retrieval: %s.%s" % (db_name, table_name))
         ddl_str = row[0]
         if not terminate_sql:
             ddl_str = ddl_str.rstrip(";")
@@ -737,21 +647,18 @@ OPTIONS (format ='{format}',
             table = self._client.get_table(self._bq_table_id(db_name, table_name))
             if not table_type:
                 return True
-            elif table_type.upper() == "TABLE" and table.table_type.upper() in [
+            if table_type.upper() == "TABLE" and table.table_type.upper() in [
                 "TABLE",
                 "EXTERNAL",
             ]:
                 return True
-            elif table.table_type.upper() == table_type.upper():
+            if table.table_type.upper() == table_type.upper():
                 return True
-            else:
-                return False
+            return False
         except NotFound:
             return False
 
-    def _add_query_options_to_job_config(
-        self, query_options: dict, job_config: bigquery.QueryJobConfig
-    ):
+    def _add_query_options_to_job_config(self, query_options: dict, job_config: bigquery.QueryJobConfig):
         """Convert query_options dict to QueryJobConfig attribute."""
         if query_options:
             assert isinstance(query_options, dict)
@@ -765,10 +672,7 @@ OPTIONS (format ='{format}',
         table = self._get_bq_table(db_name, table_name)
         return bool(
             self._get_bq_table_partition_type(table)
-            in (
-                SUPPORTED_BQ_DATE_PARTITIONING_TYPES
-                + [SUPPORTED_BQ_RANGE_PARTITIONING_TYPE]
-            )
+            in (SUPPORTED_BQ_DATE_PARTITIONING_TYPES + [SUPPORTED_BQ_RANGE_PARTITIONING_TYPE])
         )
 
     ###########################################################################
@@ -789,10 +693,7 @@ OPTIONS (format ='{format}',
         original_schema = table.schema
         self._debug("add_columns original schema: %s" % original_schema)
         submittable_lines = ", ".join(
-            [
-                "ADD COLUMN IF NOT EXISTS " + " ".join([val for val in column])
-                for column in column_tuples
-            ]
+            ["ADD COLUMN IF NOT EXISTS " + " ".join([val for val in column]) for column in column_tuples]
         )
         sql = "ALTER TABLE %s %s" % (
             self.enclose_object_reference(db_name, table_name),
@@ -808,7 +709,7 @@ OPTIONS (format ='{format}',
         assert db_name and table_name
         assert isinstance(sort_column_names, list)
         table = self._get_bq_table(db_name, table_name)
-        table.clustering_fields = sort_column_names if sort_column_names else None
+        table.clustering_fields = sort_column_names or None
         log_cmd = "update_table(%s, %s, clustering_fields=%s)" % (
             db_name,
             table_name,
@@ -834,7 +735,7 @@ OPTIONS (format ='{format}',
 
     def backend_version(self):
         """No BigQuery version available via SQL or API"""
-        return None
+        return
 
     def bq_client(self):
         """Get BigQuery client for use in BigQuery testing API"""
@@ -849,14 +750,9 @@ OPTIONS (format ='{format}',
 
         if self._kms_key_name:
             try:
-                key = self._kms_client.get_crypto_key(
-                    request={"name": self._kms_key_name}
-                )
+                key = self._kms_client.get_crypto_key(request={"name": self._kms_key_name})
                 if key.purpose == kms.CryptoKey.CryptoKeyPurpose.ENCRYPT_DECRYPT:
-                    if (
-                        key.primary.state
-                        == kms.CryptoKeyVersion.CryptoKeyVersionState.ENABLED
-                    ):
+                    if key.primary.state == kms.CryptoKeyVersion.CryptoKeyVersionState.ENABLED:
                         results.append(
                             {
                                 CONNECT_TEST: "Test KMS key",
@@ -941,9 +837,7 @@ OPTIONS (format ='{format}',
     ):
         raise NotImplementedError("Compute statistics does not apply for BigQuery")
 
-    def create_database(
-        self, db_name, comment=None, properties=None, with_terminator=False
-    ):
+    def create_database(self, db_name, comment=None, properties=None, with_terminator=False):
         """Create a BigQuery dataset using SQL.
 
         properties: Allows properties["location"] to specify a BigQuery location, e.g. "us-west"
@@ -960,9 +854,7 @@ OPTIONS (format ='{format}',
                 detail=VVERBOSE,
             )
             return []
-        sql = "CREATE SCHEMA {}".format(
-            self.enclose_identifier(self._bq_dataset_id(db_name))
-        )
+        sql = f"CREATE SCHEMA {self.enclose_identifier(self._bq_dataset_id(db_name))}"
         options = []
         if comment:
             options.append(f"description='{comment}'")
@@ -1022,13 +914,9 @@ OPTIONS (format ='{format}',
 
         # Check table was created with KMS encryption if requested
         if self._kms_key_name and not self._dry_run:
-            table_id = "{}.{}.{}".format(
-                self._backend_project_name(), db_name, table_name
-            )
+            table_id = f"{self._backend_project_name()}.{db_name}.{table_name}"
             table = self._client.get_table(table_id)
-            self._check_kms_key_name(
-                table.encryption_configuration.kms_key_name, key_type="table"
-            )
+            self._check_kms_key_name(table.encryption_configuration.kms_key_name, key_type="table")
         return cmds
 
     def create_view(
@@ -1044,9 +932,7 @@ OPTIONS (format ='{format}',
         See create_view() description for parameter descriptions.
         """
         projection = self._format_select_projection(column_tuples)
-        where_clause = (
-            "\nWHERE  " + "\nAND    ".join(filter_clauses) if filter_clauses else ""
-        )
+        where_clause = "\nWHERE  " + "\nAND    ".join(filter_clauses) if filter_clauses else ""
         sql = """CREATE VIEW %(db_view)s AS
 SELECT %(projection)s
 FROM   %(from_tables)s%(where_clause)s""" % {
@@ -1074,7 +960,7 @@ FROM   %(from_tables)s%(where_clause)s""" % {
         def format_parameter_tuples(parameter_tuples):
             if not parameter_tuples:
                 return ""
-            return ",".join("{} {}".format(_[0], _[1]) for _ in parameter_tuples)
+            return ",".join(f"{_[0]} {_[1]}" for _ in parameter_tuples)
 
         assert db_name
         assert udf_name
@@ -1138,18 +1024,13 @@ FROM   %(from_tables)s%(where_clause)s""" % {
         """
         assert db_name and table_name
         assert column
-        column_name = (
-            column.name if isinstance(column, ColumnMetadataInterface) else column
-        )
+        column_name = column.name if isinstance(column, ColumnMetadataInterface) else column
         table = self._get_bq_table(db_name, table_name)
 
         if not self._table_is_partitioned(db_name, table_name):
             return None
 
-        if (
-            self._get_bq_table_partition_type(table)
-            in SUPPORTED_BQ_DATE_PARTITIONING_TYPES
-        ):
+        if self._get_bq_table_partition_type(table) in SUPPORTED_BQ_DATE_PARTITIONING_TYPES:
             granularity = self._get_goe_granularity_for_bq_partitioning_type(table)
             # column_name should always be table.time_partitioning.field on BigQuery
             if self._get_bq_table_partition_field(table).upper() != column_name.upper():
@@ -1163,24 +1044,18 @@ FROM   %(from_tables)s%(where_clause)s""" % {
                 digits=1,
                 source_column_name=column_name,
             )
-        elif (
-            self._get_bq_table_partition_type(table)
-            == SUPPORTED_BQ_RANGE_PARTITIONING_TYPE
-        ):
+        if self._get_bq_table_partition_type(table) == SUPPORTED_BQ_RANGE_PARTITIONING_TYPE:
             table_json = table.to_api_repr()
             if table_json.get("rangePartitioning"):
                 range_field = table_json["rangePartitioning"]["field"]
                 if str(range_field).upper() != str(column_name).upper():
                     raise BackendApiException(
-                        "Partition columns do not match: %s != %s"
-                        % (range_field.upper(), column_name.upper())
+                        "Partition columns do not match: %s != %s" % (range_field.upper(), column_name.upper())
                     )
                 try:
                     range_start = int(table_json["rangePartitioning"]["range"]["start"])
                     range_end = int(table_json["rangePartitioning"]["range"]["end"])
-                    range_interval = int(
-                        table_json["rangePartitioning"]["range"]["interval"]
-                    )
+                    range_interval = int(table_json["rangePartitioning"]["range"]["interval"])
                     return ColumnPartitionInfo(
                         position=position,
                         source_column_name=column_name,
@@ -1190,8 +1065,7 @@ FROM   %(from_tables)s%(where_clause)s""" % {
                     )
                 except ValueError:
                     self._log(
-                        "Incorrectly formatted rangePartitioning document: %s"
-                        % str(table_json["rangePartitioning"])
+                        "Incorrectly formatted rangePartitioning document: %s" % str(table_json["rangePartitioning"])
                     )
                     raise
 
@@ -1316,16 +1190,14 @@ LIMIT 1""" % {
         """execute_query_get_cursor() exposes too lower a level of detail to higher level code.
         Strongly advise not to implement/use this method
         """
-        raise NotImplementedError(
-            "execute_query_get_cursor() not supported for BigQuery"
-        )
+        raise NotImplementedError("execute_query_get_cursor() not supported for BigQuery")
 
     def exists(self, db_name, object_name):
         return self._object_exists(db_name, object_name)
 
     def format_query_parameter(self, param_name):
         assert param_name
-        return "@{}".format(param_name)
+        return f"@{param_name}"
 
     def gen_column_object(self, column_name, **kwargs):
         return BigQueryColumn(column_name, **kwargs)
@@ -1354,7 +1226,7 @@ LIMIT 1""" % {
                 nullable=True,
                 safe_mapping=False,
             )
-        elif data_scale and data_scale <= 9:
+        if data_scale and data_scale <= 9:
             return BigQueryColumn(
                 column_name,
                 data_type=BIGQUERY_TYPE_NUMERIC,
@@ -1363,15 +1235,14 @@ LIMIT 1""" % {
                 nullable=True,
                 safe_mapping=False,
             )
-        else:
-            return BigQueryColumn(
-                column_name,
-                data_type=BIGQUERY_TYPE_BIGNUMERIC,
-                data_precision=self.max_decimal_precision(),
-                data_scale=self.max_decimal_scale(),
-                nullable=True,
-                safe_mapping=False,
-            )
+        return BigQueryColumn(
+            column_name,
+            data_type=BIGQUERY_TYPE_BIGNUMERIC,
+            data_precision=self.max_decimal_precision(),
+            data_scale=self.max_decimal_scale(),
+            nullable=True,
+            safe_mapping=False,
+        )
 
     def gen_ctas_sql_text(
         self,
@@ -1395,31 +1266,26 @@ LIMIT 1""" % {
 
         projection = self._format_select_projection(column_tuples)
         from_clause = (
-            "\nFROM   {}".format(
-                self.enclose_object_reference(from_db_name, from_table_name)
-            )
+            f"\nFROM   {self.enclose_object_reference(from_db_name, from_table_name)}"
             if from_db_name and from_table_name
             else ""
         )
-        limit_clause = "\nLIMIT  {}".format(row_limit) if row_limit is not None else ""
+        limit_clause = f"\nLIMIT  {row_limit}" if row_limit is not None else ""
 
         table_prop_clause = self._create_table_properties_clause(table_properties)
 
-        sql = (
-            dedent(
-                """\
+        sql = dedent(
+            """\
             CREATE TABLE %(db_table)s%(table_prop_clause)s
             AS
             SELECT %(projection)s%(from_clause)s%(limit_clause)s"""
-            )
-            % {
-                "db_table": self.enclose_object_reference(db_name, table_name),
-                "table_prop_clause": table_prop_clause,
-                "projection": projection,
-                "from_clause": from_clause,
-                "limit_clause": limit_clause,
-            }
-        )
+        ) % {
+            "db_table": self.enclose_object_reference(db_name, table_name),
+            "table_prop_clause": table_prop_clause,
+            "projection": projection,
+            "from_clause": from_clause,
+            "limit_clause": limit_clause,
+        }
         return sql
 
     def gen_insert_select_sql_text(
@@ -1453,9 +1319,7 @@ LIMIT 1""" % {
 
         projected_expressions = select_expr_tuples + (partition_expr_tuples or [])
         projection = self._format_select_projection(projected_expressions)
-        from_db_table = from_object_override or self.enclose_object_reference(
-            from_db_name, from_table_name
-        )
+        from_db_table = from_object_override or self.enclose_object_reference(from_db_name, from_table_name)
 
         where_clause = ""
         if filter_clauses:
@@ -1483,17 +1347,12 @@ FROM   %(from_db_table)s%(where)s""" % {
                     partition_column.data_type.upper(),
                     self.enclose_identifier(partition_column.name),
                 )
-            elif (
-                partition_column.partition_info.granularity
-                == PART_COL_GRANULARITY_MONTH
-            ):
+            elif partition_column.partition_info.granularity == PART_COL_GRANULARITY_MONTH:
                 part_col_expr = "%s_TRUNC(%s,MONTH)" % (
                     partition_column.data_type.upper(),
                     self.enclose_identifier(partition_column.name),
                 )
-            elif (
-                partition_column.partition_info.granularity == PART_COL_GRANULARITY_DAY
-            ):
+            elif partition_column.partition_info.granularity == PART_COL_GRANULARITY_DAY:
                 if partition_column.data_type == BIGQUERY_TYPE_DATE:
                     part_col_expr = self.enclose_identifier(partition_column.name)
                 else:
@@ -1511,10 +1370,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                 )
         elif partition_column.data_type == BIGQUERY_TYPE_INT64:
             if not partition_column.partition_info:
-                raise BackendApiException(
-                    "Partition information not provided for column: %s"
-                    % partition_column.name
-                )
+                raise BackendApiException("Partition information not provided for column: %s" % partition_column.name)
             part_col_expr = "RANGE_BUCKET(%s, GENERATE_ARRAY(%s, %s, %s))" % (
                 self.enclose_identifier(partition_column.name),
                 partition_column.partition_info.range_start,
@@ -1523,8 +1379,7 @@ FROM   %(from_db_table)s%(where)s""" % {
             )
         else:
             raise NotImplementedError(
-                "BigQuery table partitioning not implemented for data type:"
-                "%s" % partition_column.data_type
+                "BigQuery table partitioning not implemented for data type:%s" % partition_column.data_type
             )
         return part_col_expr
 
@@ -1578,16 +1433,10 @@ FROM   %(from_db_table)s%(where)s""" % {
         """
 
         def add_sql_cast(col):
-            return (
-                ("CAST(%s as STRING)" % col)
-                if col in (columns_to_cast_to_string or [])
-                else col
-            )
+            return ("CAST(%s as STRING)" % col) if col in (columns_to_cast_to_string or []) else col
 
         assert column_name_list and isinstance(column_name_list, list)
-        expression_list = [
-            add_sql_cast(self.enclose_identifier(_)) for _ in column_name_list
-        ]
+        expression_list = [add_sql_cast(self.enclose_identifier(_)) for _ in column_name_list]
         return self.get_distinct_expressions(
             db_name,
             table_name,
@@ -1634,8 +1483,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         assert db_name and table_name
         table = self._get_bq_table(db_name, table_name)
         if self._get_bq_table_partition_type(table) in (
-            SUPPORTED_BQ_DATE_PARTITIONING_TYPES
-            + [SUPPORTED_BQ_RANGE_PARTITIONING_TYPE]
+            SUPPORTED_BQ_DATE_PARTITIONING_TYPES + [SUPPORTED_BQ_RANGE_PARTITIONING_TYPE]
         ):
             part_col = match_table_column(
                 self._get_bq_table_partition_field(table),
@@ -1649,19 +1497,16 @@ FROM   %(from_db_table)s%(where)s""" % {
 
     def get_session_option(self, option_name):
         """Not applicable to BigQuery, returns None."""
-        return None
+        return
 
-    def get_table_ddl(
-        self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False
-    ):
+    def get_table_ddl(self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False):
         ddl_str = self._get_table_ddl(db_name, table_name, terminate_sql=terminate_sql)
         if for_replace:
-            ddl_str = re.sub(r"^CREATE TABLE", "CREATE OR REPLACE TABLE", ddl_str, re.I)
+            ddl_str = re.sub(r"^CREATE TABLE", "CREATE OR REPLACE TABLE", ddl_str, re.IGNORECASE)
         self._debug("Table DDL: %s" % ddl_str)
         if as_list:
             return ddl_str.split("\n")
-        else:
-            return ddl_str
+        return ddl_str
 
     def get_table_location(self, db_name, table_name):
         """get_table_location not applicable on BigQuery"""
@@ -1672,8 +1517,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                 if table.external_data_configuration.source_uris
                 else None
             )
-        else:
-            return None
+        return None
 
     def get_table_partition_count(self, db_name, table_name):
         """Get partition count from __PARTITIONS_SUMMARY__ using legacy SQL.
@@ -1683,12 +1527,8 @@ FROM   %(from_db_table)s%(where)s""" % {
         if not self._table_is_partitioned(db_name, table_name):
             return 0
         query_options = {"use_legacy_sql": True}
-        sql = "SELECT COUNT(*) FROM [%s$__PARTITIONS_SUMMARY__]" % self._bq_table_id(
-            db_name, table_name
-        )
-        row = self.execute_query_fetch_one(
-            sql, query_options=query_options, log_level=VVERBOSE
-        )
+        sql = "SELECT COUNT(*) FROM [%s$__PARTITIONS_SUMMARY__]" % self._bq_table_id(db_name, table_name)
+        row = self.execute_query_fetch_one(sql, query_options=query_options, log_level=VVERBOSE)
         return row[0] if row else None
 
     def get_table_partitions(self, db_name, table_name):
@@ -1698,16 +1538,9 @@ FROM   %(from_db_table)s%(where)s""" % {
         if not self._table_is_partitioned(db_name, table_name):
             return None
         query_options = {"use_legacy_sql": True}
-        sql = (
-            "SELECT partition_id FROM [%s$__PARTITIONS_SUMMARY__]"
-            % self._bq_table_id(db_name, table_name)
-        )
-        rows = self.execute_query_fetch_all(
-            sql, query_options=query_options, log_level=VVERBOSE
-        )
-        part_list = {
-            str(_[0]): self._table_partition_info(partition_id=_[0]) for _ in rows
-        }
+        sql = "SELECT partition_id FROM [%s$__PARTITIONS_SUMMARY__]" % self._bq_table_id(db_name, table_name)
+        rows = self.execute_query_fetch_all(sql, query_options=query_options, log_level=VVERBOSE)
+        part_list = {str(_[0]): self._table_partition_info(partition_id=_[0]) for _ in rows}
         return part_list
 
     def get_table_row_count(
@@ -1726,9 +1559,7 @@ FROM   %(from_db_table)s%(where)s""" % {
             or self._is_external_table(db_name, table_name)
             or self._has_outstanding_streaming_inserts(db_name, table_name)
         ):
-            sql = self._gen_select_count_sql_text_common(
-                db_name, table_name, filter_clause=filter_clause
-            )
+            sql = self._gen_select_count_sql_text_common(db_name, table_name, filter_clause=filter_clause)
             row = self.execute_query_fetch_one(
                 sql,
                 log_level=log_level,
@@ -1736,15 +1567,13 @@ FROM   %(from_db_table)s%(where)s""" % {
                 not_when_dry_running=not_when_dry_running,
             )
             return row[0] if row else None
-        else:
-            # Forget the table before getting a count because metadata is cached
-            self._forget_bq_table(db_name, table_name)
-            self._log_or_not(
-                "%s call: %s.num_rows"
-                % (self._sql_engine_name, self._bq_table_id(db_name, table_name)),
-                log_level=log_level,
-            )
-            return self.get_table_row_count_from_metadata(db_name, table_name)
+        # Forget the table before getting a count because metadata is cached
+        self._forget_bq_table(db_name, table_name)
+        self._log_or_not(
+            "%s call: %s.num_rows" % (self._sql_engine_name, self._bq_table_id(db_name, table_name)),
+            log_level=log_level,
+        )
+        return self.get_table_row_count_from_metadata(db_name, table_name)
 
     def get_table_row_count_from_metadata(self, db_name, table_name):
         assert db_name and table_name
@@ -1770,11 +1599,8 @@ FROM   %(from_db_table)s%(where)s""" % {
         if table.clustering_fields:
             assert isinstance(table.clustering_fields, list)
             assert isinstance(table.clustering_fields[0], str)
-            return (
-                ",".join(table.clustering_fields) if as_csv else table.clustering_fields
-            )
-        else:
-            return []
+            return ",".join(table.clustering_fields) if as_csv else table.clustering_fields
+        return []
 
     def get_table_stats(self, db_name, table_name, as_dict=False):
         assert db_name and table_name
@@ -1791,20 +1617,18 @@ FROM   %(from_db_table)s%(where)s""" % {
 
         if as_dict:
             return tab_stats, EMPTY_BACKEND_COLUMN_STATS_DICT
-        else:
-            stats_tuple = (
-                tab_stats["num_rows"],
-                tab_stats["num_bytes"],
-                tab_stats["avg_row_len"],
-            )
-            return stats_tuple, EMPTY_BACKEND_COLUMN_STATS_LIST
+        stats_tuple = (
+            tab_stats["num_rows"],
+            tab_stats["num_bytes"],
+            tab_stats["avg_row_len"],
+        )
+        return stats_tuple, EMPTY_BACKEND_COLUMN_STATS_LIST
 
     def get_table_and_partition_stats(self, db_name, table_name, as_dict=False):
         tab_stats, _ = self.get_table_stats(db_name, table_name, as_dict=as_dict)
         if as_dict:
             return tab_stats, {}, EMPTY_BACKEND_COLUMN_STATS_DICT
-        else:
-            return tab_stats, [], EMPTY_BACKEND_COLUMN_STATS_LIST
+        return tab_stats, [], EMPTY_BACKEND_COLUMN_STATS_LIST
 
     def get_table_stats_partitions(self, db_name, table_name):
         raise NotImplementedError("Get statistics does not apply for BigQuery")
@@ -1854,8 +1678,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                 self._google_kms_key_ring_name,
                 self._google_kms_key_name,
             )
-        else:
-            return None
+        return None
 
     def length_sql_expression(self, column_expression):
         assert column_expression
@@ -1872,10 +1695,9 @@ FROM   %(from_db_table)s%(where)s""" % {
             if case_sensitive:
                 ds_filter_re = re.compile(ds_filter)
             else:
-                ds_filter_re = re.compile(ds_filter, re.I)
+                ds_filter_re = re.compile(ds_filter, re.IGNORECASE)
             return [_.dataset_id for _ in datasets if ds_filter_re.search(_.dataset_id)]
-        else:
-            return [_.dataset_id for _ in datasets]
+        return [_.dataset_id for _ in datasets]
 
     def list_tables(self, db_name, table_name_filter=None, case_sensitive=True):
         assert db_name
@@ -1884,21 +1706,18 @@ FROM   %(from_db_table)s%(where)s""" % {
             # Use list() below to consume all rows straight away
             tables = list(self._client.list_tables(self._bq_dataset_id(db_name)))
         except NotFound as exc:
-            self._log("NotFound exception: {}".format(str(exc)))
-            raise BackendApiException(
-                "BigQuery dataset not found: %s" % db_name
-            ) from None
+            self._log(f"NotFound exception: {exc!s}")
+            raise BackendApiException("BigQuery dataset not found: %s" % db_name) from None
         if table_name_filter:
             tbl_filter = r"^" + table_name_filter.replace("*", ".*") + r"$"
             self._debug("list_tables re filter: %s" % tbl_filter)
             if case_sensitive:
                 tbl_filter_re = re.compile(tbl_filter)
             else:
-                tbl_filter_re = re.compile(tbl_filter, re.I)
+                tbl_filter_re = re.compile(tbl_filter, re.IGNORECASE)
 
             return [_.table_id for _ in tables if tbl_filter_re.search(_.table_id)]
-        else:
-            return [_.table_id for _ in tables]
+        return [_.table_id for _ in tables]
 
     def list_udfs(self, db_name, udf_name_filter=None, case_sensitive=True):
         """List UDFs using INFORMATION_SCHEMA.
@@ -1907,16 +1726,13 @@ FROM   %(from_db_table)s%(where)s""" % {
         """
         assert db_name
         self._debug("list_udfs(%s)" % udf_name_filter)
-        sql = (
-            dedent(
-                """\
+        sql = dedent(
+            """\
             SELECT routine_name,data_type
             FROM   `%s`.INFORMATION_SCHEMA.ROUTINES
             WHERE  routine_catalog = @project
             AND    routine_schema = @db_name"""
-            )
-            % self._bq_dataset_id(db_name)
-        )
+        ) % self._bq_dataset_id(db_name)
         query_params = [
             ("project", BIGQUERY_TYPE_STRING, self._backend_project_name()),
             ("db_name", BIGQUERY_TYPE_STRING, db_name),
@@ -1927,28 +1743,21 @@ FROM   %(from_db_table)s%(where)s""" % {
                 sql += "\nAND    routine_name LIKE @udf_name"
             else:
                 sql += "\nAND    UPPER(routine_name) LIKE UPPER(@udf_name)"
-        return self.execute_query_fetch_all(
-            sql, query_params=query_params, log_level=VVERBOSE
-        )
+        return self.execute_query_fetch_all(sql, query_params=query_params, log_level=VVERBOSE)
 
     def list_views(self, db_name, view_name_filter=None, case_sensitive=True):
-        sql = (
-            dedent(
-                """\
+        sql = dedent(
+            """\
             SELECT table_name
             FROM   `%s`.INFORMATION_SCHEMA.VIEWS
             WHERE  table_catalog = @project
             AND    table_schema = @db_name"""
-            )
-            % self._bq_dataset_id(db_name)
-        )
+        ) % self._bq_dataset_id(db_name)
         query_params = [
             ("project", BIGQUERY_TYPE_STRING, self._backend_project_name()),
             ("db_name", BIGQUERY_TYPE_STRING, db_name),
         ]
-        rows = self.execute_query_fetch_all(
-            sql, log_level=VVERBOSE, query_params=query_params
-        )
+        rows = self.execute_query_fetch_all(sql, log_level=VVERBOSE, query_params=query_params)
         if not rows:
             return []
         tables = [_[0] for _ in rows]
@@ -1958,11 +1767,10 @@ FROM   %(from_db_table)s%(where)s""" % {
             if case_sensitive:
                 vw_filter_re = re.compile(vw_filter)
             else:
-                vw_filter_re = re.compile(vw_filter, re.I)
+                vw_filter_re = re.compile(vw_filter, re.IGNORECASE)
 
             return [_ for _ in tables if vw_filter_re.search(_)]
-        else:
-            return tables
+        return tables
 
     def max_column_name_length(self):
         return 300
@@ -1976,8 +1784,7 @@ FROM   %(from_db_table)s%(where)s""" % {
     def max_decimal_scale(self, data_type=None):
         if data_type == BIGQUERY_TYPE_NUMERIC:
             return 9
-        else:
-            return 38
+        return 38
 
     def max_datetime_scale(self):
         """BigQuery supports microseconds"""
@@ -2004,10 +1811,7 @@ FROM   %(from_db_table)s%(where)s""" % {
     def partition_column_requires_synthetic_column(self, backend_column, granularity):
         # There's no native NUMERIC partition so it requires a synthetic column.
         # It should be noted that NUMERIC can hold up to 29 integral digits which exceeds INT64 at 18.
-        return bool(
-            backend_column.data_type
-            in [BIGQUERY_TYPE_BIGNUMERIC, BIGQUERY_TYPE_NUMERIC]
-        )
+        return bool(backend_column.data_type in [BIGQUERY_TYPE_BIGNUMERIC, BIGQUERY_TYPE_NUMERIC])
 
     def partition_range_max(self):
         """Maximum value for INT64
@@ -2030,23 +1834,19 @@ FROM   %(from_db_table)s%(where)s""" % {
     def regexp_extract_sql_expression(self, subject, pattern):
         return "REGEXP_EXTRACT(%s, r'%s')" % (subject, pattern)
 
-    def rename_table(
-        self, from_db_name, from_table_name, to_db_name, to_table_name, sync=None
-    ):
+    def rename_table(self, from_db_name, from_table_name, to_db_name, to_table_name, sync=None):
         """Rename a BigQuery table, implemented in native BQ SQL"""
         assert from_db_name and from_table_name
         assert to_db_name and to_table_name
 
         if not self._dry_run and not self.table_exists(from_db_name, from_table_name):
             raise BackendApiException(
-                "Source table does not exist, cannot rename table: %s.%s"
-                % (from_db_name, from_table_name)
+                "Source table does not exist, cannot rename table: %s.%s" % (from_db_name, from_table_name)
             )
 
         if not self._dry_run and self.exists(to_db_name, to_table_name):
             raise BackendApiException(
-                "Target table already exists, cannot rename table to: %s.%s"
-                % (to_db_name, to_table_name)
+                "Target table already exists, cannot rename table to: %s.%s" % (to_db_name, to_table_name)
             )
 
         sql = "ALTER TABLE IF EXISTS %s RENAME TO %s" % (
@@ -2058,22 +1858,15 @@ FROM   %(from_db_table)s%(where)s""" % {
 
     def role_exists(self, role_name):
         """No roles in BigQuery"""
-        pass
 
-    def set_column_stats(
-        self, db_name, table_name, new_column_stats, ndv_cap, num_null_factor
-    ):
+    def set_column_stats(self, db_name, table_name, new_column_stats, ndv_cap, num_null_factor):
         raise NotImplementedError("Set statistics does not apply for BigQuery")
 
-    def set_partition_stats(
-        self, db_name, table_name, new_partition_stats, additive_stats
-    ):
+    def set_partition_stats(self, db_name, table_name, new_partition_stats, additive_stats):
         raise NotImplementedError("Set statistics does not apply for BigQuery")
 
     def set_session_db(self, db_name, log_level=VERBOSE):
-        raise NotImplementedError(
-            "Set session dataset has not been implemented for BigQuery"
-        )
+        raise NotImplementedError("Set session dataset has not been implemented for BigQuery")
 
     def set_table_stats(self, db_name, table_name, new_table_stats, additive_stats):
         raise NotImplementedError("Set statistics does not apply for BigQuery")
@@ -2128,7 +1921,7 @@ FROM   %(from_db_table)s%(where)s""" % {
 
     def target_version(self):
         """No version available via SQL or API for BigQuery"""
-        return None
+        return
 
     def to_backend_literal(self, py_val, data_type=None):
         """Translate a Python value to a BigQuery literal
@@ -2151,9 +1944,7 @@ FROM   %(from_db_table)s%(where)s""" % {
     def transform_tokenize_data_type(self):
         return BIGQUERY_TYPE_STRING
 
-    def transform_regexp_replace_expression(
-        self, backend_column, regexp_replace_pattern, regexp_replace_string
-    ):
+    def transform_regexp_replace_expression(self, backend_column, regexp_replace_pattern, regexp_replace_string):
         return "REGEXP_REPLACE(%s, %s, %s)" % (
             self.enclose_identifier(backend_column.name),
             regexp_replace_pattern,
@@ -2169,32 +1960,25 @@ FROM   %(from_db_table)s%(where)s""" % {
 
     def udf_details(self, db_name, udf_name):
         """Get details of a BigQuery UDF"""
-        sql = (
-            dedent(
-                """\
+        sql = dedent(
+            """\
                 SELECT ordinal_position, parameter_name, data_type
                 FROM   `%s`.INFORMATION_SCHEMA.PARAMETERS
                 WHERE  specific_catalog = @project
                 AND    specific_schema = @db_name
                 AND    specific_name = @udf_name
                 ORDER BY ordinal_position"""
-            )
-            % self._bq_dataset_id(db_name)
-        )
+        ) % self._bq_dataset_id(db_name)
         query_params = [
             ("project", BIGQUERY_TYPE_STRING, self._backend_project_name()),
             ("db_name", BIGQUERY_TYPE_STRING, db_name),
             ("udf_name", BIGQUERY_TYPE_STRING, udf_name),
         ]
         try:
-            rows = self.execute_query_fetch_all(
-                sql, log_level=VVERBOSE, query_params=query_params
-            )
+            rows = self.execute_query_fetch_all(sql, log_level=VVERBOSE, query_params=query_params)
         except NotFound as exc:
-            self._log("NotFound exception: {}".format(str(exc)))
-            raise BackendApiException(
-                "BigQuery dataset not found: %s" % self._bq_dataset_id(db_name)
-            ) from None
+            self._log(f"NotFound exception: {exc!s}")
+            raise BackendApiException("BigQuery dataset not found: %s" % self._bq_dataset_id(db_name)) from None
         if not rows:
             # Most of the time we expect the UDF to exist and suit GOE so check parameters first, only go for an
             # extra round trip if things aren't looking good.
@@ -2225,28 +2009,25 @@ FROM   %(from_db_table)s%(where)s""" % {
         if column.is_number_based():
             if column.data_type == BIGQUERY_TYPE_FLOAT64:
                 return bool(target_type in [GOE_TYPE_DECIMAL, GOE_TYPE_DOUBLE])
-            else:
-                return target_type in NUMERIC_CANONICAL_TYPES
-        elif column.is_date_based():
+            return target_type in NUMERIC_CANONICAL_TYPES
+        if column.is_date_based():
             return bool(target_type in DATE_CANONICAL_TYPES)
-        elif column.is_string_based():
+        if column.is_string_based():
             return bool(
                 target_type in STRING_CANONICAL_TYPES
                 or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
                 or target_type in [GOE_TYPE_INTERVAL_DS, GOE_TYPE_INTERVAL_YM]
             )
-        elif target_type not in ALL_CANONICAL_TYPES:
-            self._log(
-                "Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE
-            )
+        if target_type not in ALL_CANONICAL_TYPES:
+            self._log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
             return False
-        elif column.data_type not in self.supported_backend_data_types():
+        if column.data_type not in self.supported_backend_data_types():
             return False
-        elif column.data_type == BIGQUERY_TYPE_BOOLEAN:
+        if column.data_type == BIGQUERY_TYPE_BOOLEAN:
             return bool(target_type == GOE_TYPE_BOOLEAN)
-        elif column.data_type == BIGQUERY_TYPE_BYTES:
+        if column.data_type == BIGQUERY_TYPE_BYTES:
             return bool(target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
-        elif column.data_type == BIGQUERY_TYPE_TIME:
+        if column.data_type == BIGQUERY_TYPE_TIME:
             return bool(target_type == GOE_TYPE_TIME)
         return False
 
@@ -2287,18 +2068,14 @@ FROM   %(from_db_table)s%(where)s""" % {
 
         if column.data_type == BIGQUERY_TYPE_BOOLEAN:
             return new_column(column, GOE_TYPE_BOOLEAN)
-        elif column.data_type == BIGQUERY_TYPE_STRING:
-            return new_column(
-                column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length
-            )
-        elif column.data_type == BIGQUERY_TYPE_BYTES:
+        if column.data_type == BIGQUERY_TYPE_STRING:
+            return new_column(column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length)
+        if column.data_type == BIGQUERY_TYPE_BYTES:
             return new_column(column, GOE_TYPE_BINARY)
-        elif column.data_type == BIGQUERY_TYPE_INT64:
+        if column.data_type == BIGQUERY_TYPE_INT64:
             return new_column(column, GOE_TYPE_INTEGER_8)
-        elif column.data_type == BIGQUERY_TYPE_NUMERIC:
-            data_precision = (
-                column.data_precision if column.data_precision is not None else 38
-            )
+        if column.data_type == BIGQUERY_TYPE_NUMERIC:
+            data_precision = column.data_precision if column.data_precision is not None else 38
             data_scale = column.data_scale if column.data_scale is not None else 9
             return new_column(
                 column,
@@ -2306,44 +2083,31 @@ FROM   %(from_db_table)s%(where)s""" % {
                 data_precision=data_precision,
                 data_scale=data_scale,
             )
-        elif column.data_type == BIGQUERY_TYPE_BIGNUMERIC:
+        if column.data_type == BIGQUERY_TYPE_BIGNUMERIC:
             if column.data_precision is not None:
                 data_precision = column.data_precision
             else:
                 data_precision = self.max_decimal_precision()
-            data_scale = (
-                column.data_scale
-                if column.data_scale is not None
-                else self.max_decimal_scale()
-            )
+            data_scale = column.data_scale if column.data_scale is not None else self.max_decimal_scale()
             return new_column(
                 column,
                 GOE_TYPE_DECIMAL,
                 data_precision=data_precision,
                 data_scale=data_scale,
             )
-        elif column.data_type == BIGQUERY_TYPE_FLOAT64:
+        if column.data_type == BIGQUERY_TYPE_FLOAT64:
             return new_column(column, GOE_TYPE_DOUBLE)
-        elif column.data_type == BIGQUERY_TYPE_DATE:
+        if column.data_type == BIGQUERY_TYPE_DATE:
             return new_column(column, GOE_TYPE_DATE, data_scale=0)
-        elif column.data_type == BIGQUERY_TYPE_DATETIME:
-            return new_column(
-                column, GOE_TYPE_TIMESTAMP, data_scale=self.max_datetime_scale()
-            )
-        elif column.data_type == BIGQUERY_TYPE_TIME:
+        if column.data_type == BIGQUERY_TYPE_DATETIME:
+            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=self.max_datetime_scale())
+        if column.data_type == BIGQUERY_TYPE_TIME:
             return new_column(column, GOE_TYPE_TIME)
-        elif column.data_type == BIGQUERY_TYPE_TIMESTAMP:
-            return new_column(
-                column, GOE_TYPE_TIMESTAMP_TZ, data_scale=self.max_datetime_scale()
-            )
-        else:
-            raise NotImplementedError(
-                "Unsupported backend data type: %s" % column.data_type
-            )
+        if column.data_type == BIGQUERY_TYPE_TIMESTAMP:
+            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=self.max_datetime_scale())
+        raise NotImplementedError("Unsupported backend data type: %s" % column.data_type)
 
-    def from_canonical_column(
-        self, column: CanonicalColumn, decimal_padding_digits=0
-    ) -> BigQueryColumn:
+    def from_canonical_column(self, column: CanonicalColumn, decimal_padding_digits=0) -> BigQueryColumn:
         """Translate an internal GOE column to a BigQuery column."""
 
         def new_column(
@@ -2370,13 +2134,11 @@ FROM   %(from_db_table)s%(where)s""" % {
             )
 
         assert column
-        assert isinstance(
-            column, CanonicalColumn
-        ), "%s is not instance of CanonicalColumn" % type(column)
+        assert isinstance(column, CanonicalColumn), "%s is not instance of CanonicalColumn" % type(column)
 
         if column.data_type == GOE_TYPE_BOOLEAN:
             return new_column(column, BIGQUERY_TYPE_BOOLEAN, safe_mapping=True)
-        elif column.data_type in (
+        if column.data_type in (
             GOE_TYPE_FIXED_STRING,
             GOE_TYPE_LARGE_STRING,
             GOE_TYPE_VARIABLE_STRING,
@@ -2387,14 +2149,14 @@ FROM   %(from_db_table)s%(where)s""" % {
                 char_length=column.char_length or column.data_length,
                 safe_mapping=True,
             )
-        elif column.data_type in (GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY):
+        if column.data_type in (GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY):
             return new_column(
                 column,
                 BIGQUERY_TYPE_BYTES,
                 data_length=column.data_length,
                 safe_mapping=True,
             )
-        elif column.data_type in (
+        if column.data_type in (
             GOE_TYPE_INTEGER_1,
             GOE_TYPE_INTEGER_2,
             GOE_TYPE_INTEGER_4,
@@ -2402,7 +2164,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         ):
             # On BigQuery all 4 native integer types map to BIGINT
             return new_column(column, BIGQUERY_TYPE_INT64, safe_mapping=True)
-        elif column.data_type == GOE_TYPE_INTEGER_38:
+        if column.data_type == GOE_TYPE_INTEGER_38:
             # On BigQuery there is no integral type > INT64 but BIGNUMERIC can hold 38 integral digits
             if column.data_precision and column.data_precision <= 29:
                 return new_column(
@@ -2412,27 +2174,21 @@ FROM   %(from_db_table)s%(where)s""" % {
                     data_scale=0,
                     safe_mapping=True,
                 )
-            else:
-                return new_column(
-                    column,
-                    BIGQUERY_TYPE_BIGNUMERIC,
-                    data_precision=38,
-                    data_scale=0,
-                    safe_mapping=True,
-                )
-        elif column.data_type == GOE_TYPE_DECIMAL:
+            return new_column(
+                column,
+                BIGQUERY_TYPE_BIGNUMERIC,
+                data_precision=38,
+                data_scale=0,
+                safe_mapping=True,
+            )
+        if column.data_type == GOE_TYPE_DECIMAL:
             if column.data_precision is not None:
                 integral_magnitude = column.data_precision - (column.data_scale or 0)
             else:
                 integral_magnitude = None
-            if (
-                integral_magnitude
-                and integral_magnitude <= 29
-                and (column.data_scale or 0) <= 9
-            ):
+            if integral_magnitude and integral_magnitude <= 29 and (column.data_scale or 0) <= 9:
                 self._debug(
-                    "Integral magnitude/scale is valid for NUMERIC: %s/%s"
-                    % (integral_magnitude, column.data_scale)
+                    "Integral magnitude/scale is valid for NUMERIC: %s/%s" % (integral_magnitude, column.data_scale)
                 )
                 new_data_type = BIGQUERY_TYPE_NUMERIC
                 new_precision = column.data_precision
@@ -2454,50 +2210,40 @@ FROM   %(from_db_table)s%(where)s""" % {
                     data_scale=new_scale,
                     safe_mapping=True,
                 )
-            else:
-                new_precision = column.data_precision
-                new_scale = column.data_scale
-                if not column.safe_mapping:
-                    # We should round an unsafe mapping up to the max for BIGNUMERIC.
-                    # We can do this by removing the precision and scale settings.
-                    self._log(
-                        f"Removing precision/scale decorators for unsafe BIGNUMERIC mapping: {column.name}",
-                        detail=VVERBOSE,
-                    )
-                    new_precision = None
-                    new_scale = None
-                return new_column(
-                    column,
-                    BIGQUERY_TYPE_BIGNUMERIC,
-                    data_precision=new_precision,
-                    data_scale=new_scale,
-                    safe_mapping=False,
+            new_precision = column.data_precision
+            new_scale = column.data_scale
+            if not column.safe_mapping:
+                # We should round an unsafe mapping up to the max for BIGNUMERIC.
+                # We can do this by removing the precision and scale settings.
+                self._log(
+                    f"Removing precision/scale decorators for unsafe BIGNUMERIC mapping: {column.name}",
+                    detail=VVERBOSE,
                 )
-        elif column.data_type in (GOE_TYPE_FLOAT, GOE_TYPE_DOUBLE):
+                new_precision = None
+                new_scale = None
+            return new_column(
+                column,
+                BIGQUERY_TYPE_BIGNUMERIC,
+                data_precision=new_precision,
+                data_scale=new_scale,
+                safe_mapping=False,
+            )
+        if column.data_type in (GOE_TYPE_FLOAT, GOE_TYPE_DOUBLE):
             return new_column(column, BIGQUERY_TYPE_FLOAT64, safe_mapping=True)
-        elif column.data_type == GOE_TYPE_DATE and not self.canonical_date_supported():
+        if column.data_type == GOE_TYPE_DATE and not self.canonical_date_supported():
             return new_column(column, BIGQUERY_TYPE_TIMESTAMP)
-        elif column.data_type == GOE_TYPE_DATE:
+        if column.data_type == GOE_TYPE_DATE:
             return new_column(column, BIGQUERY_TYPE_DATE)
-        elif column.data_type == GOE_TYPE_TIME:
-            safe_mapping = bool(
-                column.data_scale is None
-                or column.data_scale <= self.max_datetime_scale()
-            )
+        if column.data_type == GOE_TYPE_TIME:
+            safe_mapping = bool(column.data_scale is None or column.data_scale <= self.max_datetime_scale())
             return new_column(column, BIGQUERY_TYPE_TIME, safe_mapping=safe_mapping)
-        elif column.data_type == GOE_TYPE_TIMESTAMP:
-            safe_mapping = bool(
-                column.data_scale is None
-                or column.data_scale <= self.max_datetime_scale()
-            )
+        if column.data_type == GOE_TYPE_TIMESTAMP:
+            safe_mapping = bool(column.data_scale is None or column.data_scale <= self.max_datetime_scale())
             return new_column(column, BIGQUERY_TYPE_DATETIME, safe_mapping=safe_mapping)
-        elif column.data_type == GOE_TYPE_TIMESTAMP_TZ:
+        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
             return new_column(column, BIGQUERY_TYPE_TIMESTAMP, safe_mapping=False)
-        elif column.data_type == GOE_TYPE_INTERVAL_DS:
+        if column.data_type == GOE_TYPE_INTERVAL_DS:
             return new_column(column, BIGQUERY_TYPE_STRING, safe_mapping=False)
-        elif column.data_type == GOE_TYPE_INTERVAL_YM:
+        if column.data_type == GOE_TYPE_INTERVAL_YM:
             return new_column(column, BIGQUERY_TYPE_STRING, safe_mapping=False)
-        else:
-            raise NotImplementedError(
-                "Unsupported GOE data type: %s" % column.data_type
-            )
+        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)

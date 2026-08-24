@@ -14,16 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" OracleColumn: Oracle implementation of ColumnMetadataInterface
-"""
+"""OracleColumn: Oracle implementation of ColumnMetadataInterface"""
 
 import re
 
 from goe.offload.column_metadata import (
-    ColumnMetadataInterface,
     CANONICAL_CHAR_SEMANTICS_BYTE,
     CANONICAL_CHAR_SEMANTICS_CHAR,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
+    ColumnMetadataInterface,
 )
 
 ###############################################################################
@@ -53,22 +52,16 @@ ORACLE_TYPE_TIMESTAMP_LOCAL_TZ = "TIMESTAMP WITH LOCAL TIME ZONE"
 ORACLE_TYPE_INTERVAL_DS = "INTERVAL DAY TO SECOND"
 ORACLE_TYPE_INTERVAL_YM = "INTERVAL YEAR TO MONTH"
 ORACLE_TYPE_XMLTYPE = "XMLTYPE"
-ORACLE_TIMESTAMP_RE = re.compile(r"^TIMESTAMP\(([0-9])\)$", re.I)
+ORACLE_TIMESTAMP_RE = re.compile(r"^TIMESTAMP\(([0-9])\)$", re.IGNORECASE)
 ORACLE_TIMESTAMP_SUB_PATTERN = "TIMESTAMP(%s)"
 ORACLE_SPLIT_HIGH_VALUE_RE = re.compile(r"( *TO_DATE\([^)]+\)|[^,]+)+")
-ORACLE_TIMESTAMP_TZ_RE = re.compile(r"^TIMESTAMP\(([0-9])\) WITH TIME ZONE$", re.I)
+ORACLE_TIMESTAMP_TZ_RE = re.compile(r"^TIMESTAMP\(([0-9])\) WITH TIME ZONE$", re.IGNORECASE)
 ORACLE_TIMESTAMP_TZ_SUB_PATTERN = "TIMESTAMP(%s) WITH TIME ZONE"
-ORACLE_TIMESTAMP_LOCAL_TZ_RE = re.compile(
-    r"^TIMESTAMP\(([0-9])\) WITH LOCAL TIME ZONE$", re.I
-)
+ORACLE_TIMESTAMP_LOCAL_TZ_RE = re.compile(r"^TIMESTAMP\(([0-9])\) WITH LOCAL TIME ZONE$", re.IGNORECASE)
 ORACLE_TIMESTAMP_LOCAL_TZ_SUB_PATTERN = "TIMESTAMP(%s) WITH LOCAL TIME ZONE"
-ORACLE_INTERVAL_DS_RE = re.compile(
-    r"^INTERVAL DAY(\([0-9]\))? TO SECOND(\([0-9]\))?$", re.I
-)
+ORACLE_INTERVAL_DS_RE = re.compile(r"^INTERVAL DAY(\([0-9]\))? TO SECOND(\([0-9]\))?$", re.IGNORECASE)
 ORACLE_INTERVAL_DS_SUB_PATTERN = "INTERVAL DAY(%s) TO SECOND(%s)"
-ORACLE_INTERVAL_YM_RE = re.compile(
-    r"^INTERVAL YEAR(\([0-9]\))? TO MONTH(\([0-9]\))?$", re.I
-)
+ORACLE_INTERVAL_YM_RE = re.compile(r"^INTERVAL YEAR(\([0-9]\))? TO MONTH(\([0-9]\))?$", re.IGNORECASE)
 ORACLE_INTERVAL_YM_SUB_PATTERN = "INTERVAL YEAR(%s) TO MONTH"
 
 
@@ -97,7 +90,7 @@ class OracleColumn(ColumnMetadataInterface):
         safe_mapping=True,
         partition_info=None,
     ):
-        super(OracleColumn, self).__init__(
+        super().__init__(
             name,
             data_type,
             data_length=data_length,
@@ -156,11 +149,7 @@ class OracleColumn(ColumnMetadataInterface):
             ]:
                 char_semantics = CANONICAL_CHAR_SEMANTICS_UNICODE
             else:
-                char_semantics = (
-                    CANONICAL_CHAR_SEMANTICS_BYTE
-                    if char_used == "B"
-                    else CANONICAL_CHAR_SEMANTICS_CHAR
-                )
+                char_semantics = CANONICAL_CHAR_SEMANTICS_BYTE if char_used == "B" else CANONICAL_CHAR_SEMANTICS_CHAR
         else:
             char_semantics = None
         col = OracleColumn(
@@ -188,62 +177,48 @@ class OracleColumn(ColumnMetadataInterface):
                     self.data_precision,
                     self.data_scale,
                 )
-            elif self.data_precision:
+            if self.data_precision:
                 return "%s(%s)" % (self.data_type, self.data_precision)
-            elif self.data_scale is not None:
+            if self.data_scale is not None:
                 return "%s(*,%s)" % (self.data_type, self.data_scale)
-            else:
-                return self.data_type
-        elif self.data_type in (ORACLE_TYPE_CHAR, ORACLE_TYPE_VARCHAR2):
+            return self.data_type
+        if self.data_type in (ORACLE_TYPE_CHAR, ORACLE_TYPE_VARCHAR2):
             if self.char_length:
                 return "%s(%s %s)" % (
                     self.data_type,
                     self.char_length,
                     char_semantic(self.char_semantics),
                 )
-            else:
-                # Oracle -> Oracle will always have char_length so this must be Backend -> Oracle
-                return "%s(%s %s)" % (
-                    self.data_type,
-                    self.data_length,
-                    char_semantic(CANONICAL_CHAR_SEMANTICS_BYTE),
-                )
-        elif self.data_type in (ORACLE_TYPE_NCHAR, ORACLE_TYPE_NVARCHAR2):
+            # Oracle -> Oracle will always have char_length so this must be Backend -> Oracle
+            return "%s(%s %s)" % (
+                self.data_type,
+                self.data_length,
+                char_semantic(CANONICAL_CHAR_SEMANTICS_BYTE),
+            )
+        if self.data_type in (ORACLE_TYPE_NCHAR, ORACLE_TYPE_NVARCHAR2):
             return "%s(%s)" % (self.data_type, self.char_length)
-        elif self.data_type == ORACLE_TYPE_TIMESTAMP:
+        if self.data_type == ORACLE_TYPE_TIMESTAMP:
             # this is a bit of a fudge, if the data type is just TIMESTAMP then Oracle has a default of TIMESTAMP(6)
-            return ORACLE_TIMESTAMP_SUB_PATTERN % (
-                6 if self.data_scale is None else self.data_scale
-            )
-        elif self.data_type == ORACLE_TYPE_TIMESTAMP_TZ:
+            return ORACLE_TIMESTAMP_SUB_PATTERN % (6 if self.data_scale is None else self.data_scale)
+        if self.data_type == ORACLE_TYPE_TIMESTAMP_TZ:
             # this is a bit of a fudge, if the data type is just TIMESTAMP then Oracle has a default of TIMESTAMP(6)
-            return ORACLE_TIMESTAMP_TZ_SUB_PATTERN % (
-                6 if self.data_scale is None else self.data_scale
-            )
-        elif self.data_type == ORACLE_TYPE_TIMESTAMP_LOCAL_TZ:
-            return ORACLE_TIMESTAMP_LOCAL_TZ_SUB_PATTERN % (
-                6 if self.data_scale is None else self.data_scale
-            )
-        elif self.data_type == ORACLE_TYPE_RAW and self.data_length:
+            return ORACLE_TIMESTAMP_TZ_SUB_PATTERN % (6 if self.data_scale is None else self.data_scale)
+        if self.data_type == ORACLE_TYPE_TIMESTAMP_LOCAL_TZ:
+            return ORACLE_TIMESTAMP_LOCAL_TZ_SUB_PATTERN % (6 if self.data_scale is None else self.data_scale)
+        if self.data_type == ORACLE_TYPE_RAW and self.data_length:
             return "%s(%s)" % (self.data_type, self.data_length)
-        elif self.data_type == ORACLE_TYPE_INTERVAL_DS:
+        if self.data_type == ORACLE_TYPE_INTERVAL_DS:
             return ORACLE_INTERVAL_DS_SUB_PATTERN % (
                 9 if self.data_precision is None else self.data_precision,
                 9 if self.data_scale is None else self.data_scale,
             )
-        elif self.data_type == ORACLE_TYPE_INTERVAL_YM:
-            return ORACLE_INTERVAL_YM_SUB_PATTERN % (
-                9 if self.data_precision is None else self.data_precision
-            )
-        else:
-            return self.data_type
+        if self.data_type == ORACLE_TYPE_INTERVAL_YM:
+            return ORACLE_INTERVAL_YM_SUB_PATTERN % (9 if self.data_precision is None else self.data_precision)
+        return self.data_type
 
     def has_time_element(self):
         """Does the column data contain a time"""
-        return bool(
-            self.data_type
-            in [ORACLE_TYPE_DATE, ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ]
-        )
+        return bool(self.data_type in [ORACLE_TYPE_DATE, ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ])
 
     def is_binary(self):
         return bool(
@@ -257,9 +232,7 @@ class OracleColumn(ColumnMetadataInterface):
         )
 
     def is_nan_capable(self):
-        return bool(
-            self.data_type in [ORACLE_TYPE_BINARY_DOUBLE, ORACLE_TYPE_BINARY_FLOAT]
-        )
+        return bool(self.data_type in [ORACLE_TYPE_BINARY_DOUBLE, ORACLE_TYPE_BINARY_FLOAT])
 
     def is_number_based(self):
         """Is the column numeric in class"""
@@ -286,9 +259,7 @@ class OracleColumn(ColumnMetadataInterface):
         )
 
     def is_interval(self):
-        return bool(
-            self.data_type in [ORACLE_TYPE_INTERVAL_DS, ORACLE_TYPE_INTERVAL_YM]
-        )
+        return bool(self.data_type in [ORACLE_TYPE_INTERVAL_DS, ORACLE_TYPE_INTERVAL_YM])
 
     def is_string_based(self):
         """Is the column string based in class"""
@@ -307,10 +278,7 @@ class OracleColumn(ColumnMetadataInterface):
 
     def is_time_zone_based(self):
         """Does the column contain time zone data"""
-        return bool(
-            self.data_type.upper()
-            in (ORACLE_TYPE_TIMESTAMP_TZ, ORACLE_TYPE_TIMESTAMP_LOCAL_TZ)
-        )
+        return bool(self.data_type.upper() in (ORACLE_TYPE_TIMESTAMP_TZ, ORACLE_TYPE_TIMESTAMP_LOCAL_TZ))
 
     def is_hidden(self):
         return self.hidden
@@ -319,8 +287,5 @@ class OracleColumn(ColumnMetadataInterface):
         return bool(
             self.is_number_based()
             or (self.is_date_based() and not self.is_time_zone_based())
-            or (
-                self.is_string_based()
-                and self.data_type not in [ORACLE_TYPE_CLOB, ORACLE_TYPE_NCLOB]
-            )
+            or (self.is_string_based() and self.data_type not in [ORACLE_TYPE_CLOB, ORACLE_TYPE_NCLOB])
         )

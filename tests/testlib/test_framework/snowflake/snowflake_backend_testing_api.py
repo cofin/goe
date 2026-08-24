@@ -21,75 +21,74 @@ processing and verification of integration tests.
 
 import logging
 
-from goe.offload.snowflake.snowflake_column import (
-    SnowflakeColumn,
-    SNOWFLAKE_TYPE_BOOLEAN,
-    SNOWFLAKE_TYPE_BINARY,
-    SNOWFLAKE_TYPE_DATE,
-    SNOWFLAKE_TYPE_FLOAT,
-    SNOWFLAKE_TYPE_TIME,
-    SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
-    SNOWFLAKE_TYPE_TIMESTAMP_TZ,
-    SNOWFLAKE_TYPE_NUMBER,
-    SNOWFLAKE_TYPE_TEXT,
-)
 from goe.offload.column_metadata import (
-    CanonicalColumn,
     CANONICAL_CHAR_SEMANTICS_CHAR,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_VARIABLE_STRING,
     GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_FLOAT,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
+    GOE_TYPE_INTERVAL_DS,
+    GOE_TYPE_INTERVAL_YM,
+    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_LARGE_STRING,
     GOE_TYPE_TIME,
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_VARIABLE_STRING,
+    CanonicalColumn,
+)
+from goe.offload.snowflake.snowflake_column import (
+    SNOWFLAKE_TYPE_BINARY,
+    SNOWFLAKE_TYPE_BOOLEAN,
+    SNOWFLAKE_TYPE_DATE,
+    SNOWFLAKE_TYPE_FLOAT,
+    SNOWFLAKE_TYPE_NUMBER,
+    SNOWFLAKE_TYPE_TEXT,
+    SNOWFLAKE_TYPE_TIME,
+    SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
+    SNOWFLAKE_TYPE_TIMESTAMP_TZ,
+    SnowflakeColumn,
 )
 from tests.testlib.test_framework.backend_testing_api import (
-    BackendTestingApiInterface,
-    BackendTestingApiException,
+    STORY_TEST_BACKEND_BLOB_COL,
+    STORY_TEST_BACKEND_DATE_COL,
+    STORY_TEST_BACKEND_DECIMAL_DEF_COL,
     STORY_TEST_BACKEND_DECIMAL_PS_COL,
     STORY_TEST_BACKEND_DOUBLE_COL,
     STORY_TEST_BACKEND_INT_1_COL,
     STORY_TEST_BACKEND_INT_2_COL,
     STORY_TEST_BACKEND_INT_4_COL,
     STORY_TEST_BACKEND_INT_8_COL,
-    STORY_TEST_BACKEND_DECIMAL_DEF_COL,
-    STORY_TEST_BACKEND_VAR_STR_COL,
-    STORY_TEST_BACKEND_VAR_STR_LONG_COL,
-    STORY_TEST_BACKEND_DATE_COL,
-    STORY_TEST_BACKEND_TIMESTAMP_COL,
-    STORY_TEST_BACKEND_TIMESTAMP_TZ_COL,
-    STORY_TEST_BACKEND_BLOB_COL,
     STORY_TEST_BACKEND_NULL_STR_COL,
     STORY_TEST_BACKEND_RAW_COL,
-    STORY_TEST_OFFLOAD_NUMS_BARE_NUM,
+    STORY_TEST_BACKEND_TIMESTAMP_COL,
+    STORY_TEST_BACKEND_TIMESTAMP_TZ_COL,
+    STORY_TEST_BACKEND_VAR_STR_COL,
+    STORY_TEST_BACKEND_VAR_STR_LONG_COL,
     STORY_TEST_OFFLOAD_NUMS_BARE_FLT,
-    STORY_TEST_OFFLOAD_NUMS_NUM_4,
+    STORY_TEST_OFFLOAD_NUMS_BARE_NUM,
     STORY_TEST_OFFLOAD_NUMS_DEC_10_0,
     STORY_TEST_OFFLOAD_NUMS_DEC_36_3,
     STORY_TEST_OFFLOAD_NUMS_DEC_37_3,
     STORY_TEST_OFFLOAD_NUMS_DEC_38_3,
     STORY_TEST_OFFLOAD_NUMS_NUM_3_2,
-    STORY_TEST_OFFLOAD_NUMS_NUM_STAR_4,
     STORY_TEST_OFFLOAD_NUMS_NUM_3_5,
+    STORY_TEST_OFFLOAD_NUMS_NUM_4,
     STORY_TEST_OFFLOAD_NUMS_NUM_10_M5,
+    STORY_TEST_OFFLOAD_NUMS_NUM_STAR_4,
+    BackendTestingApiException,
+    BackendTestingApiInterface,
 )
 from tests.testlib.test_framework.test_constants import UNICODE_NAME_TOKEN
-
 
 ###############################################################################
 # CONSTANTS
@@ -118,7 +117,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendSnowflakeTestingApi, self).__init__(
+        super().__init__(
             connection_options,
             backend_type,
             messages,
@@ -132,9 +131,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
     ###########################################################################
 
     def _define_test_partition_function(self, udf_name):
-        raise NotImplementedError(
-            "_define_test_partition_function() not implemented for Snowflake"
-        )
+        raise NotImplementedError("_define_test_partition_function() not implemented for Snowflake")
 
     def _goe_type_mapping_column_definitions(self, filter_column=None):
         def name(*args):
@@ -147,9 +144,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     SNOWFLAKE_TYPE_BINARY,
                     data_length=2000,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_BINARY, "2000"), GOE_TYPE_BINARY
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_BINARY, "2000"), GOE_TYPE_BINARY),
             },
             name(SNOWFLAKE_TYPE_BINARY, "2000", GOE_TYPE_LARGE_BINARY): {
                 "column": SnowflakeColumn(
@@ -162,9 +157,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     GOE_TYPE_LARGE_BINARY,
                 ),
                 "present_options": {
-                    "large_binary_columns_csv": name(
-                        SNOWFLAKE_TYPE_BINARY, "2000", GOE_TYPE_LARGE_BINARY
-                    )
+                    "large_binary_columns_csv": name(SNOWFLAKE_TYPE_BINARY, "2000", GOE_TYPE_LARGE_BINARY)
                 },
             },
             name(SNOWFLAKE_TYPE_BINARY, "2001"): {
@@ -187,19 +180,11 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_BINARY, "2001", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
-                "present_options": {
-                    "binary_columns_csv": name(
-                        SNOWFLAKE_TYPE_BINARY, "2001", GOE_TYPE_BINARY
-                    )
-                },
+                "present_options": {"binary_columns_csv": name(SNOWFLAKE_TYPE_BINARY, "2001", GOE_TYPE_BINARY)},
             },
             name(SNOWFLAKE_TYPE_DATE): {
-                "column": SnowflakeColumn(
-                    name(SNOWFLAKE_TYPE_DATE), SNOWFLAKE_TYPE_DATE
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_DATE), GOE_TYPE_DATE
-                ),
+                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_DATE), SNOWFLAKE_TYPE_DATE),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_DATE), GOE_TYPE_DATE),
             },
             name(SNOWFLAKE_TYPE_DATE, GOE_TYPE_TIMESTAMP): {
                 "column": SnowflakeColumn(
@@ -210,19 +195,11 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_DATE, GOE_TYPE_TIMESTAMP),
                     GOE_TYPE_TIMESTAMP,
                 ),
-                "present_options": {
-                    "timestamp_columns_csv": name(
-                        SNOWFLAKE_TYPE_DATE, GOE_TYPE_TIMESTAMP
-                    )
-                },
+                "present_options": {"timestamp_columns_csv": name(SNOWFLAKE_TYPE_DATE, GOE_TYPE_TIMESTAMP)},
             },
             name(SNOWFLAKE_TYPE_FLOAT): {
-                "column": SnowflakeColumn(
-                    name(SNOWFLAKE_TYPE_FLOAT), SNOWFLAKE_TYPE_FLOAT
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_FLOAT), GOE_TYPE_DOUBLE
-                ),
+                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_FLOAT), SNOWFLAKE_TYPE_FLOAT),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_FLOAT), GOE_TYPE_DOUBLE),
             },
             name(SNOWFLAKE_TYPE_FLOAT, GOE_TYPE_DECIMAL): {
                 "column": SnowflakeColumn(
@@ -233,9 +210,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_FLOAT, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
                 ),
                 "present_options": {
-                    "decimal_columns_csv_list": [
-                        name(SNOWFLAKE_TYPE_FLOAT, GOE_TYPE_DECIMAL)
-                    ],
+                    "decimal_columns_csv_list": [name(SNOWFLAKE_TYPE_FLOAT, GOE_TYPE_DECIMAL)],
                     "decimal_columns_type_list": ["38,18"],
                 },
             },
@@ -246,9 +221,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     data_precision=38,
                     data_scale=18,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_NUMBER), GOE_TYPE_DECIMAL
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_NUMBER), GOE_TYPE_DECIMAL),
             },
             name(SNOWFLAKE_TYPE_NUMBER, "2", "0"): {
                 "column": SnowflakeColumn(
@@ -257,9 +230,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_NUMBER, "2", "0"), GOE_TYPE_INTEGER_1
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_NUMBER, "2", "0"), GOE_TYPE_INTEGER_1),
             },
             name(SNOWFLAKE_TYPE_NUMBER, "4", "0"): {
                 "column": SnowflakeColumn(
@@ -268,9 +239,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_NUMBER, "4", "0"), GOE_TYPE_INTEGER_2
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_NUMBER, "4", "0"), GOE_TYPE_INTEGER_2),
             },
             name(SNOWFLAKE_TYPE_NUMBER, "9", "0"): {
                 "column": SnowflakeColumn(
@@ -279,9 +248,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_NUMBER, "9", "0"), GOE_TYPE_INTEGER_4
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_NUMBER, "9", "0"), GOE_TYPE_INTEGER_4),
             },
             name(SNOWFLAKE_TYPE_NUMBER, "18", "0"): {
                 "column": SnowflakeColumn(
@@ -317,11 +284,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_1_columns_csv": name(
-                        SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_1
-                    )
-                },
+                "present_options": {"integer_1_columns_csv": name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_1)},
             },
             name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_2): {
                 "column": SnowflakeColumn(
@@ -334,11 +297,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
-                "present_options": {
-                    "integer_2_columns_csv": name(
-                        SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_2
-                    )
-                },
+                "present_options": {"integer_2_columns_csv": name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_2)},
             },
             name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_4): {
                 "column": SnowflakeColumn(
@@ -351,11 +310,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_4_columns_csv": name(
-                        SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_4
-                    )
-                },
+                "present_options": {"integer_4_columns_csv": name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_4)},
             },
             name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_8): {
                 "column": SnowflakeColumn(
@@ -368,11 +323,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_8_columns_csv": name(
-                        SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_8
-                    )
-                },
+                "present_options": {"integer_8_columns_csv": name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_8)},
             },
             name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_38): {
                 "column": SnowflakeColumn(
@@ -385,11 +336,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_1,
                 ),
-                "present_options": {
-                    "integer_38_columns_csv": name(
-                        SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_38
-                    )
-                },
+                "present_options": {"integer_38_columns_csv": name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_38)},
             },
             # Column below commented out because --fixed-string-columns does not exist
             # This is listed in support matrix as:
@@ -418,9 +365,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     SNOWFLAKE_TYPE_TEXT,
                     char_length=4001,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_TEXT, "4001"), GOE_TYPE_LARGE_STRING
-                ),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_TEXT, "4001"), GOE_TYPE_LARGE_STRING),
             },
             name(SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING): {
                 "column": SnowflakeColumn(
@@ -432,22 +377,14 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
-                "present_options": {
-                    "large_string_columns_csv": name(
-                        SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING
-                    )
-                },
+                "present_options": {"large_string_columns_csv": name(SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING)},
             },
             name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY): {
-                "column": SnowflakeColumn(
-                    name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY), SNOWFLAKE_TYPE_TEXT
-                ),
+                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY), SNOWFLAKE_TYPE_TEXT),
                 "expected_canonical_column": CanonicalColumn(
                     name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY), GOE_TYPE_BINARY
                 ),
-                "present_options": {
-                    "binary_columns_csv": name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY)
-                },
+                "present_options": {"binary_columns_csv": name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY)},
             },
             name(SNOWFLAKE_TYPE_TEXT, "2000", UNICODE_NAME_TOKEN): {
                 "column": SnowflakeColumn(
@@ -462,9 +399,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
                 ),
                 "present_options": {
-                    "unicode_string_columns_csv": name(
-                        SNOWFLAKE_TYPE_TEXT, "2000", UNICODE_NAME_TOKEN
-                    )
+                    "unicode_string_columns_csv": name(SNOWFLAKE_TYPE_TEXT, "2000", UNICODE_NAME_TOKEN)
                 },
             },
             name(SNOWFLAKE_TYPE_TEXT, "2001", UNICODE_NAME_TOKEN): {
@@ -480,14 +415,10 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
                 ),
                 "present_options": {
-                    "unicode_string_columns_csv": name(
-                        SNOWFLAKE_TYPE_TEXT, "2001", UNICODE_NAME_TOKEN
-                    )
+                    "unicode_string_columns_csv": name(SNOWFLAKE_TYPE_TEXT, "2001", UNICODE_NAME_TOKEN)
                 },
             },
-            name(
-                SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN
-            ): {
+            name(SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
                 "column": SnowflakeColumn(
                     name(
                         SNOWFLAKE_TYPE_TEXT,
@@ -532,11 +463,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
-                "present_options": {
-                    "large_binary_columns_csv": name(
-                        SNOWFLAKE_TYPE_TEXT, GOE_TYPE_LARGE_BINARY
-                    )
-                },
+                "present_options": {"large_binary_columns_csv": name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_LARGE_BINARY)},
             },
             name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_DS): {
                 "column": SnowflakeColumn(
@@ -547,11 +474,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_DS),
                     GOE_TYPE_INTERVAL_DS,
                 ),
-                "present_options": {
-                    "interval_ds_columns_csv": name(
-                        SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_DS
-                    )
-                },
+                "present_options": {"interval_ds_columns_csv": name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_DS)},
             },
             name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_YM): {
                 "column": SnowflakeColumn(
@@ -562,27 +485,15 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_YM),
                     GOE_TYPE_INTERVAL_YM,
                 ),
-                "present_options": {
-                    "interval_ym_columns_csv": name(
-                        SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_YM
-                    )
-                },
+                "present_options": {"interval_ym_columns_csv": name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_YM)},
             },
             name(SNOWFLAKE_TYPE_TIME): {
-                "column": SnowflakeColumn(
-                    name(SNOWFLAKE_TYPE_TIME), SNOWFLAKE_TYPE_TIME
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_TIME), GOE_TYPE_TIME
-                ),
+                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_TIME), SNOWFLAKE_TYPE_TIME),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_TIME), GOE_TYPE_TIME),
             },
             name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ): {
-                "column": SnowflakeColumn(
-                    name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ), SNOWFLAKE_TYPE_TIMESTAMP_NTZ
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ), GOE_TYPE_TIMESTAMP
-                ),
+                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ), SNOWFLAKE_TYPE_TIMESTAMP_NTZ),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ), GOE_TYPE_TIMESTAMP),
             },
             name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ, GOE_TYPE_DATE): {
                 "column": SnowflakeColumn(
@@ -593,19 +504,11 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ, GOE_TYPE_DATE),
                     GOE_TYPE_DATE,
                 ),
-                "present_options": {
-                    "date_columns_csv": name(
-                        SNOWFLAKE_TYPE_TIMESTAMP_NTZ, GOE_TYPE_DATE
-                    )
-                },
+                "present_options": {"date_columns_csv": name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ, GOE_TYPE_DATE)},
             },
             name(SNOWFLAKE_TYPE_TIMESTAMP_TZ): {
-                "column": SnowflakeColumn(
-                    name(SNOWFLAKE_TYPE_TIMESTAMP_TZ), SNOWFLAKE_TYPE_TIMESTAMP_TZ
-                ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_TIMESTAMP_TZ), GOE_TYPE_TIMESTAMP_TZ
-                ),
+                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_TIMESTAMP_TZ), SNOWFLAKE_TYPE_TIMESTAMP_TZ),
+                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_TIMESTAMP_TZ), GOE_TYPE_TIMESTAMP_TZ),
             },
             name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_DATE): {
                 "column": SnowflakeColumn(
@@ -616,9 +519,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_DATE),
                     GOE_TYPE_DATE,
                 ),
-                "present_options": {
-                    "date_columns_csv": name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_DATE)
-                },
+                "present_options": {"date_columns_csv": name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_DATE)},
             },
             name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_TIMESTAMP): {
                 "column": SnowflakeColumn(
@@ -629,18 +530,13 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_TIMESTAMP),
                     GOE_TYPE_TIMESTAMP,
                 ),
-                "present_options": {
-                    "timestamp_columns_csv": name(
-                        SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_TIMESTAMP
-                    )
-                },
+                "present_options": {"timestamp_columns_csv": name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_TIMESTAMP)},
             },
         }
 
         if filter_column:
             return all_columns[filter_column]
-        else:
-            return all_columns
+        return all_columns
 
     ###########################################################################
     # PUBLIC METHODS
@@ -675,9 +571,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
 
     def create_backend_offload_location(self, goe_user=None):
         """Unsupported for Snowflake"""
-        raise NotImplementedError(
-            "create_backend_offload_location() unsupported for Snowflake"
-        )
+        raise NotImplementedError("create_backend_offload_location() unsupported for Snowflake")
 
     def create_partitioned_test_table(
         self,
@@ -689,9 +583,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
         filter_clauses=None,
     ):
         """No table partitioning on Snowflake"""
-        raise NotImplementedError(
-            "create_partitioned_test_table() unsupported for Snowflake"
-        )
+        raise NotImplementedError("create_partitioned_test_table() unsupported for Snowflake")
 
     def create_table_as_select(
         self,
@@ -727,12 +619,10 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
         )
         return self.execute_ddl(sql, sync=sync)
 
-    def expected_backend_column(
-        self, canonical_column, override_used=None, decimal_padding_digits=None
-    ):
-        expected_data_type = self.expected_canonical_to_backend_type_map(
-            override_used=override_used
-        ).get(canonical_column.data_type)
+    def expected_backend_column(self, canonical_column, override_used=None, decimal_padding_digits=None):
+        expected_data_type = self.expected_canonical_to_backend_type_map(override_used=override_used).get(
+            canonical_column.data_type
+        )
         expected_precision_scale = self.expected_backend_precision_scale(
             canonical_column, decimal_padding_digits=decimal_padding_digits
         )
@@ -743,26 +633,18 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                 data_precision=expected_precision_scale[0],
                 data_scale=expected_precision_scale[1],
             )
-        else:
-            return SnowflakeColumn(canonical_column.name, expected_data_type)
+        return SnowflakeColumn(canonical_column.name, expected_data_type)
 
-    def expected_backend_precision_scale(
-        self, canonical_column, decimal_padding_digits=None
-    ):
+    def expected_backend_precision_scale(self, canonical_column, decimal_padding_digits=None):
         if canonical_column.data_type == GOE_TYPE_DECIMAL:
-            if (
-                canonical_column.data_precision is None
-                and canonical_column.data_scale is None
-            ):
+            if canonical_column.data_precision is None and canonical_column.data_scale is None:
                 # We can't check this because these columns are sampled and have an unreliable spec
                 return None
-            else:
-                # This should be a one-to-one mapping
-                return canonical_column.data_precision, canonical_column.data_scale
-        elif canonical_column.data_type == GOE_TYPE_INTEGER_38:
+            # This should be a one-to-one mapping
+            return canonical_column.data_precision, canonical_column.data_scale
+        if canonical_column.data_type == GOE_TYPE_INTEGER_38:
             return 38, 0
-        else:
-            return None
+        return None
 
     def expected_canonical_to_backend_type_map(self, override_used=None):
         return {
@@ -820,9 +702,7 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
         """On Snowflake there are no load tables, always returns True."""
         return True
 
-    def partition_has_stats(
-        self, db_name, table_name, partition_tuples, colstats=False
-    ):
+    def partition_has_stats(self, db_name, table_name, partition_tuples, colstats=False):
         raise NotImplementedError("partition_has_stats() unsupported for Snowflake")
 
     def rename_column(self, db_name, table_name, column_name, new_name, sync=None):
@@ -834,60 +714,45 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
 
         if not self.get_column(db_name, table_name, column_name):
             raise BackendTestingApiException(
-                "Table %s.%s does not have a column %s to rename"
-                % (db_name, table_name, column_name)
+                "Table %s.%s does not have a column %s to rename" % (db_name, table_name, column_name)
             )
-        sql = (
-            "ALTER TABLE %(db_name)s.%(table_name)s RENAME COLUMN %(orig_name)s TO %(new_name)s"
-            % {
-                "db_name": self.enclose_identifier(db_name),
-                "table_name": self.enclose_identifier(table_name),
-                "orig_name": self.enclose_identifier(column_name),
-                "new_name": self.enclose_identifier(new_name),
-            }
-        )
+        sql = "ALTER TABLE %(db_name)s.%(table_name)s RENAME COLUMN %(orig_name)s TO %(new_name)s" % {
+            "db_name": self.enclose_identifier(db_name),
+            "table_name": self.enclose_identifier(table_name),
+            "orig_name": self.enclose_identifier(column_name),
+            "new_name": self.enclose_identifier(new_name),
+        }
         return self.execute_ddl(sql, sync=sync)
 
-    def select_single_non_null_value(
-        self, db_name, table_name, column_name, project_expression
-    ):
-        return self._select_single_non_null_value_common(
-            db_name, table_name, column_name, project_expression
-        )
+    def select_single_non_null_value(self, db_name, table_name, column_name, project_expression):
+        return self._select_single_non_null_value_common(db_name, table_name, column_name, project_expression)
 
     def sql_median_expression(self, db_name, table_name, column_name):
         """No single Snowflake function for median of any data type so pick to suit column"""
         column = self.get_column(db_name, table_name, column_name)
         if column.is_number_based():
             # Can't use MEDIAN because that splits the difference on a tie
-            return (
-                "PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY %s)"
-                % self.enclose_identifier(column_name)
-            )
-        elif column.is_string_based():
-            return (
-                "CHR(PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY ASCII(%s)))"
-                % self.enclose_identifier(column_name)
-            )
-        elif column.data_type == SNOWFLAKE_TYPE_DATE:
+            return "PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY %s)" % self.enclose_identifier(column_name)
+        if column.is_string_based():
+            return "CHR(PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY ASCII(%s)))" % self.enclose_identifier(column_name)
+        if column.data_type == SNOWFLAKE_TYPE_DATE:
             return (
                 "TO_TIMESTAMP(PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY DATE_PART('EPOCH_SECOND',%s)))::DATE"
                 % self.enclose_identifier(column_name)
             )
-        elif column.data_type == SNOWFLAKE_TYPE_TIMESTAMP_NTZ:
+        if column.data_type == SNOWFLAKE_TYPE_TIMESTAMP_NTZ:
             return (
                 "TO_TIMESTAMP_NTZ(PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY DATE_PART('EPOCH_NANOSECOND',%s)),9)"
                 % self.enclose_identifier(column_name)
             )
-        elif column.data_type == SNOWFLAKE_TYPE_TIMESTAMP_TZ:
+        if column.data_type == SNOWFLAKE_TYPE_TIMESTAMP_TZ:
             return (
                 "TO_TIMESTAMP_TZ(PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY DATE_PART('EPOCH_NANOSECOND',%s)),9)"
                 % self.enclose_identifier(column_name)
             )
-        else:
-            # There is no simple function we can use therefore just accept the first value
-            # Types dropping in here would be BINARY, TIME, BOOLEAN
-            return self.enclose_identifier(column_name)
+        # There is no simple function we can use therefore just accept the first value
+        # Types dropping in here would be BINARY, TIME, BOOLEAN
+        return self.enclose_identifier(column_name)
 
     def story_test_offload_nums_expected_backend_types(self, sampling_enabled=True):
         def number(p, s):
@@ -895,12 +760,8 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
 
         non_sampled_type = self.gen_default_numeric_column("x").format_data_type()
         return {
-            STORY_TEST_OFFLOAD_NUMS_BARE_NUM: (
-                number(4, 3) if sampling_enabled else non_sampled_type
-            ),
-            STORY_TEST_OFFLOAD_NUMS_BARE_FLT: (
-                SNOWFLAKE_TYPE_NUMBER if sampling_enabled else non_sampled_type
-            ),
+            STORY_TEST_OFFLOAD_NUMS_BARE_NUM: (number(4, 3) if sampling_enabled else non_sampled_type),
+            STORY_TEST_OFFLOAD_NUMS_BARE_FLT: (SNOWFLAKE_TYPE_NUMBER if sampling_enabled else non_sampled_type),
             # NUM_10_M5 is NUMBER(4,0) mapped to 2-BYTE and back to NUMBER(5)
             STORY_TEST_OFFLOAD_NUMS_NUM_4: number(5, 0),
             STORY_TEST_OFFLOAD_NUMS_NUM_3_2: number(3, 2),
@@ -908,18 +769,10 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
             STORY_TEST_OFFLOAD_NUMS_NUM_3_5: number(5, 5),
             # NUM_10_M5 is NUMBER(10,0) mapped to 8-BYTE and back to NUMBER(19)
             STORY_TEST_OFFLOAD_NUMS_NUM_10_M5: number(19, 0),
-            STORY_TEST_OFFLOAD_NUMS_DEC_10_0: (
-                number(10, 0) if sampling_enabled else non_sampled_type
-            ),
-            STORY_TEST_OFFLOAD_NUMS_DEC_36_3: (
-                number(36, 3) if sampling_enabled else non_sampled_type
-            ),
-            STORY_TEST_OFFLOAD_NUMS_DEC_37_3: (
-                number(37, 3) if sampling_enabled else non_sampled_type
-            ),
-            STORY_TEST_OFFLOAD_NUMS_DEC_38_3: (
-                number(38, 3) if sampling_enabled else non_sampled_type
-            ),
+            STORY_TEST_OFFLOAD_NUMS_DEC_10_0: (number(10, 0) if sampling_enabled else non_sampled_type),
+            STORY_TEST_OFFLOAD_NUMS_DEC_36_3: (number(36, 3) if sampling_enabled else non_sampled_type),
+            STORY_TEST_OFFLOAD_NUMS_DEC_37_3: (number(37, 3) if sampling_enabled else non_sampled_type),
+            STORY_TEST_OFFLOAD_NUMS_DEC_38_3: (number(38, 3) if sampling_enabled else non_sampled_type),
         }
 
     def story_test_table_extra_col_info(self):
@@ -932,17 +785,13 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
             'scale': Scale for number columns that support it
         """
         extra_cols = {
-            STORY_TEST_BACKEND_DOUBLE_COL: {
-                "sql_expression": "CAST(123.123 AS %s)" % SNOWFLAKE_TYPE_FLOAT
-            },
+            STORY_TEST_BACKEND_DOUBLE_COL: {"sql_expression": "CAST(123.123 AS %s)" % SNOWFLAKE_TYPE_FLOAT},
             STORY_TEST_BACKEND_DECIMAL_PS_COL: {
                 "sql_expression": "CAST(123.123 AS %s(10,3))" % SNOWFLAKE_TYPE_NUMBER,
                 "precision": 10,
                 "scale": 3,
             },
-            STORY_TEST_BACKEND_DECIMAL_DEF_COL: {
-                "sql_expression": "CAST(123 AS %s)" % SNOWFLAKE_TYPE_NUMBER
-            },
+            STORY_TEST_BACKEND_DECIMAL_DEF_COL: {"sql_expression": "CAST(123 AS %s)" % SNOWFLAKE_TYPE_NUMBER},
             STORY_TEST_BACKEND_INT_1_COL: {
                 "sql_expression": "CAST(1 AS %s(2))" % SNOWFLAKE_TYPE_NUMBER,
                 "precision": 2,
@@ -959,42 +808,31 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                 "scale": 0,
             },
             STORY_TEST_BACKEND_INT_8_COL: {
-                "sql_expression": "CAST(1234567890123 AS %s(18))"
-                % SNOWFLAKE_TYPE_NUMBER,
+                "sql_expression": "CAST(1234567890123 AS %s(18))" % SNOWFLAKE_TYPE_NUMBER,
                 "precision": 18,
                 "scale": 0,
             },
             STORY_TEST_BACKEND_VAR_STR_COL: {
-                "sql_expression": "CAST('this is text' AS %s(50))"
-                % SNOWFLAKE_TYPE_TEXT,
+                "sql_expression": "CAST('this is text' AS %s(50))" % SNOWFLAKE_TYPE_TEXT,
                 "length": 50,
                 "char_semantics": CANONICAL_CHAR_SEMANTICS_CHAR,
             },
             STORY_TEST_BACKEND_VAR_STR_LONG_COL: {
-                "sql_expression": "CAST('very long text' AS %s(5000))"
-                % SNOWFLAKE_TYPE_TEXT,
+                "sql_expression": "CAST('very long text' AS %s(5000))" % SNOWFLAKE_TYPE_TEXT,
                 "length": 5000,
                 "char_semantics": CANONICAL_CHAR_SEMANTICS_CHAR,
             },
             STORY_TEST_BACKEND_DATE_COL: {"sql_expression": "CURRENT_DATE()"},
-            STORY_TEST_BACKEND_TIMESTAMP_COL: {
-                "sql_expression": "CAST(CURRENT_TIMESTAMP() AS TIMESTAMP_NTZ)"
-            },
-            STORY_TEST_BACKEND_TIMESTAMP_TZ_COL: {
-                "sql_expression": "CONVERT_TIMEZONE('UTC', CURRENT_TIMESTAMP())"
-            },
+            STORY_TEST_BACKEND_TIMESTAMP_COL: {"sql_expression": "CAST(CURRENT_TIMESTAMP() AS TIMESTAMP_NTZ)"},
+            STORY_TEST_BACKEND_TIMESTAMP_TZ_COL: {"sql_expression": "CONVERT_TIMEZONE('UTC', CURRENT_TIMESTAMP())"},
             STORY_TEST_BACKEND_BLOB_COL: {
-                "sql_expression": "CAST(TO_BINARY('this is binary', 'UTF-8') AS %s(2001))"
-                % SNOWFLAKE_TYPE_BINARY
+                "sql_expression": "CAST(TO_BINARY('this is binary', 'UTF-8') AS %s(2001))" % SNOWFLAKE_TYPE_BINARY
             },
             STORY_TEST_BACKEND_RAW_COL: {
-                "sql_expression": "CAST(TO_BINARY('this is binary', 'UTF-8') AS %s(100))"
-                % SNOWFLAKE_TYPE_BINARY,
+                "sql_expression": "CAST(TO_BINARY('this is binary', 'UTF-8') AS %s(100))" % SNOWFLAKE_TYPE_BINARY,
                 "length": 100,
             },
-            STORY_TEST_BACKEND_NULL_STR_COL: {
-                "sql_expression": "CAST(NULL AS %s(30))" % SNOWFLAKE_TYPE_TEXT
-            },
+            STORY_TEST_BACKEND_NULL_STR_COL: {"sql_expression": "CAST(NULL AS %s(30))" % SNOWFLAKE_TYPE_TEXT},
         }
         return extra_cols
 

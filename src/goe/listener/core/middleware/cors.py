@@ -28,11 +28,11 @@ class CORSMiddleware(BaseCORSMiddleware):
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":  # pragma: no cover
             await self.app(scope, receive, send)
-            return  # noqa: WPS324
+            return None
 
         path = scope["path"]
         if not self.path_regex.match(path):
             await self.app(scope, receive, send)
-            return  # noqa: WPS324
+            return None
 
         return await super().__call__(scope, receive, send)

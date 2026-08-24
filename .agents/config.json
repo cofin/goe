@@ -1,0 +1,6 @@
+{
+  "bundles_dir": ".agents/bundles",
+  "knowledge_dir": ".agents/bundles/knowledge",
+  "specs_dir": ".agents/bundles/specs",
+  "skills_dir": ".agents/skills"
+}

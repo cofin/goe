@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import redis
-import json
-
 from multiprocessing import Process
+
+import redis
 
 redis_conn = redis.Redis(charset="utf-8", decode_responses=True)
 

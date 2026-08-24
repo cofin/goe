@@ -24,9 +24,9 @@ from typing import TYPE_CHECKING
 from goe.config import option_descriptions, orchestration_defaults
 from goe.exceptions import OffloadException
 from goe.filesystem.goe_dfs import VALID_OFFLOAD_FS_SCHEMES
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload import offload_constants
-from goe.offload.offload_messages import OffloadMessages, VVERBOSE
+from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
+from goe.offload.offload_messages import VVERBOSE, OffloadMessages
 from goe.offload.offload_metadata_functions import (
     decode_metadata_incremental_high_values_from_metadata,
     incremental_key_csv_from_part_keys,
@@ -36,9 +36,9 @@ from goe.offload.offload_source_table import (
     OFFLOAD_PARTITION_TYPE_LIST,
 )
 from goe.offload.offload_transport import VALID_OFFLOAD_TRANSPORT_METHODS
-from goe.offload.operation.sort_columns import check_and_alter_backend_sort_columns
 from goe.offload.operation.data_type_controls import DECIMAL_COL_TYPE_SYNTAX_TEMPLATE
 from goe.offload.operation.ddl_file import write_ddl_to_ddl_file
+from goe.offload.operation.sort_columns import check_and_alter_backend_sort_columns
 from goe.offload.option_validation import (
     active_data_append_options,
     check_ipa_predicate_type_option_conflicts,
@@ -46,10 +46,10 @@ from goe.offload.option_validation import (
 )
 from goe.orchestration import command_steps
 from goe.persistence.orchestration_metadata import (
-    hwm_column_names_from_predicates,
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPES_WITH_PREDICATE_IN_HV,
+    hwm_column_names_from_predicates,
 )
 
 if TYPE_CHECKING:
@@ -75,10 +75,7 @@ def create_ddl_file_step(
 
     def step_fn():
         ddl = []
-        if (
-            offload_operation.create_backend_db
-            and offload_target_table.create_database_supported()
-        ):
+        if offload_operation.create_backend_db and offload_target_table.create_database_supported():
             ddl.extend(offload_target_table.create_db(with_terminator=True))
             ddl.extend(offload_target_table.create_load_db(with_terminator=True))
         ddl.extend(offload_target_table.create_backend_table(with_terminator=True))
@@ -138,9 +135,7 @@ def get_current_offload_hv(
             new_hvs = [hvs_individual, hvs_python]
         else:
             # we are offloading partitions so use the latest one from that list, this works for verification mode too
-            max_partition = (
-                source_data_client.partitions_to_offload.get_partition_by_index(0)
-            )
+            max_partition = source_data_client.partitions_to_offload.get_partition_by_index(0)
             new_hvs = [
                 max_partition.partition_values_individual,
                 max_partition.partition_values_python,
@@ -149,23 +144,16 @@ def get_current_offload_hv(
             "Identified new_hvs from partitions_to_offload: %s" % str(new_hvs),
             detail=VVERBOSE,
         )
-    elif (
-        offload_operation.offload_type == "INCREMENTAL"
-        and not offload_operation.reset_backend_table
-    ):
+    elif offload_operation.offload_type == "INCREMENTAL" and not offload_operation.reset_backend_table:
         # if no partitions in flight then get metadata in order to understand HWM
         current_metadata = offload_operation.get_hybrid_metadata()
         (
             _,
             _,
             partition_literal_hvs,
-        ) = decode_metadata_incremental_high_values_from_metadata(
-            current_metadata, offload_source_table
-        )
+        ) = decode_metadata_incremental_high_values_from_metadata(current_metadata, offload_source_table)
         new_hvs = [partition_literal_hvs, partition_literal_hvs]
-        messages.log(
-            "Identified new_hvs from metadata: %s" % str(new_hvs), detail=VVERBOSE
-        )
+        messages.log("Identified new_hvs from metadata: %s" % str(new_hvs), detail=VVERBOSE)
 
     return new_hvs
 
@@ -195,9 +183,7 @@ def get_prior_offloaded_hv(
         ) = decode_metadata_incremental_high_values_from_metadata(
             offload_operation.pre_offload_hybrid_metadata, rdbms_table
         )
-        messages.log(
-            "pre-offload metadata real values: %s" % str(real_hvs), detail=VVERBOSE
-        )
+        messages.log("pre-offload metadata real values: %s" % str(real_hvs), detail=VVERBOSE)
         messages.log(
             "pre-offload metadata rdbms literals: %s" % str(literal_hvs),
             detail=VVERBOSE,
@@ -205,9 +191,7 @@ def get_prior_offloaded_hv(
         prior_hvs = [literal_hvs, real_hvs]
 
     if not prior_hvs and source_data_client:
-        min_offloaded_partition = (
-            source_data_client.partitions_to_offload.get_partition_by_index(-1)
-        )
+        min_offloaded_partition = source_data_client.partitions_to_offload.get_partition_by_index(-1)
         if min_offloaded_partition:
             # we haven't gotten values from metadata so let's look at the partition list for the prior HV
             messages.log(
@@ -277,9 +261,7 @@ def get_offload_data_manager(
     return source_data_client
 
 
-def offload_backend_db_message(
-    messages: OffloadMessages, db_type, backend_table, execute_mode
-):
+def offload_backend_db_message(messages: OffloadMessages, db_type, backend_table, execute_mode):
     """Construct messages when backend databases do not exists.
     Either throw exception in execute mode or output warnings in preview mode.
     """
@@ -289,15 +271,11 @@ def offload_backend_db_message(
             % db_type
         )
     else:
-        message = (
-            "Offload %s does not exist or is incomplete, please create it before re-executing command"
-            % db_type
-        )
+        message = "Offload %s does not exist or is incomplete, please create it before re-executing command" % db_type
     if execute_mode:
         # Stop here to avoid subsequent exception further along the process
         raise OffloadException(message)
-    else:
-        messages.warning(message, ansi_code="red")
+    messages.warning(message, ansi_code="red")
 
 
 def offload_type_force_effects(
@@ -316,9 +294,7 @@ def offload_type_force_effects(
         ) == ("FULL", "INCREMENTAL"):
             # Once we have switched to FULL we cannot trust the HWM with subpartition offloads,
             # what if another HWM appeared for already offloaded HWM!
-            raise OffloadException(
-                offload_constants.OFFLOAD_TYPE_CHANGE_FOR_SUBPART_EXCEPTION_TEXT
-            )
+            raise OffloadException(offload_constants.OFFLOAD_TYPE_CHANGE_FOR_SUBPART_EXCEPTION_TEXT)
 
         if hybrid_operation.ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST and (
             original_offload_type,
@@ -326,9 +302,7 @@ def offload_type_force_effects(
         ) == ("FULL", "INCREMENTAL"):
             # We're switching OFFLOAD_TYPE for a LIST table, this is tricky for the user because we don't know the correct
             # INCREMENTAL_HIGH_VALUE value for metadata/hybrid view. So best we can do is try to alert them.
-            active_lpa_opts = active_data_append_options(
-                hybrid_operation, partition_type=OFFLOAD_PARTITION_TYPE_LIST
-            )
+            active_lpa_opts = active_data_append_options(hybrid_operation, partition_type=OFFLOAD_PARTITION_TYPE_LIST)
             if active_lpa_opts:
                 messages.notice(
                     "%s, only the partitions identified by %s will be queried from offloaded data"
@@ -338,30 +312,18 @@ def offload_type_force_effects(
                     )
                 )
             else:
-                raise OffloadException(
-                    offload_constants.OFFLOAD_TYPE_CHANGE_FOR_LIST_EXCEPTION_TEXT
-                )
+                raise OffloadException(offload_constants.OFFLOAD_TYPE_CHANGE_FOR_LIST_EXCEPTION_TEXT)
 
         if not hybrid_operation.force:
             new_inc_key = None
             original_inc_key = original_metadata.incremental_key
-            if (
-                hybrid_operation.hwm_in_hybrid_view
-                and source_data_client.get_incremental_high_values()
-            ):
-                new_inc_key = incremental_key_csv_from_part_keys(
-                    offload_source_table.partition_columns
-                )
+            if hybrid_operation.hwm_in_hybrid_view and source_data_client.get_incremental_high_values():
+                new_inc_key = incremental_key_csv_from_part_keys(offload_source_table.partition_columns)
 
             original_pred_cols, new_pred_cols = None, None
-            if (
-                hybrid_operation.ipa_predicate_type
-                in INCREMENTAL_PREDICATE_TYPES_WITH_PREDICATE_IN_HV
-            ):
+            if hybrid_operation.ipa_predicate_type in INCREMENTAL_PREDICATE_TYPES_WITH_PREDICATE_IN_HV:
                 original_pred_cols = original_metadata.hwm_column_names()
-                new_pred_cols = hwm_column_names_from_predicates(
-                    source_data_client.get_post_offload_predicates()
-                )
+                new_pred_cols = hwm_column_names_from_predicates(source_data_client.get_post_offload_predicates())
 
             if original_offload_type != new_offload_type:
                 messages.notice(
@@ -375,10 +337,7 @@ def offload_type_force_effects(
                     % (original_inc_key, new_inc_key)
                 )
                 hybrid_operation.force = True
-            elif (
-                original_pred_cols != new_pred_cols
-                and not source_data_client.nothing_to_offload()
-            ):
+            elif original_pred_cols != new_pred_cols and not source_data_client.nothing_to_offload():
                 messages.notice(
                     'Enabling force option when columns in INCREMENTAL_PREDICATE_VALUE change ("%s" -> "%s")'
                     % (original_pred_cols, new_pred_cols)
@@ -412,9 +371,7 @@ def normalise_less_than_options(options, exc_cls=OffloadException):
         except ValueError as exc:
             raise exc_cls("option --older-than-date: %s" % str(exc))
     elif options.older_than_days:
-        options.older_than_days = check_opt_is_posint(
-            "--older-than-days", options.older_than_days, allow_zero=True
-        )
+        options.older_than_days = check_opt_is_posint("--older-than-days", options.older_than_days, allow_zero=True)
         # move the value into less_than_value
         options.less_than_value = datetime.today() - timedelta(options.older_than_days)
         options.older_than_days = None
@@ -507,8 +464,7 @@ def get_offload_options(opt):
         "--offload-fs-scheme",
         dest="offload_fs_scheme",
         default=orchestration_defaults.offload_fs_scheme_default(),
-        help="%s. Filesystem type for Offloaded tables"
-        % list_for_option_help(VALID_OFFLOAD_FS_SCHEMES),
+        help="%s. Filesystem type for Offloaded tables" % list_for_option_help(VALID_OFFLOAD_FS_SCHEMES),
     )
     opt.add_option(
         "--offload-fs-prefix",

@@ -21,7 +21,6 @@ from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
-
 from tests.integration.scenarios.assertion_functions import (
     backend_table_exists,
 )
@@ -42,7 +41,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 CLI_DIM = "STORY_CLI_DIM"
 CLI_FACT = "STORY_CLI_FACT"
@@ -72,9 +70,7 @@ def get_bin_path():
 
 
 def command_supports_no_version_check(list_of_args):
-    return bool(
-        list_of_args[0].endswith("connect") or list_of_args[0].endswith("offload")
-    )
+    return bool(list_of_args[0].endswith("connect") or list_of_args[0].endswith("offload"))
 
 
 def goe_shell_command(list_of_args):
@@ -99,9 +95,7 @@ def test_cli_connect(config):
             goe_shell_command([os.path.join(bin_path, "connect"), "-h"]),
         )
 
-        run_shell_cmd(
-            config, messages, goe_shell_command([os.path.join(bin_path, "connect")])
-        )
+        run_shell_cmd(config, messages, goe_shell_command([os.path.join(bin_path, "connect")]))
 
 
 def test_cli_offload_opts(config):
@@ -124,9 +118,10 @@ def test_cli_offload_opts(config):
 
 def test_cli_offload_full(config, schema, data_db):
     id = "test_cli_offload_full"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         bin_path = get_bin_path()
 
@@ -137,9 +132,7 @@ def test_cli_offload_full(config, schema, data_db):
             config,
             messages,
             frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, CLI_DIM),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, CLI_DIM
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, CLI_DIM),
         )
 
         assert not backend_table_exists(config, backend_api, messages, data_db, CLI_DIM)
@@ -158,9 +151,9 @@ def test_cli_offload_full(config, schema, data_db):
             ),
         )
 
-        assert not backend_table_exists(
-            config, backend_api, messages, data_db, CLI_DIM
-        ), "The backend table should NOT exist"
+        assert not backend_table_exists(config, backend_api, messages, data_db, CLI_DIM), (
+            "The backend table should NOT exist"
+        )
 
         # Execute mode
         run_shell_cmd(
@@ -178,9 +171,7 @@ def test_cli_offload_full(config, schema, data_db):
             ),
         )
 
-        assert backend_table_exists(
-            config, backend_api, messages, data_db, CLI_DIM
-        ), "The backend table should exist"
+        assert backend_table_exists(config, backend_api, messages, data_db, CLI_DIM), "The backend table should exist"
 
         # Execute mode with many options
         run_shell_cmd(
@@ -202,24 +193,21 @@ def test_cli_offload_full(config, schema, data_db):
                     "--compress-load-table",
                     "--data-sample-parallelism=2",
                     "--max-offload-chunk-count=4",
-                    "--offload-fs-scheme={}".format(
-                        orchestration_defaults.offload_fs_scheme_default()
-                    ),
+                    f"--offload-fs-scheme={orchestration_defaults.offload_fs_scheme_default()}",
                     "--no-verify",
                 ]
             ),
         )
 
-        assert backend_table_exists(
-            config, backend_api, messages, data_db, CLI_DIM
-        ), "The backend table should exist"
+        assert backend_table_exists(config, backend_api, messages, data_db, CLI_DIM), "The backend table should exist"
 
 
 def test_cli_offload_rpa(config, schema, data_db):
     id = "test_cli_offload_rpa"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         bin_path = get_bin_path()
 
@@ -229,17 +217,13 @@ def test_cli_offload_rpa(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.sales_based_fact_create_ddl(
-                schema, CLI_FACT, simple_partition_names=True
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, CLI_FACT
-            ),
+            frontend_sqls=frontend_api.sales_based_fact_create_ddl(schema, CLI_FACT, simple_partition_names=True),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, CLI_FACT),
         )
 
-        assert not backend_table_exists(
-            config, backend_api, messages, data_db, CLI_FACT
-        ), "The backend table should NOT exist"
+        assert not backend_table_exists(config, backend_api, messages, data_db, CLI_FACT), (
+            "The backend table should NOT exist"
+        )
 
         run_shell_cmd(
             config,
@@ -257,9 +241,7 @@ def test_cli_offload_rpa(config, schema, data_db):
             ),
         )
 
-        assert backend_table_exists(
-            config, backend_api, messages, data_db, CLI_FACT
-        ), "The backend table should exist"
+        assert backend_table_exists(config, backend_api, messages, data_db, CLI_FACT), "The backend table should exist"
 
         run_shell_cmd(
             config,
@@ -277,6 +259,4 @@ def test_cli_offload_rpa(config, schema, data_db):
             ),
         )
 
-        assert backend_table_exists(
-            config, backend_api, messages, data_db, CLI_FACT
-        ), "The backend table should exist"
+        assert backend_table_exists(config, backend_api, messages, data_db, CLI_FACT), "The backend table should exist"

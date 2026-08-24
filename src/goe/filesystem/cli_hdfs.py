@@ -14,35 +14,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" CliHdfs: Command line hdfs implementation of GOEDfs
-"""
+"""CliHdfs: Command line hdfs implementation of GOEDfs"""
 
-from datetime import datetime
-from getpass import getuser
 import logging
-from os.path import basename, exists as file_exists
 import re
 import subprocess
+from datetime import datetime
+from getpass import getuser
+from os.path import basename
+from os.path import exists as file_exists
 from subprocess import PIPE, STDOUT
 
 from google.api_core import retry
 
 from goe.config.orchestration_defaults import backend_distribution_default
 from goe.filesystem.goe_dfs import (
-    GOEDfs,
-    GOEDfsDeleteNotComplete,
-    GOEDfsException,
-    gen_fs_uri,
     DFS_RETRY_TIMEOUT,
     DFS_TYPE_DIRECTORY,
     DFS_TYPE_FILE,
     GOE_DFS_SSH,
-    OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER,
     OFFLOAD_FS_SCHEME_INHERIT,
+    OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER,
+    GOEDfs,
+    GOEDfsDeleteNotComplete,
+    GOEDfsException,
+    gen_fs_uri,
 )
 from goe.offload.offload_constants import BACKEND_DISTRO_MAPR
 from goe.util.misc_functions import is_number
-
 
 ###############################################################################
 # EXCEPTIONS
@@ -85,9 +84,7 @@ class CliHdfs(GOEDfs):
     ):
         logger.info("Client setup: (%s, %s, %s)" % (hdfs_host, ssh_user, tmp_dir))
 
-        super(CliHdfs, self).__init__(
-            messages, dry_run=dry_run, do_not_connect=do_not_connect
-        )
+        super().__init__(messages, dry_run=dry_run, do_not_connect=do_not_connect)
 
         self._db_path_suffix = db_path_suffix
         self._hdfs_data = hdfs_data
@@ -109,11 +106,7 @@ class CliHdfs(GOEDfs):
         return self._ssh(ssh_user, host) == []
 
     def _normalize_hdfs_path(self, ssh_user, host, dfs_path):
-        return (
-            dfs_path
-            if self._can_short_circuit_ssh(ssh_user, host)
-            else "'" + dfs_path.strip("'") + "'"
-        )
+        return dfs_path if self._can_short_circuit_ssh(ssh_user, host) else "'" + dfs_path.strip("'") + "'"
 
     def _scp_from(self, ssh_user, host, from_path, to_path):
         if ssh_user == getuser() and host == "localhost":
@@ -137,8 +130,7 @@ class CliHdfs(GOEDfs):
         if returncode:
             self.log("Output: %s" % output)
             raise GOEDfsException(
-                'Required shell command failed with return code "%s"\n%s'
-                % (returncode, b"\n".join(output))
+                'Required shell command failed with return code "%s"\n%s' % (returncode, b"\n".join(output))
             )
 
     def _run_cmd(self, cmd, force_run=False):
@@ -165,21 +157,13 @@ class CliHdfs(GOEDfs):
         We can trust ls output to be textual and convert to string from bytes if required
         """
         use_line = ls_line.decode() if isinstance(ls_line, bytes) else ls_line
-        return (
-            True
-            if use_line and use_line.find("/") >= 0 and use_line[0] in ("-", "d")
-            else False
-        )
+        return True if use_line and use_line.find("/") >= 0 and use_line[0] in ("-", "d") else False
 
     def _ignorable_stderr(self, stderr_line):
         """Used to identify ignorable lines in stderr (which ends up in stdout anyway):
         "Pseudo-terminal will not be allocated..."
         """
-        return (
-            True
-            if stderr_line and b"Pseudo-terminal will not be allocated" in stderr_line
-            else False
-        )
+        return True if stderr_line and b"Pseudo-terminal will not be allocated" in stderr_line else False
 
     @staticmethod
     def dfs_cmd(as_string=False):
@@ -195,8 +179,7 @@ class CliHdfs(GOEDfs):
 
     @property
     def client(self):
-        logger.warn("Attempting to access 'client' in ssh based CliHdfs")
-        return None
+        logger.warning("Attempting to access 'client' in ssh based CliHdfs")
 
     def mkdir(self, dfs_path):
         assert dfs_path
@@ -204,11 +187,7 @@ class CliHdfs(GOEDfs):
         logger.info("mkdir(%s)" % dfs_path)
         dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
 
-        cmd = (
-            self._ssh(self._ssh_user, self._hdfs_host)
-            + CliHdfs.dfs_cmd()
-            + ["-mkdir", "-p", dfs_path]
-        )
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-mkdir", "-p", dfs_path]
         returncode, output = self._run_cmd(cmd)
         self._check_returncode(returncode, output)
 
@@ -224,17 +203,9 @@ class CliHdfs(GOEDfs):
         dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
 
         if recursive:
-            cmd = (
-                self._ssh(self._ssh_user, self._hdfs_host)
-                + CliHdfs.dfs_cmd()
-                + ["-rm", "-f", "-r", dfs_path]
-            )
+            cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-rm", "-f", "-r", dfs_path]
         else:
-            cmd = (
-                self._ssh(self._ssh_user, self._hdfs_host)
-                + CliHdfs.dfs_cmd()
-                + ["-rm", "-f", dfs_path]
-            )
+            cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-rm", "-f", dfs_path]
         returncode, output = self._run_cmd(cmd)
         self._check_returncode(returncode, output)
 
@@ -251,11 +222,7 @@ class CliHdfs(GOEDfs):
         assert hdfs_src_path and hdfs_dst_path
         logger.info("rename(%s, %s)" % (hdfs_src_path, hdfs_dst_path))
         if not self._dry_run:
-            cmd = (
-                self._ssh(self._ssh_user, self._hdfs_host)
-                + CliHdfs.dfs_cmd()
-                + ["-mv", hdfs_src_path, hdfs_dst_path]
-            )
+            cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-mv", hdfs_src_path, hdfs_dst_path]
             returncode, output = self._run_cmd(cmd)
         else:
             returncode, output = 0, []
@@ -269,32 +236,19 @@ class CliHdfs(GOEDfs):
 
         if recursive:
             return self.delete(dfs_path, recursive)
-        else:
-            cmd = (
-                self._ssh(self._ssh_user, self._hdfs_host)
-                + CliHdfs.dfs_cmd()
-                + ["-rmdir", dfs_path]
-            )
-            returncode, output = self._run_cmd(cmd)
-            self._check_returncode(returncode, output)
-            return True
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-rmdir", dfs_path]
+        returncode, output = self._run_cmd(cmd)
+        self._check_returncode(returncode, output)
+        return True
 
     def chmod(self, dfs_path, mode):
         # mode in format rwx or g+w
-        assert (
-            dfs_path
-            and mode
-            and (re.match(r"^\d+$", mode) or re.match(r"^[ugo]+[+\-][rwx]+$", mode))
-        )
+        assert dfs_path and mode and (re.match(r"^\d+$", mode) or re.match(r"^[ugo]+[+\-][rwx]+$", mode))
         assert isinstance(dfs_path, str)
         logger.info("chmod(%s, %s)" % (dfs_path, mode))
         dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
 
-        cmd = (
-            self._ssh(self._ssh_user, self._hdfs_host)
-            + CliHdfs.dfs_cmd()
-            + ["-chmod", mode, dfs_path]
-        )
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-chmod", mode, dfs_path]
         returncode, output = self._run_cmd(cmd)
         self._check_returncode(returncode, output)
 
@@ -304,11 +258,7 @@ class CliHdfs(GOEDfs):
         logger.info("chgrp(%s, %s)" % (dfs_path, group))
         dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
 
-        cmd = (
-            self._ssh(self._ssh_user, self._hdfs_host)
-            + CliHdfs.dfs_cmd()
-            + ["-chgrp", group, dfs_path]
-        )
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-chgrp", group, dfs_path]
         returncode, output = self._run_cmd(cmd)
         self._check_returncode(returncode, output)
 
@@ -322,16 +272,10 @@ class CliHdfs(GOEDfs):
         logger.info("list_dir(%s)" % dfs_path)
         dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
 
-        cmd = (
-            self._ssh(self._ssh_user, self._hdfs_host)
-            + CliHdfs.dfs_cmd()
-            + ["-ls", dfs_path]
-        )
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-ls", dfs_path]
         returncode, output = self._run_cmd(cmd, force_run=True)
         self._check_returncode(returncode, output)
-        return [
-            _[_.find(b"/") :].strip().decode() for _ in output if self._valid_ls_line(_)
-        ]
+        return [_[_.find(b"/") :].strip().decode() for _ in output if self._valid_ls_line(_)]
 
     def stat(self, dfs_path):
         assert dfs_path
@@ -339,11 +283,7 @@ class CliHdfs(GOEDfs):
         logger.info("stat(%s)" % dfs_path)
         dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
 
-        cmd = (
-            self._ssh(self._ssh_user, self._hdfs_host)
-            + CliHdfs.dfs_cmd()
-            + ["-ls", "-d", dfs_path]
-        )
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-ls", "-d", dfs_path]
         returncode, output = self._run_cmd(cmd, force_run=True)
         if returncode == 0:
             tidy_output = [_.strip().decode() for _ in output if self._valid_ls_line(_)]
@@ -358,14 +298,8 @@ class CliHdfs(GOEDfs):
                 # is across versions/provider
                 # further attributes can be derived in the future as needed
                 # converting rwx style permissions to octal string to be consistent with webhdfs
-                file_type = (
-                    DFS_TYPE_DIRECTORY
-                    if tokens[0] and tokens[0][0] == "d"
-                    else DFS_TYPE_FILE
-                )
-                file_length = (
-                    int(tokens[4]) if tokens[4] and is_number(tokens[4]) else None
-                )
+                file_type = DFS_TYPE_DIRECTORY if tokens[0] and tokens[0][0] == "d" else DFS_TYPE_FILE
+                file_length = int(tokens[4]) if tokens[4] and is_number(tokens[4]) else None
                 return {
                     "permission": self.convert_rwx_perms_to_oct_str(tokens[0]),
                     "type": file_type,
@@ -395,21 +329,14 @@ class CliHdfs(GOEDfs):
         base_file = basename(local_path)
         hadoop_temp_file = self._temp_file(base_file)
 
-        scp_cmd = self._scp_to(
-            self._ssh_user, self._hdfs_host, local_path, hadoop_temp_file
-        )
+        scp_cmd = self._scp_to(self._ssh_user, self._hdfs_host, local_path, hadoop_temp_file)
         self.debug("SCP command: %s" % " ".join(scp_cmd))
         returncode, output = self._run_cmd(scp_cmd)
         self._check_returncode(returncode, output)
 
         try:
             cfl_opts = (["-f"] if overwrite else []) + [hadoop_temp_file, dfs_path]
-            cfl_cmd = (
-                self._ssh(self._ssh_user, self._hdfs_host)
-                + CliHdfs.dfs_cmd()
-                + ["-copyFromLocal"]
-                + cfl_opts
-            )
+            cfl_cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-copyFromLocal"] + cfl_opts
             self.debug("SSH command: %s" % " ".join(cfl_cmd))
             returncode, output = self._run_cmd(cfl_cmd)
             self._check_returncode(returncode, output)
@@ -433,28 +360,19 @@ class CliHdfs(GOEDfs):
             hadoop_temp_file = self._temp_file(base_file)
 
         if file_exists(local_path) and not overwrite:
-            raise GOEDfsException(
-                "Cannot copy file over existing file: %s" % local_path
-            )
+            raise GOEDfsException("Cannot copy file over existing file: %s" % local_path)
 
         try:
             # Phase 1: copy to local storage on Hadoop node
             cfl_opts = [dfs_path, hadoop_temp_file]
-            cfl_cmd = (
-                self._ssh(self._ssh_user, self._hdfs_host)
-                + CliHdfs.dfs_cmd()
-                + ["-copyToLocal"]
-                + cfl_opts
-            )
+            cfl_cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-copyToLocal"] + cfl_opts
             self.debug("SSH command: %s" % " ".join(cfl_cmd))
             returncode, output = self._run_cmd(cfl_cmd)
             self._check_returncode(returncode, output)
 
             # Phase 2: copy from Hadoop node to local node
             if not self._can_short_circuit_ssh(self._ssh_user, self._hdfs_host):
-                scp_cmd = self._scp_from(
-                    self._ssh_user, self._hdfs_host, hadoop_temp_file, local_path
-                )
+                scp_cmd = self._scp_from(self._ssh_user, self._hdfs_host, hadoop_temp_file, local_path)
                 self.debug("SCP command: %s" % " ".join(scp_cmd))
                 returncode, output = self._run_cmd(scp_cmd)
                 self._check_returncode(returncode, output)
@@ -488,9 +406,7 @@ class CliHdfs(GOEDfs):
             )
         else:
             prefix = self._hdfs_data if path_prefix is None else path_prefix
-            use_container = (
-                container if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER else None
-            )
+            use_container = container if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER else None
             uri = gen_fs_uri(
                 prefix,
                 self._db_path_suffix,
@@ -508,11 +424,7 @@ class CliHdfs(GOEDfs):
         logger.info("read(%s)" % dfs_path)
         dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
 
-        cmd = (
-            self._ssh(self._ssh_user, self._hdfs_host)
-            + CliHdfs.dfs_cmd()
-            + ["-cat", dfs_path]
-        )
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-cat", dfs_path]
         returncode, output = self._run_cmd(cmd, force_run=True)
         self._check_returncode(returncode, output)
         content = b"".join(output) if output else b""

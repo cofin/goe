@@ -15,11 +15,11 @@
 from unittest.mock import Mock
 
 from goe.offload.offload_metadata_functions import (
-    column_name_list_to_csv,
-    incremental_hv_list_from_csv,
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
+    column_name_list_to_csv,
     gen_offload_metadata,
+    incremental_hv_list_from_csv,
 )
 from goe.offload.oracle.oracle_column import OracleColumn
 from goe.orchestration.execution_id import ExecutionId
@@ -27,21 +27,15 @@ from goe.orchestration.execution_id import ExecutionId
 
 def test_incremental_hv_list_from_csv():
     test_metadata = "TO_DATE(' 2011-04-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')"
-    decoded_metadata = incremental_hv_list_from_csv(
-        test_metadata, INCREMENTAL_PREDICATE_TYPE_RANGE
-    )
+    decoded_metadata = incremental_hv_list_from_csv(test_metadata, INCREMENTAL_PREDICATE_TYPE_RANGE)
     assert decoded_metadata == test_metadata
 
     test_metadata = "('A', 'B'), ('C', 'D')"
-    decoded_metadata = incremental_hv_list_from_csv(
-        test_metadata, INCREMENTAL_PREDICATE_TYPE_LIST
-    )
+    decoded_metadata = incremental_hv_list_from_csv(test_metadata, INCREMENTAL_PREDICATE_TYPE_LIST)
     assert decoded_metadata == ["'A', 'B'", "'C', 'D'"]
 
     test_metadata = "2015, 03"
-    decoded_metadata = incremental_hv_list_from_csv(
-        test_metadata, INCREMENTAL_PREDICATE_TYPE_RANGE
-    )
+    decoded_metadata = incremental_hv_list_from_csv(test_metadata, INCREMENTAL_PREDICATE_TYPE_RANGE)
     assert decoded_metadata == test_metadata
 
 
@@ -106,9 +100,7 @@ def test_gen_offload_metadata_rpa():
         "OFFLOAD_BUCKET_COLUMN": fake_hybrid_operation.bucket_hash_col,
         "OFFLOAD_SORT_COLUMNS": fake_hybrid_operation.sort_columns[0],
         "INCREMENTAL_RANGE": "PARTITION",
-        "OFFLOAD_PARTITION_FUNCTIONS": fake_hybrid_operation.offload_partition_functions[
-            0
-        ],
+        "OFFLOAD_PARTITION_FUNCTIONS": fake_hybrid_operation.offload_partition_functions[0],
         "COMMAND_EXECUTION": execution_id,
     }
     assert expected_metadata == generated_metadata.as_dict()
@@ -162,9 +154,7 @@ def test_gen_offload_metadata_rpa():
         "OFFLOAD_BUCKET_COLUMN": fake_hybrid_operation.bucket_hash_col,
         "OFFLOAD_SORT_COLUMNS": ",".join(fake_hybrid_operation.sort_columns),
         "INCREMENTAL_RANGE": "PARTITION",
-        "OFFLOAD_PARTITION_FUNCTIONS": fake_hybrid_operation.offload_partition_functions[
-            0
-        ],
+        "OFFLOAD_PARTITION_FUNCTIONS": fake_hybrid_operation.offload_partition_functions[0],
         "COMMAND_EXECUTION": execution_id,
     }
     assert expected_metadata == generated_metadata.as_dict()

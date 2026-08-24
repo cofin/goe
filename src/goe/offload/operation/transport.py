@@ -20,24 +20,20 @@ from goe.offload.offload_constants import (
     OFFLOAD_STATS_METHOD_HISTORY,
     OFFLOAD_STATS_METHOD_NATIVE,
 )
-from goe.offload.offload_messages import OffloadMessages, VERBOSE
+from goe.offload.offload_messages import VERBOSE, OffloadMessages
 from goe.offload.offload_transport_functions import transport_and_load_offload_chunk
 from goe.offload.operation.stats_controls import copy_rdbms_stats_to_backend
 from goe.orchestration import command_steps
 
 
-def announce_offload_chunk(
-    chunk, offload_operation, messages: OffloadMessages, materialize=False
-):
+def announce_offload_chunk(chunk, offload_operation, messages: OffloadMessages, materialize=False):
     messages.log("")
     if materialize:
         messages.log("Materializing chunk", ansi_code="underline")
     else:
         messages.log("Offloading chunk", ansi_code="underline")
     offload_by_subpartition = (
-        offload_operation.offload_by_subpartition
-        if hasattr(offload_operation, "offload_by_subpartition")
-        else False
+        offload_operation.offload_by_subpartition if hasattr(offload_operation, "offload_by_subpartition") else False
     )
     messages.log_timestamp()
     chunk.report_partitions(offload_by_subpartition, messages)
@@ -60,8 +56,7 @@ def offload_data_to_target(
         done_so_far = total_partitions - todo_after_chunk - chunk_partitions
         perc = float(done_so_far) / total_partitions * 100
         messages.log(
-            "Partition progress %d%% (%d/%d)"
-            % (int(perc), done_so_far, total_partitions),
+            "Partition progress %d%% (%d/%d)" % (int(perc), done_so_far, total_partitions),
             detail=VERBOSE,
         )
 
@@ -75,9 +70,7 @@ def offload_data_to_target(
     else:
         incremental_stats = False
 
-    def transport_and_load_offload_chunk_fn(
-        partition_chunk=None, chunk_count=0, sync=True
-    ):
+    def transport_and_load_offload_chunk_fn(partition_chunk=None, chunk_count=0, sync=True):
         """In-line function to de-dupe partition chunk logic that follows"""
         return transport_and_load_offload_chunk(
             data_transport_client,
@@ -97,10 +90,8 @@ def offload_data_to_target(
         messages.log("No partitions to offload")
         # exit early, skipping any stats steps (GOE-1300)
         return 0
-    elif source_data_client.partitions_to_offload.count() > 0:
-        for i, (chunk, remaining) in enumerate(
-            source_data_client.get_partitions_to_offload_chunks()
-        ):
+    if source_data_client.partitions_to_offload.count() > 0:
+        for i, (chunk, remaining) in enumerate(source_data_client.get_partitions_to_offload_chunks()):
             announce_offload_chunk(chunk, offload_operation, messages)
             progress_message(
                 source_data_client.partitions_to_offload.count(),
@@ -140,14 +131,8 @@ def offload_data_to_target(
                 optional=True,
             )
     else:
-        messages.notice(
-            "No backend stats due to --offload-stats: %s"
-            % offload_operation.offload_stats_method
-        )
-        if (
-            offload_operation.hive_column_stats
-            and offload_options.target == DBTYPE_HIVE
-        ):
+        messages.notice("No backend stats due to --offload-stats: %s" % offload_operation.offload_stats_method)
+        if offload_operation.hive_column_stats and offload_options.target == DBTYPE_HIVE:
             messages.notice(
                 "Ignoring --hive-column-stats option due to --offload-stats: %s"
                 % offload_operation.offload_stats_method

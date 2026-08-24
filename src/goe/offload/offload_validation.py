@@ -14,18 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Offload data validation library
+"""Offload data validation library
 
-    CrossDbValidator:   Validate successful offload via calculating aggregates in front/back databases
-                        and comparing them
+CrossDbValidator:   Validate successful offload via calculating aggregates in front/back databases
+                    and comparing them
 """
 
-from datetime import date, datetime
 import logging
+from datetime import date, datetime
 from functools import reduce
-
-from goe.util.misc_functions import is_number, isclose, str_floatlike
-from goe.util.parallel_exec import ParallelExecutor
 
 from goe.offload.column_metadata import match_table_column
 from goe.offload.factory.backend_api_factory import backend_api_factory
@@ -38,22 +35,23 @@ from goe.offload.frontend_api import QueryParameter
 from goe.offload.offload_constants import DBTYPE_ORACLE
 from goe.offload.offload_functions import (
     expand_columns_csv,
-    hybrid_view_combine_hv_and_pred_clauses,
     get_hybrid_predicate_clauses,
     get_hybrid_threshold_clauses,
     hvs_to_backend_sql_literals,
+    hybrid_view_combine_hv_and_pred_clauses,
 )
+from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessagesMixin
 from goe.offload.offload_metadata_functions import (
     decode_metadata_incremental_high_values_from_metadata,
 )
-from goe.offload.offload_messages import OffloadMessagesMixin, VERBOSE, VVERBOSE
 from goe.persistence.orchestration_metadata import (
-    OrchestrationMetadata,
     INCREMENTAL_PREDICATE_TYPE_LIST,
-    INCREMENTAL_PREDICATE_TYPE_RANGE,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
+    INCREMENTAL_PREDICATE_TYPE_RANGE,
+    OrchestrationMetadata,
 )
-
+from goe.util.misc_functions import is_number, isclose, str_floatlike
+from goe.util.parallel_exec import ParallelExecutor
 
 ###############################################################################
 # EXCEPTIONS
@@ -107,28 +105,18 @@ def build_verification_clauses(
             return None, None
         new_bind = None
         if backend_table:
-            where_clause_expr = backend_table.to_backend_literal(
-                col_hv, data_type=data_type
-            )
+            where_clause_expr = backend_table.to_backend_literal(col_hv, data_type=data_type)
             where_clause_expr = (
-                str(where_clause_expr)
-                if isinstance(where_clause_expr, (int, float))
-                else where_clause_expr
+                str(where_clause_expr) if isinstance(where_clause_expr, (int, float)) else where_clause_expr
             )
         else:
             bind_name = bind_pattern % bind_counter
-            bind_value, sql_fn = offload_source_table.to_rdbms_literal_with_sql_conv_fn(
-                col_hv, data_type
-            )
+            bind_value, sql_fn = offload_source_table.to_rdbms_literal_with_sql_conv_fn(col_hv, data_type)
             if with_binds:
-                where_clause_value = offload_source_table.format_query_parameter(
-                    bind_name
-                )
+                where_clause_value = offload_source_table.format_query_parameter(bind_name)
                 new_bind = QueryParameter(bind_name, bind_value)
             else:
-                where_clause_value = (
-                    f"'{bind_value}'" if isinstance(bind_value, str) else bind_value
-                )
+                where_clause_value = f"'{bind_value}'" if isinstance(bind_value, str) else bind_value
             if sql_fn:
                 where_clause_expr = sql_fn % where_clause_value
             else:
@@ -139,20 +127,14 @@ def build_verification_clauses(
         if backend_table:
             where_clause = backend_table.predicate_to_where_clause(offload_predicate)
             return [where_clause], []
-        else:
-            if with_binds:
-                (
-                    where_clause,
-                    binds,
-                ) = offload_source_table.predicate_to_where_clause_with_binds(
-                    offload_predicate
-                )
-                return [where_clause], binds
-            else:
-                where_clause = offload_source_table.predicate_to_where_clause(
-                    offload_predicate
-                )
-                return [where_clause], []
+        if with_binds:
+            (
+                where_clause,
+                binds,
+            ) = offload_source_table.predicate_to_where_clause_with_binds(offload_predicate)
+            return [where_clause], binds
+        where_clause = offload_source_table.predicate_to_where_clause(offload_predicate)
+        return [where_clause], []
 
     rdbms_part_cols = offload_source_table.partition_columns
     query_params = []
@@ -187,9 +169,7 @@ def build_verification_clauses(
                     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
                 ]:
                     # Prior values only applicable for RANGE
-                    new_bind, new_literal = get_bind_and_literal(
-                        prior_hv, prior_bind_count, "l%d", data_type
-                    )
+                    new_bind, new_literal = get_bind_and_literal(prior_hv, prior_bind_count, "l%d", data_type)
                     if new_bind:
                         query_params.append(new_bind)
                         prior_bind_count += 1
@@ -202,18 +182,14 @@ def build_verification_clauses(
                     for part_hv in hv:
                         col_hv_list = []
                         for phv in part_hv:
-                            new_bind, new_literal = get_bind_and_literal(
-                                phv, new_bind_count, "h%d", data_type
-                            )
+                            new_bind, new_literal = get_bind_and_literal(phv, new_bind_count, "h%d", data_type)
                             if new_bind:
                                 query_params.append(new_bind)
                                 new_bind_count += 1
                             col_hv_list.append(new_literal)
                         new_literals.append(tuple(col_hv_list))
                 else:
-                    new_bind, new_literal = get_bind_and_literal(
-                        hv, new_bind_count, "h%d", data_type
-                    )
+                    new_bind, new_literal = get_bind_and_literal(hv, new_bind_count, "h%d", data_type)
                     if new_bind:
                         query_params.append(new_bind)
                         new_bind_count += 1
@@ -254,7 +230,7 @@ logger.addHandler(logging.NullHandler())
 ###############################################################################
 
 
-class CrossDbValidator(OffloadMessagesMixin, object):
+class CrossDbValidator(OffloadMessagesMixin):
     """Validate that data in front-end (FRONT) database (RDBMS)
     is the same as data in back-end (BACK) database (Hadoop/Cloud backend)
 
@@ -323,10 +299,10 @@ class CrossDbValidator(OffloadMessagesMixin, object):
             self._backend_db = self._offload_metadata.backend_owner
             self._backend_table = self._offload_metadata.backend_table
         else:
-            self._backend_db = backend_db if backend_db else self._db_name
-            self._backend_table = backend_table if backend_table else self._table_name
+            self._backend_db = backend_db or self._db_name
+            self._backend_table = backend_table or self._table_name
 
-        super(CrossDbValidator, self).__init__(messages, logger)
+        super().__init__(messages, logger)
 
         self._pexec = ParallelExecutor()
 
@@ -377,7 +353,7 @@ class CrossDbValidator(OffloadMessagesMixin, object):
         """Analyze and expand GROUP BY columns"""
         if not group_bys:
             pass
-        elif GROUPBY_PARTITIONS == group_bys:
+        elif group_bys == GROUPBY_PARTITIONS:
             group_bys = self._get_partition_columns()
         elif isinstance(group_bys, (list, tuple)):
             frontend_table = self._get_frontend_table()
@@ -411,9 +387,7 @@ class CrossDbValidator(OffloadMessagesMixin, object):
 
         logger.info("Calculating %s AGGREGATEs on columns: %s" % (aggs, select_cols))
         if not select_cols:
-            raise CrossDbValidatorException(
-                "Unable to identify columns for table: %s" % self._db_table
-            )
+            raise CrossDbValidatorException("Unable to identify columns for table: %s" % self._db_table)
         return select_cols
 
     def _get_partition_columns(self):
@@ -424,14 +398,10 @@ class CrossDbValidator(OffloadMessagesMixin, object):
         """
         binds = {
             QueryParameter(param_name="OWNER", param_value=self._db_name.upper()),
-            QueryParameter(
-                param_name="TABLE_NAME", param_value=self._table_name.upper()
-            ),
+            QueryParameter(param_name="TABLE_NAME", param_value=self._table_name.upper()),
         }
 
-        query_result = self._frontend.execute_query_fetch_all(
-            sql, query_params=binds, log_level=VVERBOSE
-        )
+        query_result = self._frontend.execute_query_fetch_all(sql, query_params=binds, log_level=VVERBOSE)
 
         return [x[0] for x in query_result]
 
@@ -455,14 +425,12 @@ class CrossDbValidator(OffloadMessagesMixin, object):
             """Functional style SQL syntax expansion routine"""
             return reduce(concat_func, list(map(elem_func, lst)))
 
-        db_name = db_name if db_name else self._db_name
-        table_name = table_name if table_name else self._table_name
+        db_name = db_name or self._db_name
+        table_name = table_name or self._table_name
 
         if not group_bys:
             group_bys = []
-        select_expressions = group_bys + [
-            "%s(%s)" % (a.upper(), s) for s in selects for a in aggs
-        ]
+        select_expressions = group_bys + ["%s(%s)" % (a.upper(), s) for s in selects for a in aggs]
         hint_clause = f" {frontend_hint_block}" if frontend_hint_block else ""
 
         sql = """SELECT%s %s\nFROM   %s.%s %s""" % (
@@ -476,27 +444,17 @@ class CrossDbValidator(OffloadMessagesMixin, object):
         if filters:
             sql += "\nWHERE  %s" % expand(
                 filters,
-                lambda x: (
-                    (" ".join((x[0], x[1], str(x[2]))))
-                    if type(x) in (list, tuple)
-                    else x
-                ),
+                lambda x: (" ".join((x[0], x[1], str(x[2])))) if type(x) in (list, tuple) else x,
                 lambda x, y: "%s\nAND    %s" % (x, y),
             )
 
         if group_bys:
-            sql += "\n\tGROUP BY %s" % expand(
-                group_bys, lambda x: x, lambda x, y: "%s, %s" % (x, y)
-            )
-            sql += "\n\tORDER BY %s" % expand(
-                group_bys, lambda x: x, lambda x, y: "%s, %s" % (x, y)
-            )
+            sql += "\n\tGROUP BY %s" % expand(group_bys, lambda x: x, lambda x, y: "%s, %s" % (x, y))
+            sql += "\n\tORDER BY %s" % expand(group_bys, lambda x: x, lambda x, y: "%s, %s" % (x, y))
 
         return sql, select_expressions
 
-    def _construct_simple_front_agg_sql(
-        self, selects, filters, group_bys, aggs, as_of_scn, frontend_hint_block
-    ):
+    def _construct_simple_front_agg_sql(self, selects, filters, group_bys, aggs, as_of_scn, frontend_hint_block):
         """Construst FRONT-END (== ORACLE) aggregate SQL"""
         return self._construct_simple_agg_sql(
             selects,
@@ -563,9 +521,7 @@ class CrossDbValidator(OffloadMessagesMixin, object):
         """
 
         def exec_sql_front(obj, sql, binds=None):
-            return obj.execute_query_fetch_all(
-                sql, query_params=binds, log_level=VERBOSE
-            )
+            return obj.execute_query_fetch_all(sql, query_params=binds, log_level=VERBOSE)
 
         def exec_sql_back(obj, sql):
             return obj.execute_query_fetch_all(sql, log_level=VERBOSE)
@@ -598,28 +554,21 @@ class CrossDbValidator(OffloadMessagesMixin, object):
             # Somewhat dubious isclose(float(), float()) comparison
             # Works for now, but may need to find a better way to compare
             matched = False
-            if (
-                is_number(front)
-                and is_number(back)
-                and isclose(float(front), float(back))
-            ):
+            if is_number(front) and is_number(back) and isclose(float(front), float(back)):
                 matched = True
             elif isinstance(front, date) and isinstance(back, (date, str)):
                 if isinstance(back, str):
                     # This may be a backend DATE which we need to convert to datetime.date because of Impyla issue 410:
                     # https://github.com/cloudera/impyla/issues/410
                     back = datetime.strptime(back, "%Y-%m-%d").date()
-                if front.strftime("%Y-%m-%d %H:%M:%S.%f") == back.strftime(
-                    "%Y-%m-%d %H:%M:%S.%f"
-                ):
+                if front.strftime("%Y-%m-%d %H:%M:%S.%f") == back.strftime("%Y-%m-%d %H:%M:%S.%f"):
                     matched = True
             elif str(front) == str(back):
                 matched = True
             return matched
 
         def merge_front_end_results(front_results, back_results):
-            """
-            Transform: [
+            """Transform: [
                 [(row0_col0, row0_col1, ...), (row1_col0, row1_col1, ..)], # FRONT
                 [(row0_col0, row0_col1, ...), (row1_col0, row1_col1, ..)]  # BACK
             ]
@@ -630,9 +579,7 @@ class CrossDbValidator(OffloadMessagesMixin, object):
                 ..
             ]
             """
-            no_columns = len(
-                front_results[0]
-            )  # All rows should have the same # of columns
+            no_columns = len(front_results[0])  # All rows should have the same # of columns
             joined_results = []
             for row_no, _ in enumerate(front_results):
                 row_results = []
@@ -663,27 +610,18 @@ class CrossDbValidator(OffloadMessagesMixin, object):
                     % (row_pk, col_name, str_floatlike(front), str_floatlike(back))
                 )
                 return False
-            else:
-                logger.debug(
-                    "Results for [%s]: %s match - FRONT: %s vs BACK: %s"
-                    % (row_pk, col_name, front, back)
-                )
-                return True
+            logger.debug("Results for [%s]: %s match - FRONT: %s vs BACK: %s" % (row_pk, col_name, front, back))
+            return True
 
         def row_pk(row):
             if group_bys:
                 no_pk_cols = len(group_bys)
                 pk = list(zip(front_selects[:no_pk_cols], row[:no_pk_cols]))
                 return ", ".join("%s: %s" % (k, v) for k, v in pk)
-            else:
-                return "TOTAL"
+            return "TOTAL"
 
         def rows(results):
-            return (
-                0
-                if not results or not isinstance(results, (list, tuple))
-                else len(results)
-            )
+            return 0 if not results or not isinstance(results, (list, tuple)) else len(results)
 
         def cols(results):
             return (
@@ -697,33 +635,31 @@ class CrossDbValidator(OffloadMessagesMixin, object):
 
         front_results, back_results = results[ENGINE_FRONT], results[ENGINE_BACK]
 
-        if [[], []] == results:
+        if results == [[], []]:
             logger.warning("Results are EMPTY")
             return True
-        elif False == front_results:
+        if front_results == False:
             raise CrossDbValidatorException("FRONT-END SQL execution failed")
-        elif False == back_results:
+        if back_results == False:
             raise CrossDbValidatorException("BACK-END SQL execution failed")
-        elif rows(front_results) != rows(back_results):
+        if rows(front_results) != rows(back_results):
             logger.warning(
-                "Result (row) dimensions do not match: FRONT: %d BACK: %d"
-                % (rows(front_results), rows(back_results))
+                "Result (row) dimensions do not match: FRONT: %d BACK: %d" % (rows(front_results), rows(back_results))
             )
             return False
-        elif cols(front_results) != cols(back_results):
+        if cols(front_results) != cols(back_results):
             logger.warning(
                 "Result (column) dimensions do not match: FRONT: %d BACK: %d"
                 % (cols(front_results), cols(back_results))
             )
             return False
-        else:
-            # Re-format 'results' by combining FRONT/BACK results together
-            # in (row, col, front_result, back_result) tuples
-            results = merge_front_end_results(front_results, back_results)
-            logger.debug("Validating cross results: %s" % results)
+        # Re-format 'results' by combining FRONT/BACK results together
+        # in (row, col, front_result, back_result) tuples
+        results = merge_front_end_results(front_results, back_results)
+        logger.debug("Validating cross results: %s" % results)
 
-            # And compare
-            return all(map(process_rows, results))
+        # And compare
+        return all(map(process_rows, results))
 
     def _resolve_oracle_date(self, oracle_date):
         """Run a query to resolve ORACLE date to Python date
@@ -739,10 +675,7 @@ class CrossDbValidator(OffloadMessagesMixin, object):
 
         sql = "select %s as dt from dual" % oracle_date
         query_result = self._frontend.execute_query_fetch_one(sql)
-        logger.debug(
-            "Resolved ORACLE date expression: %s to python date: %s"
-            % (oracle_date, query_result[0])
-        )
+        logger.debug("Resolved ORACLE date expression: %s to python date: %s" % (oracle_date, query_result[0]))
 
         return query_result[0]
 
@@ -751,9 +684,7 @@ class CrossDbValidator(OffloadMessagesMixin, object):
         Returns a string value ready to be plugged in to a SQL statement.
         """
         if not self._offload_metadata:
-            logger.debug(
-                "No metadata therefore no boundary for table: %s" % self._db_table
-            )
+            logger.debug("No metadata therefore no boundary for table: %s" % self._db_table)
             return ""
 
         rdbms_table = self._get_frontend_table()
@@ -774,22 +705,15 @@ class CrossDbValidator(OffloadMessagesMixin, object):
             inc_keys,
             hv_real_vals,
             hv_indiv_vals,
-        ) = decode_metadata_incremental_high_values_from_metadata(
-            self._offload_metadata, rdbms_table
-        )
-        offload_predicates = (
-            self._offload_metadata.decode_incremental_predicate_values()
-        )
+        ) = decode_metadata_incremental_high_values_from_metadata(self._offload_metadata, rdbms_table)
+        offload_predicates = self._offload_metadata.decode_incremental_predicate_values()
         inc_predicate_type = self._offload_metadata.incremental_predicate_type
         enclosure_fn = enclosure_character = None
         if frontend:
             lt_threshold_vals = hv_indiv_vals
             enclosure_character = '"'
         else:
-            backend_threshold_cols = [
-                match_table_column(_.name, backend_table.get_columns())
-                for _ in inc_keys
-            ]
+            backend_threshold_cols = [match_table_column(_.name, backend_table.get_columns()) for _ in inc_keys]
             lt_threshold_vals = hvs_to_backend_sql_literals(
                 backend_threshold_cols,
                 hv_real_vals,
@@ -807,19 +731,12 @@ class CrossDbValidator(OffloadMessagesMixin, object):
         )
         if offload_predicates:
             predicate_table_obj = rdbms_table if frontend else backend_table
-            offloaded_pred, _ = get_hybrid_predicate_clauses(
-                offload_predicates, predicate_table_obj
-            )
+            offloaded_pred, _ = get_hybrid_predicate_clauses(offload_predicates, predicate_table_obj)
         else:
             offloaded_pred = ""
-        offload_boundary = hybrid_view_combine_hv_and_pred_clauses(
-            lt_clause, offloaded_pred, "OR"
-        )
+        offload_boundary = hybrid_view_combine_hv_and_pred_clauses(lt_clause, offloaded_pred, "OR")
 
-        logger.debug(
-            "Extracted offload boundary for table: %s as: %s"
-            % (self._db_table, offload_boundary)
-        )
+        logger.debug("Extracted offload boundary for table: %s as: %s" % (self._db_table, offload_boundary))
         return offload_boundary
 
     def _add_boundary_filters(self, filters, frontend=False):
@@ -848,9 +765,7 @@ class CrossDbValidator(OffloadMessagesMixin, object):
             # Hints only supported for Oracle
             return ""
         frontend_table = self._get_frontend_table()
-        return frontend_table.enclose_query_hints(
-            frontend_table.parallel_query_hint(frontend_parallelism)
-        )
+        return frontend_table.enclose_query_hints(frontend_table.parallel_query_hint(frontend_parallelism))
 
     ###########################################################################
     # PROPERTIES
@@ -919,8 +834,7 @@ class CrossDbValidator(OffloadMessagesMixin, object):
         """
         logger.info("Validating table: %s" % self._db_table)
         logger.debug(
-            "Parameters: SELECT: %s, WHERE: %s, GROUP BY: %s AS OF: %s"
-            % (selects, filters, group_bys, as_of_scn)
+            "Parameters: SELECT: %s, WHERE: %s, GROUP BY: %s AS OF: %s" % (selects, filters, group_bys, as_of_scn)
         )
 
         if frontend_query_params:
@@ -928,45 +842,28 @@ class CrossDbValidator(OffloadMessagesMixin, object):
             assert isinstance(frontend_query_params[0], QueryParameter)
 
         selects = self._get_select_cols(selects, aggs)  # Expand SELECTs if necessary
-        backend_filters = self._get_filters(
-            filters, safe
-        )  # Expand FILTERs if necessary
+        backend_filters = self._get_filters(filters, safe)  # Expand FILTERs if necessary
         group_bys = self._get_group_bys(group_bys)  # Expand GROUPBYs if necessary
-        frontend_filters = frontend_filters or self._get_filters(
-            filters, safe, frontend=True
-        )
+        frontend_filters = frontend_filters or self._get_filters(filters, safe, frontend=True)
         frontend_hint_block = ""
         if frontend_parallelism is not None:
-            frontend_hint_block = self._get_frontend_query_hint_block(
-                frontend_parallelism
-            )
+            frontend_hint_block = self._get_frontend_query_hint_block(frontend_parallelism)
         self._frontend_sql, front_selects = self._construct_simple_front_agg_sql(
             selects, frontend_filters, group_bys, aggs, as_of_scn, frontend_hint_block
         )
-        self._backend_sql = self._construct_simple_back_agg_sql(
-            selects, backend_filters, group_bys, aggs
-        )
+        self._backend_sql = self._construct_simple_back_agg_sql(selects, backend_filters, group_bys, aggs)
         agg_message = "Compared aggregations of columns: %s" % ", ".join(selects)
 
         if execute:
-            self._results = self._run_sqls(
-                self._frontend_sql, self._backend_sql, frontend_query_params
-            )
-            self._success = self._compare_results(
-                self._results, front_selects, group_bys
-            )
+            self._results = self._run_sqls(self._frontend_sql, self._backend_sql, frontend_query_params)
+            self._success = self._compare_results(self._results, front_selects, group_bys)
 
-            logger.info(
-                "Validating table: %s. Valid: %s" % (self._db_table, self._success)
-            )
+            logger.info("Validating table: %s. Valid: %s" % (self._db_table, self._success))
             return self._success, agg_message
-        else:
-            logger.info(
-                "Skipping validation for table: %s as execute=False" % self._db_table
-            )
-            self.log_verbose("Frontend sql: %s" % self._frontend_sql)
-            self.log_verbose("Backend sql: %s" % self._backend_sql)
-            return True, agg_message
+        logger.info("Skipping validation for table: %s as execute=False" % self._db_table)
+        self.log_verbose("Frontend sql: %s" % self._frontend_sql)
+        self.log_verbose("Backend sql: %s" % self._backend_sql)
+        return True, agg_message
 
 
 ###############################################################################
@@ -974,7 +871,7 @@ class CrossDbValidator(OffloadMessagesMixin, object):
 ###############################################################################
 
 
-class BackendCountValidator(object):
+class BackendCountValidator:
     """Validate data volume in the frontend table matches that in the backend table using COUNT(*) queries."""
 
     def __init__(self, frontend_table, backend_table, messages, dry_run=False):
@@ -1048,5 +945,4 @@ class BackendCountValidator(object):
         )
         if self._dry_run:
             return 0, 0, 0
-        else:
-            return (frontend_count - backend_count), frontend_count, backend_count
+        return (frontend_count - backend_count), frontend_count, backend_count

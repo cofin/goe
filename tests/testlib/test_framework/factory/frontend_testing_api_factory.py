@@ -48,7 +48,7 @@ def frontend_testing_api_factory(
             do_not_connect=do_not_connect,
             trace_action=trace_action,
         )
-    elif frontend_type == DBTYPE_TERADATA:
+    if frontend_type == DBTYPE_TERADATA:
         from tests.testlib.test_framework.teradata.teradata_frontend_testing_api import (
             TeradataFrontendTestingApi,
         )
@@ -62,7 +62,7 @@ def frontend_testing_api_factory(
             do_not_connect=do_not_connect,
             trace_action=trace_action,
         )
-    elif frontend_type == DBTYPE_MSSQL:
+    if frontend_type == DBTYPE_MSSQL:
         from tests.testlib.test_framework.microsoft.mssql_frontend_testing_api import (
             MSSQLFrontendTestingApi,
         )
@@ -76,8 +76,7 @@ def frontend_testing_api_factory(
             do_not_connect=do_not_connect,
             trace_action=trace_action,
         )
-    else:
-        raise NotImplementedError("Unsupported frontend system: %s" % frontend_type)
+    raise NotImplementedError("Unsupported frontend system: %s" % frontend_type)
 
 
 @contextmanager

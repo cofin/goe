@@ -15,7 +15,6 @@
 from unittest import TestCase, main
 
 from goe.offload.bigquery.bigquery_column import (
-    BigQueryColumn,
     BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_BOOLEAN,
     BIGQUERY_TYPE_BYTES,
@@ -27,48 +26,89 @@ from goe.offload.bigquery.bigquery_column import (
     BIGQUERY_TYPE_STRING,
     BIGQUERY_TYPE_TIME,
     BIGQUERY_TYPE_TIMESTAMP,
+    BigQueryColumn,
 )
 from goe.offload.column_metadata import (
-    CanonicalColumn,
-    match_table_column,
     CANONICAL_CHAR_SEMANTICS_BYTE,
     CANONICAL_CHAR_SEMANTICS_CHAR,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_VARIABLE_STRING,
     GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_FLOAT,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
+    GOE_TYPE_INTERVAL_DS,
+    GOE_TYPE_INTERVAL_YM,
+    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_LARGE_STRING,
     GOE_TYPE_TIME,
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_VARIABLE_STRING,
+    CanonicalColumn,
+    match_table_column,
 )
 from goe.offload.factory.backend_api_factory import backend_api_factory
-from goe.offload.hadoop.hadoop_column import HadoopColumn
-from goe.offload.offload_constants import (
-    DBTYPE_BIGQUERY,
-    DBTYPE_HIVE,
-    DBTYPE_IMPALA,
-    DBTYPE_SNOWFLAKE,
-    DBTYPE_SYNAPSE,
-    FILE_STORAGE_FORMAT_AVRO,
-    FILE_STORAGE_FORMAT_PARQUET,
+from goe.offload.factory.staging_file_factory import staging_file_factory
+from goe.offload.hadoop.hadoop_column import (
+    HADOOP_TYPE_BIGINT,
+    HADOOP_TYPE_BINARY,
+    HADOOP_TYPE_BOOLEAN,
+    HADOOP_TYPE_CHAR,
+    HADOOP_TYPE_DATE,
+    HADOOP_TYPE_DECIMAL,
+    HADOOP_TYPE_DOUBLE,
+    HADOOP_TYPE_DOUBLE_PRECISION,
+    HADOOP_TYPE_FLOAT,
+    HADOOP_TYPE_INT,
+    HADOOP_TYPE_INTERVAL_DS,
+    HADOOP_TYPE_INTERVAL_YM,
+    HADOOP_TYPE_REAL,
+    HADOOP_TYPE_SMALLINT,
+    HADOOP_TYPE_STRING,
+    HADOOP_TYPE_TIMESTAMP,
+    HADOOP_TYPE_TINYINT,
+    HADOOP_TYPE_VARCHAR,
+    HadoopColumn,
 )
-from goe.offload.offload_messages import OffloadMessages
+from goe.offload.microsoft.mssql_column import (
+    MSSQL_TYPE_BIGINT,
+    MSSQL_TYPE_BINARY,
+    MSSQL_TYPE_BIT,
+    MSSQL_TYPE_CHAR,
+    MSSQL_TYPE_DATE,
+    MSSQL_TYPE_DATETIME,
+    MSSQL_TYPE_DATETIME2,
+    MSSQL_TYPE_DECIMAL,
+    MSSQL_TYPE_FLOAT,
+    MSSQL_TYPE_IMAGE,
+    MSSQL_TYPE_INT,
+    MSSQL_TYPE_MONEY,
+    MSSQL_TYPE_NCHAR,
+    MSSQL_TYPE_NTEXT,
+    MSSQL_TYPE_NUMERIC,
+    MSSQL_TYPE_NVARCHAR,
+    MSSQL_TYPE_REAL,
+    MSSQL_TYPE_SMALLDATETIME,
+    MSSQL_TYPE_SMALLINT,
+    MSSQL_TYPE_SMALLMONEY,
+    MSSQL_TYPE_TEXT,
+    MSSQL_TYPE_TIME,
+    MSSQL_TYPE_TINYINT,
+    MSSQL_TYPE_UNIQUEIDENTIFIER,
+    MSSQL_TYPE_VARBINARY,
+    MSSQL_TYPE_VARCHAR,
+    MSSQLColumn,
+)
+from goe.offload.microsoft.mssql_offload_source_table import MSSQLSourceTable
 from goe.offload.microsoft.synapse_column import (
-    SynapseColumn,
     SYNAPSE_TYPE_BIGINT,
     SYNAPSE_TYPE_BINARY,
     SYNAPSE_TYPE_BIT,
@@ -89,65 +129,45 @@ from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_SMALLMONEY,
     SYNAPSE_TYPE_TIME,
     SYNAPSE_TYPE_TINYINT,
-    SYNAPSE_TYPE_VARBINARY,
     SYNAPSE_TYPE_UNIQUEIDENTIFIER,
+    SYNAPSE_TYPE_VARBINARY,
     SYNAPSE_TYPE_VARCHAR,
+    SynapseColumn,
 )
-from goe.offload.microsoft.mssql_offload_source_table import MSSQLSourceTable
-from goe.offload.microsoft.mssql_column import (
-    MSSQLColumn,
-    MSSQL_TYPE_BIGINT,
-    MSSQL_TYPE_BIT,
-    MSSQL_TYPE_DECIMAL,
-    MSSQL_TYPE_INT,
-    MSSQL_TYPE_MONEY,
-    MSSQL_TYPE_NUMERIC,
-    MSSQL_TYPE_SMALLINT,
-    MSSQL_TYPE_SMALLMONEY,
-    MSSQL_TYPE_TINYINT,
-    MSSQL_TYPE_FLOAT,
-    MSSQL_TYPE_REAL,
-    MSSQL_TYPE_DATE,
-    MSSQL_TYPE_DATETIME2,
-    MSSQL_TYPE_DATETIME,
-    MSSQL_TYPE_SMALLDATETIME,
-    MSSQL_TYPE_TIME,
-    MSSQL_TYPE_CHAR,
-    MSSQL_TYPE_VARCHAR,
-    MSSQL_TYPE_NCHAR,
-    MSSQL_TYPE_NVARCHAR,
-    MSSQL_TYPE_UNIQUEIDENTIFIER,
-    MSSQL_TYPE_TEXT,
-    MSSQL_TYPE_NTEXT,
-    MSSQL_TYPE_BINARY,
-    MSSQL_TYPE_VARBINARY,
-    MSSQL_TYPE_IMAGE,
+from goe.offload.offload_constants import (
+    DBTYPE_BIGQUERY,
+    DBTYPE_HIVE,
+    DBTYPE_IMPALA,
+    DBTYPE_SNOWFLAKE,
+    DBTYPE_SYNAPSE,
+    FILE_STORAGE_FORMAT_AVRO,
+    FILE_STORAGE_FORMAT_PARQUET,
 )
+from goe.offload.offload_messages import OffloadMessages
 from goe.offload.oracle.oracle_column import (
-    OracleColumn,
-    ORACLE_TYPE_CHAR,
-    ORACLE_TYPE_NCHAR,
-    ORACLE_TYPE_CLOB,
-    ORACLE_TYPE_NCLOB,
-    ORACLE_TYPE_LONG,
-    ORACLE_TYPE_VARCHAR2,
-    ORACLE_TYPE_NVARCHAR2,
-    ORACLE_TYPE_RAW,
-    ORACLE_TYPE_BLOB,
-    ORACLE_TYPE_LONG_RAW,
-    ORACLE_TYPE_NUMBER,
-    ORACLE_TYPE_FLOAT,
-    ORACLE_TYPE_BINARY_FLOAT,
     ORACLE_TYPE_BINARY_DOUBLE,
+    ORACLE_TYPE_BINARY_FLOAT,
+    ORACLE_TYPE_BLOB,
+    ORACLE_TYPE_CHAR,
+    ORACLE_TYPE_CLOB,
     ORACLE_TYPE_DATE,
-    ORACLE_TYPE_TIMESTAMP,
-    ORACLE_TYPE_TIMESTAMP_TZ,
+    ORACLE_TYPE_FLOAT,
     ORACLE_TYPE_INTERVAL_DS,
     ORACLE_TYPE_INTERVAL_YM,
+    ORACLE_TYPE_LONG,
+    ORACLE_TYPE_LONG_RAW,
+    ORACLE_TYPE_NCHAR,
+    ORACLE_TYPE_NCLOB,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_NVARCHAR2,
+    ORACLE_TYPE_RAW,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_TIMESTAMP_TZ,
+    ORACLE_TYPE_VARCHAR2,
+    OracleColumn,
 )
 from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
 from goe.offload.snowflake.snowflake_column import (
-    SnowflakeColumn,
     SNOWFLAKE_TYPE_BINARY,
     SNOWFLAKE_TYPE_BOOLEAN,
     SNOWFLAKE_TYPE_DATE,
@@ -157,60 +177,40 @@ from goe.offload.snowflake.snowflake_column import (
     SNOWFLAKE_TYPE_TIME,
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
     SNOWFLAKE_TYPE_TIMESTAMP_TZ,
+    SnowflakeColumn,
 )
-from goe.offload.factory.staging_file_factory import staging_file_factory
 from goe.offload.staging.avro.avro_column import (
-    StagingAvroColumn,
-    AVRO_TYPE_STRING,
-    AVRO_TYPE_LONG,
-    AVRO_TYPE_BYTES,
-    AVRO_TYPE_INT,
     AVRO_TYPE_BOOLEAN,
-    AVRO_TYPE_FLOAT,
+    AVRO_TYPE_BYTES,
     AVRO_TYPE_DOUBLE,
+    AVRO_TYPE_FLOAT,
+    AVRO_TYPE_INT,
+    AVRO_TYPE_LONG,
+    AVRO_TYPE_STRING,
+    StagingAvroColumn,
 )
 from goe.offload.staging.parquet.parquet_column import (
-    StagingParquetColumn,
-    PARQUET_TYPE_STRING,
-    PARQUET_TYPE_FLOAT,
-    PARQUET_TYPE_INT32,
     PARQUET_TYPE_BINARY,
     PARQUET_TYPE_BOOLEAN,
     PARQUET_TYPE_DOUBLE,
+    PARQUET_TYPE_FLOAT,
+    PARQUET_TYPE_INT32,
     PARQUET_TYPE_INT64,
-)
-from goe.offload.hadoop.hadoop_column import (
-    HADOOP_TYPE_BOOLEAN,
-    HADOOP_TYPE_BIGINT,
-    HADOOP_TYPE_BINARY,
-    HADOOP_TYPE_CHAR,
-    HADOOP_TYPE_DATE,
-    HADOOP_TYPE_DECIMAL,
-    HADOOP_TYPE_DOUBLE,
-    HADOOP_TYPE_DOUBLE_PRECISION,
-    HADOOP_TYPE_FLOAT,
-    HADOOP_TYPE_INT,
-    HADOOP_TYPE_INTERVAL_DS,
-    HADOOP_TYPE_INTERVAL_YM,
-    HADOOP_TYPE_REAL,
-    HADOOP_TYPE_STRING,
-    HADOOP_TYPE_SMALLINT,
-    HADOOP_TYPE_TIMESTAMP,
-    HADOOP_TYPE_TINYINT,
-    HADOOP_TYPE_VARCHAR,
+    PARQUET_TYPE_STRING,
+    StagingParquetColumn,
 )
 from tests.unit.test_functions import (
-    build_mock_options,
-    optional_hadoop_dependency_exception,
-    optional_snowflake_dependency_exception,
-    optional_sql_server_dependency_exception,
-    optional_synapse_dependency_exception,
     FAKE_MSSQL_ENV,
     FAKE_ORACLE_BQ_ENV,
     FAKE_ORACLE_HIVE_ENV,
     FAKE_ORACLE_IMPALA_ENV,
     FAKE_ORACLE_SNOWFLAKE_ENV,
     FAKE_ORACLE_SYNAPSE_ENV,
+    build_mock_options,
+    optional_hadoop_dependency_exception,
+    optional_snowflake_dependency_exception,
+    optional_sql_server_dependency_exception,
+    optional_synapse_dependency_exception,
 )
 
 
@@ -224,18 +224,14 @@ class TestDataTypeMappings(TestCase):
     def canonical_columns(self):
         return [
             CanonicalColumn("COL_FIXED_STR", GOE_TYPE_FIXED_STRING, data_length=10),
-            CanonicalColumn(
-                "COL_FIXED_STR_2000", GOE_TYPE_FIXED_STRING, data_length=2000
-            ),
+            CanonicalColumn("COL_FIXED_STR_2000", GOE_TYPE_FIXED_STRING, data_length=2000),
             CanonicalColumn(
                 "COL_FIXED_STR_2000_C",
                 GOE_TYPE_FIXED_STRING,
                 char_length=2000,
                 char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
             ),
-            CanonicalColumn(
-                "COL_FIXED_STR_2001", GOE_TYPE_FIXED_STRING, data_length=2001
-            ),
+            CanonicalColumn("COL_FIXED_STR_2001", GOE_TYPE_FIXED_STRING, data_length=2001),
             CanonicalColumn(
                 "COL_FIXED_STR_2001_C",
                 GOE_TYPE_FIXED_STRING,
@@ -256,18 +252,14 @@ class TestDataTypeMappings(TestCase):
             ),
             CanonicalColumn("COL_LARGE_STR", GOE_TYPE_LARGE_STRING),
             CanonicalColumn("COL_VARIABLE_STR", GOE_TYPE_VARIABLE_STRING),
-            CanonicalColumn(
-                "COL_VARIABLE_STR_4000", GOE_TYPE_VARIABLE_STRING, data_length=4000
-            ),
+            CanonicalColumn("COL_VARIABLE_STR_4000", GOE_TYPE_VARIABLE_STRING, data_length=4000),
             CanonicalColumn(
                 "COL_VARIABLE_STR_4000_C",
                 GOE_TYPE_VARIABLE_STRING,
                 char_length=4000,
                 char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
             ),
-            CanonicalColumn(
-                "COL_VARIABLE_STR_4001", GOE_TYPE_VARIABLE_STRING, data_length=4001
-            ),
+            CanonicalColumn("COL_VARIABLE_STR_4001", GOE_TYPE_VARIABLE_STRING, data_length=4001),
             CanonicalColumn(
                 "COL_VARIABLE_STR_4001_C",
                 GOE_TYPE_VARIABLE_STRING,
@@ -296,9 +288,7 @@ class TestDataTypeMappings(TestCase):
             CanonicalColumn("COL_INT_8", GOE_TYPE_INTEGER_8),
             CanonicalColumn("COL_INT_38", GOE_TYPE_INTEGER_38),
             CanonicalColumn("COL_DEC_NO_P_S", GOE_TYPE_DECIMAL),
-            CanonicalColumn(
-                "COL_DEC_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2
-            ),
+            CanonicalColumn("COL_DEC_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2),
             CanonicalColumn(
                 "COL_DEC_10_2_UNSAFE",
                 GOE_TYPE_DECIMAL,
@@ -349,9 +339,7 @@ class TestDataTypeMappings(TestCase):
         check_if_not_none(test_column, expected_column, "nullable")
 
     def validate_source_vs_expected_columns(self, source_columns, expected_columns):
-        assert len(source_columns) == len(
-            expected_columns
-        ), "%s (source) != %s (expected)" % (
+        assert len(source_columns) == len(expected_columns), "%s (source) != %s (expected)" % (
             len(source_columns),
             len(expected_columns),
         )
@@ -478,9 +466,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
                 data_scale=0,
             ),
             # NUMBER
-            OracleColumn(
-                "COL_NUMBER_NO_P_S", ORACLE_TYPE_NUMBER, char_length=0, data_length=22
-            ),
+            OracleColumn("COL_NUMBER_NO_P_S", ORACLE_TYPE_NUMBER, char_length=0, data_length=22),
             # NUMBER(10,2)
             OracleColumn(
                 "COL_NUMBER_10_2",
@@ -502,12 +488,8 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
             OracleColumn("COL_DOUBLE", ORACLE_TYPE_BINARY_DOUBLE, data_length=8),
             # Datetime
             OracleColumn("COL_DATE", ORACLE_TYPE_DATE, data_length=7),
-            OracleColumn(
-                "COL_TIMESTAMP_6", ORACLE_TYPE_TIMESTAMP, data_length=11, data_scale=6
-            ),
-            OracleColumn(
-                "COL_TIMESTAMP_3", ORACLE_TYPE_TIMESTAMP, data_length=11, data_scale=3
-            ),
+            OracleColumn("COL_TIMESTAMP_6", ORACLE_TYPE_TIMESTAMP, data_length=11, data_scale=6),
+            OracleColumn("COL_TIMESTAMP_3", ORACLE_TYPE_TIMESTAMP, data_length=11, data_scale=3),
             OracleColumn(
                 "COL_TIMESTAMP_TZ_6",
                 ORACLE_TYPE_TIMESTAMP_TZ,
@@ -547,9 +529,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
             # Not testing the output but at least testing no exceptions
             self.assertIsNotNone(source_column.format_data_type())
             # Check string "None" is not in the formatted type
-            self.assertNotIn(
-                "None", source_column.format_data_type(), source_column.name
-            )
+            self.assertNotIn("None", source_column.format_data_type(), source_column.name)
 
     ###########################################################
     # RDBMS -> Canonical
@@ -562,9 +542,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
             CanonicalColumn("COL_CHAR", GOE_TYPE_FIXED_STRING, data_length=100),
             CanonicalColumn("COL_NCHAR", GOE_TYPE_FIXED_STRING, data_length=200),
             CanonicalColumn("COL_VARCHAR2", GOE_TYPE_VARIABLE_STRING, data_length=1100),
-            CanonicalColumn(
-                "COL_NVARCHAR2", GOE_TYPE_VARIABLE_STRING, data_length=2200
-            ),
+            CanonicalColumn("COL_NVARCHAR2", GOE_TYPE_VARIABLE_STRING, data_length=2200),
             CanonicalColumn("COL_LONG", GOE_TYPE_LARGE_STRING),
             CanonicalColumn("COL_CLOB", GOE_TYPE_LARGE_STRING),
             CanonicalColumn("COL_NCLOB", GOE_TYPE_LARGE_STRING),
@@ -589,9 +567,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
             CanonicalColumn("COL_NUMBER_18", GOE_TYPE_INTEGER_8),
             CanonicalColumn("COL_NUMBER_38", GOE_TYPE_INTEGER_38),
             CanonicalColumn("COL_NUMBER_NO_P_S", GOE_TYPE_DECIMAL),
-            CanonicalColumn(
-                "COL_NUMBER_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2
-            ),
+            CanonicalColumn("COL_NUMBER_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2),
             CanonicalColumn(
                 "COL_NUMBER_FLOAT",
                 GOE_TYPE_DECIMAL,
@@ -622,9 +598,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
 
     def test_canonical_to_oracle(self):
         # No Bool support for Oracle
-        canonical_columns = [
-            _ for _ in self.canonical_columns() if _.data_type != GOE_TYPE_BOOLEAN
-        ]
+        canonical_columns = [_ for _ in self.canonical_columns() if _.data_type != GOE_TYPE_BOOLEAN]
         # Expected outcomes of source_columns when converted to RDBMS
         expected_columns = [
             OracleColumn("COL_FIXED_STR", ORACLE_TYPE_CHAR, data_length=10),
@@ -636,17 +610,11 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
             OracleColumn("COL_FIXED_STR_1001_U", ORACLE_TYPE_NCLOB),
             OracleColumn("COL_LARGE_STR", ORACLE_TYPE_CLOB),
             OracleColumn("COL_VARIABLE_STR", ORACLE_TYPE_VARCHAR2, data_length=4000),
-            OracleColumn(
-                "COL_VARIABLE_STR_4000", ORACLE_TYPE_VARCHAR2, data_length=4000
-            ),
-            OracleColumn(
-                "COL_VARIABLE_STR_4000_C", ORACLE_TYPE_VARCHAR2, char_length=4000
-            ),
+            OracleColumn("COL_VARIABLE_STR_4000", ORACLE_TYPE_VARCHAR2, data_length=4000),
+            OracleColumn("COL_VARIABLE_STR_4000_C", ORACLE_TYPE_VARCHAR2, char_length=4000),
             OracleColumn("COL_VARIABLE_STR_4001", ORACLE_TYPE_CLOB),
             OracleColumn("COL_VARIABLE_STR_4001_C", ORACLE_TYPE_CLOB),
-            OracleColumn(
-                "COL_VARIABLE_STR_2000_U", ORACLE_TYPE_NVARCHAR2, char_length=2000
-            ),
+            OracleColumn("COL_VARIABLE_STR_2000_U", ORACLE_TYPE_NVARCHAR2, char_length=2000),
             OracleColumn("COL_VARIABLE_STR_2001_U", ORACLE_TYPE_NCLOB),
             OracleColumn("COL_BINARY", ORACLE_TYPE_RAW),
             OracleColumn("COL_BINARY_2000", ORACLE_TYPE_RAW, data_length=2000),
@@ -658,9 +626,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
             OracleColumn("COL_INT_8", ORACLE_TYPE_NUMBER, data_scale=0),
             OracleColumn("COL_INT_38", ORACLE_TYPE_NUMBER, data_scale=0),
             OracleColumn("COL_DEC_NO_P_S", ORACLE_TYPE_NUMBER),
-            OracleColumn(
-                "COL_DEC_10_2", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=2
-            ),
+            OracleColumn("COL_DEC_10_2", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=2),
             OracleColumn(
                 "COL_DEC_10_2_UNSAFE",
                 ORACLE_TYPE_NUMBER,
@@ -704,12 +670,8 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
             BigQueryColumn(name="COL_BYTES", data_type=BIGQUERY_TYPE_BYTES),
         ]
         expected_columns = [
-            OracleColumn(
-                name="COL_STRING", data_type=ORACLE_TYPE_VARCHAR2, data_length=4000
-            ),
-            OracleColumn(
-                name="COL_STRING_U", data_type=ORACLE_TYPE_NVARCHAR2, char_length=2000
-            ),
+            OracleColumn(name="COL_STRING", data_type=ORACLE_TYPE_VARCHAR2, data_length=4000),
+            OracleColumn(name="COL_STRING_U", data_type=ORACLE_TYPE_NVARCHAR2, char_length=2000),
             OracleColumn(name="COL_BYTES", data_type=ORACLE_TYPE_RAW, data_length=2000),
         ]
         for backend_column, expected_column in zip(backend_columns, expected_columns):
@@ -718,9 +680,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
                 backend_column.char_semantics = CANONICAL_CHAR_SEMANTICS_CHAR
             canonical_column = backend_api.to_canonical_column(backend_column)
             self._stealth_unicode_char_semantics(canonical_column)
-            frontend_column = self.test_table_object.from_canonical_column(
-                canonical_column
-            )
+            frontend_column = self.test_table_object.from_canonical_column(canonical_column)
             self.column_assertions(frontend_column, expected_column)
 
     #
@@ -737,21 +697,12 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
         except ModuleNotFoundError as e:
             if optional_hadoop_dependency_exception(e):
                 return
-            else:
-                raise
+            raise
         backend_columns = [
-            HadoopColumn(
-                name="COL_CHAR_255", data_type=HADOOP_TYPE_CHAR, data_length=255
-            ),
-            HadoopColumn(
-                name="COL_CHAR_255_U", data_type=HADOOP_TYPE_CHAR, data_length=255
-            ),
-            HadoopColumn(
-                name="COL_VARCHAR_4000", data_type=HADOOP_TYPE_VARCHAR, data_length=4000
-            ),
-            HadoopColumn(
-                name="COL_VARCHAR_4001", data_type=HADOOP_TYPE_VARCHAR, data_length=4001
-            ),
+            HadoopColumn(name="COL_CHAR_255", data_type=HADOOP_TYPE_CHAR, data_length=255),
+            HadoopColumn(name="COL_CHAR_255_U", data_type=HADOOP_TYPE_CHAR, data_length=255),
+            HadoopColumn(name="COL_VARCHAR_4000", data_type=HADOOP_TYPE_VARCHAR, data_length=4000),
+            HadoopColumn(name="COL_VARCHAR_4001", data_type=HADOOP_TYPE_VARCHAR, data_length=4001),
             HadoopColumn(
                 name="COL_VARCHAR_2000_U",
                 data_type=HADOOP_TYPE_VARCHAR,
@@ -765,12 +716,8 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
             HadoopColumn(name="COL_BYTES", data_type=HADOOP_TYPE_BINARY),
         ]
         expected_columns = [
-            OracleColumn(
-                name="COL_CHAR_255", data_type=ORACLE_TYPE_CHAR, data_length=255
-            ),
-            OracleColumn(
-                name="COL_CHAR_255_U", data_type=ORACLE_TYPE_NCHAR, char_length=255
-            ),
+            OracleColumn(name="COL_CHAR_255", data_type=ORACLE_TYPE_CHAR, data_length=255),
+            OracleColumn(name="COL_CHAR_255_U", data_type=ORACLE_TYPE_NCHAR, char_length=255),
             OracleColumn(
                 name="COL_VARCHAR_4000",
                 data_type=ORACLE_TYPE_VARCHAR2,
@@ -788,9 +735,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
         for backend_column, expected_column in zip(backend_columns, expected_columns):
             canonical_column = backend_api.to_canonical_column(backend_column)
             self._stealth_unicode_char_semantics(canonical_column)
-            frontend_column = self.test_table_object.from_canonical_column(
-                canonical_column
-            )
+            frontend_column = self.test_table_object.from_canonical_column(canonical_column)
             self.column_assertions(frontend_column, expected_column)
 
     #
@@ -807,21 +752,12 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
         except ModuleNotFoundError as e:
             if optional_hadoop_dependency_exception(e):
                 return
-            else:
-                raise
+            raise
         backend_columns = [
-            HadoopColumn(
-                name="COL_CHAR_255", data_type=HADOOP_TYPE_CHAR, data_length=255
-            ),
-            HadoopColumn(
-                name="COL_CHAR_255_U", data_type=HADOOP_TYPE_CHAR, data_length=255
-            ),
-            HadoopColumn(
-                name="COL_VARCHAR_4000", data_type=HADOOP_TYPE_VARCHAR, data_length=4000
-            ),
-            HadoopColumn(
-                name="COL_VARCHAR_4001", data_type=HADOOP_TYPE_VARCHAR, data_length=4001
-            ),
+            HadoopColumn(name="COL_CHAR_255", data_type=HADOOP_TYPE_CHAR, data_length=255),
+            HadoopColumn(name="COL_CHAR_255_U", data_type=HADOOP_TYPE_CHAR, data_length=255),
+            HadoopColumn(name="COL_VARCHAR_4000", data_type=HADOOP_TYPE_VARCHAR, data_length=4000),
+            HadoopColumn(name="COL_VARCHAR_4001", data_type=HADOOP_TYPE_VARCHAR, data_length=4001),
             HadoopColumn(
                 name="COL_VARCHAR_2000_U",
                 data_type=HADOOP_TYPE_VARCHAR,
@@ -834,12 +770,8 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
             ),
         ]
         expected_columns = [
-            OracleColumn(
-                name="COL_CHAR_255", data_type=ORACLE_TYPE_CHAR, data_length=255
-            ),
-            OracleColumn(
-                name="COL_CHAR_255_U", data_type=ORACLE_TYPE_NCHAR, char_length=255
-            ),
+            OracleColumn(name="COL_CHAR_255", data_type=ORACLE_TYPE_CHAR, data_length=255),
+            OracleColumn(name="COL_CHAR_255_U", data_type=ORACLE_TYPE_NCHAR, char_length=255),
             OracleColumn(
                 name="COL_VARCHAR_4000",
                 data_type=ORACLE_TYPE_VARCHAR2,
@@ -856,9 +788,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
         for backend_column, expected_column in zip(backend_columns, expected_columns):
             canonical_column = backend_api.to_canonical_column(backend_column)
             self._stealth_unicode_char_semantics(canonical_column)
-            frontend_column = self.test_table_object.from_canonical_column(
-                canonical_column
-            )
+            frontend_column = self.test_table_object.from_canonical_column(canonical_column)
             self.column_assertions(frontend_column, expected_column)
 
     #
@@ -875,8 +805,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
         except ModuleNotFoundError as e:
             if optional_snowflake_dependency_exception(e):
                 return
-            else:
-                raise
+            raise
         backend_columns = [
             SnowflakeColumn(
                 name="COL_TEXT_4000",
@@ -927,9 +856,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
                 char_length=2000,
             ),
             OracleColumn(name="COL_VARCHAR_2001_U", data_type=ORACLE_TYPE_NCLOB),
-            OracleColumn(
-                name="COL_BINARY_2000", data_type=ORACLE_TYPE_RAW, data_length=2000
-            ),
+            OracleColumn(name="COL_BINARY_2000", data_type=ORACLE_TYPE_RAW, data_length=2000),
             OracleColumn(name="COL_BINARY_2001", data_type=ORACLE_TYPE_BLOB),
         ]
         for backend_column, expected_column in zip(backend_columns, expected_columns):
@@ -938,9 +865,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
                 backend_column.char_semantics = CANONICAL_CHAR_SEMANTICS_CHAR
             canonical_column = backend_api.to_canonical_column(backend_column)
             self._stealth_unicode_char_semantics(canonical_column)
-            frontend_column = self.test_table_object.from_canonical_column(
-                canonical_column
-            )
+            frontend_column = self.test_table_object.from_canonical_column(canonical_column)
             self.column_assertions(frontend_column, expected_column)
 
     #
@@ -957,8 +882,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
         except ModuleNotFoundError as e:
             if optional_synapse_dependency_exception(e):
                 return
-            else:
-                raise
+            raise
         backend_columns = [
             SynapseColumn(
                 name="COL_CHAR_2000",
@@ -1056,12 +980,8 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
                 char_length=2001,
                 data_length=4001,
             ),
-            SynapseColumn(
-                name="COL_BINARY_2000", data_type=SYNAPSE_TYPE_BINARY, data_length=2000
-            ),
-            SynapseColumn(
-                name="COL_BINARY_2001", data_type=SYNAPSE_TYPE_BINARY, data_length=2001
-            ),
+            SynapseColumn(name="COL_BINARY_2000", data_type=SYNAPSE_TYPE_BINARY, data_length=2000),
+            SynapseColumn(name="COL_BINARY_2001", data_type=SYNAPSE_TYPE_BINARY, data_length=2001),
             SynapseColumn(
                 name="COL_VARBINARY_2000",
                 data_type=SYNAPSE_TYPE_VARBINARY,
@@ -1129,21 +1049,15 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
                 char_length=2000,
             ),
             OracleColumn(name="COL_NVARCHAR_2001_U", data_type=ORACLE_TYPE_NCLOB),
-            OracleColumn(
-                name="COL_BINARY_2000", data_type=ORACLE_TYPE_RAW, data_length=2000
-            ),
+            OracleColumn(name="COL_BINARY_2000", data_type=ORACLE_TYPE_RAW, data_length=2000),
             OracleColumn(name="COL_BINARY_2001", data_type=ORACLE_TYPE_BLOB),
-            OracleColumn(
-                name="COL_VARBINARY_2000", data_type=ORACLE_TYPE_RAW, data_length=2000
-            ),
+            OracleColumn(name="COL_VARBINARY_2000", data_type=ORACLE_TYPE_RAW, data_length=2000),
             OracleColumn(name="COL_VARBINARY_2001", data_type=ORACLE_TYPE_BLOB),
         ]
         for backend_column, expected_column in zip(backend_columns, expected_columns):
             canonical_column = backend_api.to_canonical_column(backend_column)
             self._stealth_unicode_char_semantics(canonical_column)
-            frontend_column = self.test_table_object.from_canonical_column(
-                canonical_column
-            )
+            frontend_column = self.test_table_object.from_canonical_column(canonical_column)
             self.column_assertions(frontend_column, expected_column)
 
 
@@ -1170,15 +1084,9 @@ class TestMSSQLDataTypeMappings(TestDataTypeMappings):
         return [
             MSSQLColumn("COL_BIT", MSSQL_TYPE_BIT, data_length=1),
             MSSQLColumn("COL_CHAR", MSSQL_TYPE_CHAR, char_length=100, data_length=100),
-            MSSQLColumn(
-                "COL_NCHAR", MSSQL_TYPE_NCHAR, char_length=100, data_length=200
-            ),
-            MSSQLColumn(
-                "COL_VARCHAR", MSSQL_TYPE_VARCHAR, char_length=1100, data_length=1100
-            ),
-            MSSQLColumn(
-                "COL_NVARCHAR", MSSQL_TYPE_NVARCHAR, char_length=1100, data_length=2200
-            ),
+            MSSQLColumn("COL_NCHAR", MSSQL_TYPE_NCHAR, char_length=100, data_length=200),
+            MSSQLColumn("COL_VARCHAR", MSSQL_TYPE_VARCHAR, char_length=1100, data_length=1100),
+            MSSQLColumn("COL_NVARCHAR", MSSQL_TYPE_NVARCHAR, char_length=1100, data_length=2200),
             MSSQLColumn(
                 "COL_UNIQ_ID",
                 MSSQL_TYPE_UNIQUEIDENTIFIER,
@@ -1324,9 +1232,7 @@ class TestMSSQLDataTypeMappings(TestDataTypeMappings):
                 # Not testing the output but at least testing no unexpected exceptions
                 self.assertIsNotNone(source_column.format_data_type())
                 # Check string "None" is not in the formatted type
-                self.assertNotIn(
-                    "None", source_column.format_data_type(), source_column.name
-                )
+                self.assertNotIn("None", source_column.format_data_type(), source_column.name)
             except NotImplementedError:
                 pass
 
@@ -1357,17 +1263,13 @@ class TestMSSQLDataTypeMappings(TestDataTypeMappings):
             CanonicalColumn("COL_DECIMAL_9", GOE_TYPE_INTEGER_4),
             CanonicalColumn("COL_DECIMAL_18", GOE_TYPE_INTEGER_8),
             CanonicalColumn("COL_DECIMAL_38", GOE_TYPE_INTEGER_38),
-            CanonicalColumn(
-                "COL_DECIMAL_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2
-            ),
+            CanonicalColumn("COL_DECIMAL_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2),
             CanonicalColumn("COL_NUMERIC_2", GOE_TYPE_INTEGER_1),
             CanonicalColumn("COL_NUMERIC_4", GOE_TYPE_INTEGER_2),
             CanonicalColumn("COL_NUMERIC_9", GOE_TYPE_INTEGER_4),
             CanonicalColumn("COL_NUMERIC_18", GOE_TYPE_INTEGER_8),
             CanonicalColumn("COL_NUMERIC_38", GOE_TYPE_INTEGER_38),
-            CanonicalColumn(
-                "COL_NUMERIC_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2
-            ),
+            CanonicalColumn("COL_NUMERIC_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2),
             CanonicalColumn("COL_TINYINT", GOE_TYPE_INTEGER_2),
             CanonicalColumn("COL_SMALLINT", GOE_TYPE_INTEGER_2),
             CanonicalColumn("COL_INT", GOE_TYPE_INTEGER_4),
@@ -1447,25 +1349,13 @@ class TestBackendHiveDataTypeMappings(TestDataTypeMappings):
             HadoopColumn("COL_INT_2", HADOOP_TYPE_SMALLINT),
             HadoopColumn("COL_INT_4", HADOOP_TYPE_INT),
             HadoopColumn("COL_INT_8", HADOOP_TYPE_BIGINT),
-            HadoopColumn(
-                "COL_INT_P_2", HADOOP_TYPE_DECIMAL, data_precision=2, data_scale=0
-            ),
-            HadoopColumn(
-                "COL_INT_P_4", HADOOP_TYPE_DECIMAL, data_precision=4, data_scale=0
-            ),
-            HadoopColumn(
-                "COL_INT_P_9", HADOOP_TYPE_DECIMAL, data_precision=9, data_scale=0
-            ),
-            HadoopColumn(
-                "COL_INT_P_18", HADOOP_TYPE_DECIMAL, data_precision=18, data_scale=0
-            ),
-            HadoopColumn(
-                "COL_INT_P_38", HADOOP_TYPE_DECIMAL, data_precision=38, data_scale=0
-            ),
+            HadoopColumn("COL_INT_P_2", HADOOP_TYPE_DECIMAL, data_precision=2, data_scale=0),
+            HadoopColumn("COL_INT_P_4", HADOOP_TYPE_DECIMAL, data_precision=4, data_scale=0),
+            HadoopColumn("COL_INT_P_9", HADOOP_TYPE_DECIMAL, data_precision=9, data_scale=0),
+            HadoopColumn("COL_INT_P_18", HADOOP_TYPE_DECIMAL, data_precision=18, data_scale=0),
+            HadoopColumn("COL_INT_P_38", HADOOP_TYPE_DECIMAL, data_precision=38, data_scale=0),
             HadoopColumn("COL_DEC_NO_P_S", HADOOP_TYPE_DECIMAL),
-            HadoopColumn(
-                "COL_DEC_10_2", HADOOP_TYPE_DECIMAL, data_precision=10, data_scale=2
-            ),
+            HadoopColumn("COL_DEC_10_2", HADOOP_TYPE_DECIMAL, data_precision=10, data_scale=2),
             HadoopColumn("COL_FLOAT", HADOOP_TYPE_FLOAT),
             HadoopColumn("COL_DOUBLE", HADOOP_TYPE_DOUBLE),
             HadoopColumn("COL_DOUBLE_PRECISION", HADOOP_TYPE_DOUBLE_PRECISION),
@@ -1485,9 +1375,7 @@ class TestBackendHiveDataTypeMappings(TestDataTypeMappings):
             # Not testing the output but at least testing no exceptions
             self.assertIsNotNone(source_column.format_data_type())
             # Check string "None" is not in the formatted type
-            self.assertNotIn(
-                "None", source_column.format_data_type(), source_column.name
-            )
+            self.assertNotIn("None", source_column.format_data_type(), source_column.name)
 
     ###########################################################
     # Hive -> Canonical
@@ -1501,9 +1389,7 @@ class TestBackendHiveDataTypeMappings(TestDataTypeMappings):
         expected_columns = [
             CanonicalColumn("COL_FIXED_STR", GOE_TYPE_FIXED_STRING, data_length=10),
             CanonicalColumn("COL_VARIABLE_STR", GOE_TYPE_VARIABLE_STRING),
-            CanonicalColumn(
-                "COL_VARIABLE_STR2", GOE_TYPE_VARIABLE_STRING, data_length=10
-            ),
+            CanonicalColumn("COL_VARIABLE_STR2", GOE_TYPE_VARIABLE_STRING, data_length=10),
             CanonicalColumn("COL_BINARY", GOE_TYPE_BINARY),
             CanonicalColumn("COL_INT_1", GOE_TYPE_INTEGER_1),
             CanonicalColumn("COL_INT_2", GOE_TYPE_INTEGER_2),
@@ -1515,9 +1401,7 @@ class TestBackendHiveDataTypeMappings(TestDataTypeMappings):
             CanonicalColumn("COL_INT_P_18", GOE_TYPE_INTEGER_8),
             CanonicalColumn("COL_INT_P_38", GOE_TYPE_INTEGER_38),
             CanonicalColumn("COL_DEC_NO_P_S", GOE_TYPE_DECIMAL),
-            CanonicalColumn(
-                "COL_DEC_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2
-            ),
+            CanonicalColumn("COL_DEC_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2),
             CanonicalColumn("COL_FLOAT", GOE_TYPE_FLOAT),
             CanonicalColumn("COL_DOUBLE", GOE_TYPE_DOUBLE),
             CanonicalColumn("COL_DOUBLE_PRECISION", GOE_TYPE_DOUBLE),
@@ -1568,14 +1452,10 @@ class TestBackendHiveDataTypeMappings(TestDataTypeMappings):
             HadoopColumn("COL_INT_2", HADOOP_TYPE_BIGINT),
             HadoopColumn("COL_INT_4", HADOOP_TYPE_BIGINT),
             HadoopColumn("COL_INT_8", HADOOP_TYPE_BIGINT),
-            HadoopColumn(
-                "COL_INT_38", HADOOP_TYPE_DECIMAL, data_precision=38, data_scale=0
-            ),
+            HadoopColumn("COL_INT_38", HADOOP_TYPE_DECIMAL, data_precision=38, data_scale=0),
             HadoopColumn("COL_DEC_NO_P_S", HADOOP_TYPE_DECIMAL),
             # With decimal_padding_digits=2 and UDF alignment 10,2 increases to 18,4
-            HadoopColumn(
-                "COL_DEC_10_2", HADOOP_TYPE_DECIMAL, data_precision=18, data_scale=4
-            ),
+            HadoopColumn("COL_DEC_10_2", HADOOP_TYPE_DECIMAL, data_precision=18, data_scale=4),
             HadoopColumn(
                 "COL_DEC_10_2_UNSAFE",
                 HADOOP_TYPE_DECIMAL,
@@ -1592,16 +1472,12 @@ class TestBackendHiveDataTypeMappings(TestDataTypeMappings):
             HadoopColumn("COL_INTERVAL_YM", HADOOP_TYPE_STRING),
             HadoopColumn("COL_BOOLEAN", HADOOP_TYPE_BOOLEAN),
         ]
-        self.validate_source_vs_expected_columns(
-            self.canonical_columns(), expected_columns
-        )
+        self.validate_source_vs_expected_columns(self.canonical_columns(), expected_columns)
 
         for source_column in self.canonical_columns():
             expected_column = match_table_column(source_column.name, expected_columns)
             assert expected_column
-            new_column = self.test_api.from_canonical_column(
-                source_column, decimal_padding_digits=2
-            )
+            new_column = self.test_api.from_canonical_column(source_column, decimal_padding_digits=2)
             self.column_assertions(new_column, expected_column)
 
 
@@ -1632,25 +1508,13 @@ class TestBackendImpalaDataTypeMappings(TestDataTypeMappings):
             HadoopColumn("COL_INT_2", HADOOP_TYPE_SMALLINT),
             HadoopColumn("COL_INT_4", HADOOP_TYPE_INT),
             HadoopColumn("COL_INT_8", HADOOP_TYPE_BIGINT),
-            HadoopColumn(
-                "COL_INT_P_2", HADOOP_TYPE_DECIMAL, data_precision=2, data_scale=0
-            ),
-            HadoopColumn(
-                "COL_INT_P_4", HADOOP_TYPE_DECIMAL, data_precision=4, data_scale=0
-            ),
-            HadoopColumn(
-                "COL_INT_P_9", HADOOP_TYPE_DECIMAL, data_precision=9, data_scale=0
-            ),
-            HadoopColumn(
-                "COL_INT_P_18", HADOOP_TYPE_DECIMAL, data_precision=18, data_scale=0
-            ),
-            HadoopColumn(
-                "COL_INT_P_38", HADOOP_TYPE_DECIMAL, data_precision=38, data_scale=0
-            ),
+            HadoopColumn("COL_INT_P_2", HADOOP_TYPE_DECIMAL, data_precision=2, data_scale=0),
+            HadoopColumn("COL_INT_P_4", HADOOP_TYPE_DECIMAL, data_precision=4, data_scale=0),
+            HadoopColumn("COL_INT_P_9", HADOOP_TYPE_DECIMAL, data_precision=9, data_scale=0),
+            HadoopColumn("COL_INT_P_18", HADOOP_TYPE_DECIMAL, data_precision=18, data_scale=0),
+            HadoopColumn("COL_INT_P_38", HADOOP_TYPE_DECIMAL, data_precision=38, data_scale=0),
             HadoopColumn("COL_DEC_NO_P_S", HADOOP_TYPE_DECIMAL),
-            HadoopColumn(
-                "COL_DEC_10_2", HADOOP_TYPE_DECIMAL, data_precision=10, data_scale=2
-            ),
+            HadoopColumn("COL_DEC_10_2", HADOOP_TYPE_DECIMAL, data_precision=10, data_scale=2),
             HadoopColumn("COL_FLOAT", HADOOP_TYPE_FLOAT),
             HadoopColumn("COL_DOUBLE", HADOOP_TYPE_DOUBLE),
             HadoopColumn("COL_REAL", HADOOP_TYPE_REAL),
@@ -1667,9 +1531,7 @@ class TestBackendImpalaDataTypeMappings(TestDataTypeMappings):
             # Not testing the output but at least testing no exceptions
             self.assertIsNotNone(source_column.format_data_type())
             # Check string "None" is not in the formatted type
-            self.assertNotIn(
-                "None", source_column.format_data_type(), source_column.name
-            )
+            self.assertNotIn("None", source_column.format_data_type(), source_column.name)
 
     ###########################################################
     # Impala -> Canonical
@@ -1683,9 +1545,7 @@ class TestBackendImpalaDataTypeMappings(TestDataTypeMappings):
         expected_columns = [
             CanonicalColumn("COL_FIXED_STR", GOE_TYPE_FIXED_STRING, data_length=10),
             CanonicalColumn("COL_VARIABLE_STR", GOE_TYPE_VARIABLE_STRING),
-            CanonicalColumn(
-                "COL_VARIABLE_STR2", GOE_TYPE_VARIABLE_STRING, data_length=10
-            ),
+            CanonicalColumn("COL_VARIABLE_STR2", GOE_TYPE_VARIABLE_STRING, data_length=10),
             CanonicalColumn("COL_INT_1", GOE_TYPE_INTEGER_1),
             CanonicalColumn("COL_INT_2", GOE_TYPE_INTEGER_2),
             CanonicalColumn("COL_INT_4", GOE_TYPE_INTEGER_4),
@@ -1696,9 +1556,7 @@ class TestBackendImpalaDataTypeMappings(TestDataTypeMappings):
             CanonicalColumn("COL_INT_P_18", GOE_TYPE_INTEGER_8),
             CanonicalColumn("COL_INT_P_38", GOE_TYPE_INTEGER_38),
             CanonicalColumn("COL_DEC_NO_P_S", GOE_TYPE_DECIMAL),
-            CanonicalColumn(
-                "COL_DEC_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2
-            ),
+            CanonicalColumn("COL_DEC_10_2", GOE_TYPE_DECIMAL, data_precision=10, data_scale=2),
             CanonicalColumn("COL_FLOAT", GOE_TYPE_FLOAT),
             CanonicalColumn("COL_DOUBLE", GOE_TYPE_DOUBLE),
             CanonicalColumn("COL_REAL", GOE_TYPE_DOUBLE),
@@ -1746,14 +1604,10 @@ class TestBackendImpalaDataTypeMappings(TestDataTypeMappings):
             HadoopColumn("COL_INT_2", HADOOP_TYPE_BIGINT),
             HadoopColumn("COL_INT_4", HADOOP_TYPE_BIGINT),
             HadoopColumn("COL_INT_8", HADOOP_TYPE_BIGINT),
-            HadoopColumn(
-                "COL_INT_38", HADOOP_TYPE_DECIMAL, data_precision=38, data_scale=0
-            ),
+            HadoopColumn("COL_INT_38", HADOOP_TYPE_DECIMAL, data_precision=38, data_scale=0),
             HadoopColumn("COL_DEC_NO_P_S", HADOOP_TYPE_DECIMAL),
             # With decimal_padding_digits=2 and UDF alignment 10,2 increases to 18,4
-            HadoopColumn(
-                "COL_DEC_10_2", HADOOP_TYPE_DECIMAL, data_precision=18, data_scale=4
-            ),
+            HadoopColumn("COL_DEC_10_2", HADOOP_TYPE_DECIMAL, data_precision=18, data_scale=4),
             HadoopColumn(
                 "COL_DEC_10_2_UNSAFE",
                 HADOOP_TYPE_DECIMAL,
@@ -1770,16 +1624,12 @@ class TestBackendImpalaDataTypeMappings(TestDataTypeMappings):
             HadoopColumn("COL_INTERVAL_YM", HADOOP_TYPE_STRING),
             HadoopColumn("COL_BOOLEAN", HADOOP_TYPE_BOOLEAN),
         ]
-        self.validate_source_vs_expected_columns(
-            self.canonical_columns(), expected_columns
-        )
+        self.validate_source_vs_expected_columns(self.canonical_columns(), expected_columns)
 
         for source_column in self.canonical_columns():
             expected_column = match_table_column(source_column.name, expected_columns)
             assert expected_column
-            new_column = self.test_api.from_canonical_column(
-                source_column, decimal_padding_digits=2
-            )
+            new_column = self.test_api.from_canonical_column(source_column, decimal_padding_digits=2)
             self.column_assertions(new_column, expected_column)
 
 
@@ -1819,9 +1669,7 @@ class TestBackendBigQueryDataTypeMappings(TestDataTypeMappings):
             # Not testing the output but at least testing no exceptions
             self.assertIsNotNone(source_column.format_data_type())
             # Check string "None" is not in the formatted type
-            self.assertNotIn(
-                "None", source_column.format_data_type(), source_column.name
-            )
+            self.assertNotIn("None", source_column.format_data_type(), source_column.name)
 
     ###########################################################
     # BigQuery -> Canonical
@@ -1833,12 +1681,8 @@ class TestBackendBigQueryDataTypeMappings(TestDataTypeMappings):
             CanonicalColumn("COL_VARIABLE_STR", GOE_TYPE_VARIABLE_STRING),
             CanonicalColumn("COL_BINARY", GOE_TYPE_BINARY),
             CanonicalColumn("COL_INT_8", GOE_TYPE_INTEGER_8),
-            CanonicalColumn(
-                "COL_DEC_NO_P_S", GOE_TYPE_DECIMAL, data_precision=76, data_scale=38
-            ),
-            CanonicalColumn(
-                "COL_DEC_10_2", GOE_TYPE_DECIMAL, data_precision=38, data_scale=9
-            ),
+            CanonicalColumn("COL_DEC_NO_P_S", GOE_TYPE_DECIMAL, data_precision=76, data_scale=38),
+            CanonicalColumn("COL_DEC_10_2", GOE_TYPE_DECIMAL, data_precision=38, data_scale=9),
             CanonicalColumn("COL_DOUBLE", GOE_TYPE_DOUBLE),
             CanonicalColumn("COL_DATE", GOE_TYPE_DATE),
             CanonicalColumn("COL_DATETIME", GOE_TYPE_TIMESTAMP),
@@ -1862,44 +1706,20 @@ class TestBackendBigQueryDataTypeMappings(TestDataTypeMappings):
         # Expected outcomes of source_columns when converted to BigQuery
         expected_columns = [
             BigQueryColumn("COL_FIXED_STR", BIGQUERY_TYPE_STRING),
-            BigQueryColumn(
-                "COL_FIXED_STR_2000", BIGQUERY_TYPE_STRING, char_length=2000
-            ),
-            BigQueryColumn(
-                "COL_FIXED_STR_2000_C", BIGQUERY_TYPE_STRING, char_length=2000
-            ),
-            BigQueryColumn(
-                "COL_FIXED_STR_2001", BIGQUERY_TYPE_STRING, char_length=2001
-            ),
-            BigQueryColumn(
-                "COL_FIXED_STR_2001_C", BIGQUERY_TYPE_STRING, char_length=2001
-            ),
-            BigQueryColumn(
-                "COL_FIXED_STR_1000_U", BIGQUERY_TYPE_STRING, char_length=1000
-            ),
-            BigQueryColumn(
-                "COL_FIXED_STR_1001_U", BIGQUERY_TYPE_STRING, char_length=1001
-            ),
+            BigQueryColumn("COL_FIXED_STR_2000", BIGQUERY_TYPE_STRING, char_length=2000),
+            BigQueryColumn("COL_FIXED_STR_2000_C", BIGQUERY_TYPE_STRING, char_length=2000),
+            BigQueryColumn("COL_FIXED_STR_2001", BIGQUERY_TYPE_STRING, char_length=2001),
+            BigQueryColumn("COL_FIXED_STR_2001_C", BIGQUERY_TYPE_STRING, char_length=2001),
+            BigQueryColumn("COL_FIXED_STR_1000_U", BIGQUERY_TYPE_STRING, char_length=1000),
+            BigQueryColumn("COL_FIXED_STR_1001_U", BIGQUERY_TYPE_STRING, char_length=1001),
             BigQueryColumn("COL_LARGE_STR", BIGQUERY_TYPE_STRING),
             BigQueryColumn("COL_VARIABLE_STR", BIGQUERY_TYPE_STRING),
-            BigQueryColumn(
-                "COL_VARIABLE_STR_4000", BIGQUERY_TYPE_STRING, char_length=4000
-            ),
-            BigQueryColumn(
-                "COL_VARIABLE_STR_4000_C", BIGQUERY_TYPE_STRING, char_length=4000
-            ),
-            BigQueryColumn(
-                "COL_VARIABLE_STR_4001", BIGQUERY_TYPE_STRING, char_length=4001
-            ),
-            BigQueryColumn(
-                "COL_VARIABLE_STR_4001_C", BIGQUERY_TYPE_STRING, char_length=4001
-            ),
-            BigQueryColumn(
-                "COL_VARIABLE_STR_2000_U", BIGQUERY_TYPE_STRING, char_length=2000
-            ),
-            BigQueryColumn(
-                "COL_VARIABLE_STR_2001_U", BIGQUERY_TYPE_STRING, char_length=2001
-            ),
+            BigQueryColumn("COL_VARIABLE_STR_4000", BIGQUERY_TYPE_STRING, char_length=4000),
+            BigQueryColumn("COL_VARIABLE_STR_4000_C", BIGQUERY_TYPE_STRING, char_length=4000),
+            BigQueryColumn("COL_VARIABLE_STR_4001", BIGQUERY_TYPE_STRING, char_length=4001),
+            BigQueryColumn("COL_VARIABLE_STR_4001_C", BIGQUERY_TYPE_STRING, char_length=4001),
+            BigQueryColumn("COL_VARIABLE_STR_2000_U", BIGQUERY_TYPE_STRING, char_length=2000),
+            BigQueryColumn("COL_VARIABLE_STR_2001_U", BIGQUERY_TYPE_STRING, char_length=2001),
             BigQueryColumn("COL_BINARY", BIGQUERY_TYPE_BYTES),
             BigQueryColumn("COL_BINARY_2000", BIGQUERY_TYPE_BYTES, data_length=2000),
             BigQueryColumn("COL_BINARY_2001", BIGQUERY_TYPE_BYTES, data_length=2001),
@@ -1908,13 +1728,9 @@ class TestBackendBigQueryDataTypeMappings(TestDataTypeMappings):
             BigQueryColumn("COL_INT_2", BIGQUERY_TYPE_INT64),
             BigQueryColumn("COL_INT_4", BIGQUERY_TYPE_INT64),
             BigQueryColumn("COL_INT_8", BIGQUERY_TYPE_INT64),
-            BigQueryColumn(
-                "COL_INT_38", BIGQUERY_TYPE_BIGNUMERIC, data_precision=38, data_scale=0
-            ),
+            BigQueryColumn("COL_INT_38", BIGQUERY_TYPE_BIGNUMERIC, data_precision=38, data_scale=0),
             BigQueryColumn("COL_DEC_NO_P_S", BIGQUERY_TYPE_BIGNUMERIC),
-            BigQueryColumn(
-                "COL_DEC_10_2", BIGQUERY_TYPE_NUMERIC, data_precision=10, data_scale=2
-            ),
+            BigQueryColumn("COL_DEC_10_2", BIGQUERY_TYPE_NUMERIC, data_precision=10, data_scale=2),
             BigQueryColumn(
                 "COL_DEC_10_2_UNSAFE",
                 BIGQUERY_TYPE_BIGNUMERIC,
@@ -1931,9 +1747,7 @@ class TestBackendBigQueryDataTypeMappings(TestDataTypeMappings):
             BigQueryColumn("COL_INTERVAL_YM", BIGQUERY_TYPE_STRING),
             BigQueryColumn("COL_BOOLEAN", BIGQUERY_TYPE_BOOLEAN),
         ]
-        self.validate_source_vs_expected_columns(
-            self.canonical_columns(), expected_columns
-        )
+        self.validate_source_vs_expected_columns(self.canonical_columns(), expected_columns)
 
         for source_column in self.canonical_columns():
             expected_column = match_table_column(source_column.name, expected_columns)
@@ -1946,9 +1760,7 @@ class TestAvroDataTypeMappings(TestDataTypeMappings):
     def _run_avro_column_tests(self, target, staging_file):
         # Expected outcomes of self.canonical_columns() when converted to staging types
         expected_columns = self.get_expected_staging_columns(target)
-        self.validate_source_vs_expected_columns(
-            self.canonical_columns(), expected_columns
-        )
+        self.validate_source_vs_expected_columns(self.canonical_columns(), expected_columns)
 
         for source_column in self.canonical_columns():
             expected_column = match_table_column(source_column.name, expected_columns)
@@ -2093,9 +1905,7 @@ class TestParquetDataTypeMappings(TestDataTypeMappings):
     def _run_parquet_column_tests(self, target, staging_file):
         # Expected outcomes of self.canonical_columns() when converted to staging types
         expected_columns = self.get_expected_staging_columns(target)
-        self.validate_source_vs_expected_columns(
-            self.canonical_columns(), expected_columns
-        )
+        self.validate_source_vs_expected_columns(self.canonical_columns(), expected_columns)
 
         for source_column in self.canonical_columns():
             expected_column = match_table_column(source_column.name, expected_columns)
@@ -2242,24 +2052,12 @@ class TestBackendSnowflakeDataTypeMappings(TestDataTypeMappings):
             SnowflakeColumn("COL_BINARY_2001", SNOWFLAKE_TYPE_BINARY, data_length=2001),
             SnowflakeColumn("COL_BOOLEAN", SNOWFLAKE_TYPE_BOOLEAN),
             SnowflakeColumn("COL_VARIABLE_STR", SNOWFLAKE_TYPE_TEXT),
-            SnowflakeColumn(
-                "COL_INT_1", SNOWFLAKE_TYPE_NUMBER, data_precision=2, data_scale=0
-            ),
-            SnowflakeColumn(
-                "COL_INT_2", SNOWFLAKE_TYPE_NUMBER, data_precision=4, data_scale=0
-            ),
-            SnowflakeColumn(
-                "COL_INT_4", SNOWFLAKE_TYPE_NUMBER, data_precision=9, data_scale=0
-            ),
-            SnowflakeColumn(
-                "COL_INT_8", SNOWFLAKE_TYPE_NUMBER, data_precision=18, data_scale=0
-            ),
-            SnowflakeColumn(
-                "COL_INT_38", SNOWFLAKE_TYPE_NUMBER, data_precision=38, data_scale=0
-            ),
-            SnowflakeColumn(
-                "COL_DEC_20_10", SNOWFLAKE_TYPE_NUMBER, data_precision=20, data_scale=10
-            ),
+            SnowflakeColumn("COL_INT_1", SNOWFLAKE_TYPE_NUMBER, data_precision=2, data_scale=0),
+            SnowflakeColumn("COL_INT_2", SNOWFLAKE_TYPE_NUMBER, data_precision=4, data_scale=0),
+            SnowflakeColumn("COL_INT_4", SNOWFLAKE_TYPE_NUMBER, data_precision=9, data_scale=0),
+            SnowflakeColumn("COL_INT_8", SNOWFLAKE_TYPE_NUMBER, data_precision=18, data_scale=0),
+            SnowflakeColumn("COL_INT_38", SNOWFLAKE_TYPE_NUMBER, data_precision=38, data_scale=0),
+            SnowflakeColumn("COL_DEC_20_10", SNOWFLAKE_TYPE_NUMBER, data_precision=20, data_scale=10),
             SnowflakeColumn("COL_DOUBLE", SNOWFLAKE_TYPE_FLOAT),
             SnowflakeColumn("COL_DATE", SNOWFLAKE_TYPE_DATE),
             SnowflakeColumn("COL_TIME", SNOWFLAKE_TYPE_TIME),
@@ -2276,9 +2074,7 @@ class TestBackendSnowflakeDataTypeMappings(TestDataTypeMappings):
             # Not testing the output but at least testing no exceptions
             self.assertIsNotNone(source_column.format_data_type())
             # Check string "None" is not in the formatted type
-            self.assertNotIn(
-                "None", source_column.format_data_type(), source_column.name
-            )
+            self.assertNotIn("None", source_column.format_data_type(), source_column.name)
 
     ###########################################################
     # Snowflake -> Canonical
@@ -2305,9 +2101,7 @@ class TestBackendSnowflakeDataTypeMappings(TestDataTypeMappings):
             CanonicalColumn("COL_INT_4", GOE_TYPE_INTEGER_4),
             CanonicalColumn("COL_INT_8", GOE_TYPE_INTEGER_8),
             CanonicalColumn("COL_INT_38", GOE_TYPE_INTEGER_38),
-            CanonicalColumn(
-                "COL_DEC_20_10", GOE_TYPE_DECIMAL, data_precision=20, data_scale=10
-            ),
+            CanonicalColumn("COL_DEC_20_10", GOE_TYPE_DECIMAL, data_precision=20, data_scale=10),
             CanonicalColumn("COL_DOUBLE", GOE_TYPE_DOUBLE),
             CanonicalColumn("COL_DATE", GOE_TYPE_DATE),
             CanonicalColumn("COL_TIME", GOE_TYPE_TIME),
@@ -2333,44 +2127,20 @@ class TestBackendSnowflakeDataTypeMappings(TestDataTypeMappings):
         # Expected outcomes of source_columns when converted to Snowflake
         expected_columns = [
             SnowflakeColumn("COL_FIXED_STR", SNOWFLAKE_TYPE_TEXT),
-            SnowflakeColumn(
-                "COL_FIXED_STR_2000", SNOWFLAKE_TYPE_TEXT, char_length=2000
-            ),
-            SnowflakeColumn(
-                "COL_FIXED_STR_2000_C", SNOWFLAKE_TYPE_TEXT, char_length=2000
-            ),
-            SnowflakeColumn(
-                "COL_FIXED_STR_2001", SNOWFLAKE_TYPE_TEXT, char_length=2001
-            ),
-            SnowflakeColumn(
-                "COL_FIXED_STR_2001_C", SNOWFLAKE_TYPE_TEXT, char_length=2001
-            ),
-            SnowflakeColumn(
-                "COL_FIXED_STR_1000_U", SNOWFLAKE_TYPE_TEXT, char_length=1000
-            ),
-            SnowflakeColumn(
-                "COL_FIXED_STR_1001_U", SNOWFLAKE_TYPE_TEXT, char_length=1001
-            ),
+            SnowflakeColumn("COL_FIXED_STR_2000", SNOWFLAKE_TYPE_TEXT, char_length=2000),
+            SnowflakeColumn("COL_FIXED_STR_2000_C", SNOWFLAKE_TYPE_TEXT, char_length=2000),
+            SnowflakeColumn("COL_FIXED_STR_2001", SNOWFLAKE_TYPE_TEXT, char_length=2001),
+            SnowflakeColumn("COL_FIXED_STR_2001_C", SNOWFLAKE_TYPE_TEXT, char_length=2001),
+            SnowflakeColumn("COL_FIXED_STR_1000_U", SNOWFLAKE_TYPE_TEXT, char_length=1000),
+            SnowflakeColumn("COL_FIXED_STR_1001_U", SNOWFLAKE_TYPE_TEXT, char_length=1001),
             SnowflakeColumn("COL_LARGE_STR", SNOWFLAKE_TYPE_TEXT),
             SnowflakeColumn("COL_VARIABLE_STR", SNOWFLAKE_TYPE_TEXT),
-            SnowflakeColumn(
-                "COL_VARIABLE_STR_4000", SNOWFLAKE_TYPE_TEXT, char_length=4000
-            ),
-            SnowflakeColumn(
-                "COL_VARIABLE_STR_4000_C", SNOWFLAKE_TYPE_TEXT, char_length=4000
-            ),
-            SnowflakeColumn(
-                "COL_VARIABLE_STR_4001", SNOWFLAKE_TYPE_TEXT, char_length=4001
-            ),
-            SnowflakeColumn(
-                "COL_VARIABLE_STR_4001_C", SNOWFLAKE_TYPE_TEXT, char_length=4001
-            ),
-            SnowflakeColumn(
-                "COL_VARIABLE_STR_2000_U", SNOWFLAKE_TYPE_TEXT, char_length=2000
-            ),
-            SnowflakeColumn(
-                "COL_VARIABLE_STR_2001_U", SNOWFLAKE_TYPE_TEXT, char_length=2001
-            ),
+            SnowflakeColumn("COL_VARIABLE_STR_4000", SNOWFLAKE_TYPE_TEXT, char_length=4000),
+            SnowflakeColumn("COL_VARIABLE_STR_4000_C", SNOWFLAKE_TYPE_TEXT, char_length=4000),
+            SnowflakeColumn("COL_VARIABLE_STR_4001", SNOWFLAKE_TYPE_TEXT, char_length=4001),
+            SnowflakeColumn("COL_VARIABLE_STR_4001_C", SNOWFLAKE_TYPE_TEXT, char_length=4001),
+            SnowflakeColumn("COL_VARIABLE_STR_2000_U", SNOWFLAKE_TYPE_TEXT, char_length=2000),
+            SnowflakeColumn("COL_VARIABLE_STR_2001_U", SNOWFLAKE_TYPE_TEXT, char_length=2001),
             SnowflakeColumn("COL_BINARY", SNOWFLAKE_TYPE_BINARY),
             SnowflakeColumn("COL_BINARY_2000", SNOWFLAKE_TYPE_BINARY, data_length=2000),
             SnowflakeColumn("COL_BINARY_2001", SNOWFLAKE_TYPE_BINARY, data_length=2001),
@@ -2393,9 +2163,7 @@ class TestBackendSnowflakeDataTypeMappings(TestDataTypeMappings):
             SnowflakeColumn("COL_INTERVAL_YM", SNOWFLAKE_TYPE_TEXT),
             SnowflakeColumn("COL_BOOLEAN", SNOWFLAKE_TYPE_BOOLEAN),
         ]
-        self.validate_source_vs_expected_columns(
-            self.canonical_columns(), expected_columns
-        )
+        self.validate_source_vs_expected_columns(self.canonical_columns(), expected_columns)
 
         for source_column in self.canonical_columns():
             expected_column = match_table_column(source_column.name, expected_columns)
@@ -2434,40 +2202,20 @@ class TestBackendSynapseDataTypeMappings(TestDataTypeMappings):
             SynapseColumn("COL_DATETIME", SYNAPSE_TYPE_DATETIME),
             SynapseColumn("COL_DATETIME2", SYNAPSE_TYPE_DATETIME2),
             SynapseColumn("COL_DATETIMEOFFSET", SYNAPSE_TYPE_DATETIMEOFFSET),
-            SynapseColumn(
-                "COL_INT_1", SYNAPSE_TYPE_NUMERIC, data_precision=2, data_scale=0
-            ),
-            SynapseColumn(
-                "COL_INT_2", SYNAPSE_TYPE_NUMERIC, data_precision=4, data_scale=0
-            ),
-            SynapseColumn(
-                "COL_INT_4", SYNAPSE_TYPE_NUMERIC, data_precision=9, data_scale=0
-            ),
-            SynapseColumn(
-                "COL_INT_8", SYNAPSE_TYPE_NUMERIC, data_precision=18, data_scale=0
-            ),
-            SynapseColumn(
-                "COL_INT_38", SYNAPSE_TYPE_NUMERIC, data_precision=38, data_scale=0
-            ),
-            SynapseColumn(
-                "COL_DEC_20_10", SYNAPSE_TYPE_NUMERIC, data_precision=20, data_scale=10
-            ),
+            SynapseColumn("COL_INT_1", SYNAPSE_TYPE_NUMERIC, data_precision=2, data_scale=0),
+            SynapseColumn("COL_INT_2", SYNAPSE_TYPE_NUMERIC, data_precision=4, data_scale=0),
+            SynapseColumn("COL_INT_4", SYNAPSE_TYPE_NUMERIC, data_precision=9, data_scale=0),
+            SynapseColumn("COL_INT_8", SYNAPSE_TYPE_NUMERIC, data_precision=18, data_scale=0),
+            SynapseColumn("COL_INT_38", SYNAPSE_TYPE_NUMERIC, data_precision=38, data_scale=0),
+            SynapseColumn("COL_DEC_20_10", SYNAPSE_TYPE_NUMERIC, data_precision=20, data_scale=10),
             SynapseColumn("COL_FLOAT32", SYNAPSE_TYPE_REAL),
             SynapseColumn("COL_FLOAT64", SYNAPSE_TYPE_FLOAT),
             SynapseColumn("COL_INT", SYNAPSE_TYPE_INT),
             SynapseColumn("COL_MONEY", SYNAPSE_TYPE_MONEY),
-            SynapseColumn(
-                "COL_NCHAR", SYNAPSE_TYPE_NCHAR, char_length=3, data_length=6
-            ),
-            SynapseColumn(
-                "COL_NCHAR_1001", SYNAPSE_TYPE_NCHAR, char_length=1001, data_length=2002
-            ),
-            SynapseColumn(
-                "COL_NCHAR_2001", SYNAPSE_TYPE_NCHAR, char_length=2001, data_length=4002
-            ),
-            SynapseColumn(
-                "COL_NVARCHAR", SYNAPSE_TYPE_NVARCHAR, char_length=30, data_length=60
-            ),
+            SynapseColumn("COL_NCHAR", SYNAPSE_TYPE_NCHAR, char_length=3, data_length=6),
+            SynapseColumn("COL_NCHAR_1001", SYNAPSE_TYPE_NCHAR, char_length=1001, data_length=2002),
+            SynapseColumn("COL_NCHAR_2001", SYNAPSE_TYPE_NCHAR, char_length=2001, data_length=4002),
+            SynapseColumn("COL_NVARCHAR", SYNAPSE_TYPE_NVARCHAR, char_length=30, data_length=60),
             SynapseColumn(
                 "COL_NVARCHAR_2001",
                 SYNAPSE_TYPE_NVARCHAR,
@@ -2487,9 +2235,7 @@ class TestBackendSynapseDataTypeMappings(TestDataTypeMappings):
             SynapseColumn("COL_TINYINT", SYNAPSE_TYPE_TINYINT),
             SynapseColumn("COL_UNIQUEIDENTIFIER", SYNAPSE_TYPE_UNIQUEIDENTIFIER),
             SynapseColumn("COL_VARBINARY", SYNAPSE_TYPE_VARBINARY, data_length=30),
-            SynapseColumn(
-                "COL_VARBINARY_2001", SYNAPSE_TYPE_VARBINARY, data_length=2001
-            ),
+            SynapseColumn("COL_VARBINARY_2001", SYNAPSE_TYPE_VARBINARY, data_length=2001),
             SynapseColumn("COL_VARCHAR", SYNAPSE_TYPE_VARCHAR, data_length=30),
             SynapseColumn("COL_VARCHAR_2001", SYNAPSE_TYPE_VARCHAR, data_length=2001),
             SynapseColumn("COL_VARCHAR_4001", SYNAPSE_TYPE_VARCHAR, data_length=4001),
@@ -2504,9 +2250,7 @@ class TestBackendSynapseDataTypeMappings(TestDataTypeMappings):
             # Not testing the output but at least testing no exceptions
             self.assertIsNotNone(source_column.format_data_type())
             # Check string "None" is not in the formatted type
-            self.assertNotIn(
-                "None", source_column.format_data_type(), source_column.name
-            )
+            self.assertNotIn("None", source_column.format_data_type(), source_column.name)
 
     ###########################################################
     # Synapse -> Canonical
@@ -2548,15 +2292,11 @@ class TestBackendSynapseDataTypeMappings(TestDataTypeMappings):
             CanonicalColumn("COL_INT_4", GOE_TYPE_INTEGER_4),
             CanonicalColumn("COL_INT_8", GOE_TYPE_INTEGER_8),
             CanonicalColumn("COL_INT_38", GOE_TYPE_INTEGER_38),
-            CanonicalColumn(
-                "COL_DEC_20_10", GOE_TYPE_DECIMAL, data_precision=20, data_scale=10
-            ),
+            CanonicalColumn("COL_DEC_20_10", GOE_TYPE_DECIMAL, data_precision=20, data_scale=10),
             CanonicalColumn("COL_FLOAT32", GOE_TYPE_FLOAT),
             CanonicalColumn("COL_FLOAT64", GOE_TYPE_DOUBLE),
             CanonicalColumn("COL_INT", GOE_TYPE_INTEGER_4),
-            CanonicalColumn(
-                "COL_MONEY", GOE_TYPE_DECIMAL, data_precision=19, data_scale=4
-            ),
+            CanonicalColumn("COL_MONEY", GOE_TYPE_DECIMAL, data_precision=19, data_scale=4),
             CanonicalColumn(
                 "COL_NCHAR",
                 GOE_TYPE_FIXED_STRING,
@@ -2595,9 +2335,7 @@ class TestBackendSynapseDataTypeMappings(TestDataTypeMappings):
             ),
             CanonicalColumn("COL_SMALLDATETIME", GOE_TYPE_TIMESTAMP),
             CanonicalColumn("COL_SMALLINT", GOE_TYPE_INTEGER_2),
-            CanonicalColumn(
-                "COL_SMALLMONEY", GOE_TYPE_DECIMAL, data_precision=10, data_scale=4
-            ),
+            CanonicalColumn("COL_SMALLMONEY", GOE_TYPE_DECIMAL, data_precision=10, data_scale=4),
             CanonicalColumn("COL_TIME", GOE_TYPE_TIME),
             CanonicalColumn("COL_TINYINT", GOE_TYPE_INTEGER_1),
             CanonicalColumn("COL_UNIQUEIDENTIFIER", GOE_TYPE_FIXED_STRING),
@@ -2649,24 +2387,12 @@ class TestBackendSynapseDataTypeMappings(TestDataTypeMappings):
             SynapseColumn("COL_FIXED_STR_1001_U", SYNAPSE_TYPE_NCHAR, char_length=1001),
             SynapseColumn("COL_LARGE_STR", SYNAPSE_TYPE_VARCHAR),
             SynapseColumn("COL_VARIABLE_STR", SYNAPSE_TYPE_VARCHAR),
-            SynapseColumn(
-                "COL_VARIABLE_STR_4000", SYNAPSE_TYPE_VARCHAR, data_length=4000
-            ),
-            SynapseColumn(
-                "COL_VARIABLE_STR_4000_C", SYNAPSE_TYPE_VARCHAR, char_length=4000
-            ),
-            SynapseColumn(
-                "COL_VARIABLE_STR_4001", SYNAPSE_TYPE_VARCHAR, data_length=4001
-            ),
-            SynapseColumn(
-                "COL_VARIABLE_STR_4001_C", SYNAPSE_TYPE_VARCHAR, char_length=4001
-            ),
-            SynapseColumn(
-                "COL_VARIABLE_STR_2000_U", SYNAPSE_TYPE_NVARCHAR, char_length=2000
-            ),
-            SynapseColumn(
-                "COL_VARIABLE_STR_2001_U", SYNAPSE_TYPE_NVARCHAR, char_length=2001
-            ),
+            SynapseColumn("COL_VARIABLE_STR_4000", SYNAPSE_TYPE_VARCHAR, data_length=4000),
+            SynapseColumn("COL_VARIABLE_STR_4000_C", SYNAPSE_TYPE_VARCHAR, char_length=4000),
+            SynapseColumn("COL_VARIABLE_STR_4001", SYNAPSE_TYPE_VARCHAR, data_length=4001),
+            SynapseColumn("COL_VARIABLE_STR_4001_C", SYNAPSE_TYPE_VARCHAR, char_length=4001),
+            SynapseColumn("COL_VARIABLE_STR_2000_U", SYNAPSE_TYPE_NVARCHAR, char_length=2000),
+            SynapseColumn("COL_VARIABLE_STR_2001_U", SYNAPSE_TYPE_NVARCHAR, char_length=2001),
             SynapseColumn("COL_BINARY", SYNAPSE_TYPE_VARBINARY),
             SynapseColumn("COL_BINARY_2000", SYNAPSE_TYPE_VARBINARY, data_length=2000),
             SynapseColumn("COL_BINARY_2001", SYNAPSE_TYPE_VARBINARY, data_length=2001),
@@ -2677,9 +2403,7 @@ class TestBackendSynapseDataTypeMappings(TestDataTypeMappings):
             SynapseColumn("COL_INT_8", SYNAPSE_TYPE_BIGINT),
             SynapseColumn("COL_INT_38", SYNAPSE_TYPE_NUMERIC),
             SynapseColumn("COL_DEC_NO_P_S", SYNAPSE_TYPE_NUMERIC),
-            SynapseColumn(
-                "COL_DEC_10_2", SYNAPSE_TYPE_NUMERIC, data_precision=10, data_scale=2
-            ),
+            SynapseColumn("COL_DEC_10_2", SYNAPSE_TYPE_NUMERIC, data_precision=10, data_scale=2),
             SynapseColumn(
                 "COL_DEC_10_2_UNSAFE",
                 SYNAPSE_TYPE_NUMERIC,
@@ -2696,9 +2420,7 @@ class TestBackendSynapseDataTypeMappings(TestDataTypeMappings):
             SynapseColumn("COL_INTERVAL_YM", SYNAPSE_TYPE_VARCHAR),
             SynapseColumn("COL_BOOLEAN", SYNAPSE_TYPE_BIT),
         ]
-        self.validate_source_vs_expected_columns(
-            self.canonical_columns(), expected_columns
-        )
+        self.validate_source_vs_expected_columns(self.canonical_columns(), expected_columns)
 
         for source_column in self.canonical_columns():
             expected_column = match_table_column(source_column.name, expected_columns)

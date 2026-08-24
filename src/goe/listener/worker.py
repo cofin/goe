@@ -18,16 +18,16 @@ import logging
 import multiprocessing
 import signal
 import threading
-from multiprocessing.util import _exit_function  # noqa: WPS433 WPS450
+from multiprocessing.util import _exit_function
 
 # Third Party Libraries
 from anyio import create_task_group, open_signal_receiver
 from anyio.abc import CancelScope
+from goelib_contrib.asyncer import runnify
 
 # GOE
 from goe.listener.config.logging import Logger
 from goe.listener.core.worker import background_worker
-from goelib_contrib.asyncer import runnify
 
 logger = logging.getLogger()
 # the following is used to prevent this error when running using mutliprocessing
@@ -52,9 +52,7 @@ async def _signal_handler(scope: CancelScope):
     with open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
         async for signum in signals:
             if signum == signal.SIGINT:
-                logger.debug(
-                    "...signal interrupt detected.  shutting down worker process."
-                )
+                logger.debug("...signal interrupt detected.  shutting down worker process.")
             else:
                 logger.debug("...shutting down worker process")
             scope.cancel()

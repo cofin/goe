@@ -12,53 +12,53 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from copy import copy
 import json
 import os
 import re
 import sys
 import traceback
+from copy import copy
 from datetime import datetime
-from numpy import datetime64
-from optparse import OptionGroup, SUPPRESS_HELP
+from optparse import SUPPRESS_HELP, OptionGroup
 
 from jinja2 import Environment, FileSystemLoader
+from numpy import datetime64
 
-from goe.goe import (
-    init_log,
-    version,
-    get_log_fh_name,
-    log_command_line,
-    log_timestamp,
-    init,
-    log,
-    get_log_fh,
-    get_common_options,
-    get_rdbms_db_name,
-)
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.exceptions import OffloadOptionError
+from goe.goe import (
+    get_common_options,
+    get_log_fh,
+    get_log_fh_name,
+    get_rdbms_db_name,
+    init,
+    init_log,
+    log,
+    log_command_line,
+    log_timestamp,
+    version,
+)
 from goe.offload import offload_constants
 from goe.offload.backend_api import (
     REPORT_ATTR_BACKEND_DISPLAY_NAME,
-    REPORT_ATTR_BACKEND_HOST_INFO_TYPE,
     REPORT_ATTR_BACKEND_HOST_INFO,
+    REPORT_ATTR_BACKEND_HOST_INFO_TYPE,
 )
 from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.factory.frontend_api_factory import frontend_api_factory
+from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_functions import STARTS_WITH_DATE_PATTERN_RE
 from goe.offload.offload_messages import (
-    OffloadMessages,
+    SUPPRESS_STDOUT,
     VERBOSE,
     VVERBOSE,
-    SUPPRESS_STDOUT,
+    OffloadMessages,
 )
 from goe.offload.offload_metadata_functions import (
-    decode_metadata_incremental_high_values,
     INCREMENTAL_PREDICATE_TYPE_LIST,
+    decode_metadata_incremental_high_values,
 )
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.oracle.oracle_offload_source_table import (
     oracle_datetime_literal_to_python,
 )
@@ -67,10 +67,9 @@ from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
 from goe.persistence.orchestration_metadata import OrchestrationMetadata
+from goe.util.goe_log import log_exception
 from goe.util.misc_functions import backtick_sandwich, format_json_list, plural
 from goe.util.ora_query import OracleQuery, OracleQueryException, get_oracle_connection
-from goe.util.goe_log import log_exception
-
 
 # Default output formats...
 HTML = "html"
@@ -172,7 +171,7 @@ class OffloadStatusReportException(Exception):
     pass
 
 
-class OffloadStatusReport(object):
+class OffloadStatusReport:
     """Class for generating the Offload Status Report data and optional report."""
 
     def __init__(self, orchestration_config, messages, ora_adm_conn=None):
@@ -191,8 +190,7 @@ class OffloadStatusReport(object):
             detail=SUPPRESS_STDOUT,
         )
         self._messages.debug(
-            "%-50s : %s"
-            % ("ora_adm_conn", "initialized" if ora_adm_conn else "not initialized"),
+            "%-50s : %s" % ("ora_adm_conn", "initialized" if ora_adm_conn else "not initialized"),
             detail=SUPPRESS_STDOUT,
         )
 
@@ -210,9 +208,7 @@ class OffloadStatusReport(object):
             detail=SUPPRESS_STDOUT,
         )
         for k, v in self._backend_info.items():
-            self._messages.debug(
-                "%-50s : %s" % ("_backend_info.%s" % k, v), detail=SUPPRESS_STDOUT
-            )
+            self._messages.debug("%-50s : %s" % ("_backend_info.%s" % k, v), detail=SUPPRESS_STDOUT)
 
         # RDBMS initialisation...
         if ora_adm_conn:
@@ -229,9 +225,7 @@ class OffloadStatusReport(object):
         self._ora_service = OracleQuery.fromconnection(self._ora_conn)
         self._ora_adm_user = self._orchestration_config.ora_adm_user
         self._ora_adm_pass = self._orchestration_config.ora_adm_pass
-        self._ora_db_name = get_rdbms_db_name(
-            self._orchestration_config, ora_conn=self._ora_conn
-        )
+        self._ora_db_name = get_rdbms_db_name(self._orchestration_config, ora_conn=self._ora_conn)
         self._oracle_dsn = self._orchestration_config.oracle_dsn
         self._db_type = offload_constants.DBTYPE_ORACLE
         self._use_oracle_wallet = self._orchestration_config.use_oracle_wallet
@@ -239,8 +233,7 @@ class OffloadStatusReport(object):
         self._set_module("Offload Status Report")
 
         self._messages.debug(
-            "%-50s : %s"
-            % ("_ora_conn", "initialized" if self._ora_conn else "not initialized"),
+            "%-50s : %s" % ("_ora_conn", "initialized" if self._ora_conn else "not initialized"),
             detail=SUPPRESS_STDOUT,
         )
         self._messages.debug(
@@ -251,9 +244,7 @@ class OffloadStatusReport(object):
             ),
             detail=SUPPRESS_STDOUT,
         )
-        self._messages.debug(
-            "%-50s : %s" % ("ora_db_name", self._ora_db_name), detail=SUPPRESS_STDOUT
-        )
+        self._messages.debug("%-50s : %s" % ("ora_db_name", self._ora_db_name), detail=SUPPRESS_STDOUT)
 
         self._repo_client = orchestration_repo_client_factory(
             self._orchestration_config, self._messages, dry_run=(not self._execute)
@@ -264,15 +255,9 @@ class OffloadStatusReport(object):
         self._start_ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self._start_time = datetime.now().strftime("%d %B %Y %H:%M:%S")
 
-        self._messages.debug(
-            "%-50s : %s" % ("_execute", self._execute), detail=SUPPRESS_STDOUT
-        )
-        self._messages.debug(
-            "%-50s : %s" % ("_start_ts", self._start_ts), detail=SUPPRESS_STDOUT
-        )
-        self._messages.debug(
-            "%-50s : %s" % ("_start_time", self._start_time), detail=SUPPRESS_STDOUT
-        )
+        self._messages.debug("%-50s : %s" % ("_execute", self._execute), detail=SUPPRESS_STDOUT)
+        self._messages.debug("%-50s : %s" % ("_start_ts", self._start_ts), detail=SUPPRESS_STDOUT)
+        self._messages.debug("%-50s : %s" % ("_start_time", self._start_time), detail=SUPPRESS_STDOUT)
 
         self._messages.debug("OffloadStatusReport object initialized")
 
@@ -283,12 +268,12 @@ class OffloadStatusReport(object):
 
     def _set_module(self, module):
         """Set V$SESSION.MODULE."""
-        self._ora_conn.module = "{0:.64}".format(module)
+        self._ora_conn.module = f"{module:.64}"
         self._messages.debug("Set module to %s" % module, SUPPRESS_STDOUT)
 
     def _set_action(self, action):
         """Set V$SESSION.ACTION."""
-        self._ora_conn.action = "{0:.64}".format(action)
+        self._ora_conn.action = f"{action:.64}"
         self._messages.debug("Set action to %s" % action, SUPPRESS_STDOUT)
 
     def _set_client_info(self, client_info):
@@ -309,7 +294,7 @@ class OffloadStatusReport(object):
                 binds={"name": sql_name},
             )
             return True
-        except OracleQueryException as exc:
+        except OracleQueryException:
             return False
 
     def _initialise_metadata_dict(self):
@@ -330,9 +315,7 @@ class OffloadStatusReport(object):
             "db_connection": self._oracle_dsn,
             "run_date": self._start_time,
             "backend_db_type": self._backend_info[REPORT_ATTR_BACKEND_DISPLAY_NAME],
-            "backend_host_label": self._backend_info[
-                REPORT_ATTR_BACKEND_HOST_INFO_TYPE
-            ],
+            "backend_host_label": self._backend_info[REPORT_ATTR_BACKEND_HOST_INFO_TYPE],
             "backend_host_value": self._backend_info[REPORT_ATTR_BACKEND_HOST_INFO],
         }
 
@@ -381,7 +364,7 @@ class OffloadStatusReport(object):
 
         self._messages.log("Get offloaded tables for report", detail=VERBOSE)
 
-        sql = """SELECT o.offloaded_owner AS source_owner
+        sql = f"""SELECT o.offloaded_owner AS source_owner
 ,      o.offloaded_table AS source_table
 ,      o.offload_type
 ,      o.hadoop_owner    AS offload_owner
@@ -402,7 +385,7 @@ class OffloadStatusReport(object):
 ,      o.offload_sort_columns
 ,      o.offload_partition_functions
 ,      t.iot_type AS source_iot_type
-FROM  {goe_adm_schema}.offload_objects o
+FROM  {self._ora_adm_user}.offload_objects o
        LEFT OUTER JOIN
        dba_all_tables                  t
        ON (    t.owner      = o.offloaded_owner
@@ -413,25 +396,17 @@ AND    o.hybrid_view_type = 'GOE_OFFLOAD_HYBRID_VIEW'
 AND    o.offloaded_table  = o.hybrid_view
 ORDER  BY
        o.offloaded_owner
-,      o.offloaded_table""".format(
-            goe_adm_schema=self._ora_adm_user
-        )
+,      o.offloaded_table"""
 
         binds = {"offloaded_owner": self._schema, "offloaded_table": self._table}
 
         self._messages.debug("SQL: %s" % sql, detail=SUPPRESS_STDOUT)
         self._messages.debug("Binds: %s" % binds, detail=SUPPRESS_STDOUT)
 
-        results = self._ora_service.execute(
-            sql, binds=binds, cursor_fn=lambda c: c.fetchall(), as_dict=True
-        )
+        results = self._ora_service.execute(sql, binds=binds, cursor_fn=lambda c: c.fetchall(), as_dict=True)
 
-        self._messages.debug(
-            "Fetched %s offloaded %s" % (len(results), plural("table", len(results)))
-        )
-        self._messages.debug(
-            "Offloaded table data: %s" % results, detail=SUPPRESS_STDOUT
-        )
+        self._messages.debug("Fetched %s offloaded %s" % (len(results), plural("table", len(results))))
+        self._messages.debug("Offloaded table data: %s" % results, detail=SUPPRESS_STDOUT)
 
         return results
 
@@ -467,9 +442,7 @@ ORDER  BY
 
         self._messages.detail(
             "Get RDBMS space data for offloaded table: %s"
-            % self._format_table_name(
-                offloaded_table[SOURCE_OWNER], offloaded_table[SOURCE_TABLE]
-            )
+            % self._format_table_name(offloaded_table[SOURCE_OWNER], offloaded_table[SOURCE_TABLE])
         )
 
         # Initialise return data...
@@ -716,9 +689,7 @@ ORDER  BY
         self._messages.debug("SQL: %s" % sql, detail=SUPPRESS_STDOUT)
         self._messages.debug("Binds: %s" % binds, detail=SUPPRESS_STDOUT)
 
-        rows = self._ora_service.execute(
-            sql, binds=binds, cursor_fn=lambda c: c.fetchall(), as_dict=True
-        )
+        rows = self._ora_service.execute(sql, binds=binds, cursor_fn=lambda c: c.fetchall(), as_dict=True)
 
         self._messages.debug("Fetched %s %s" % (len(rows), plural("row", len(rows))))
 
@@ -751,10 +722,7 @@ ORDER  BY
             offload_metadata = self._repo_metadata_from_osr_metadata(offloaded_table)
             offload_type = offloaded_table[OFFLOAD_TYPE]
             incremental_predicate_type = offloaded_table[INCREMENTAL_PREDICATE_TYPE]
-            if (
-                offloaded_table[INCREMENTAL_KEY]
-                and offloaded_table[INCREMENTAL_HIGH_VALUE]
-            ):
+            if offloaded_table[INCREMENTAL_KEY] and offloaded_table[INCREMENTAL_HIGH_VALUE]:
                 table_high_value = self._decode_metadata_incremental_high_values(
                     offload_metadata.incremental_predicate_type,
                     offload_metadata.incremental_key,
@@ -793,9 +761,7 @@ ORDER  BY
                     rdbms_data[RETAINED_BYTES] += row["BYTES"]
                     rdbms_data[RETAINED_ROWS] += row["NUM_ROWS"]
 
-        self._messages.debug(
-            "RDBMS space data: %s" % rdbms_data, detail=SUPPRESS_STDOUT
-        )
+        self._messages.debug("RDBMS space data: %s" % rdbms_data, detail=SUPPRESS_STDOUT)
 
         return rdbms_data
 
@@ -826,19 +792,13 @@ ORDER  BY
         if self._output_level == DETAIL_LEVEL:
             self._messages.detail(
                 "Get RDBMS objects data for offloaded table: %s"
-                % self._format_table_name(
-                    offloaded_table[SOURCE_OWNER], offloaded_table[SOURCE_TABLE]
-                )
+                % self._format_table_name(offloaded_table[SOURCE_OWNER], offloaded_table[SOURCE_TABLE])
             )
 
-            self._messages.debug(
-                "RDBMS objects data: %s" % rdbms_data, detail=SUPPRESS_STDOUT
-            )
+            self._messages.debug("RDBMS objects data: %s" % rdbms_data, detail=SUPPRESS_STDOUT)
 
         else:
-            self._messages.detail(
-                "RDBMS objects data collection skipped in summary mode"
-            )
+            self._messages.detail("RDBMS objects data collection skipped in summary mode")
 
         return rdbms_data
 
@@ -874,9 +834,7 @@ ORDER  BY
         """
         self._messages.detail(
             "Get offload data for offloaded table: %s"
-            % self._format_table_name(
-                offloaded_table[SOURCE_OWNER], offloaded_table[SOURCE_TABLE]
-            )
+            % self._format_table_name(offloaded_table[SOURCE_OWNER], offloaded_table[SOURCE_TABLE])
         )
 
         # Initialise return data...
@@ -907,9 +865,7 @@ ORDER  BY
             dry_run=bool(not self._execute),
             existing_backend_api=self._backend_api,
         )
-        self._messages.debug(
-            "Fetched details for offload table/view", detail=SUPPRESS_STDOUT
-        )
+        self._messages.debug("Fetched details for offload table/view", detail=SUPPRESS_STDOUT)
 
         if offload_table.exists():
             # This will replace the Oracle-side metadata for backend owner/table with the backend format...
@@ -919,9 +875,7 @@ ORDER  BY
             offload_data[OFFLOADED_TABLES] = 1
             self._messages.debug(
                 "Offload table/view: %s"
-                % self._format_table_name(
-                    offload_data[OFFLOAD_OWNER], offload_data[OFFLOAD_TABLE]
-                )
+                % self._format_table_name(offload_data[OFFLOAD_OWNER], offload_data[OFFLOAD_TABLE])
             )
             offload_parts = offload_table.get_table_partitions()
 
@@ -931,16 +885,10 @@ ORDER  BY
 
             # Since adding BigQuery support, not all offloaded tables will be partitioned...
             if offload_parts:
-                self._messages.debug(
-                    "Offload table has %s partitions" % len(offload_parts)
-                )
-                self._messages.debug(
-                    "Offload partitions: %s" % offload_parts, detail=SUPPRESS_STDOUT
-                )
+                self._messages.debug("Offload table has %s partitions" % len(offload_parts))
+                self._messages.debug("Offload partitions: %s" % offload_parts, detail=SUPPRESS_STDOUT)
                 offload_data[OFFLOADED_PARTS] += len(offload_parts)
-                backend_part_col_names = [
-                    _.name for _ in offload_table.get_partition_columns()
-                ]
+                backend_part_col_names = [_.name for _ in offload_table.get_partition_columns()]
                 offload_data[OFFLOAD_PART_KEY] = ", ".join(backend_part_col_names)
                 self._messages.debug(
                     "Offload partition key: %s" % backend_part_col_names,
@@ -960,9 +908,7 @@ ORDER  BY
                         )
                         backend_api = offload_table.get_backend_api()
                         if backend_api.exists(db, table):
-                            object_type = (
-                                "VIEW" if backend_api.is_view(db, table) else "TABLE"
-                            )
+                            object_type = "VIEW" if backend_api.is_view(db, table) else "TABLE"
                             offload_data[JOIN_OBJECTS_OFFLOAD].append(
                                 {
                                     OBJECT_OWNER: db,
@@ -974,24 +920,18 @@ ORDER  BY
                         else:
                             self._messages.debug(
                                 "Unable to find corresponding offload join object for %s"
-                                % self._format_table_name(
-                                    join_object[OBJECT_OWNER], join_object[OBJECT_NAME]
-                                ),
+                                % self._format_table_name(join_object[OBJECT_OWNER], join_object[OBJECT_NAME]),
                                 detail=SUPPRESS_STDOUT,
                             )
             else:
-                self._messages.debug(
-                    "Skipped Join Objects data collection in summary mode"
-                )
+                self._messages.debug("Skipped Join Objects data collection in summary mode")
 
         else:
             offload_data[OFFLOAD_TABLE_EXISTS] = False
             offload_data[OFFLOADED_TABLES] = 0
             self._messages.debug(
                 "Offload table/view %s does not exist"
-                % self._format_table_name(
-                    offloaded_table[OFFLOAD_OWNER], offloaded_table[OFFLOAD_TABLE]
-                )
+                % self._format_table_name(offloaded_table[OFFLOAD_OWNER], offloaded_table[OFFLOAD_TABLE])
             )
 
         self._messages.debug("Offload data: %s" % offload_data, detail=SUPPRESS_STDOUT)
@@ -1066,36 +1006,27 @@ ORDER  BY
         table_data = []
         offloaded_count = len(offloaded_tables)
         self._messages.log(
-            "Fetching report data for %s offloaded %s"
-            % (offloaded_count, plural("table", offloaded_count)),
+            "Fetching report data for %s offloaded %s" % (offloaded_count, plural("table", offloaded_count)),
             detail=VERBOSE,
         )
 
         # Populate the RDBMS and backend dataset, table-by-table...
         for n, offloaded_table in enumerate(offloaded_tables, 1):
-            qualified_table_name = self._format_table_name(
-                offloaded_table[SOURCE_OWNER], offloaded_table[SOURCE_TABLE]
-            )
+            qualified_table_name = self._format_table_name(offloaded_table[SOURCE_OWNER], offloaded_table[SOURCE_TABLE])
             progress_message = "Fetching %s of %s" % (n, offloaded_count)
             self._set_action(qualified_table_name)
             self._set_client_info(progress_message)
-            self._messages.log(
-                "%s: %s" % (progress_message, qualified_table_name), detail=VVERBOSE
-            )
+            self._messages.log("%s: %s" % (progress_message, qualified_table_name), detail=VVERBOSE)
 
             ost = get_offload_source_table(offloaded_table)
 
             rdbms_objects_data = self._get_rdbms_objects_data(offloaded_table, ost)
             self._messages.debug("Fetched RDBMS objects data")
 
-            offload_data = self._get_offload_data(
-                offloaded_table, rdbms_objects_data[JOIN_OBJECTS_RDBMS]
-            )
+            offload_data = self._get_offload_data(offloaded_table, rdbms_objects_data[JOIN_OBJECTS_RDBMS])
             self._messages.debug("Fetched offload data")
 
-            rdbms_space_data = self._get_rdbms_space_data(
-                offloaded_table, offload_data, ost
-            )
+            rdbms_space_data = self._get_rdbms_space_data(offloaded_table, offload_data, ost)
             self._messages.debug("Fetched RDBMS space data")
 
             # Prepare table data from offloaded table metadata, rdbms_data, offload_data and JSON-converted predicates...
@@ -1104,17 +1035,11 @@ ORDER  BY
             offloaded_table.update(offload_data)
             offloaded_table.pop(SOURCE_IOT_TYPE, None)
             if offloaded_table[INCREMENTAL_PREDICATE_VALUE]:
-                offloaded_table[INCREMENTAL_PREDICATE_VALUE] = json.loads(
-                    offloaded_table[INCREMENTAL_PREDICATE_VALUE]
-                )
+                offloaded_table[INCREMENTAL_PREDICATE_VALUE] = json.loads(offloaded_table[INCREMENTAL_PREDICATE_VALUE])
             table_data.append(offloaded_table)
 
-            self._messages.debug(
-                "RDBMS and offload data merged for %s" % qualified_table_name
-            )
-            self._messages.debug(
-                "Merged data:" % offloaded_table, detail=SUPPRESS_STDOUT
-            )
+            self._messages.debug("RDBMS and offload data merged for %s" % qualified_table_name)
+            self._messages.debug("Merged data:" % offloaded_table, detail=SUPPRESS_STDOUT)
 
         self._messages.debug("Table data:" % table_data, detail=SUPPRESS_STDOUT)
         return table_data
@@ -2701,8 +2626,7 @@ ORDER  BY
         report_data = self._initialise_summary_dict()
         table_count = len(table_data)
         self._messages.log(
-            "Processing report data for %s offloaded %s"
-            % (table_count, plural("table", table_count)),
+            "Processing report data for %s offloaded %s" % (table_count, plural("table", table_count)),
             detail=VERBOSE,
         )
 
@@ -2716,20 +2640,14 @@ ORDER  BY
 
             if schema not in report_data:
                 report_data[schema] = self._initialise_summary_dict()
-                self._messages.debug(
-                    "Initializing new schema %s:" % schema, detail=SUPPRESS_STDOUT
-                )
+                self._messages.debug("Initializing new schema %s:" % schema, detail=SUPPRESS_STDOUT)
 
             if self._output_level == SUMMARY_LEVEL:
-                table_data = self._strip_detail(
-                    table_data
-                )  # remove detail attributes from dict if in summary mode
-            report_data[schema][
-                table
-            ] = table_data  # add table to schema dict (each table includes its own summary total)
-            self._messages.debug(
-                "Added %s to %s:" % (table, schema), detail=SUPPRESS_STDOUT
+                table_data = self._strip_detail(table_data)  # remove detail attributes from dict if in summary mode
+            report_data[schema][table] = (
+                table_data  # add table to schema dict (each table includes its own summary total)
             )
+            self._messages.debug("Added %s to %s:" % (table, schema), detail=SUPPRESS_STDOUT)
             update_summary(
                 report_data[schema], table_data
             )  # add summary total to schema dict (each schema has its own summary total)
@@ -2740,13 +2658,9 @@ ORDER  BY
             update_summary(
                 report_data, table_data
             )  # add summary total to report dict (the entire report, i.e. all schemas/tables, has its own summary total)
-            self._messages.debug(
-                "Added %s summary to report summary:" % table, detail=SUPPRESS_STDOUT
-            )
+            self._messages.debug("Added %s summary to report summary:" % table, detail=SUPPRESS_STDOUT)
 
-            self._messages.debug(
-                "Final processed report data: %s" % report_data, detail=SUPPRESS_STDOUT
-            )
+            self._messages.debug("Final processed report data: %s" % report_data, detail=SUPPRESS_STDOUT)
 
         return report_data
 
@@ -2754,12 +2668,7 @@ ORDER  BY
         if self._report_name == DEFAULT_REPORT_NAME:
             self._report_file = os.path.join(
                 self._report_directory,
-                "{repname}_{dbname}_{ts}.{ext}".format(
-                    repname=self._report_name,
-                    dbname=self._ora_db_name,
-                    ts=self._start_ts,
-                    ext=extension or self._output_format,
-                ),
+                f"{self._report_name}_{self._ora_db_name}_{self._start_ts}.{extension or self._output_format}",
             )
         else:
             _, ext = os.path.splitext(self._report_name)
@@ -2770,9 +2679,7 @@ ORDER  BY
                     ext="" if ext else ".%s" % extension or self._output_format,
                 ),
             )
-        self._messages.debug(
-            "Report file path: %s" % self._report_file, detail=SUPPRESS_STDOUT
-        )
+        self._messages.debug("Report file path: %s" % self._report_file, detail=SUPPRESS_STDOUT)
         return self._report_file
 
     def _strip_summary(self, data):
@@ -2797,32 +2704,20 @@ ORDER  BY
 
         def quote(x):
             if x:
-                value = (
-                    backtick_sandwich(x, self._csv_enclosure)
-                    if isinstance(x, str)
-                    else x
-                )
+                value = backtick_sandwich(x, self._csv_enclosure) if isinstance(x, str) else x
             else:
                 value = ""
             return value
 
         def delim(x, override_delimiter=None):
-            d = (
-                override_delimiter
-                if override_delimiter is not None
-                else self._csv_delimiter
-            )
+            d = override_delimiter if override_delimiter is not None else self._csv_delimiter
             return "%s" % d.join(str(_) if not isinstance(_, str) else _ for _ in x)
 
         if self.is_summary:
             self._messages.debug("Preparing summary level CSV report")
 
             # Prepare the header...
-            line = (
-                [quote("SCHEMA")]
-                + [quote("TABLE")]
-                + [quote(_.strip("_")) for _ in SUMMARY_KEYS]
-            )
+            line = [quote("SCHEMA")] + [quote("TABLE")] + [quote(_.strip("_")) for _ in SUMMARY_KEYS]
             report_data.append(delim(line))
             self._messages.debug("Report header generated", detail=SUPPRESS_STDOUT)
 
@@ -2874,9 +2769,7 @@ ORDER  BY
                     if not header_written:
                         report_data.append(delim(header))
                         header_written = True
-                        self._messages.debug(
-                            "Report header generated", detail=SUPPRESS_STDOUT
-                        )
+                        self._messages.debug("Report header generated", detail=SUPPRESS_STDOUT)
                     report_data.append(delim(line))
 
         self._messages.debug("Saving report to CSV file")
@@ -2913,26 +2806,15 @@ ORDER  BY
 
         self._messages.debug("Preparing %s level text report" % self._output_level)
 
-        report_data.append(
-            "\nOffload Status Report for %s database at %s.\n"
-            % (self._ora_db_name, self._start_time)
-        )
+        report_data.append("\nOffload Status Report for %s database at %s.\n" % (self._ora_db_name, self._start_time))
 
         report_data.append(heading("1. Options"))
         self._messages.debug("Adding Section 1 to text report", detail=SUPPRESS_STDOUT)
         width = max(40, len(self._schema or ""), len(self._table or ""))
-        report_data.append(
-            "%-30s %-*s %s" % ("Option Name", width, "Option Value", "Default")
-        )
+        report_data.append("%-30s %-*s %s" % ("Option Name", width, "Option Value", "Default"))
         report_data.append("%s %s %s" % (line(30), line(width), line(10)))
-        report_data.append(
-            "%-30s %-*s %s"
-            % ("--schema", width, self._schema or "-", self._schema is None)
-        )
-        report_data.append(
-            "%-30s %-*s %s"
-            % ("--table", width, self._table or "-", self._table is None)
-        )
+        report_data.append("%-30s %-*s %s" % ("--schema", width, self._schema or "-", self._schema is None))
+        report_data.append("%-30s %-*s %s" % ("--table", width, self._table or "-", self._table is None))
         report_data.append(
             "%-30s %-*s %s"
             % (
@@ -3003,15 +2885,9 @@ ORDER  BY
         report_data.append("%-30s %s" % ("Name", "Value"))
         report_data.append("%s %s" % (line(30), line(40)))
         report_data.append("%-30s %s" % ("RDBMS name", self.metadata["db_name"]))
-        report_data.append(
-            "%-30s %s" % ("RDBMS login user", self.metadata["db_login_user"])
-        )
-        report_data.append(
-            "%-30s %s" % ("RDBMS connection", self.metadata["db_connection"])
-        )
-        report_data.append(
-            "%-30s %s" % ("Offload database type", self.metadata["backend_db_type"])
-        )
+        report_data.append("%-30s %s" % ("RDBMS login user", self.metadata["db_login_user"]))
+        report_data.append("%-30s %s" % ("RDBMS connection", self.metadata["db_connection"]))
+        report_data.append("%-30s %s" % ("Offload database type", self.metadata["backend_db_type"]))
         report_data.append(
             "%-30s %s"
             % (
@@ -3098,10 +2974,7 @@ ORDER  BY
             )
         )
         for rv in s3_raw_data:
-            report_data.append(
-                "%-*s %15s %15s %15.2f %15s %15s %15.2f %15s %15s %15.2f %15s"
-                % (schema_width, *rv)
-            )
+            report_data.append("%-*s %15s %15s %15.2f %15s %15s %15.2f %15s %15s %15.2f %15s" % (schema_width, *rv))
         report_data.append(
             "%s %s %s %s %s %s %s %s %s %s %s"
             % (
@@ -3267,9 +3140,7 @@ ORDER  BY
 
         if self.is_detail:
             report_data.append(heading("5. Table Detail"))
-            self._messages.debug(
-                "Adding Section 5 to text report", detail=SUPPRESS_STDOUT
-            )
+            self._messages.debug("Adding Section 5 to text report", detail=SUPPRESS_STDOUT)
 
             if not schema_data:
                 report_data.append("No offloaded tables to report on")
@@ -3284,14 +3155,11 @@ ORDER  BY
                         detail=SUPPRESS_STDOUT,
                     )
                     indent = 4
-                    report_data.append(
-                        lpad(underline("Offload Summary Statistics", indent))
-                    )
+                    report_data.append(lpad(underline("Offload Summary Statistics", indent)))
                     indent = 8
                     report_data.append(
                         lpad(
-                            "%-30s %20s %20s %20s"
-                            % ("Type", "Size (GB)", "Segments", "Rows (From Stats)"),
+                            "%-30s %20s %20s %20s" % ("Type", "Size (GB)", "Segments", "Rows (From Stats)"),
                             indent,
                         )
                     )
@@ -3348,9 +3216,7 @@ ORDER  BY
                     )
                     indent = 4
                     report_data.append("")
-                    report_data.append(
-                        lpad(underline("Offloaded Table Details", indent), indent)
-                    )
+                    report_data.append(lpad(underline("Offloaded Table Details", indent), indent))
                     indent = 8
                     append_table_detail("Name", "Value", indent)
                     append_table_detail(line(30), line(85), indent)
@@ -3366,66 +3232,42 @@ ORDER  BY
                     )
                     append_table_detail(
                         "Hybrid external table",
-                        self._format_table_name(
-                            tv[HYBRID_OWNER], tv[HYBRID_EXTERNAL_TABLE]
-                        ),
+                        self._format_table_name(tv[HYBRID_OWNER], tv[HYBRID_EXTERNAL_TABLE]),
                         indent,
                     )
                     if tv[OFFLOAD_TABLE_EXISTS]:
                         append_table_detail(
                             "Offloaded table",
-                            self._format_table_name(
-                                tv[OFFLOAD_OWNER], tv[OFFLOAD_TABLE], False
-                            ),
+                            self._format_table_name(tv[OFFLOAD_OWNER], tv[OFFLOAD_TABLE], False),
                             indent,
                         )
                     else:
                         append_table_detail(
                             "Offloaded table",
                             "Offloaded table not found (%s)"
-                            % self._format_table_name(
-                                tv[OFFLOAD_OWNER], tv[OFFLOAD_TABLE]
-                            ),
+                            % self._format_table_name(tv[OFFLOAD_OWNER], tv[OFFLOAD_TABLE]),
                             indent,
                         )
 
-                    self._messages.debug(
-                        "Adding Offload Parameters to Section 5", detail=SUPPRESS_STDOUT
-                    )
+                    self._messages.debug("Adding Offload Parameters to Section 5", detail=SUPPRESS_STDOUT)
                     indent = 4
                     report_data.append("")
-                    report_data.append(
-                        lpad(underline("Offload Parameters", indent), indent)
-                    )
+                    report_data.append(lpad(underline("Offload Parameters", indent), indent))
                     indent = 8
                     append_table_detail("Name", "Value", indent)
                     append_table_detail(line(30), line(85), indent)
                     append_table_detail("Offload type", tv[OFFLOAD_TYPE], indent)
-                    append_table_detail(
-                        "Offload predicate type", tv[INCREMENTAL_PREDICATE_TYPE], indent
-                    )
-                    append_table_detail(
-                        "Offload high water mark", tv[INCREMENTAL_HIGH_VALUE], indent
-                    )
+                    append_table_detail("Offload predicate type", tv[INCREMENTAL_PREDICATE_TYPE], indent)
+                    append_table_detail("Offload high water mark", tv[INCREMENTAL_HIGH_VALUE], indent)
                     append_table_detail(
                         "Offload predicates",
-                        format_json_list(
-                            tv[INCREMENTAL_PREDICATE_VALUE], indent=30 + indent + 1
-                        ),
+                        format_json_list(tv[INCREMENTAL_PREDICATE_VALUE], indent=30 + indent + 1),
                         indent,
                     )
-                    append_table_detail(
-                        "Partition columns (RDBMS)", tv[INCREMENTAL_KEY], indent
-                    )
-                    append_table_detail(
-                        "Partition columns (offloaded)", tv[OFFLOAD_PART_KEY], indent
-                    )
-                    append_table_detail(
-                        "Partition functions", tv[OFFLOAD_PARTITION_FUNCTIONS], indent
-                    )
-                    append_table_detail(
-                        "Partition offload level", tv[INCREMENTAL_RANGE], indent
-                    )
+                    append_table_detail("Partition columns (RDBMS)", tv[INCREMENTAL_KEY], indent)
+                    append_table_detail("Partition columns (offloaded)", tv[OFFLOAD_PART_KEY], indent)
+                    append_table_detail("Partition functions", tv[OFFLOAD_PARTITION_FUNCTIONS], indent)
+                    append_table_detail("Partition offload level", tv[INCREMENTAL_RANGE], indent)
                     if tv[INCREMENTAL_UPDATE_METHOD]:
                         append_table_detail("Incremental Update enabled", "Yes", indent)
                     else:
@@ -3440,24 +3282,14 @@ ORDER  BY
                         indent,
                     )
                     append_table_detail("Offload version", tv[OFFLOAD_VERSION], indent)
-                    append_table_detail(
-                        "Offload bucket count", tv[OFFLOAD_BUCKET_COUNT], indent
-                    )
-                    append_table_detail(
-                        "Offload bucket column", tv[OFFLOAD_BUCKET_COLUMN], indent
-                    )
-                    append_table_detail(
-                        "Offload bucket method", tv[OFFLOAD_BUCKET_METHOD], indent
-                    )
-                    append_table_detail(
-                        "Offload sort columns", tv[OFFLOAD_SORT_COLUMNS], indent
-                    )
+                    append_table_detail("Offload bucket count", tv[OFFLOAD_BUCKET_COUNT], indent)
+                    append_table_detail("Offload bucket column", tv[OFFLOAD_BUCKET_COLUMN], indent)
+                    append_table_detail("Offload bucket method", tv[OFFLOAD_BUCKET_METHOD], indent)
+                    append_table_detail("Offload sort columns", tv[OFFLOAD_SORT_COLUMNS], indent)
 
                     def multivalue_subsection(data, data_type, title):
                         if data:
-                            self._messages.debug(
-                                "Adding %s to Section 5" % title, detail=SUPPRESS_STDOUT
-                            )
+                            self._messages.debug("Adding %s to Section 5" % title, detail=SUPPRESS_STDOUT)
                             indent = 4
                             report_data.append("")
                             report_data.append(lpad(underline(title, indent)))
@@ -3473,23 +3305,15 @@ ORDER  BY
                                     indent,
                                 )
                             )
-                            report_data.append(
-                                lpad(
-                                    "%s %s %s" % (line(30), line(24), line(60)), indent
-                                )
-                            )
+                            report_data.append(lpad("%s %s %s" % (line(30), line(24), line(60)), indent))
                             for o in sorted(data, key=lambda k: k[OBJECT_NAME]):
                                 report_data.append(
                                     lpad(
                                         "%-30s %-24s %s"
                                         % (
-                                            o[OBJECT_TYPE_GOE]
-                                            .replace("_", " ")
-                                            .capitalize(),
+                                            o[OBJECT_TYPE_GOE].replace("_", " ").capitalize(),
                                             o[OBJECT_TYPE_DB],
-                                            self._format_table_name(
-                                                o[OBJECT_OWNER], o[OBJECT_NAME]
-                                            ),
+                                            self._format_table_name(o[OBJECT_OWNER], o[OBJECT_NAME]),
                                         ),
                                         indent,
                                     )
@@ -3520,13 +3344,9 @@ ORDER  BY
                         "Join Pushdown",
                         "Advanced Join Pushdown Objects (Offloaded)",
                     )
-                    multivalue_subsection(
-                        tv[DEPENDENT_OBJECTS], "Dependent", "Dependent Objects (RDBMS)"
-                    )
+                    multivalue_subsection(tv[DEPENDENT_OBJECTS], "Dependent", "Dependent Objects (RDBMS)")
                     report_data.append("")
-            self._messages.debug(
-                "Section 5 added to text report", detail=SUPPRESS_STDOUT
-            )
+            self._messages.debug("Section 5 added to text report", detail=SUPPRESS_STDOUT)
         else:
             report_data.append("")
 
@@ -3537,13 +3357,11 @@ ORDER  BY
     def _gen_html_report(self, data):
         """Generates a fully-rich report in HTML format."""
         this_dir = os.path.dirname(os.path.abspath(__file__))
-        j2_env = Environment(
-            loader=FileSystemLoader(this_dir + "/../templates/"), trim_blocks=True
-        )
+        j2_env = Environment(loader=FileSystemLoader(this_dir + "/../templates/"), trim_blocks=True)
         report_data = [
-            j2_env.get_template(
-                "offload_status_report/goe_offload_status_report.html"
-            ).render(data=data, metadata=self.metadata)
+            j2_env.get_template("offload_status_report/goe_offload_status_report.html").render(
+                data=data, metadata=self.metadata
+            )
         ]
         status = self._save_report(report_data, HTML)
         return status
@@ -3563,10 +3381,7 @@ ORDER  BY
             version(),
             " (Demo Mode)" if self._demo_mode else "",
         )
-        goe_copyright = (
-            "\nCopyright 2015-%s GOE Inc. All rights reserved."
-            % datetime.now().strftime("%Y")
-        )
+        goe_copyright = "\nCopyright 2015-%s GOE Inc. All rights reserved." % datetime.now().strftime("%Y")
         try:
             self._messages.debug("Saving data to file", detail=SUPPRESS_STDOUT)
             self._gen_report_file_name(extension=report_format)
@@ -3583,10 +3398,9 @@ ORDER  BY
                     rf.write(goe_report)
                     rf.write("%s\n\n" % goe_copyright)
             self._messages.log("Report saved to %s" % self._report_file)
-        except IOError as exc:
+        except OSError:
             raise OffloadStatusReportException(
-                "Unable to write report %s\n%s"
-                % (self._report_file, traceback.format_exc())
+                "Unable to write report %s\n%s" % (self._report_file, traceback.format_exc())
             )
         return SUCCESS
 
@@ -3607,22 +3421,21 @@ ORDER  BY
                     for k, v in sorted(table_data[table].items()):
                         if k not in MULTIVALUE_KEYS:
                             print("   %-50s: %s" % (k, v))
-                        else:
-                            if len(v) > 0:
-                                for n, mv in enumerate(v, 1):
-                                    print(
-                                        "   %-50s: %s.%s (%s) (%s)"
-                                        % (
-                                            "%s (%s)" % (k, n),
-                                            mv[OBJECT_OWNER],
-                                            mv[OBJECT_NAME],
-                                            mv[OBJECT_TYPE_DB],
-                                            mv[OBJECT_TYPE_GOE],
-                                        )
+                        elif len(v) > 0:
+                            for n, mv in enumerate(v, 1):
+                                print(
+                                    "   %-50s: %s.%s (%s) (%s)"
+                                    % (
+                                        "%s (%s)" % (k, n),
+                                        mv[OBJECT_OWNER],
+                                        mv[OBJECT_NAME],
+                                        mv[OBJECT_TYPE_DB],
+                                        mv[OBJECT_TYPE_GOE],
                                     )
-                                print("%s%s" % ("   ", "-" * 30))
-                            else:
-                                print("   %-50s: %s" % (k, v))
+                                )
+                            print("%s%s" % ("   ", "-" * 30))
+                        else:
+                            print("   %-50s: %s" % (k, v))
                 print("\nSummary for %s" % schema)
                 print("%s" % ("-" * 50))
                 for k in SUMMARY_KEYS:
@@ -3632,7 +3445,6 @@ ORDER  BY
             print("=" * 100)
             for k in SUMMARY_KEYS:
                 print("   %-50s: %s" % (k.strip("_"), report_data[k]))
-        return
 
     ###############################################################################
     # PROPERTIES
@@ -3690,23 +3502,13 @@ ORDER  BY
         else:
             self._table = table
 
-        self._output_level = (
-            output_level.lower() if output_level is not None else DEFAULT_OUTPUT_LEVEL
-        )
+        self._output_level = output_level.lower() if output_level is not None else DEFAULT_OUTPUT_LEVEL
         self._demo_mode = demo_mode
 
-        self._messages.debug(
-            "%-30s : %s" % ("_schema", self._schema), detail=SUPPRESS_STDOUT
-        )
-        self._messages.debug(
-            "%-30s : %s" % ("_table", self._table), detail=SUPPRESS_STDOUT
-        )
-        self._messages.debug(
-            "%-30s : %s" % ("_output_level", self._output_level), detail=SUPPRESS_STDOUT
-        )
-        self._messages.debug(
-            "%-30s : %s" % ("_demo_mode", self._demo_mode), detail=SUPPRESS_STDOUT
-        )
+        self._messages.debug("%-30s : %s" % ("_schema", self._schema), detail=SUPPRESS_STDOUT)
+        self._messages.debug("%-30s : %s" % ("_table", self._table), detail=SUPPRESS_STDOUT)
+        self._messages.debug("%-30s : %s" % ("_output_level", self._output_level), detail=SUPPRESS_STDOUT)
+        self._messages.debug("%-30s : %s" % ("_demo_mode", self._demo_mode), detail=SUPPRESS_STDOUT)
 
         assert self._output_level in (
             SUMMARY_LEVEL,
@@ -3752,11 +3554,7 @@ ORDER  BY
         csv_enclosure=DEFAULT_CSV_ENCLOSURE,
     ):
         """Fetch and pre-process all of the data required for either the Offload Status Report or API consumer."""
-        self._output_format = (
-            output_format.lower()
-            if output_format is not None
-            else DEFAULT_OUTPUT_FORMAT
-        )
+        self._output_format = output_format.lower() if output_format is not None else DEFAULT_OUTPUT_FORMAT
         self._report_name = report_name or DEFAULT_REPORT_NAME
         self._report_directory = report_directory or DEFAULT_REPORT_DIRECTORY
         self._csv_delimiter = csv_delimiter or DEFAULT_CSV_DELIMITER
@@ -3766,9 +3564,7 @@ ORDER  BY
             "%-30s : %s" % ("_output_format", self._output_format),
             detail=SUPPRESS_STDOUT,
         )
-        self._messages.debug(
-            "%-30s : %s" % ("_report_name", self._report_name), detail=SUPPRESS_STDOUT
-        )
+        self._messages.debug("%-30s : %s" % ("_report_name", self._report_name), detail=SUPPRESS_STDOUT)
         self._messages.debug(
             "%-30s : %s" % ("_report_directory", self._report_directory),
             detail=SUPPRESS_STDOUT,
@@ -3795,18 +3591,10 @@ ORDER  BY
             JSON,
             RAW,
         )
-        assert (
-            " " not in self._report_name
-        ), "report_name parameter cannot contain spaces"
-        assert (
-            " " not in self._report_directory
-        ), "report_directory parameter cannot contain spaces"
-        assert (
-            len(self._csv_delimiter) == 1
-        ), "csv_delimiter parameter must be a single character"
-        assert (
-            len(self._csv_enclosure) == 1
-        ), "csv_enclosure parameter must be a single character"
+        assert " " not in self._report_name, "report_name parameter cannot contain spaces"
+        assert " " not in self._report_directory, "report_directory parameter cannot contain spaces"
+        assert len(self._csv_delimiter) == 1, "csv_delimiter parameter must be a single character"
+        assert len(self._csv_enclosure) == 1, "csv_enclosure parameter must be a single character"
 
         if self._output_format == CSV:
             rep_fn = lambda: self._gen_csv_report(report_data)
@@ -3818,18 +3606,14 @@ ORDER  BY
             rep_fn = lambda: self._gen_json_report(report_data)
         elif self._output_format == RAW:
             rep_fn = lambda: self._gen_raw_report(report_data)
-        status = self._messages.offload_step(
-            command_steps.STEP_OSR_GENERATE_REPORT, rep_fn, execute=self._execute
-        )
+        status = self._messages.offload_step(command_steps.STEP_OSR_GENERATE_REPORT, rep_fn, execute=self._execute)
         return status
 
 
 def get_offload_status_report_opts():
     opt = get_common_options(usage="usage: %prog [options]")
 
-    osr_group = OptionGroup(
-        opt, "Offload Status Report Options", "Options for Offload Status Report."
-    )
+    osr_group = OptionGroup(opt, "Offload Status Report Options", "Options for Offload Status Report.")
     osr_group.add_option(
         "-s",
         "--schema",
@@ -3848,8 +3632,7 @@ def get_offload_status_report_opts():
         dest="output_format",
         default=DEFAULT_OUTPUT_FORMAT,
         choices=[HTML, TEXT, JSON, RAW, CSV],
-        help="Output format for the Offload Status Report data. Default: %s"
-        % DEFAULT_OUTPUT_FORMAT,
+        help="Output format for the Offload Status Report data. Default: %s" % DEFAULT_OUTPUT_FORMAT,
     )
     osr_group.add_option(
         "-d",
@@ -3864,8 +3647,7 @@ def get_offload_status_report_opts():
         dest="output_level",
         default=DEFAULT_OUTPUT_LEVEL,
         choices=[DETAIL_LEVEL, SUMMARY_LEVEL],
-        help="Level of detail required for the Offload Status Report. Default: %s"
-        % DEFAULT_OUTPUT_LEVEL,
+        help="Level of detail required for the Offload Status Report. Default: %s" % DEFAULT_OUTPUT_LEVEL,
     )
     osr_group.add_option(
         "--report-name",
@@ -3891,8 +3673,7 @@ def get_offload_status_report_opts():
         "--csv-enclosure",
         dest="csv_enclosure",
         default=DEFAULT_CSV_ENCLOSURE,
-        help="Enclosure character for string fields in CSV output. Default: %s"
-        % DEFAULT_CSV_ENCLOSURE,
+        help="Enclosure character for string fields in CSV output. Default: %s" % DEFAULT_CSV_ENCLOSURE,
     )
     opt.add_option_group(osr_group)
 
@@ -3927,8 +3708,6 @@ def normalise_offload_status_report_options(options):
             % options.csv_enclosure
         )
 
-    return
-
 
 def datetime_literal_to_hv(dt_literal, col_type):
     """Take a literal chopped out of incremental metadata and convert it to a Python
@@ -3938,40 +3717,29 @@ def datetime_literal_to_hv(dt_literal, col_type):
     if oracle_datetime_literal_to_python(dt_literal, strict=False) is not None:
         # must use "is not None" above as 1970-01-01 is considered False. GOE-1014
         return oracle_datetime_literal_to_python(dt_literal)
-    elif re.match(STARTS_WITH_DATE_PATTERN_RE, dt_literal):
+    if re.match(STARTS_WITH_DATE_PATTERN_RE, dt_literal):
         try:
             return datetime64(dt_literal)
-        except ValueError as exc:
-            raise OffloadStatusReportException(
-                'Failed to parse "%s" value: "%s"' % (col_type, dt_literal)
-            )
+        except ValueError:
+            raise OffloadStatusReportException('Failed to parse "%s" value: "%s"' % (col_type, dt_literal))
     else:
-        raise OffloadStatusReportException(
-            'Failed to parse "%s" value: "%s"' % (col_type, dt_literal)
-        )
+        raise OffloadStatusReportException('Failed to parse "%s" value: "%s"' % (col_type, dt_literal))
 
 
-def incremental_partition_match(
-    row_high_value, table_high_value, incremental_predicate_type
-):
+def incremental_partition_match(row_high_value, table_high_value, incremental_predicate_type):
     """Check if a partition is classified as offloaded"""
     if incremental_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST:
-        assert isinstance(
-            row_high_value, list
-        ), "LPA High Value type != list: {}".format(type(row_high_value))
+        assert isinstance(row_high_value, list), f"LPA High Value type != list: {type(row_high_value)}"
         return any(_ in row_high_value for _ in table_high_value)
-    else:
-        if table_high_value is None:
-            # Maintaining Python 2 behaviour that <= None is False
-            return False
-        assert isinstance(
-            row_high_value, tuple
-        ), "RPA High Value type != tuple: {}".format(type(row_high_value))
-        if row_high_value == (offload_constants.PART_OUT_OF_LIST,):
-            # If we have a table high value then we are IPA and cannot have offloaded a DEFAULT partition
-            # This maintains Python 2 behaviour that str(...) <= datetime64(...) is False
-            return False
-        return bool(row_high_value <= table_high_value)
+    if table_high_value is None:
+        # Maintaining Python 2 behaviour that <= None is False
+        return False
+    assert isinstance(row_high_value, tuple), f"RPA High Value type != tuple: {type(row_high_value)}"
+    if row_high_value == (offload_constants.PART_OUT_OF_LIST,):
+        # If we have a table high value then we are IPA and cannot have offloaded a DEFAULT partition
+        # This maintains Python 2 behaviour that str(...) <= datetime64(...) is False
+        return False
+    return bool(row_high_value <= table_high_value)
 
 
 def offload_status_report_run():
@@ -3995,9 +3763,7 @@ def offload_status_report_run():
             log_fh=get_log_fh(),
             command_type=orchestration_constants.COMMAND_OSR,
         )
-        orchestration_config = OrchestrationConfig.from_dict(
-            {"verbose": options.verbose, "vverbose": options.vverbose}
-        )
+        orchestration_config = OrchestrationConfig.from_dict({"verbose": options.verbose, "vverbose": options.vverbose})
         frontend_api = frontend_api_factory(
             orchestration_config.db_type,
             orchestration_config,
@@ -4007,8 +3773,7 @@ def offload_status_report_run():
         )
         if not frontend_api.goe_offload_status_report_supported():
             raise OffloadStatusReportException(
-                "Offload Status Report is not supported for frontend system: %s"
-                % frontend_api.frontend_db_name()
+                "Offload Status Report is not supported for frontend system: %s" % frontend_api.frontend_db_name()
             )
 
         osr = OffloadStatusReport(orchestration_config, messages)

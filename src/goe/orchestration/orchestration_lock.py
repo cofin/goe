@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" OrchestrationLock: Library providing simple locking mechanism for orchestration commands.
-    In general the lock is expected to be the source owner/table name of a command.
+"""OrchestrationLock: Library providing simple locking mechanism for orchestration commands.
+In general the lock is expected to be the source owner/table name of a command.
 """
 
 # Standard Library
@@ -102,9 +102,7 @@ class OrchestrationLockInterface(metaclass=ABCMeta):
     ###########################################################################
 
     def _exception_message(self):
-        return "Another Orchestration process has locked id: {}".format(
-            ".".join(self._lock_ids)
-        )
+        return "Another Orchestration process has locked id: {}".format(".".join(self._lock_ids))
 
     ###########################################################################
     # PUBLIC METHODS
@@ -130,7 +128,7 @@ class FileLockOrchestrationLock(OrchestrationLockInterface):
     """
 
     def __init__(self, lock_ids, dry_run=False):
-        super(FileLockOrchestrationLock, self).__init__(lock_ids, dry_run=dry_run)
+        super().__init__(lock_ids, dry_run=dry_run)
         self._file_name = self._lock_file_name()
         logger.info(f"Orchestration lock filename: {self._file_name}")
         self._lock = FileLock(self._file_name)
@@ -156,7 +154,7 @@ class FileLockOrchestrationLock(OrchestrationLockInterface):
                 # running a chmod() after acquiring the lock.
                 self._lock.acquire(timeout=0)
         except Timeout as exc:
-            logger.info("Orchestration lock acquire timeout: {}".format(str(exc)))
+            logger.info(f"Orchestration lock acquire timeout: {exc!s}")
             raise OrchestrationLockTimeout(self._exception_message()) from exc
 
     def release(self):

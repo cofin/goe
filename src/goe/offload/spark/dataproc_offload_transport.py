@@ -15,7 +15,7 @@
 import json
 import math
 import re
-from typing import Union, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from goe.config import orchestration_defaults
 from goe.offload.factory.offload_transport_rdbms_api_factory import (
@@ -24,8 +24,6 @@ from goe.offload.factory.offload_transport_rdbms_api_factory import (
 from goe.offload.frontend_api import FRONTEND_TRACE_MODULE
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport import (
-    OffloadTransportException,
-    OffloadTransportSpark,
     MISSING_ROWS_SPARK_WARNING,
     OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
@@ -33,6 +31,8 @@ from goe.offload.offload_transport import (
     SPARK_OPTIONS_FILE_PREFIX,
     TRANSPORT_CXT_BYTES,
     TRANSPORT_CXT_ROWS,
+    OffloadTransportException,
+    OffloadTransportSpark,
 )
 from goe.orchestration import command_steps
 from goe.util.misc_functions import write_temp_file
@@ -91,9 +91,7 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
         return self._ssh_cli_safe_value(cmd_option_string)
 
     def _column_type_read_remappings(self):
-        return self._offload_transport_type_remappings(
-            return_as_list=False, remap_sep="="
-        )
+        return self._offload_transport_type_remappings(return_as_list=False, remap_sep="=")
 
     def _remote_copy_spark_control_file(self, options_file_local_path, suffix=""):
         return self._remote_copy_transport_control_file(
@@ -147,12 +145,8 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
 
         Valid names only accept a simple set of characters and are 4-63 characters in length only.
         """
-        batch_name_root = re.sub(
-            r"[^a-zA-Z0-9\-]+", "", self._target_db_name + "-" + self._load_table_name
-        )
-        return self._get_transport_app_name(
-            sep="-", ts=True, name_override=batch_name_root
-        ).lower()[:64]
+        batch_name_root = re.sub(r"[^a-zA-Z0-9\-]+", "", self._target_db_name + "-" + self._load_table_name)
+        return self._get_transport_app_name(sep="-", ts=True, name_override=batch_name_root).lower()[:64]
 
     def _get_spark_gcloud_command(self, pyspark_body, id: str = None):
         """Submit PySpark code via gcloud"""
@@ -160,13 +154,10 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
         def cli_safe_the_password(k, v):
             if k == "spark.jdbc.password":
                 return self._spark_cli_safe_value(v)
-            else:
-                return v
+            return v
 
         self.log("PySpark: " + pyspark_body, detail=VVERBOSE)
-        options_file_local_path = write_temp_file(
-            pyspark_body, prefix=SPARK_OPTIONS_FILE_PREFIX, suffix="py"
-        )
+        options_file_local_path = write_temp_file(pyspark_body, prefix=SPARK_OPTIONS_FILE_PREFIX, suffix="py")
         py_rm_commands, options_file_remote_path = self._remote_copy_spark_control_file(
             options_file_local_path, suffix="py"
         )
@@ -188,30 +179,20 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
 
         if spark_listener_jar_remote_path:
             if remote_spark_jars_csv:
-                remote_spark_jars_csv = (
-                    f"{spark_listener_jar_remote_path},{remote_spark_jars_csv}"
-                )
+                remote_spark_jars_csv = f"{spark_listener_jar_remote_path},{remote_spark_jars_csv}"
             else:
                 remote_spark_jars_csv = spark_listener_jar_remote_path
 
         gcloud_cmd = self._gcloud_dataproc_submit_command(id=id)
 
         spark_config_props, no_log_password = [], []
-        [
-            spark_config_props.extend(["%s=%s" % (k, cli_safe_the_password(k, v))])
-            for k, v in self._spark_config_properties.items()
-        ]
-        if (
-            "spark.jdbc.password" in self._spark_config_properties
-            and not self._offload_transport_password_alias
-        ):
+        for k, v in self._spark_config_properties.items():
+            spark_config_props.append("%s=%s" % (k, cli_safe_the_password(k, v)))
+        if "spark.jdbc.password" in self._spark_config_properties and not self._offload_transport_password_alias:
             # If the rdbms app password is visible in the CLI then obscure it from any logging
-            password_config_to_obscure = (
-                "spark.jdbc.password=%s"
-                % cli_safe_the_password(
-                    "spark.jdbc.password",
-                    self._spark_config_properties["spark.jdbc.password"],
-                )
+            password_config_to_obscure = "spark.jdbc.password=%s" % cli_safe_the_password(
+                "spark.jdbc.password",
+                self._spark_config_properties["spark.jdbc.password"],
             )
             no_log_password = [{"item": password_config_to_obscure, "prior": "--conf"}]
 
@@ -227,24 +208,15 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
 
         if spark_config_props:
             properties_clause = [
-                f"--properties=^{GCLOUD_PROPERTY_SEPARATOR}^"
-                + GCLOUD_PROPERTY_SEPARATOR.join(spark_config_props)
+                f"--properties=^{GCLOUD_PROPERTY_SEPARATOR}^" + GCLOUD_PROPERTY_SEPARATOR.join(spark_config_props)
             ]
         else:
             properties_clause = []
 
         jars_opt = [f"--jars={remote_spark_jars_csv}"] if remote_spark_jars_csv else []
-        files_opt = (
-            [f"--files={remote_spark_files_csv}"] if remote_spark_files_csv else []
-        )
+        files_opt = [f"--files={remote_spark_files_csv}"] if remote_spark_files_csv else []
 
-        cmd = (
-            gcloud_cmd
-            + [options_file_remote_path]
-            + jars_opt
-            + files_opt
-            + properties_clause
-        )
+        cmd = gcloud_cmd + [options_file_remote_path] + jars_opt + files_opt + properties_clause
 
         return cmd, no_log_password, py_rm_commands
 
@@ -264,9 +236,7 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
         ) = self._get_spark_gcloud_command(pyspark_body, id=batch_name)
 
         self._start_validation_polling_thread()
-        rc, cmd_out = self._run_os_cmd(
-            self._ssh_cmd_prefix() + spark_gcloud_cmd, no_log_items=no_log_password
-        )
+        rc, cmd_out = self._run_os_cmd(self._ssh_cmd_prefix() + spark_gcloud_cmd, no_log_items=no_log_password)
         self._stop_validation_polling_thread()
 
         if not self._dry_run:
@@ -282,9 +252,7 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
                 if rows_imported_from_sql_stats is None:
                     self.warning(MISSING_ROWS_SPARK_WARNING)
                 else:
-                    self.warning(
-                        f"{MISSING_ROWS_SPARK_WARNING}, falling back on RDBMS SQL statistics"
-                    )
+                    self.warning(f"{MISSING_ROWS_SPARK_WARNING}, falling back on RDBMS SQL statistics")
                     rows_imported = rows_imported_from_sql_stats
 
         # Remove any pyspark scripts we created
@@ -310,10 +278,9 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
         def executor_cores() -> int:
             if self._offload_transport_parallelism > 8:
                 return 16
-            elif self._offload_transport_parallelism > 4:
+            if self._offload_transport_parallelism > 4:
                 return 8
-            else:
-                return None
+            return None
 
         def executor_instances() -> int:
             if self._offload_transport_parallelism <= 32:
@@ -336,17 +303,14 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
             if executor_instances():
                 props.append(f"spark.executor.instances={executor_instances()}")
             return props
-        else:
-            return []
+        return []
 
     def _verify_batch(self, batch_name: str):
         """Check for issues/errors in the batch that should trigger us to stop at this point."""
         describe_cmd = self._gcloud_dataproc_describe_command(batch_name)
         # Command below is optional because we don't want to fail a job if the describe command fails.
         # Only if the describe command successfully tells us the batch failed.
-        rc, describe_cmd_output = self._run_os_cmd(
-            self._ssh_cmd_prefix() + describe_cmd, optional=True
-        )
+        rc, describe_cmd_output = self._run_os_cmd(self._ssh_cmd_prefix() + describe_cmd, optional=True)
         if rc == 0 and describe_cmd_output:
             self._verify_batch_describe_response(describe_cmd_output)
 
@@ -360,7 +324,7 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
             reponse_dict = json.loads(describe_output)
         except Exception as exc:
             # If we can't decode the output then log it and fall back to submit output checking.
-            self.log(f"Exception describing Managed Spark batch: {str(exc)}", detail=VERBOSE)
+            self.log(f"Exception describing Managed Spark batch: {exc!s}", detail=VERBOSE)
             return False
         state = reponse_dict.get("state")
         state_message = reponse_dict.get("stateMessage", "")
@@ -372,15 +336,12 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
                 raise OffloadTransportException(
                     "Dataproc batch is incomplete due to TTL, increase GOOGLE_DATAPROC_BATCHES_TTL"
                 )
-            elif GCLOUD_BATCHES_STATE_MESSAGE_TASK_NOT_ACQUIRED in state_message:
+            if GCLOUD_BATCHES_STATE_MESSAGE_TASK_NOT_ACQUIRED in state_message:
                 raise OffloadTransportException(
                     f"Managed Spark batch failed with stateMessage containing '{GCLOUD_BATCHES_STATE_MESSAGE_TASK_NOT_ACQUIRED}'. "
                     "The likely cause is missing VPC network/firewall prerequisites for Managed Spark serverless"
                 )
-            else:
-                raise OffloadTransportException(
-                    f"Managed Spark batch failed with state: {state}"
-                )
+            raise OffloadTransportException(f"Managed Spark batch failed with state: {state}")
 
     def _verify_rdbms_connectivity(self):
         """Use a simple canary query for verification test"""
@@ -393,9 +354,7 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
             no_log_password,
             py_rm_commands,
         ) = self._get_spark_gcloud_command(pyspark_body, id=batch_name)
-        rc, cmd_out = self._run_os_cmd(
-            self._ssh_cmd_prefix() + spark_gcloud_cmd, no_log_items=no_log_password
-        )
+        rc, cmd_out = self._run_os_cmd(self._ssh_cmd_prefix() + spark_gcloud_cmd, no_log_items=no_log_password)
         # Remove any pyspark scripts we created
         if py_rm_commands:
             [self._run_os_cmd(_) for _ in py_rm_commands]
@@ -407,7 +366,7 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
     # PUBLIC METHODS
     ###########################################################################
 
-    def transport(self, partition_chunk=None) -> Union[int, None]:
+    def transport(self, partition_chunk=None) -> int | None:
         """Spark by gcloud batches transport"""
         self._reset_transport_context()
 
@@ -444,21 +403,13 @@ class OffloadTransportSparkBatchesGcloudCanary(OffloadTransportSparkBatchesGclou
 
         self._create_basic_connectivity_attributes(offload_options)
 
-        self._offload_transport_consistent_read = (
-            orchestration_defaults.bool_option_from_string(
-                "OFFLOAD_TRANSPORT_CONSISTENT_READ",
-                orchestration_defaults.offload_transport_consistent_read_default(),
-            )
+        self._offload_transport_consistent_read = orchestration_defaults.bool_option_from_string(
+            "OFFLOAD_TRANSPORT_CONSISTENT_READ",
+            orchestration_defaults.offload_transport_consistent_read_default(),
         )
-        self._offload_transport_fetch_size = (
-            orchestration_defaults.offload_transport_fetch_size_default()
-        )
-        self._offload_transport_jvm_overrides = (
-            orchestration_defaults.offload_transport_spark_overrides_default()
-        )
-        self._offload_transport_queue_name = (
-            orchestration_defaults.offload_transport_spark_queue_name_default()
-        )
+        self._offload_transport_fetch_size = orchestration_defaults.offload_transport_fetch_size_default()
+        self._offload_transport_jvm_overrides = orchestration_defaults.offload_transport_spark_overrides_default()
+        self._offload_transport_queue_name = orchestration_defaults.offload_transport_spark_queue_name_default()
         self._offload_transport_parallelism = 1
         self._validation_polling_interval = (
             orchestration_defaults.offload_transport_validation_polling_interval_default()
@@ -497,9 +448,7 @@ class OffloadTransportSparkBatchesGcloudCanary(OffloadTransportSparkBatchesGclou
     def _get_batch_name(self) -> str:
         """Return a Managed Spark serverless batch name for canary check."""
         # Managed Spark serverless batch names only accept a simple set of characters and 4-63 characters in length
-        return self._get_transport_app_name(
-            sep="-", ts=True, name_override="canary"
-        ).lower()[:64]
+        return self._get_transport_app_name(sep="-", ts=True, name_override="canary").lower()[:64]
 
     ###########################################################################
     # PUBLIC METHODS
@@ -521,18 +470,14 @@ class OffloadTransportSparkDataprocGcloud(OffloadTransportSparkBatchesGcloud):
             "pyspark",
         ]
         if not self._dataproc_cluster:
-            raise OffloadTransportException(
-                "Missing mandatory configuration: GOOGLE_DATAPROC_CLUSTER"
-            )
+            raise OffloadTransportException("Missing mandatory configuration: GOOGLE_DATAPROC_CLUSTER")
         gcloud_cmd.append(f"--cluster={self._dataproc_cluster}")
         if self._dataproc_project:
             gcloud_cmd.append(f"--project={self._dataproc_project}")
         if self._dataproc_region:
             gcloud_cmd.append(f"--region={self._dataproc_region}")
         if self._dataproc_service_account:
-            gcloud_cmd.append(
-                f"--impersonate-service-account={self._dataproc_service_account}"
-            )
+            gcloud_cmd.append(f"--impersonate-service-account={self._dataproc_service_account}")
         return gcloud_cmd
 
     def _tune_dataproc_for_parallelism(self) -> list:
@@ -559,21 +504,13 @@ class OffloadTransportSparkDataprocGcloudCanary(OffloadTransportSparkDataprocGcl
 
         self._create_basic_connectivity_attributes(offload_options)
 
-        self._offload_transport_consistent_read = (
-            orchestration_defaults.bool_option_from_string(
-                "OFFLOAD_TRANSPORT_CONSISTENT_READ",
-                orchestration_defaults.offload_transport_consistent_read_default(),
-            )
+        self._offload_transport_consistent_read = orchestration_defaults.bool_option_from_string(
+            "OFFLOAD_TRANSPORT_CONSISTENT_READ",
+            orchestration_defaults.offload_transport_consistent_read_default(),
         )
-        self._offload_transport_fetch_size = (
-            orchestration_defaults.offload_transport_fetch_size_default()
-        )
-        self._offload_transport_jvm_overrides = (
-            orchestration_defaults.offload_transport_spark_overrides_default()
-        )
-        self._offload_transport_queue_name = (
-            orchestration_defaults.offload_transport_spark_queue_name_default()
-        )
+        self._offload_transport_fetch_size = orchestration_defaults.offload_transport_fetch_size_default()
+        self._offload_transport_jvm_overrides = orchestration_defaults.offload_transport_spark_overrides_default()
+        self._offload_transport_queue_name = orchestration_defaults.offload_transport_spark_queue_name_default()
         self._offload_transport_parallelism = 1
         self._validation_polling_interval = (
             orchestration_defaults.offload_transport_validation_polling_interval_default()
@@ -608,9 +545,7 @@ class OffloadTransportSparkDataprocGcloudCanary(OffloadTransportSparkDataprocGcl
     def _get_batch_name(self) -> str:
         """Return a Managed Spark serverless batch name for canary check."""
         # Managed Spark serverless batch names only accept a simple set of characters and 4-63 characters in length
-        return self._get_transport_app_name(
-            sep="-", ts=True, name_override="canary"
-        ).lower()[:64]
+        return self._get_transport_app_name(sep="-", ts=True, name_override="canary").lower()[:64]
 
     ###########################################################################
     # PUBLIC METHODS

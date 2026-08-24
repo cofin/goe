@@ -14,9 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" option_descriptions: Library of constants defining descriptions for options.
-    In the future we expect to refactor all option processing, including descriptions, and this module will
-    may become redundant at that time.
+"""option_descriptions: Library of constants defining descriptions for options.
+In the future we expect to refactor all option processing, including descriptions, and this module will
+may become redundant at that time.
 """
 
 DATA_SAMPLE_PARALLELISM = (
@@ -24,7 +24,9 @@ DATA_SAMPLE_PARALLELISM = (
     "Values of 0 or 1 will execute the query without parallelism"
 )
 
-RESET_BACKEND_TABLE = "Remove backend data table. Use with caution - this will delete previously offloaded data for this table!"
+RESET_BACKEND_TABLE = (
+    "Remove backend data table. Use with caution - this will delete previously offloaded data for this table!"
+)
 
 REUSE_BACKEND_TABLE = (
     "Allow Offload to re-use an empty backend table when there is already Offload metadata. "

@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" SimpleTimer: Library for providing simple elapsed times for logging
-"""
+"""SimpleTimer: Library for providing simple elapsed times for logging"""
 
 import time
 
 
-class SimpleTimer(object):
+class SimpleTimer:
     """Library for providing simple elapsed times for logging"""
 
     def __init__(self, name="timer"):
@@ -38,12 +37,8 @@ class SimpleTimer(object):
         self.duration = 0
 
     def show(self):
-        return "{desc} elapsed: {elapsed:5.3f} seconds".format(
-            desc=self.name, elapsed=self.elapsed
-        )
+        return f"{self.name} elapsed: {self.elapsed:5.3f} seconds"
 
     def stop(self):
         self.duration = self.elapsed
-        return "{desc} elapsed: {elapsed:5.3f} seconds".format(
-            desc=self.name, elapsed=self.duration
-        )
+        return f"{self.name} elapsed: {self.duration:5.3f} seconds"

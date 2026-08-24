@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from goe.offload.factory.offload_transport_factory import (
     offload_transport_factory,
@@ -24,23 +25,22 @@ from goe.offload.factory.offload_transport_factory import (
 )
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_transport import (
-    is_query_import_available,
     OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SQOOP,
+    is_query_import_available,
 )
 from goe.offload.oracle.oracle_column import (
-    OracleColumn,
     ORACLE_TYPE_VARCHAR2,
+    OracleColumn,
 )
 from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
-
 from tests.unit.test_functions import (
-    build_mock_options,
-    build_mock_offload_operation,
     FAKE_ORACLE_BQ_ENV,
+    build_mock_offload_operation,
+    build_mock_options,
 )
 
 FRONTEND_COLUMNS = [
@@ -111,12 +111,7 @@ def test_is_query_import_available(
     expected_status,
 ):
     fake_operation.offload_transport_small_table_threshold = small_table_threshold
-    assert (
-        is_query_import_available(
-            fake_operation, config, oracle_table, messages=messages
-        )
-        == expected_status
-    )
+    assert is_query_import_available(fake_operation, config, oracle_table, messages=messages) == expected_status
 
 
 def test_sqoop_construct(config, messages, oracle_table, fake_operation):
@@ -174,19 +169,11 @@ def test_dataproc_cmd(config, messages, oracle_table, fake_operation):
     cmd = client._gcloud_dataproc_submit_command()
     assert isinstance(cmd, list)
 
-    assert (
-        f"--project={config.google_dataproc_project}" in cmd
-    ), f"project option is missing from cmd: {cmd}"
-    assert (
-        f"--cluster={config.google_dataproc_cluster}" in cmd
-    ), f"cluster option is missing from cmd: {cmd}"
-    assert (
-        f"--region={config.google_dataproc_region}" in cmd
-    ), f"region option is missing from cmd: {cmd}"
+    assert f"--project={config.google_dataproc_project}" in cmd, f"project option is missing from cmd: {cmd}"
+    assert f"--cluster={config.google_dataproc_cluster}" in cmd, f"cluster option is missing from cmd: {cmd}"
+    assert f"--region={config.google_dataproc_region}" in cmd, f"region option is missing from cmd: {cmd}"
     # batch option should NOT be in standard Managed Spark job commands.
-    assert all(
-        "--batch=" not in _ for _ in cmd
-    ), f"batch option is incorrectly in cmd: {cmd}"
+    assert all("--batch=" not in _ for _ in cmd), f"batch option is incorrectly in cmd: {cmd}"
 
 
 def test_dataproc_canary_construct():
@@ -210,19 +197,13 @@ def test_dataproc_batches_cmd(config, messages, oracle_table, fake_operation):
     cmd = client._gcloud_dataproc_submit_command()
     assert isinstance(cmd, list)
 
-    assert (
-        f"--project={config.google_dataproc_project}" in cmd
-    ), f"project option is missing from cmd: {cmd}"
-    assert (
-        f"--region={config.google_dataproc_region}" in cmd
-    ), f"region option is missing from cmd: {cmd}"
+    assert f"--project={config.google_dataproc_project}" in cmd, f"project option is missing from cmd: {cmd}"
+    assert f"--region={config.google_dataproc_region}" in cmd, f"region option is missing from cmd: {cmd}"
     assert any("--batch=" in _ for _ in cmd), f"batch option is missing from cmd: {cmd}"
-    assert (
-        f"--service-account={config.google_dataproc_service_account}" in cmd
-    ), f"service account option is missing from cmd: {cmd}"
-    assert (
-        f"--ttl={config.google_dataproc_batches_ttl}" in cmd
-    ), f"ttl option is missing from cmd: {cmd}"
+    assert f"--service-account={config.google_dataproc_service_account}" in cmd, (
+        f"service account option is missing from cmd: {cmd}"
+    )
+    assert f"--ttl={config.google_dataproc_batches_ttl}" in cmd, f"ttl option is missing from cmd: {cmd}"
 
 
 def test_dataproc_batches_describe_cmd(config, messages, oracle_table, fake_operation):
@@ -241,12 +222,8 @@ def test_dataproc_batches_describe_cmd(config, messages, oracle_table, fake_oper
     cmd = client._gcloud_dataproc_describe_command(batch_name)
     assert isinstance(cmd, list)
 
-    assert (
-        f"--project={config.google_dataproc_project}" in cmd
-    ), f"project option is missing from cmd: {cmd}"
-    assert (
-        f"--region={config.google_dataproc_region}" in cmd
-    ), f"region option is missing from cmd: {cmd}"
+    assert f"--project={config.google_dataproc_project}" in cmd, f"project option is missing from cmd: {cmd}"
+    assert f"--region={config.google_dataproc_region}" in cmd, f"region option is missing from cmd: {cmd}"
     assert batch_name in cmd, f"batch '{batch_name}' is missing from cmd: {cmd}"
 
 

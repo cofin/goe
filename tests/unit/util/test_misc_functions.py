@@ -12,19 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestMiscFunctions: Unit test library to test functions from misc_functions module.
-"""
+"""TestMiscFunctions: Unit test library to test functions from misc_functions module."""
+
 import decimal
-from unittest import TestCase, main
 from textwrap import dedent
+from unittest import TestCase, main
 
 from goe.util.misc_functions import (
     add_prefix_in_same_case,
     add_suffix_in_same_case,
-    case_insensitive_in,
-    substitute_in_same_case,
     backtick_sandwich,
     bytes_to_human_size,
+    case_insensitive_in,
     format_list_for_logging,
     get_integral_part_magnitude,
     get_temp_path,
@@ -36,6 +35,7 @@ from goe.util.misc_functions import (
     split_not_in_quotes,
     standard_file_name,
     standard_log_name,
+    substitute_in_same_case,
     trunc_with_hash,
     truncate_number,
     wildcard_matches_in_list,
@@ -93,12 +93,8 @@ class TestMiscFunctions(TestCase):
         self.assertEqual(get_integral_part_magnitude(1234567890.1234), 10)
         self.assertEqual(get_integral_part_magnitude(12345678901234567890), 20)
         self.assertEqual(get_integral_part_magnitude(12345678901234567890.1234), 20)
-        self.assertEqual(
-            get_integral_part_magnitude(123456789012345678901234567890), 30
-        )
-        self.assertEqual(
-            get_integral_part_magnitude(123456789012345678901234567890.1234), 30
-        )
+        self.assertEqual(get_integral_part_magnitude(123456789012345678901234567890), 30)
+        self.assertEqual(get_integral_part_magnitude(123456789012345678901234567890.1234), 30)
 
     def test_substitute_in_same_case(self):
         self.assertEqual(substitute_in_same_case("%s_h", "hello"), "hello_h")
@@ -140,12 +136,12 @@ class TestMiscFunctions(TestCase):
             (
                 decimal.Decimal("1998849133104929799110640.00301078"),
                 0,
-                decimal.Decimal("1998849133104929799110640"),
+                decimal.Decimal(1998849133104929799110640),
             ),
             (
                 decimal.Decimal("-1998849133104929799110640.00301078"),
                 0,
-                decimal.Decimal("-1998849133104929799110640"),
+                decimal.Decimal(-1998849133104929799110640),
             ),
             (decimal.Decimal("9" * 37), 0, decimal.Decimal("9" * 37)),
             (decimal.Decimal("-" + "9" * 37), 0, decimal.Decimal("-" + "9" * 37)),
@@ -178,22 +174,22 @@ class TestMiscFunctions(TestCase):
             (
                 decimal.Decimal("1998849133104929799110640.00301078"),
                 -2,
-                decimal.Decimal("1998849133104929799110600"),
+                decimal.Decimal(1998849133104929799110600),
             ),
             (
                 decimal.Decimal("-1998849133104929799110640.00301078"),
                 -2,
-                decimal.Decimal("-1998849133104929799110600"),
+                decimal.Decimal(-1998849133104929799110600),
             ),
             (
                 decimal.Decimal("1998849133104929799110640.00301078"),
                 -10,
-                decimal.Decimal("1998849133104920000000000"),
+                decimal.Decimal(1998849133104920000000000),
             ),
             (
                 decimal.Decimal("-1998849133104929799110640.00301078"),
                 -10,
-                decimal.Decimal("-1998849133104920000000000"),
+                decimal.Decimal(-1998849133104920000000000),
             ),
             (decimal.Decimal("0." + "1" * 38), -20, 0),
             (decimal.Decimal("-0." + "1" * 38), -20, 0),
@@ -242,18 +238,10 @@ class TestMiscFunctions(TestCase):
         self.assertEqual(human_size_to_bytes("64B", binary_sizes=False), 64)
         self.assertEqual(human_size_to_bytes("64K", binary_sizes=False), 64 * 1000)
         self.assertEqual(human_size_to_bytes("64KB", binary_sizes=False), 64 * 1000)
-        self.assertEqual(
-            human_size_to_bytes("64M", binary_sizes=False), 64 * 1000 * 1000
-        )
-        self.assertEqual(
-            human_size_to_bytes("64MB", binary_sizes=False), 64 * 1000 * 1000
-        )
-        self.assertEqual(
-            human_size_to_bytes("64G", binary_sizes=False), 64 * 1000 * 1000 * 1000
-        )
-        self.assertEqual(
-            human_size_to_bytes("64GB", binary_sizes=False), 64 * 1000 * 1000 * 1000
-        )
+        self.assertEqual(human_size_to_bytes("64M", binary_sizes=False), 64 * 1000 * 1000)
+        self.assertEqual(human_size_to_bytes("64MB", binary_sizes=False), 64 * 1000 * 1000)
+        self.assertEqual(human_size_to_bytes("64G", binary_sizes=False), 64 * 1000 * 1000 * 1000)
+        self.assertEqual(human_size_to_bytes("64GB", binary_sizes=False), 64 * 1000 * 1000 * 1000)
 
     def test_is_number(self):
         self.assertTrue(is_number("0"))
@@ -317,9 +305,7 @@ class TestMiscFunctions(TestCase):
         ]
         for to_split, sep, exclude_empty_tokens, should_match in assert_tuples:
             self.assertEqual(
-                split_not_in_quotes(
-                    to_split, sep, exclude_empty_tokens=exclude_empty_tokens
-                ),
+                split_not_in_quotes(to_split, sep, exclude_empty_tokens=exclude_empty_tokens),
                 should_match,
             )
 
@@ -329,17 +315,9 @@ class TestMiscFunctions(TestCase):
         self.assertTrue(get_temp_path(suffix=".txt").endswith(".txt"))
         self.assertTrue(get_temp_path(suffix="txt").endswith(".txt"))
         self.assertTrue(get_temp_path(tmp_dir="/temp").startswith("/temp"))
-        self.assertTrue(
-            get_temp_path(tmp_dir="/temp", prefix="unit").startswith("/temp/unit")
-        )
-        self.assertTrue(
-            get_temp_path(prefix="unit", suffix=".tmp").startswith("/tmp/unit")
-        )
-        self.assertTrue(
-            get_temp_path(tmp_dir="/temp", prefix="unit", suffix=".tmp").endswith(
-                ".tmp"
-            )
-        )
+        self.assertTrue(get_temp_path(tmp_dir="/temp", prefix="unit").startswith("/temp/unit"))
+        self.assertTrue(get_temp_path(prefix="unit", suffix=".tmp").startswith("/tmp/unit"))
+        self.assertTrue(get_temp_path(tmp_dir="/temp", prefix="unit", suffix=".tmp").endswith(".tmp"))
 
     def test_format_list_for_logging(self):
         test_input = [("Header1", "LongerHeader"), ("Blah", 123)]
@@ -356,9 +334,7 @@ class TestMiscFunctions(TestCase):
             ------- ------------
             Blah             123"""
         )
-        self.assertEqual(
-            format_list_for_logging(test_input, underline_char="-"), expected_output2
-        )
+        self.assertEqual(format_list_for_logging(test_input, underline_char="-"), expected_output2)
 
     def test_remove_chars(self):
         self.assertIsNone(
@@ -373,35 +349,23 @@ class TestMiscFunctions(TestCase):
         # Length 20 string is trimmed to 10
         self.assertEqual(len(trunc_with_hash(test_string, 4, 10)), 10)
         # Length 10 output with 4 hash chars has 5 of original value then underscore
-        self.assertTrue(
-            trunc_with_hash(test_string, 4, 10).startswith(test_string[:5] + "_")
-        )
+        self.assertTrue(trunc_with_hash(test_string, 4, 10).startswith(test_string[:5] + "_"))
         # Length 8 output with 4 hash chars has 3 of original value then underscore
-        self.assertTrue(
-            trunc_with_hash(test_string, 4, 8).startswith(test_string[:3] + "_")
-        )
+        self.assertTrue(trunc_with_hash(test_string, 4, 8).startswith(test_string[:3] + "_"))
         # Length 20 string is trimmed to 10 with different number of hash chars
         self.assertEqual(len(trunc_with_hash(test_string, 6, 10)), 10)
         # Length 10 output with 6 hash chars has 3 of original value then underscore
-        self.assertTrue(
-            trunc_with_hash(test_string, 6, 10).startswith(test_string[:3] + "_")
-        )
+        self.assertTrue(trunc_with_hash(test_string, 6, 10).startswith(test_string[:3] + "_"))
         # String shorter than max length is unaffected
-        self.assertEqual(
-            trunc_with_hash(test_string, 4, len(test_string) + 1), test_string
-        )
+        self.assertEqual(trunc_with_hash(test_string, 4, len(test_string) + 1), test_string)
         # String equal to max length is unaffected
         self.assertEqual(trunc_with_hash(test_string, 4, len(test_string)), test_string)
 
     def test_standard_file_name(self):
         std_prefix = "offload_db_name.table_name"
         self.assertTrue(standard_file_name(std_prefix).startswith(std_prefix))
-        self.assertEqual(
-            standard_file_name(std_prefix, extension=".txt"), std_prefix + ".txt"
-        )
-        self.assertEqual(
-            standard_file_name(std_prefix, extension=".log"), std_prefix + ".log"
-        )
+        self.assertEqual(standard_file_name(std_prefix, extension=".txt"), std_prefix + ".txt")
+        self.assertEqual(standard_file_name(std_prefix, extension=".log"), std_prefix + ".log")
         self.assertEqual(standard_file_name(std_prefix), std_prefix)
         self.assertEqual(
             standard_file_name(std_prefix, name_suffix="more", extension=".txt"),
@@ -425,32 +389,20 @@ class TestMiscFunctions(TestCase):
         )
         # Length 50 output will have at least 10 characters of the original name
         self.assertTrue(
-            standard_file_name(
-                std_prefix, max_name_length=45, with_datetime=True
-            ).startswith(std_prefix[:10])
+            standard_file_name(std_prefix, max_name_length=45, with_datetime=True).startswith(std_prefix[:10])
         )
         # Length 50 output will NOT have 20 characters of the original name
         self.assertFalse(
-            standard_file_name(
-                std_prefix, max_name_length=45, with_datetime=True
-            ).startswith(std_prefix[:20])
+            standard_file_name(std_prefix, max_name_length=45, with_datetime=True).startswith(std_prefix[:20])
         )
         # No slashes in file name and other bad inputs
         self.assertRaises(AssertionError, lambda: standard_file_name("file/name"))
         self.assertRaises(AssertionError, lambda: standard_file_name(123))
         self.assertRaises(AssertionError, lambda: standard_file_name(None))
-        self.assertRaises(
-            AssertionError, lambda: standard_file_name("file_name", extension=None)
-        )
-        self.assertRaises(
-            AssertionError, lambda: standard_file_name("file_name", extension=123)
-        )
-        self.assertRaises(
-            AssertionError, lambda: standard_file_name("file_name", name_suffix=None)
-        )
-        self.assertRaises(
-            AssertionError, lambda: standard_file_name("file_name", name_suffix=123)
-        )
+        self.assertRaises(AssertionError, lambda: standard_file_name("file_name", extension=None))
+        self.assertRaises(AssertionError, lambda: standard_file_name("file_name", extension=123))
+        self.assertRaises(AssertionError, lambda: standard_file_name("file_name", name_suffix=None))
+        self.assertRaises(AssertionError, lambda: standard_file_name("file_name", name_suffix=123))
 
     def test_standard_log_name(self):
         std_prefix = "offload_db_name.table_name"
@@ -470,9 +422,7 @@ class TestMiscFunctions(TestCase):
             "DOT_._",
         ]
         self.assertListEqual(wildcard_matches_in_list("_id", list_of_names), [])
-        self.assertListEqual(
-            wildcard_matches_in_list("*_id", list_of_names), ["lower_id"]
-        )
+        self.assertListEqual(wildcard_matches_in_list("*_id", list_of_names), ["lower_id"])
         self.assertListEqual(
             wildcard_matches_in_list("*_id", list_of_names, case_sensitive=False),
             ["UPPER_ID", "lower_id"],
@@ -482,14 +432,10 @@ class TestMiscFunctions(TestCase):
             ["lower_year", "lower2_year"],
         )
         self.assertEqual(
-            len(
-                wildcard_matches_in_list("*_year", list_of_names, case_sensitive=False)
-            ),
+            len(wildcard_matches_in_list("*_year", list_of_names, case_sensitive=False)),
             4,
         )
-        self.assertEqual(
-            len(wildcard_matches_in_list("*_*", list_of_names)), len(list_of_names)
-        )
+        self.assertEqual(len(wildcard_matches_in_list("*_*", list_of_names)), len(list_of_names))
         self.assertEqual(
             len(wildcard_matches_in_list("*_*", list_of_names, case_sensitive=False)),
             len(list_of_names),
@@ -497,9 +443,7 @@ class TestMiscFunctions(TestCase):
         # Ensure other wildcards do not have an effect
         self.assertListEqual(wildcard_matches_in_list("lower?id", list_of_names), [])
         self.assertListEqual(wildcard_matches_in_list(".*id", list_of_names), [])
-        self.assertListEqual(
-            wildcard_matches_in_list("*?*", list_of_names), ["QUESTION_MARK_?_"]
-        )
+        self.assertListEqual(wildcard_matches_in_list("*?*", list_of_names), ["QUESTION_MARK_?_"])
         self.assertListEqual(wildcard_matches_in_list("*.*", list_of_names), ["DOT_._"])
 
 

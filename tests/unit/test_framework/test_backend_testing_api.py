@@ -35,24 +35,23 @@ from tests.testlib.test_framework.factory.backend_testing_api_factory import (
     backend_testing_api_factory,
 )
 from tests.unit.test_functions import (
-    build_mock_options,
-    optional_hadoop_dependency_exception,
-    optional_snowflake_dependency_exception,
-    optional_synapse_dependency_exception,
     FAKE_ORACLE_BQ_ENV,
     FAKE_ORACLE_HIVE_ENV,
     FAKE_ORACLE_IMPALA_ENV,
     FAKE_ORACLE_SNOWFLAKE_ENV,
     FAKE_ORACLE_SYNAPSE_ENV,
+    build_mock_options,
+    optional_hadoop_dependency_exception,
+    optional_snowflake_dependency_exception,
+    optional_synapse_dependency_exception,
 )
-
 
 transient_error_global_counter = 0
 
 
 class TestBackendTestingApi(TestCase):
     def __init__(self, *args, **kwargs):
-        super(TestBackendTestingApi, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.test_api = None
         self.config = None
         self.db = None
@@ -78,9 +77,7 @@ class TestBackendTestingApi(TestCase):
     def _test_create_table_as_select(self):
         # CTAS with no source table
         self.assertIsInstance(
-            self.test_api.create_table_as_select(
-                self.db, "new_table", "FORMAT", [("123", "COL1"), ("'abc'", "COL2")]
-            ),
+            self.test_api.create_table_as_select(self.db, "new_table", "FORMAT", [("123", "COL1"), ("'abc'", "COL2")]),
             list,
         )
         # CTAS from table
@@ -112,7 +109,7 @@ class TestHiveBackendTestingApi(TestBackendTestingApi):
         self.target = DBTYPE_HIVE
         self.config = self._get_mock_config(FAKE_ORACLE_HIVE_ENV)
         try:
-            super(TestHiveBackendTestingApi, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if not optional_hadoop_dependency_exception(e):
                 raise
@@ -126,7 +123,7 @@ class TestImpalaBackendTestingApi(TestBackendTestingApi):
         self.target = DBTYPE_IMPALA
         self.config = self._get_mock_config(FAKE_ORACLE_IMPALA_ENV)
         try:
-            super(TestImpalaBackendTestingApi, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if not optional_hadoop_dependency_exception(e):
                 raise
@@ -139,7 +136,7 @@ class TestBigQueryBackendTestingApi(TestBackendTestingApi):
     def setUp(self):
         self.target = DBTYPE_BIGQUERY
         self.config = self._get_mock_config(FAKE_ORACLE_BQ_ENV)
-        super(TestBigQueryBackendTestingApi, self).setUp()
+        super().setUp()
 
     def test_all_non_connecting_bigquery_tests(self):
         self._run_all_tests()
@@ -150,7 +147,7 @@ class TestSnowflakeBackendTestingApi(TestBackendTestingApi):
         self.target = DBTYPE_SNOWFLAKE
         self.config = self._get_mock_config(FAKE_ORACLE_SNOWFLAKE_ENV)
         try:
-            super(TestSnowflakeBackendTestingApi, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if not optional_snowflake_dependency_exception(e):
                 raise
@@ -164,7 +161,7 @@ class TestSynapseBackendTestingApi(TestBackendTestingApi):
         self.target = DBTYPE_SYNAPSE
         self.config = self._get_mock_config(FAKE_ORACLE_SYNAPSE_ENV)
         try:
-            super(TestSynapseBackendTestingApi, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if not optional_synapse_dependency_exception(e):
                 raise

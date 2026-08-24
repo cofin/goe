@@ -14,10 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendImpalaTable: Library for logic/interaction with a table that will
-    be either:
-      1) The target of an offload
-      2) The source of a present
+"""BackendImpalaTable: Library for logic/interaction with a table that will
+be either:
+  1) The target of an offload
+  2) The source of a present
 """
 
 import logging
@@ -71,7 +71,7 @@ class BackendImpalaTable(BackendHadoopTable):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendImpalaTable, self).__init__(
+        super().__init__(
             db_name,
             table_name,
             backend_type,
@@ -134,9 +134,7 @@ class BackendImpalaTable(BackendHadoopTable):
         )
 
     def _compute_impala_table_statistics(self, incremental_stats):
-        self._db_api.compute_stats(
-            self.db_name, self.table_name, incremental=incremental_stats
-        )
+        self._db_api.compute_stats(self.db_name, self.table_name, incremental=incremental_stats)
 
     def _disable_decimal_v2_query_option(self):
         # For consistency we want to insert data using DECIMAL V1 which is no longer the default from Impala v3.
@@ -145,8 +143,7 @@ class BackendImpalaTable(BackendHadoopTable):
         #   ERROR: UDF ERROR: Decimal expression overflowed
         if bool(GOEVersion(self.target_version()) >= GOEVersion("3.0.0")):
             return {"DECIMAL_V2": "FALSE"}
-        else:
-            return {}
+        return {}
 
     def _final_insert_format_sql(
         self,
@@ -164,13 +161,10 @@ class BackendImpalaTable(BackendHadoopTable):
             assert isinstance(filter_clauses, list)
 
         impala_hint = (
-            ("\n[%s]" % self._user_requested_impala_insert_hint)
-            if self._user_requested_impala_insert_hint
-            else ""
+            ("\n[%s]" % self._user_requested_impala_insert_hint) if self._user_requested_impala_insert_hint else ""
         )
         partition_expr_tuples = [
-            (self.get_final_table_cast(_), _)
-            for _ in get_column_names(self.get_partition_columns())
+            (self.get_final_table_cast(_), _) for _ in get_column_names(self.get_partition_columns())
         ]
 
         return self._db_api.gen_insert_select_sql_text(
@@ -191,9 +185,7 @@ class BackendImpalaTable(BackendHadoopTable):
             self._user_requested_storage_format == FILE_STORAGE_FORMAT_PARQUET
             and self._user_requested_storage_compression
         ):
-            query_options["COMPRESSION_CODEC"] = (
-                self._user_requested_storage_compression
-            )
+            query_options["COMPRESSION_CODEC"] = self._user_requested_storage_compression
         query_options.update(self._disable_decimal_v2_query_option())
         return query_options
 
@@ -228,7 +220,7 @@ class BackendImpalaTable(BackendHadoopTable):
         ):
             recast_type = backend_col.format_data_type()
         else:
-            recast_type = "DECIMAL({},0)".format(backend_col.data_precision)
+            recast_type = f"DECIMAL({backend_col.data_precision},0)"
         to_synth_expr = f"CAST({to_synth_expr} AS {recast_type})"
         to_synth_expr = f"{to_synth_expr} * {granularity}"
 
@@ -236,8 +228,7 @@ class BackendImpalaTable(BackendHadoopTable):
         to_synth_expr = f"CAST({to_synth_expr} AS STRING)"
         if with_padding:
             return "LPAD(%s, %s, '0')" % (to_synth_expr, synthetic_partition_digits)
-        else:
-            return to_synth_expr
+        return to_synth_expr
 
     def _tzoffset_to_timestamp_sql_expression(self, col_name):
         """Impala tzoffset equivalent SQL expression"""

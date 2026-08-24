@@ -14,11 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Miscellaneous useful functions that do not fit anywhere else
-"""
+"""Miscellaneous useful functions that do not fit anywhere else"""
 
-import decimal
 import datetime
+import decimal
 import getpass
 import inspect
 import logging
@@ -27,24 +26,21 @@ import os
 import random
 import re
 import string
-import sys
-from typing import Optional, Union
 import uuid
-
 from base64 import b64encode
 from copy import copy
-from dateutil import parser
 from hashlib import md5
 
+from dateutil import parser
 
 ###############################################################################
 #  CONSTANTS
 ###############################################################################
 
 # Python datatype recognition regexes for parse_python_from_string()
-REGEX_TRUE = re.compile("True", re.I)
-REGEX_FALSE = re.compile("False", re.I)
-REGEX_NONE = re.compile("None", re.I)
+REGEX_TRUE = re.compile("True", re.IGNORECASE)
+REGEX_FALSE = re.compile("False", re.IGNORECASE)
+REGEX_NONE = re.compile("None", re.IGNORECASE)
 
 rdbms_max_descriptor_length = 30
 
@@ -54,27 +50,24 @@ MAX_SUPPORTED_PRECISION = 38
 
 
 def all_int_chars(int_str, allow_negative=False):
-    """returns true if all chars in a string are 0-9"""
+    """Returns true if all chars in a string are 0-9"""
     if allow_negative:
         return bool(re.match(r"^-?\d+$", str(int_str)))
-    else:
-        return bool(re.match(r"^\d+$", str(int_str)))
+    return bool(re.match(r"^\d+$", str(int_str)))
 
 
 def end_by(s, ch):
     """Make sure that character: 'ch' is at the end of string: 's'"""
     if s.endswith(ch):
         return s
-    else:
-        return s + ch
+    return s + ch
 
 
 def begin_with(s, ch):
     """Make sure that character: 'ch' is at the beginning of string: 's'"""
     if s.startswith(ch):
         return s
-    else:
-        return ch + s
+    return ch + s
 
 
 def surround(s, ch):
@@ -95,8 +88,7 @@ def unsurround(s, ch, endch=None):
     last_ch = endch or ch
     if s and s.startswith(first_ch) and s.endswith(last_ch):
         return s[1:-1]
-    else:
-        return s
+    return s
 
 
 def chunk_list(lst, chunk_size):
@@ -112,11 +104,7 @@ def set_goelib_logging(log_level, extra_loggers=None):
 
     # Disable library loggers
     for logger_name in logging.Logger.manager.loggerDict:
-        if (
-            logger_name != "__main__"
-            and logger_name not in extra_loggers
-            and not logger_name.startswith("goelib")
-        ):
+        if logger_name != "__main__" and logger_name not in extra_loggers and not logger_name.startswith("goelib"):
             logging.getLogger(logger_name).level = logging.CRITICAL
 
     logging.basicConfig(
@@ -184,8 +172,7 @@ def split_not_in_quotes(to_split: str, sep=" ", exclude_empty_tokens=False) -> l
     pattern = r"""%(sep)s(?=(?:[^'"]|'[^']*'|"[^"]*")*$)""" % {"sep": sep}
     if exclude_empty_tokens:
         return [t for t in re.split(pattern, to_split) if t]
-    else:
-        return re.split(pattern, to_split)
+    return re.split(pattern, to_split)
 
 
 def timedelta_to_str(td):
@@ -210,7 +197,7 @@ def is_number(s):
 
     # For some strange reason, boolean is 'int' in python
     # i.e. float(True) = 1.0 - we do not want that
-    if type(s) in (type(True), type(False)):
+    if type(s) in (bool, bool):
         return False
 
     try:
@@ -264,16 +251,15 @@ def truncate_number(n, digits_to_keep=0):
     multiplier = tn_context.power(10, digits_to_keep)
     n_multiplied = (num * multiplier).to_integral_value(rounding=decimal.ROUND_DOWN)
     if n_multiplied == 0:
-        n_final = decimal.Decimal("0")
+        n_final = decimal.Decimal(0)
     else:
         n_final = remove_exponent(n_multiplied / multiplier)
     decimal.setcontext(original_context)
     if isinstance(n, int):
         return int(n_final)
-    elif isinstance(n, float):
+    if isinstance(n, float):
         return float(n_final)
-    else:
-        return n_final
+    return n_final
 
 
 def nvl(val, repl):
@@ -343,13 +329,10 @@ def str_floatlike(maybe_float):
     """
     if is_number(maybe_float) and not float(maybe_float).is_integer():
         return str(maybe_float).rstrip("0").rstrip(".")
-    else:
-        return maybe_float
+    return maybe_float
 
 
-def trunc_with_hash(
-    s, hash_length, max_length, force_append_hash=False, hash_case_conv_fn=None
-):
+def trunc_with_hash(s, hash_length, max_length, force_append_hash=False, hash_case_conv_fn=None):
     """Truncate a string with a suffix of a hash of its original value so the final length is max_length"""
     assert s
     assert hash_length
@@ -358,14 +341,13 @@ def trunc_with_hash(
         assert callable(hash_case_conv_fn)
     if len(s) <= max_length and not force_append_hash:
         return s
-    else:
-        stem = s[: max_length - hash_length - 1]
-        # hash -> b64 it into chars -> keep identifier chars and trim to hash_length
-        minihash = b64encode(md5(s.encode()).digest()).decode()
-        minihash = re.sub(r"[\W\s]", "", minihash)[:hash_length]
-        if hash_case_conv_fn:
-            minihash = hash_case_conv_fn(minihash)
-        return stem + "_" + minihash
+    stem = s[: max_length - hash_length - 1]
+    # hash -> b64 it into chars -> keep identifier chars and trim to hash_length
+    minihash = b64encode(md5(s.encode()).digest()).decode()
+    minihash = re.sub(r"[\W\s]", "", minihash)[:hash_length]
+    if hash_case_conv_fn:
+        minihash = hash_case_conv_fn(minihash)
+    return stem + "_" + minihash
 
 
 def standard_file_name(
@@ -403,12 +385,7 @@ def standard_file_name(
         log_append += "_" + name_suffix
     if with_datetime:
         log_append += "_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    over_limit = (
-        len(file_prefix)
-        + len(log_append)
-        + len(extension)
-        + max_name_length_extra_slack
-    ) - max_name_length
+    over_limit = (len(file_prefix) + len(log_append) + len(extension) + max_name_length_extra_slack) - max_name_length
     if over_limit > 0:
         new_log_prefix = trunc_with_hash(
             file_prefix,
@@ -468,9 +445,7 @@ def bytes_to_human_size(size_bytes, scale=1):
     elif size_bytes < 1024 * 1024 * 1024 * 1024:
         size_str = (pattern % round(size_bytes / 1024.0 / 1024 / 1024, scale)) + "GB"
     else:
-        size_str = (
-            pattern % round(size_bytes / 1024.0 / 1024 / 1024 / 1024, scale)
-        ) + "TB"
+        size_str = (pattern % round(size_bytes / 1024.0 / 1024 / 1024 / 1024, scale)) + "TB"
 
     return size_str
 
@@ -483,7 +458,7 @@ def human_size_to_bytes(size, binary_sizes=True):
     """
     if size is None:
         return size
-    elif isinstance(size, bytes):
+    if isinstance(size, bytes):
         size = size.decode()
     elif not isinstance(size, str):
         size = str(size)
@@ -561,10 +536,7 @@ def obscure_list_items(list_of_items, to_obscure):
             (
                 itm.get("sub", "?")
                 if safe_list[i] == itm["item"]
-                and (
-                    not itm.get("prior")
-                    or (i > 0 and itm.get("prior") == safe_list[i - 1])
-                )
+                and (not itm.get("prior") or (i > 0 and itm.get("prior") == safe_list[i - 1]))
                 else safe_list[i]
             )
             for i in range(len(safe_list))
@@ -597,27 +569,21 @@ def match_case(token, affix, position, operation):
                 + token
                 + (affix.upper() if position == "suffix" else "")
             )
-        elif token.islower():
+        if token.islower():
             return (
                 (affix.lower() if position == "prefix" else "")
                 + token
                 + (affix.lower() if position == "suffix" else "")
             )
-        else:
-            # All bets are off
-            return (
-                (affix if position == "prefix" else "")
-                + token
-                + (affix if position == "suffix" else "")
-            )
-    elif operation == "substitute":
+        # All bets are off
+        return (affix if position == "prefix" else "") + token + (affix if position == "suffix" else "")
+    if operation == "substitute":
         if affix.isupper():
             return (token % affix).upper()
-        elif affix.islower():
+        if affix.islower():
             return (token % affix).lower()
-        else:
-            # All bets are off
-            return token % affix
+        # All bets are off
+        return token % affix
 
 
 def add_suffix_in_same_case(token, suffix):
@@ -638,12 +604,8 @@ def substitute_in_same_case(pattern, token):
     return match_case(pattern, token, None, "substitute")
 
 
-def case_insensitive_in(
-    token: str, search_list: Union[list, str, set]
-) -> Optional[str]:
-    """
-    Search for token in search_list with an upper() on both sides. Returns the matched value search_list for truthyness.
-    """
+def case_insensitive_in(token: str, search_list: list | str | set) -> str | None:
+    """Search for token in search_list with an upper() on both sides. Returns the matched value search_list for truthyness."""
 
     def to_upper(s):
         return s if s is None else s.upper()
@@ -653,9 +615,8 @@ def case_insensitive_in(
 
     if isinstance(search_list, str):
         return search_list if to_upper(token) == to_upper(search_list) else None
-    else:
-        matches = [_ for _ in search_list if to_upper(token) == to_upper(_)]
-        return matches[0] if matches else None
+    matches = [_ for _ in search_list if to_upper(token) == to_upper(_)]
+    return matches[0] if matches else None
 
 
 def format_json_list(json_list, separator="\n", indent=0):
@@ -700,7 +661,7 @@ def format_list_for_logging(content_list, underline_char="="):
         return "<" if isinstance(x, str) else ">"
 
     assert content_list
-    assert isinstance(content_list, list), "{} is not list".format(type(content_list))
+    assert isinstance(content_list, list), f"{type(content_list)} is not list"
     assert isinstance(content_list[0], tuple)
     widths = []
     for i in range(len(content_list[0])):
@@ -714,12 +675,9 @@ def format_list_for_logging(content_list, underline_char="="):
         # No table data so just return headings
         return "\n".join(table_rows + ["No data"])
     row_format = " ".join(
-        ("{%s: %s%s}" % (i, justify_fn(c), w))
-        for i, (w, c) in enumerate(zip(widths, content_list[1]))
+        ("{%s: %s%s}" % (i, justify_fn(c), w)) for i, (w, c) in enumerate(zip(widths, content_list[1]))
     )
-    string_table = "\n".join(
-        table_rows + [row_format.format(*_).rstrip() for _ in content_list[1:]]
-    )
+    string_table = "\n".join(table_rows + [row_format.format(*_).rstrip() for _ in content_list[1:]])
     return string_table
 
 
@@ -737,7 +695,7 @@ def str_summary_of_self(other_self):
     assert other_self
     return "({})".format(
         ", ".join(
-            "{}={}".format(k, v)
+            f"{k}={v}"
             for k, v in inspect.getmembers(other_self)
             if not inspect.ismethod(v) and not inspect.isfunction(v) and k[0] != "_"
         )
@@ -747,15 +705,13 @@ def str_summary_of_self(other_self):
 def to_bytes(bytes_or_str):
     if isinstance(bytes_or_str, str):
         return bytes_or_str.encode("utf-8")
-    else:
-        return bytes_or_str
+    return bytes_or_str
 
 
 def to_str(bytes_or_str):
     if isinstance(bytes_or_str, bytes):
         return bytes_or_str.decode("utf-8")
-    else:
-        return bytes_or_str
+    return bytes_or_str
 
 
 def wildcard_matches_in_list(pattern, list_of_names, case_sensitive=True):
@@ -769,7 +725,7 @@ def wildcard_matches_in_list(pattern, list_of_names, case_sensitive=True):
     # Reinstate any '*' wildcards
     pattern = pattern.replace("\\*", ".*")
     # Anchor the pattern
-    pattern = r"^{}$".format(pattern)
-    pattern_re = re.compile(pattern) if case_sensitive else re.compile(pattern, re.I)
+    pattern = rf"^{pattern}$"
+    pattern_re = re.compile(pattern) if case_sensitive else re.compile(pattern, re.IGNORECASE)
     matches = [_ for _ in list_of_names if pattern_re.match(_)]
     return matches

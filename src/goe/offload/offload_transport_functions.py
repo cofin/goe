@@ -16,14 +16,14 @@
 
 import decimal
 import logging
-from getpass import getuser
 import math
 import os
-from socket import gethostname, getfqdn
 import subprocess
-from subprocess import PIPE, STDOUT
 import sys
-from typing import Optional, TYPE_CHECKING
+from getpass import getuser
+from socket import getfqdn, gethostname
+from subprocess import PIPE, STDOUT
+from typing import TYPE_CHECKING, Optional
 
 import oracledb as cxo
 
@@ -36,10 +36,10 @@ from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.orchestration import orchestration_constants
 from goe.util.goe_log_fh import is_gcs_path
 from goe.util.misc_functions import (
+    MAX_SUPPORTED_PRECISION,
     get_os_username,
     obscure_list_items,
     standard_file_name,
-    MAX_SUPPORTED_PRECISION,
 )
 
 if TYPE_CHECKING:
@@ -84,9 +84,7 @@ def load_db_hdfs_path(load_db_name: str, config: "OrchestrationConfig") -> str:
     return os.path.join(config.hdfs_load, load_db_name + config.hdfs_db_path_suffix)
 
 
-def avsc_hdfs_path(
-    load_db_name: str, schema_filename: str, config: "OrchestrationConfig"
-) -> str:
+def avsc_hdfs_path(load_db_name: str, schema_filename: str, config: "OrchestrationConfig") -> str:
     if config.backend_distribution not in HADOOP_BASED_BACKEND_DISTRIBUTIONS:
         # No HDFS in play
         return None
@@ -139,18 +137,14 @@ def scp_to_cmd(user, host, from_path, to_path) -> list:
     return ["scp", from_path, "%s@%s:%s" % (user, host, to_path)]
 
 
-def get_rdbms_connection_for_oracle(
-    ora_user, ora_pass, ora_dsn, use_oracle_wallet=False, ora_trace_id="GOE"
-):
+def get_rdbms_connection_for_oracle(ora_user, ora_pass, ora_dsn, use_oracle_wallet=False, ora_trace_id="GOE"):
     if use_oracle_wallet:
         ora_conn = cxo.connect(dsn=ora_dsn)
     else:
         ora_conn = cxo.connect(user=ora_user, password=ora_pass, dsn=ora_dsn)
     session_cursor = ora_conn.cursor()
     try:
-        session_cursor.execute(
-            'ALTER SESSION SET TRACEFILE_IDENTIFIER="%s"' % ora_trace_id
-        )
+        session_cursor.execute('ALTER SESSION SET TRACEFILE_IDENTIFIER="%s"' % ora_trace_id)
     finally:
         session_cursor.close()
     ora_conn.module = FRONTEND_TRACE_MODULE
@@ -161,7 +155,7 @@ def get_rdbms_connection_for_oracle(
 
 
 def credential_provider_path_jvm_override(credential_provider_path) -> str:
-    """return a JVM override clause to point to credential provider file"""
+    """Return a JVM override clause to point to credential provider file"""
     if not credential_provider_path:
         return ""
     return "-Dhadoop.security.credential.provider.path=%s" % credential_provider_path
@@ -206,9 +200,7 @@ def run_os_cmd(
     assert isinstance(cmd, list)
     ok_types = set([str, str])
     token_types = set([type(_) for _ in cmd])
-    assert ok_types.issuperset(
-        token_types
-    ), "All command tokens must be strings, found: " + str(
+    assert ok_types.issuperset(token_types), "All command tokens must be strings, found: " + str(
         list(token_types.difference(ok_types))
     )
 
@@ -234,22 +226,12 @@ def run_os_cmd(
             messages.log(line.strip(), detail=VVERBOSE)
         if not offload_options.vverbose and not silent:
             write_progress_to_stdout()
-    if (
-        not offload_options.vverbose
-        and not offload_options.quiet
-        and output
-        and not silent
-    ):
+    if not offload_options.vverbose and not offload_options.quiet and output and not silent:
         finish_progress_on_stdout()
 
     cmd_returncode = proc.wait()
     messages.log("returncode: %s" % cmd_returncode, detail=VVERBOSE)
-    if (
-        cmd_returncode
-        and not offload_options.vverbose
-        and (not offload_options.quiet or not optional)
-        and not silent
-    ):
+    if cmd_returncode and not offload_options.vverbose and (not offload_options.quiet or not optional) and not silent:
         try:
             sys.stdout.write(output)
         except OSError:
@@ -257,57 +239,48 @@ def run_os_cmd(
             pass
 
     if not optional and cmd_returncode:
-        raise OffloadTransportException(
-            "Required shell cmd failed with return code %s" % cmd_returncode
-        )
+        raise OffloadTransportException("Required shell cmd failed with return code %s" % cmd_returncode)
 
     return cmd_returncode, output
 
 
 def hs2_connection_log_message(host, port, offload_options, service_name):
-    if offload_options.ldap_user and (
-        offload_options.ldap_password or offload_options.ldap_password_file
-    ):
+    if offload_options.ldap_user and (offload_options.ldap_password or offload_options.ldap_password_file):
         return "Connecting to %s (%s:%s) with LDAP as %s" % (
             service_name,
             host,
             port,
             offload_options.ldap_user,
         )
-    elif offload_options.kerberos_service:
+    if offload_options.kerberos_service:
         return "Connecting to %s (%s:%s) - Kerberos service %s" % (
             service_name,
             host,
             port,
             offload_options.kerberos_service,
         )
-    else:
-        return "Connecting to %s (%s:%s) unsecured using: %s authentication" % (
-            service_name,
-            host,
-            port,
-            offload_options.hiveserver2_auth_mechanism,
-        )
+    return "Connecting to %s (%s:%s) unsecured using: %s authentication" % (
+        service_name,
+        host,
+        port,
+        offload_options.hiveserver2_auth_mechanism,
+    )
 
 
 def running_as_same_user_and_host(ssh_user, target_host):
     return bool(
-        get_os_username() == ssh_user
-        and (target_host == "localhost" or target_host in (gethostname(), getfqdn()))
+        get_os_username() == ssh_user and (target_host == "localhost" or target_host in (gethostname(), getfqdn()))
     )
 
 
-def offload_chunk_backend_bytes(
-    pre_load_backend_bytes, post_load_backend_bytes, messages
-):
+def offload_chunk_backend_bytes(pre_load_backend_bytes, post_load_backend_bytes, messages):
     if pre_load_backend_bytes is not None and post_load_backend_bytes is not None:
         return post_load_backend_bytes - pre_load_backend_bytes
-    else:
-        messages.log(
-            f"Unable to calculate backend bytes: {post_load_backend_bytes} - {pre_load_backend_bytes}",
-            detail=VVERBOSE,
-        )
-        return None
+    messages.log(
+        f"Unable to calculate backend bytes: {post_load_backend_bytes} - {pre_load_backend_bytes}",
+        detail=VVERBOSE,
+    )
+    return None
 
 
 def transport_and_load_offload_chunk(
@@ -333,17 +306,12 @@ def transport_and_load_offload_chunk(
                     detail=VVERBOSE,
                 )
                 return None
-            elif partition_chunk:
+            if partition_chunk:
                 return partition_chunk.size_in_bytes()
-            else:
-                return offload_source_table.size_in_bytes
+            return offload_source_table.size_in_bytes
         except Exception as exc:
             # This is for instrumentation and non-essential
-            messages.warning(
-                "Unable to calculate transport frontend bytes due to exception: {}".format(
-                    str(exc)
-                )
-            )
+            messages.warning(f"Unable to calculate transport frontend bytes due to exception: {exc!s}")
 
     chunk_id = repo_client.start_offload_chunk(
         execution_id,
@@ -352,17 +320,13 @@ def transport_and_load_offload_chunk(
         offload_target_table.db_name,
         offload_target_table.table_name,
         chunk_number=chunk_count + 1,
-        offload_partitions=(
-            partition_chunk.get_partitions() if partition_chunk else None
-        ),
+        offload_partitions=(partition_chunk.get_partitions() if partition_chunk else None),
         offload_partition_level=offload_source_table.offload_partition_level,
     )
 
     try:
         if chunk_count > 0:
-            offload_target_table.empty_staging_area_step(
-                data_transport_client.get_staging_file()
-            )
+            offload_target_table.empty_staging_area_step(data_transport_client.get_staging_file())
 
         rows_staged = data_transport_client.transport(partition_chunk=partition_chunk)
         transport_bytes = data_transport_client.get_transport_bytes()
@@ -377,16 +341,10 @@ def transport_and_load_offload_chunk(
 
         offload_target_table.validate_type_conversions_step(staging_columns)
 
-        pre_load_backend_bytes = (
-            offload_target_table.get_table_size() if not dry_run else None
-        )
+        pre_load_backend_bytes = offload_target_table.get_table_size() if not dry_run else None
         offload_target_table.load_final_table_step(sync=sync)
-        post_load_backend_bytes = (
-            offload_target_table.get_table_size(no_cache=True) if not dry_run else None
-        )
-        backend_byte_delta = offload_chunk_backend_bytes(
-            pre_load_backend_bytes, post_load_backend_bytes, messages
-        )
+        post_load_backend_bytes = offload_target_table.get_table_size(no_cache=True) if not dry_run else None
+        backend_byte_delta = offload_chunk_backend_bytes(pre_load_backend_bytes, post_load_backend_bytes, messages)
         frontend_bytes = get_frontend_bytes()
 
         repo_client.end_offload_chunk(
@@ -399,7 +357,7 @@ def transport_and_load_offload_chunk(
         )
 
         return rows_staged
-    except Exception as exc:
+    except Exception:
         repo_client.end_offload_chunk(chunk_id, orchestration_constants.COMMAND_ERROR)
         raise
 
@@ -420,16 +378,11 @@ def split_ranges_for_id_range(id_min, id_max, parallelism):
     if not isinstance(id_max, decimal.Decimal):
         id_max = decimal.Decimal(str(id_max))
     range_delta = (id_max - id_min + 1) / parallelism
-    id_ranges = [
-        (id_min + (range_delta * _), id_min + (range_delta * _) + range_delta)
-        for _ in range(parallelism)
-    ]
+    id_ranges = [(id_min + (range_delta * _), id_min + (range_delta * _) + range_delta) for _ in range(parallelism)]
     return id_ranges
 
 
-def split_lists_for_id_list(
-    id_list: list, parallelism: int, round_robin=True, as_csvs=False
-) -> list:
+def split_lists_for_id_list(id_list: list, parallelism: int, round_robin=True, as_csvs=False) -> list:
     """Take a list of values, split them into sub-ranges based on parallelism and then, optionally, convert to CSVs.
     The splitting into sub-ranges can be contiguous or round-robin.
     Example input:
@@ -446,8 +399,7 @@ def split_lists_for_id_list(
     def to_csv(l):
         if not l:
             return None
-        else:
-            return ",".join(_ if isinstance(_, str) else str(_) for _ in l)
+        return ",".join(_ if isinstance(_, str) else str(_) for _ in l)
 
     if not id_list:
         return []
@@ -455,11 +407,8 @@ def split_lists_for_id_list(
         sublists = [id_list[_::parallelism] for _ in range(parallelism)]
     else:
         chunk_size = math.ceil(len(id_list) / parallelism)
-        sublists = [
-            id_list[_ * chunk_size : (_ + 1) * chunk_size] for _ in range(parallelism)
-        ]
+        sublists = [id_list[_ * chunk_size : (_ + 1) * chunk_size] for _ in range(parallelism)]
 
     if as_csvs:
         return [to_csv(_) for _ in sublists]
-    else:
-        return sublists
+    return sublists

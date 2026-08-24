@@ -14,23 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TeradataLiteral: Format an Teradata literal based on data type.
-"""
+"""TeradataLiteral: Format an Teradata literal based on data type."""
 
-from datetime import date, time
 import logging
 import re
+from datetime import date, time
 
 from numpy import datetime64
 
-from goe.offload.format_literal import FormatLiteralInterface, RE_TIMEZONE_NO_COLON
+from goe.offload.format_literal import RE_TIMEZONE_NO_COLON, FormatLiteralInterface
 from goe.offload.teradata.teradata_column import (
     TERADATA_TYPE_BYTE,
-    TERADATA_TYPE_VARBYTE,
     TERADATA_TYPE_DATE,
     TERADATA_TYPE_TIME,
     TERADATA_TYPE_TIMESTAMP,
     TERADATA_TYPE_TIMESTAMP_TZ,
+    TERADATA_TYPE_VARBYTE,
 )
 
 ###########################################################################
@@ -60,7 +59,7 @@ class TeradataLiteral(FormatLiteralInterface):
         def format_date_for_data_type(str_val, data_type):
             if data_type == TERADATA_TYPE_DATE:
                 return "DATE '%s'" % str_val[:10]
-            elif data_type == TERADATA_TYPE_TIMESTAMP:
+            if data_type == TERADATA_TYPE_TIMESTAMP:
                 adjusted_str = str_val
                 if len(adjusted_str) == 10:
                     # Value is date part only
@@ -71,42 +70,29 @@ class TeradataLiteral(FormatLiteralInterface):
                 ts_maxscale = 6
                 adjusted_str = str_val[: 20 + ts_maxscale]
                 return "TIMESTAMP '%s'" % cls._strip_unused_time_scale(adjusted_str)
-            elif data_type == TERADATA_TYPE_TIME:
+            if data_type == TERADATA_TYPE_TIME:
                 return "TIME '%s'" % str_val
-            elif data_type == TERADATA_TYPE_TIMESTAMP_TZ and re.match(
-                RE_TIMEZONE_NO_COLON, str_val
-            ):
+            if data_type == TERADATA_TYPE_TIMESTAMP_TZ and re.match(RE_TIMEZONE_NO_COLON, str_val):
                 # %z in strftime does not have a colon in the timezone offset which Teradata requires
-                return "'{0}:{1}'".format(str_val[:-2], str_val[-2:])
-            else:
-                return str_val
+                return f"'{str_val[:-2]}:{str_val[-2:]}'"
+            return str_val
 
         logger.debug("Formatting %s literal: %r" % (type(python_value), python_value))
         logger.debug("For data type: %s" % data_type)
         if isinstance(python_value, datetime64):
             if data_type == TERADATA_TYPE_TIME:
-                new_py_val = format_date_for_data_type(
-                    str(python_value).split("T")[1], data_type
-                )
+                new_py_val = format_date_for_data_type(str(python_value).split("T")[1], data_type)
             elif data_type:
-                new_py_val = format_date_for_data_type(
-                    str(python_value).replace("T", " "), data_type
-                )
+                new_py_val = format_date_for_data_type(str(python_value).replace("T", " "), data_type)
             elif len(str(python_value)) <= 10:
                 # Assuming DATE based on string length
-                new_py_val = format_date_for_data_type(
-                    str(python_value).replace("T", " "), TERADATA_TYPE_DATE
-                )
+                new_py_val = format_date_for_data_type(str(python_value).replace("T", " "), TERADATA_TYPE_DATE)
             else:
                 # Assuming TIMESTAMP if no data_type specified
-                new_py_val = format_date_for_data_type(
-                    str(python_value).replace("T", " "), TERADATA_TYPE_TIMESTAMP
-                )
+                new_py_val = format_date_for_data_type(str(python_value).replace("T", " "), TERADATA_TYPE_TIMESTAMP)
         elif isinstance(python_value, date):
             if data_type == TERADATA_TYPE_DATE:
-                new_py_val = format_date_for_data_type(
-                    python_value.strftime("%Y-%m-%d"), data_type
-                )
+                new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d"), data_type)
             elif data_type == TERADATA_TYPE_TIMESTAMP_TZ:
                 if not python_value.tzinfo:
                     # Assume empty TZ means UTC
@@ -114,22 +100,14 @@ class TeradataLiteral(FormatLiteralInterface):
                         python_value.strftime("%Y-%m-%d %H:%M:%S.%f +00:00"), data_type
                     )
                 else:
-                    new_py_val = format_date_for_data_type(
-                        python_value.strftime("%Y-%m-%d %H:%M:%S.%f%z"), data_type
-                    )
+                    new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S.%f%z"), data_type)
             elif data_type == TERADATA_TYPE_TIME:
-                new_py_val = format_date_for_data_type(
-                    python_value.strftime("%H:%M:%S.%f"), data_type
-                )
+                new_py_val = format_date_for_data_type(python_value.strftime("%H:%M:%S.%f"), data_type)
             elif data_type:
-                new_py_val = format_date_for_data_type(
-                    python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type
-                )
+                new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type)
             elif len(str(python_value)) <= 10:
                 # Assuming DATE based on string length
-                new_py_val = format_date_for_data_type(
-                    python_value.strftime("%Y-%m-%d"), TERADATA_TYPE_DATE
-                )
+                new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d"), TERADATA_TYPE_DATE)
             else:
                 # Assuming TIMESTAMP if no data_type specified
                 new_py_val = format_date_for_data_type(
@@ -140,17 +118,15 @@ class TeradataLiteral(FormatLiteralInterface):
             return "NULL"
         elif data_type == TERADATA_TYPE_TIME:
             if isinstance(python_value, time):
-                new_py_val = format_date_for_data_type(
-                    python_value.strftime("%H:%M:%S.%f"), data_type
-                )
+                new_py_val = format_date_for_data_type(python_value.strftime("%H:%M:%S.%f"), data_type)
             else:
                 new_py_val = format_date_for_data_type(python_value, data_type)
         elif data_type in [TERADATA_TYPE_BYTE, TERADATA_TYPE_VARBYTE]:
             suffix = "XB" if data_type == TERADATA_TYPE_BYTE else "XBV"
             if isinstance(python_value, str):
-                new_py_val = "{}{}".format(python_value.encode().hex(), suffix)
+                new_py_val = f"{python_value.encode().hex()}{suffix}"
             else:
-                new_py_val = "{}{}".format(python_value.hex(), suffix)
+                new_py_val = f"{python_value.hex()}{suffix}"
         elif isinstance(python_value, str):
             new_py_val = "'%s'" % python_value
         elif isinstance(python_value, bytes):

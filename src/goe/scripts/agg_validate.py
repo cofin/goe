@@ -24,37 +24,35 @@ import logging
 import re
 import sys
 
-from goe.config import option_descriptions, config_file, orchestration_defaults
+from goe.config import config_file, option_descriptions, orchestration_defaults
 from goe.config.orchestration_config import OrchestrationConfig
+from goe.goe import (
+    get_log_fh,
+    get_log_fh_name,
+    get_options_from_list,
+    init,
+    init_log,
+    log,
+    log_timestamp,
+    normalise_owner_table_options,
+    version,
+)
+from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_validation import (
-    CrossDbValidator,
+    DEFAULT_AGGS,
     DEFAULT_SELECT_COLS,
     GROUPBY_PARTITIONS,
-    DEFAULT_AGGS,
     SUPPORTED_OPERATIONS,
+    CrossDbValidator,
 )
+from goe.orchestration import command_steps
+from goe.util.goe_log import log_exception
 from goe.util.hs2_connection import HS2_OPTIONS
 from goe.util.misc_functions import (
     csv_split,
     is_number,
     is_pos_int,
     parse_python_from_string,
-)
-from goe.util.goe_log import log_exception
-
-from goe.offload.offload_messages import OffloadMessages
-from goe.orchestration import command_steps
-
-from goe.goe import (
-    get_options_from_list,
-    normalise_owner_table_options,
-    init,
-    init_log,
-    log,
-    get_log_fh_name,
-    version,
-    get_log_fh,
-    log_timestamp,
 )
 
 
@@ -71,7 +69,7 @@ class AggValidateException(Exception):
 
 PROG_BANNER = "Validate (agg_validate) v%s" % version()
 
-REGEX_FILTER = re.compile("(\S+)\s+(%s)\s+(\S+)" % "|".join(SUPPORTED_OPERATIONS), re.I)
+REGEX_FILTER = re.compile(r"(\S+)\s+(%s)\s+(\S+)" % "|".join(SUPPORTED_OPERATIONS), re.IGNORECASE)
 
 # GOE.py options "imported" by this tool
 GOE_OPTIONS = (
@@ -127,9 +125,8 @@ def validate_table(args, messages):
         if status:
             messages.log("[OK]", ansi_code="green")
             return True
-        else:
-            messages.log("[ERROR]", ansi_code="red")
-            return False
+        messages.log("[ERROR]", ansi_code="red")
+        return False
 
     return (
         messages.offload_step(
@@ -169,29 +166,25 @@ def post_process_args(args):
                     match.group(2),
                     parse_python_from_string(match.group(3)),
                 )
-            else:
-                raise AggValidateException("Invalid FILTER expression: %s" % filt)
+            raise AggValidateException("Invalid FILTER expression: %s" % filt)
 
         return [parse_single_filter(_.strip()) for _ in filters.split(",")]
 
     if args.filters:
         args.filters = parse_filters(args.filters)
     if args.selects:
-        if 1 == len(args.selects) and is_number(args.selects[0]):
+        if len(args.selects) == 1 and is_number(args.selects[0]):
             args.selects = args.selects[0]
         else:
             args.selects = csv_split(args.selects)
-    if args.group_bys and GROUPBY_PARTITIONS != args.group_bys:
+    if args.group_bys and args.group_bys != GROUPBY_PARTITIONS:
         args.group_bys = csv_split(args.group_bys)
-    if args.aggregate_functions and DEFAULT_AGGS != args.aggregate_functions:
+    if args.aggregate_functions and args.aggregate_functions != DEFAULT_AGGS:
         args.aggregate_functions = csv_split(args.aggregate_functions)
     if args.frontend_parallelism:
         if not is_pos_int(args.frontend_parallelism):
-            raise AggValidateException(
-                "Invalid frontend parallelism: %s" % args.frontend_parallelism
-            )
-        else:
-            args.frontend_parallelism = int(args.frontend_parallelism)
+            raise AggValidateException("Invalid frontend parallelism: %s" % args.frontend_parallelism)
+        args.frontend_parallelism = int(args.frontend_parallelism)
 
 
 def parse_args():
@@ -251,9 +244,7 @@ def parse_args():
 
 
 def main():
-    """
-    MAIN ROUTINE
-    """
+    """MAIN ROUTINE"""
 
     config_file.check_config_path()
     config_file.load_env()

@@ -24,9 +24,7 @@ from goe.listener.exceptions.errors import CredentialValidationError
 API_KEY_NAME = "x-goe-console-key"
 
 
-api_token_auth = APIKeyHeader(
-    name=API_KEY_NAME, scheme_name="GOE Listener Token", auto_error=False
-)
+api_token_auth = APIKeyHeader(name=API_KEY_NAME, scheme_name="GOE Listener Token", auto_error=False)
 
 
 async def valid_api_token(

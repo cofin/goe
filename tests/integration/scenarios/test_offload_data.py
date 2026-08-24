@@ -27,18 +27,17 @@ from goe.offload.offload_transport import OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import sales_based_fact_assertion
 from tests.integration.scenarios.scenario_runner import (
     run_offload,
     run_setup,
 )
-from tests.integration.scenarios.test_offload_lpa import offload_lpa_fact_assertion
 from tests.integration.scenarios.setup_functions import (
     drop_backend_test_table,
     no_query_import_transport_method,
 )
+from tests.integration.scenarios.test_offload_lpa import offload_lpa_fact_assertion
 from tests.integration.test_functions import (
     cached_current_options,
     cached_default_test_user,
@@ -48,7 +47,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 NAN_TABLE = "STORY_NAN"
 US_FACT = "MICRO_SEC_FACT"
@@ -108,17 +106,12 @@ def get_max_decimal_magnitude(backend_api):
 def gen_large_num_list_part_literal(backend_api, all_nines=False):
     if all_nines:
         return "9" * get_max_decimal_magnitude(backend_api)
-    else:
-        return LOTS_NUMS[: get_max_decimal_magnitude(backend_api)]
+    return LOTS_NUMS[: get_max_decimal_magnitude(backend_api)]
 
 
 def goe1938_vulnerable_test(options):
     """Negative partition keys and Impala are an issue: GOE-1938"""
-    return bool(
-        options
-        and options.target
-        in [offload_constants.DBTYPE_HIVE, offload_constants.DBTYPE_IMPALA]
-    )
+    return bool(options and options.target in [offload_constants.DBTYPE_HIVE, offload_constants.DBTYPE_IMPALA])
 
 
 def no_nan_assertions(config, schema, data_db, frontend_api, backend_api, messages):
@@ -133,9 +126,7 @@ def no_nan_assertions(config, schema, data_db, frontend_api, backend_api, messag
     return True
 
 
-def gen_fractional_second_partition_table_ddl(
-    config, frontend_api, schema, table_name, scale
-):
+def gen_fractional_second_partition_table_ddl(config, frontend_api, schema, table_name, scale):
     assert scale in (6, 9)
     fractional_9s = "9".ljust(scale, "9")
     fractional_0s = "0".ljust(scale - 1, "0")
@@ -177,14 +168,10 @@ def gen_fractional_second_partition_table_ddl(
     return ddl
 
 
-def gen_offload_nulls_create_ddl(
-    schema, table_name, backend_api, frontend_api, config, to_allow_query_import=False
-):
+def gen_offload_nulls_create_ddl(schema, table_name, backend_api, frontend_api, config, to_allow_query_import=False):
     ddl = ["DROP TABLE %(schema)s.%(table)s" % {"schema": schema, "table": table_name}]
     if config.db_type == offload_constants.DBTYPE_ORACLE:
-        interval_ym = (
-            "" if to_allow_query_import else "\n, iyval interval year(9) to month"
-        )
+        interval_ym = "" if to_allow_query_import else "\n, iyval interval year(9) to month"
         ddl.append(
             """CREATE TABLE %(schema)s.%(table)s
             ( id NUMBER
@@ -202,11 +189,7 @@ def gen_offload_nulls_create_ddl(
                 "interval_ym": interval_ym,
             }
         )
-        interval_ym = (
-            ""
-            if to_allow_query_import
-            else "\n,      CAST(NULL as interval year(9) to month)"
-        )
+        interval_ym = "" if to_allow_query_import else "\n,      CAST(NULL as interval year(9) to month)"
 
         ddl.append(
             """INSERT INTO %(schema)s.%(table)s
@@ -258,9 +241,7 @@ def gen_offload_nulls_create_ddl(
     return ddl
 
 
-def gen_large_num_create_ddl(
-    schema, table_name, config, backend_api, frontend_api, part_type="LIST"
-):
+def gen_large_num_create_ddl(schema, table_name, config, backend_api, frontend_api, part_type="LIST"):
     assert part_type in ["LIST", "RANGE"]
     if backend_api:
         max_decimal_precision = min(backend_api.max_decimal_precision(), 38)
@@ -268,11 +249,7 @@ def gen_large_num_create_ddl(
     else:
         max_decimal_precision, max_decimal_scale = 38, 18
     mid_decimal_scale = min(18, max_decimal_scale)
-    num_data = (
-        LOTS_NUMS[: max_decimal_precision - min(max_decimal_scale, 18)]
-        + "."
-        + LOTS_NUMS[:mid_decimal_scale]
-    )
+    num_data = LOTS_NUMS[: max_decimal_precision - min(max_decimal_scale, 18)] + "." + LOTS_NUMS[:mid_decimal_scale]
     tiny_data = "0." + LOTS_NUMS[:max_decimal_scale]
     params = {
         "schema": schema,
@@ -339,9 +316,7 @@ def gen_large_num_create_ddl(
         )
     elif config.db_type == offload_constants.DBTYPE_TERADATA:
         if part_type == "LIST":
-            raise NotImplementedError(
-                f"LIST (CASE_N) pending implementation: {config.db_type}"
-            )
+            raise NotImplementedError(f"LIST (CASE_N) pending implementation: {config.db_type}")
         params["step"] = "1".ljust(get_max_decimal_magnitude(backend_api), "0")
         create_sql = """CREATE TABLE %(schema)s.%(table)s
                 ( id NUMBER(8)
@@ -384,25 +359,18 @@ def gen_large_num_create_ddl(
 def test_offload_data_nan_inf_not_supported(config, schema, data_db):
     """Tests Offload with Nan and Inf values when the backend system does not support them."""
     id = "test_offload_data_nan_inf_not_supported"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         if not frontend_api.nan_supported():
-            messages.log(
-                f"Skipping {id} because NaN values are not supported for this frontend system"
-            )
-            pytest.skip(
-                f"Skipping {id} because NaN values are not supported for this frontend system"
-            )
+            messages.log(f"Skipping {id} because NaN values are not supported for this frontend system")
+            pytest.skip(f"Skipping {id} because NaN values are not supported for this frontend system")
 
         backend_api = get_backend_testing_api(config, messages)
         if backend_api.nan_supported():
-            messages.log(
-                f"Skipping {id} because NaN values are supported for this backend system"
-            )
-            pytest.skip(
-                f"Skipping {id} because NaN values are supported for this backend system"
-            )
+            messages.log(f"Skipping {id} because NaN values are supported for this backend system")
+            pytest.skip(f"Skipping {id} because NaN values are supported for this backend system")
 
         # Setup
         run_setup(
@@ -412,9 +380,7 @@ def test_offload_data_nan_inf_not_supported(config, schema, data_db):
             messages,
             frontend_sqls=gen_nan_table_ddl(frontend_api, schema, NAN_TABLE),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, NAN_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, NAN_TABLE),
             ],
         )
 
@@ -442,9 +408,7 @@ def test_offload_data_nan_inf_not_supported(config, schema, data_db):
         }
         run_offload(options, config, messages)
 
-        assert no_nan_assertions(
-            options, schema, data_db, frontend_api, backend_api, messages
-        )
+        assert no_nan_assertions(options, schema, data_db, frontend_api, backend_api, messages)
 
 
 def test_offload_data_partition_by_microsecond(config, schema, data_db):
@@ -454,13 +418,12 @@ def test_offload_data_partition_by_microsecond(config, schema, data_db):
     if config.db_type == offload_constants.DBTYPE_TERADATA:
         pytest.skip(f"Skipping {id} on Teradata")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
         frontend_datetime = frontend_api.test_type_canonical_timestamp()
 
         # Setup
@@ -469,13 +432,9 @@ def test_offload_data_partition_by_microsecond(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=gen_fractional_second_partition_table_ddl(
-                config, frontend_api, schema, US_FACT, 6
-            ),
+            frontend_sqls=gen_fractional_second_partition_table_ddl(config, frontend_api, schema, US_FACT, 6),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, US_FACT
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, US_FACT),
             ],
         )
 
@@ -544,16 +503,15 @@ def test_offload_data_partition_by_microsecond(config, schema, data_db):
 def test_offload_data_partition_by_nanosecond(config, schema, data_db):
     """Tests Offload of a nanosecond partitioned table."""
     id = "test_offload_data_partition_by_nanosecond"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         if not frontend_api.nanoseconds_supported():
             pytest.skip(f"Skipping {id} on frontend system")
 
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
         frontend_datetime = frontend_api.test_type_canonical_timestamp()
 
         # Setup
@@ -562,13 +520,9 @@ def test_offload_data_partition_by_nanosecond(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=gen_fractional_second_partition_table_ddl(
-                config, frontend_api, schema, NS_FACT, 9
-            ),
+            frontend_sqls=gen_fractional_second_partition_table_ddl(config, frontend_api, schema, NS_FACT, 9),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, NS_FACT
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, NS_FACT),
             ],
         )
 
@@ -654,9 +608,10 @@ def test_offload_data_oracle_xmltype(config, schema, data_db):
     if config.db_type != offload_constants.DBTYPE_ORACLE:
         pytest.skip(f"Skipping {id} on frontend system: {config.db_type}")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         # Setup
@@ -666,8 +621,7 @@ def test_offload_data_oracle_xmltype(config, schema, data_db):
             config,
             messages,
             frontend_sqls=[
-                "DROP TABLE %(schema)s.%(table)s"
-                % {"schema": schema, "table": XMLTYPE_TABLE},
+                "DROP TABLE %(schema)s.%(table)s" % {"schema": schema, "table": XMLTYPE_TABLE},
                 """CREATE TABLE %(schema)s.%(table)s
                             (id NUMBER(8), data XMLTYPE)"""
                 % {"schema": schema, "table": XMLTYPE_TABLE},
@@ -677,9 +631,7 @@ def test_offload_data_oracle_xmltype(config, schema, data_db):
                 frontend_api.collect_table_stats_sql_text(schema, XMLTYPE_TABLE),
             ],
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, XMLTYPE_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, XMLTYPE_TABLE),
             ],
         )
 
@@ -692,16 +644,11 @@ def test_offload_data_oracle_xmltype(config, schema, data_db):
         }
         run_offload(options, config, messages)
 
-        if (
-            no_query_import_transport_method(config)
-            != OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
-        ):
+        if no_query_import_transport_method(config) != OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT:
             # Offload XMLTYPE (no Query Import).
             options = {
                 "owner_table": schema + "." + XMLTYPE_TABLE,
-                "offload_transport_method": no_query_import_transport_method(
-                    config, no_table_centric_sqoop=True
-                ),
+                "offload_transport_method": no_query_import_transport_method(config, no_table_centric_sqoop=True),
                 "reset_backend_table": True,
                 "execute": True,
             }
@@ -712,9 +659,10 @@ def test_offload_data_nulls_qi(config, schema, data_db):
     """Tests Offload of NULLs in all data types with Query Import."""
     id = "test_offload_data_nulls_qi"
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         # Setup
@@ -732,9 +680,7 @@ def test_offload_data_nulls_qi(config, schema, data_db):
                 to_allow_query_import=True,
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, NULLS_TABLE1
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, NULLS_TABLE1),
             ],
         )
 
@@ -754,15 +700,13 @@ def test_offload_data_nulls_no_qi(config, schema, data_db):
     """Tests Offload of NULLs in all data types with Spark or Sqoop."""
     id = "test_offload_data_nulls_no_qi"
 
-    if (
-        no_query_import_transport_method(config)
-        == OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
-    ):
+    if no_query_import_transport_method(config) == OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT:
         pytest.skip(f"Skipping {id} because only Query Import is configured")
 
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         # Setup
@@ -779,9 +723,7 @@ def test_offload_data_nulls_no_qi(config, schema, data_db):
                 config,
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, NULLS_TABLE2
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, NULLS_TABLE2),
             ],
         )
 
@@ -800,30 +742,21 @@ def test_offload_data_nulls_no_qi(config, schema, data_db):
 def test_offload_data_large_decimals_lpa(config, schema, data_db):
     """Tests Offload list-partition-append with extreme numeric partition values."""
     id = "test_offload_data_large_decimals_lpa"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         if not frontend_api.goe_lpa_supported():
-            pytest.skip(
-                f"Skipping {id} because frontend_api.goe_lpa_supported() == false"
-            )
+            pytest.skip(f"Skipping {id} because frontend_api.goe_lpa_supported() == false")
 
-        partition_keys_larger_than_bigint_valid = bool(
-            config.db_type != offload_constants.DBTYPE_TERADATA
-        )
+        partition_keys_larger_than_bigint_valid = bool(config.db_type != offload_constants.DBTYPE_TERADATA)
 
         if not partition_keys_larger_than_bigint_valid:
-            messages.log(
-                f"Skipping {id} because partition_keys_larger_than_bigint_valid == false"
-            )
-            pytest.skip(
-                f"Skipping {id} because partition_keys_larger_than_bigint_valid == false"
-            )
+            messages.log(f"Skipping {id} because partition_keys_larger_than_bigint_valid == false")
+            pytest.skip(f"Skipping {id} because partition_keys_larger_than_bigint_valid == false")
 
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -831,13 +764,9 @@ def test_offload_data_large_decimals_lpa(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=gen_large_num_create_ddl(
-                schema, LPA_LARGE_NUMS, config, backend_api, frontend_api
-            ),
+            frontend_sqls=gen_large_num_create_ddl(schema, LPA_LARGE_NUMS, config, backend_api, frontend_api),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LPA_LARGE_NUMS
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_LARGE_NUMS),
             ],
         )
 
@@ -846,14 +775,9 @@ def test_offload_data_large_decimals_lpa(config, schema, data_db):
             "owner_table": schema + "." + LPA_LARGE_NUMS,
             "partition_names_csv": "P_1",
             "offload_transport_method": OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
-            "offload_partition_granularity": "1".ljust(
-                get_max_decimal_magnitude(backend_api), "0"
-            ),
-            "offload_partition_lower_value": "-"
-            + "9".ljust(get_max_decimal_magnitude(backend_api), "9"),
-            "offload_partition_upper_value": "9".ljust(
-                get_max_decimal_magnitude(backend_api), "9"
-            ),
+            "offload_partition_granularity": "1".ljust(get_max_decimal_magnitude(backend_api), "0"),
+            "offload_partition_lower_value": "-" + "9".ljust(get_max_decimal_magnitude(backend_api), "9"),
+            "offload_partition_upper_value": "9".ljust(get_max_decimal_magnitude(backend_api), "9"),
             "reset_backend_table": True,
             "create_backend_db": True,
             "execute": True,
@@ -867,13 +791,7 @@ def test_offload_data_large_decimals_lpa(config, schema, data_db):
             backend_api,
             messages,
             repo_client,
-            [
-                (
-                    "1"
-                    if goe1938_vulnerable_test(config)
-                    else "-" + gen_large_num_list_part_literal(backend_api)
-                )
-            ],
+            [("1" if goe1938_vulnerable_test(config) else "-" + gen_large_num_list_part_literal(backend_api))],
             incremental_predicate_type=INCREMENTAL_PREDICATE_TYPE_LIST,
         )
 
@@ -895,11 +813,7 @@ def test_offload_data_large_decimals_lpa(config, schema, data_db):
             messages,
             repo_client,
             [
-                (
-                    "1"
-                    if goe1938_vulnerable_test(config)
-                    else "-" + gen_large_num_list_part_literal(backend_api)
-                ),
+                ("1" if goe1938_vulnerable_test(config) else "-" + gen_large_num_list_part_literal(backend_api)),
                 gen_large_num_list_part_literal(backend_api),
             ],
             incremental_predicate_type=INCREMENTAL_PREDICATE_TYPE_LIST,
@@ -922,11 +836,7 @@ def test_offload_data_large_decimals_lpa(config, schema, data_db):
             messages,
             repo_client,
             [
-                (
-                    "1"
-                    if goe1938_vulnerable_test(config)
-                    else "-" + gen_large_num_list_part_literal(backend_api)
-                ),
+                ("1" if goe1938_vulnerable_test(config) else "-" + gen_large_num_list_part_literal(backend_api)),
                 gen_large_num_list_part_literal(backend_api),
                 gen_large_num_list_part_literal(backend_api, all_nines=True),
             ],
@@ -937,25 +847,18 @@ def test_offload_data_large_decimals_lpa(config, schema, data_db):
 def test_offload_data_large_decimals_rpa(config, schema, data_db):
     """Tests Offload range-partition-append with extreme numeric partition values."""
     id = "test_offload_data_large_decimals_rpa"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
-        partition_keys_larger_than_bigint_valid = bool(
-            config.db_type != offload_constants.DBTYPE_TERADATA
-        )
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
+        partition_keys_larger_than_bigint_valid = bool(config.db_type != offload_constants.DBTYPE_TERADATA)
 
         if not partition_keys_larger_than_bigint_valid:
-            messages.log(
-                f"Skipping {id} because partition_keys_larger_than_bigint_valid == false"
-            )
-            pytest.skip(
-                f"Skipping {id} because partition_keys_larger_than_bigint_valid == false"
-            )
+            messages.log(f"Skipping {id} because partition_keys_larger_than_bigint_valid == false")
+            pytest.skip(f"Skipping {id} because partition_keys_larger_than_bigint_valid == false")
 
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -972,9 +875,7 @@ def test_offload_data_large_decimals_rpa(config, schema, data_db):
                 part_type="RANGE",
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, RPA_LARGE_NUMS
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, RPA_LARGE_NUMS),
             ],
         )
 
@@ -983,14 +884,9 @@ def test_offload_data_large_decimals_rpa(config, schema, data_db):
             "owner_table": schema + "." + RPA_LARGE_NUMS,
             "partition_names_csv": "P_1",
             "offload_transport_method": OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
-            "offload_partition_granularity": "1".ljust(
-                get_max_decimal_magnitude(backend_api), "0"
-            ),
-            "offload_partition_lower_value": "-"
-            + "9".ljust(get_max_decimal_magnitude(backend_api), "9"),
-            "offload_partition_upper_value": "9".ljust(
-                get_max_decimal_magnitude(backend_api), "9"
-            ),
+            "offload_partition_granularity": "1".ljust(get_max_decimal_magnitude(backend_api), "0"),
+            "offload_partition_lower_value": "-" + "9".ljust(get_max_decimal_magnitude(backend_api), "9"),
+            "offload_partition_upper_value": "9".ljust(get_max_decimal_magnitude(backend_api), "9"),
             "reset_backend_table": True,
             "create_backend_db": True,
             "execute": True,
@@ -1005,11 +901,7 @@ def test_offload_data_large_decimals_rpa(config, schema, data_db):
             schema,
             data_db,
             RPA_LARGE_NUMS,
-            (
-                "1"
-                if goe1938_vulnerable_test(config)
-                else ("-" + gen_large_num_list_part_literal(backend_api))
-            ),
+            ("1" if goe1938_vulnerable_test(config) else ("-" + gen_large_num_list_part_literal(backend_api))),
             offload_pattern=scenario_constants.OFFLOAD_PATTERN_90_10,
             incremental_key="part_col",
             offload_messages=offload_messages,

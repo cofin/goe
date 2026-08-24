@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # Copyright 2016 The GOE Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +13,7 @@
 # limitations under the License.
 
 """Application Web Server Gateway Interface - gunicorn."""
+
 # Standard Library
 import asyncio
 import multiprocessing
@@ -81,11 +80,7 @@ class ApplicationLoader(Application):
             if not os.path.exists(self.config_path):
                 self.config_path = f"{self.config_path}c"
             self.load_config_from_file(self.config_path)
-        config = {
-            key: value
-            for key, value in self.options.items()
-            if key in self.cfg.settings and value is not None
-        }
+        config = {key: value for key, value in self.options.items() if key in self.cfg.settings and value is not None}
         for key, value in config.items():
             self.cfg.set(key.lower(), value)
 

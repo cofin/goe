@@ -14,15 +14,15 @@
 
 """TestAvroEncoder: Unit test library to test avro_encoder module."""
 
-from unittest import TestCase, main
 import os.path
 from textwrap import dedent
+from unittest import TestCase, main
 
 from avro.datafile import DataFileReader
 from avro.io import DatumReader
 
 from goe.offload.offload_messages import OffloadMessages
-from goe.offload.oracle.oracle_column import OracleColumn, ORACLE_TYPE_VARCHAR2
+from goe.offload.oracle.oracle_column import ORACLE_TYPE_VARCHAR2, OracleColumn
 from goe.util.avro_encoder import AvroEncoder
 from goe.util.misc_functions import get_temp_path
 
@@ -38,7 +38,7 @@ SCHEMA_JSON = dedent("""\
     }""")
 
 
-class FakeDb(object):
+class FakeDb:
     """Pretends to be a oracledb cursor over a single string column table so we can test without needing a database"""
 
     def __init__(self, row_count):
@@ -51,8 +51,7 @@ class FakeDb(object):
         if self._rows:
             self.rowcount += 1
             return self._rows.pop()
-        else:
-            return []
+        return []
 
     def fetchmany(self):
         if self._rows:
@@ -60,8 +59,7 @@ class FakeDb(object):
             self.rowcount += len(self._rows[:FETCH_SIZE])
             self._rows = self._rows[FETCH_SIZE:]
             return rows
-        else:
-            return []
+        return []
 
 
 class TestAvroEncoder(TestCase):
@@ -71,9 +69,7 @@ class TestAvroEncoder(TestCase):
         encoder = AvroEncoder(SCHEMA_JSON, messages)
         extraction_cursor = FakeDb(ROW_COUNT)
         local_staging_path = get_temp_path(prefix="goe-unittest", suffix=".avro")
-        rows_imported = encoder.write_from_cursor(
-            local_staging_path, extraction_cursor, source_columns
-        )
+        rows_imported = encoder.write_from_cursor(local_staging_path, extraction_cursor, source_columns)
         # Check output file exists
         self.assertTrue(os.path.exists(local_staging_path))
         # Check correct number of rows written

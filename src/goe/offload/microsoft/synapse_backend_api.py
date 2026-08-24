@@ -15,45 +15,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendSynapseApi: Library for logic/interaction with an Azure Synapse Sql Server backend.
-"""
+"""BackendSynapseApi: Library for logic/interaction with an Azure Synapse Sql Server backend."""
 
-from datetime import datetime, timedelta, timezone
-from enum import Enum
 import logging
 import re
 import struct
-from textwrap import dedent
 import traceback
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+from textwrap import dedent
 
-from numpy import datetime64
 import pyodbc
+from numpy import datetime64
 
 from goe.connect.connect_constants import CONNECT_DETAIL, CONNECT_STATUS, CONNECT_TEST
 from goe.offload.backend_api import (
-    BackendApiInterface,
-    BackendApiException,
     FETCH_ACTION_ALL,
     FETCH_ACTION_CURSOR,
     FETCH_ACTION_ONE,
     REPORT_ATTR_BACKEND_CLASS,
-    REPORT_ATTR_BACKEND_TYPE,
     REPORT_ATTR_BACKEND_DISPLAY_NAME,
-    REPORT_ATTR_BACKEND_HOST_INFO_TYPE,
     REPORT_ATTR_BACKEND_HOST_INFO,
+    REPORT_ATTR_BACKEND_HOST_INFO_TYPE,
+    REPORT_ATTR_BACKEND_TYPE,
     SORT_COLUMNS_UNLIMITED,
+    BackendApiException,
+    BackendApiInterface,
 )
 from goe.offload.column_metadata import (
-    CanonicalColumn,
-    is_safe_mapping,
-    valid_column_list,
+    ALL_CANONICAL_TYPES,
+    CANONICAL_CHAR_SEMANTICS_BYTE,
+    CANONICAL_CHAR_SEMANTICS_CHAR,
+    CANONICAL_CHAR_SEMANTICS_UNICODE,
+    DATE_CANONICAL_TYPES,
     GOE_TYPE_BINARY,
     GOE_TYPE_BOOLEAN,
+    GOE_TYPE_DATE,
     GOE_TYPE_DECIMAL,
     GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
-    GOE_TYPE_FLOAT,
     GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_FLOAT,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
@@ -63,30 +64,17 @@ from goe.offload.column_metadata import (
     GOE_TYPE_INTERVAL_YM,
     GOE_TYPE_LARGE_BINARY,
     GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIME,
+    GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
     GOE_TYPE_VARIABLE_STRING,
-    ALL_CANONICAL_TYPES,
-    DATE_CANONICAL_TYPES,
     NUMERIC_CANONICAL_TYPES,
     STRING_CANONICAL_TYPES,
-    CANONICAL_CHAR_SEMANTICS_BYTE,
-    CANONICAL_CHAR_SEMANTICS_CHAR,
-    CANONICAL_CHAR_SEMANTICS_UNICODE,
+    CanonicalColumn,
+    is_safe_mapping,
+    valid_column_list,
 )
-from goe.offload.offload_constants import (
-    SYNAPSE_BACKEND_CAPABILITIES,
-    FILE_STORAGE_FORMAT_PARQUET,
-    EMPTY_BACKEND_TABLE_STATS_DICT,
-    EMPTY_BACKEND_TABLE_STATS_LIST,
-    EMPTY_BACKEND_COLUMN_STATS_DICT,
-    EMPTY_BACKEND_COLUMN_STATS_LIST,
-    DBTYPE_SYNAPSE,
-)
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.microsoft.synapse_column import (
-    SynapseColumn,
     SYNAPSE_TYPE_BIGINT,
     SYNAPSE_TYPE_BINARY,
     SYNAPSE_TYPE_BIT,
@@ -98,6 +86,7 @@ from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_DECIMAL,
     SYNAPSE_TYPE_FLOAT,
     SYNAPSE_TYPE_INT,
+    SYNAPSE_TYPE_MAX_TOKEN,
     SYNAPSE_TYPE_MONEY,
     SYNAPSE_TYPE_NCHAR,
     SYNAPSE_TYPE_NUMERIC,
@@ -111,7 +100,7 @@ from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_UNIQUEIDENTIFIER,
     SYNAPSE_TYPE_VARBINARY,
     SYNAPSE_TYPE_VARCHAR,
-    SYNAPSE_TYPE_MAX_TOKEN,
+    SynapseColumn,
 )
 from goe.offload.microsoft.synapse_constants import (
     SYNAPSE_AUTH_MECHANISM_AD_MSI,
@@ -119,15 +108,25 @@ from goe.offload.microsoft.synapse_constants import (
     SYNAPSE_USER_PASS_AUTH_MECHANISMS,
 )
 from goe.offload.microsoft.synapse_literal import SynapseLiteral
+from goe.offload.offload_constants import (
+    DBTYPE_SYNAPSE,
+    EMPTY_BACKEND_COLUMN_STATS_DICT,
+    EMPTY_BACKEND_COLUMN_STATS_LIST,
+    EMPTY_BACKEND_TABLE_STATS_DICT,
+    EMPTY_BACKEND_TABLE_STATS_LIST,
+    FILE_STORAGE_FORMAT_PARQUET,
+    SYNAPSE_BACKEND_CAPABILITIES,
+)
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.util.hive_table_stats import (
+    parse_stats_into_tab_col,
+    transform_stats_as_tuples,
+)
 from goe.util.misc_functions import (
     add_prefix_in_same_case,
     format_list_for_logging,
     human_size_to_bytes,
     id_generator,
-)
-from goe.util.hive_table_stats import (
-    parse_stats_into_tab_col,
-    transform_stats_as_tuples,
 )
 
 ###############################################################################
@@ -138,7 +137,7 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())  # Disabling logging by default
 
 # Regular expression matching invalid identifier characters, as a constant to ensure compiled only once.
-SYNAPSE_INVALID_IDENTIFIER_CHARS_RE = re.compile(r'[\[\]"]', re.I)
+SYNAPSE_INVALID_IDENTIFIER_CHARS_RE = re.compile(r'[\[\]"]', re.IGNORECASE)
 
 # Column statistics object prefix
 SYNAPSE_COLUMN_STAT_PREFIX = "goe_statistics_"
@@ -176,13 +175,8 @@ class dbcc_showstatistics_stat_header(Enum):
 def synapse_collation_clause(column_or_collation):
     assert isinstance(column_or_collation, (SynapseColumn, str))
     if isinstance(column_or_collation, SynapseColumn):
-        return (
-            " COLLATE {}".format(column_or_collation.collation)
-            if column_or_collation.collation
-            else ""
-        )
-    else:
-        return " COLLATE {}".format(column_or_collation) if column_or_collation else ""
+        return f" COLLATE {column_or_collation.collation}" if column_or_collation.collation else ""
+    return f" COLLATE {column_or_collation}" if column_or_collation else ""
 
 
 ###########################################################################
@@ -211,9 +205,7 @@ class BackendSynapseApi(BackendApiInterface):
 
         def handle_datetimeoffset(dto_value):
             # ref: https://github.com/mkleehammer/pyodbc/issues/134#issuecomment-281739794
-            tup = struct.unpack(
-                "<6hI2h", dto_value
-            )  # e.g., (2017, 3, 16, 10, 35, 18, 500000000, -6, 0)
+            tup = struct.unpack("<6hI2h", dto_value)  # e.g., (2017, 3, 16, 10, 35, 18, 500000000, -6, 0)
             return datetime(
                 tup[0],
                 tup[1],
@@ -231,10 +223,7 @@ class BackendSynapseApi(BackendApiInterface):
 
         self._client = None
         # Some unit tests don't have all options hence the hasattr below
-        if (
-            hasattr(connection_options, "synapse_database")
-            and connection_options.synapse_database
-        ):
+        if hasattr(connection_options, "synapse_database") and connection_options.synapse_database:
             self._synapse_database = connection_options.synapse_database
         else:
             self._synapse_database = None
@@ -242,36 +231,22 @@ class BackendSynapseApi(BackendApiInterface):
         if not do_not_connect:
             url = [
                 "Driver=" + "{%s}" % connection_options.backend_odbc_driver_name,
-                "Server=tcp:%s,%s"
-                % (connection_options.synapse_server, connection_options.synapse_port),
+                "Server=tcp:%s,%s" % (connection_options.synapse_server, connection_options.synapse_port),
                 "Database=" + self._synapse_database,
             ]
             # Uid and Pwd can come from different sources depending on the auth mechanism
-            if (
-                connection_options.synapse_auth_mechanism
-                in SYNAPSE_USER_PASS_AUTH_MECHANISMS
-            ):
+            if connection_options.synapse_auth_mechanism in SYNAPSE_USER_PASS_AUTH_MECHANISMS:
                 if connection_options.synapse_user:
                     url.append("Uid=" + connection_options.synapse_user)
                 if connection_options.synapse_pass:
-                    synapse_pass = self._decrypt_password(
-                        connection_options.synapse_pass
-                    )
+                    synapse_pass = self._decrypt_password(connection_options.synapse_pass)
                     url.append("Pwd=" + synapse_pass)
-            elif (
-                connection_options.synapse_auth_mechanism
-                == SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL
-            ):
+            elif connection_options.synapse_auth_mechanism == SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL:
                 if connection_options.synapse_service_principal_id:
                     url.append("Uid=" + connection_options.synapse_service_principal_id)
                 if connection_options.synapse_service_principal_secret:
-                    url.append(
-                        "Pwd=" + connection_options.synapse_service_principal_secret
-                    )
-            elif (
-                connection_options.synapse_auth_mechanism
-                == SYNAPSE_AUTH_MECHANISM_AD_MSI
-            ):
+                    url.append("Pwd=" + connection_options.synapse_service_principal_secret)
+            elif connection_options.synapse_auth_mechanism == SYNAPSE_AUTH_MECHANISM_AD_MSI:
                 if connection_options.synapse_msi_client_id:
                     url.append("Uid=" + connection_options.synapse_msi_client_id)
             url.extend(
@@ -317,9 +292,7 @@ class BackendSynapseApi(BackendApiInterface):
     def _create_statistics_sql(self, db_name, table_name, column_name, sample_pct=5):
         """Return SQL to create statistics object on a column"""
         return "CREATE STATISTICS %s ON %s (%s) WITH SAMPLE %s PERCENT" % (
-            self.enclose_identifier(
-                add_prefix_in_same_case(id_generator(16), SYNAPSE_COLUMN_STAT_PREFIX)
-            ),
+            self.enclose_identifier(add_prefix_in_same_case(id_generator(16), SYNAPSE_COLUMN_STAT_PREFIX)),
             self.enclose_object_reference(db_name, table_name),
             self.enclose_identifier(column_name),
             sample_pct,
@@ -342,9 +315,7 @@ class BackendSynapseApi(BackendApiInterface):
         max_type = max(len(_[1]) for _ in sql_cols)
         max_collate = max(len(_[2]) for _ in sql_cols)
         col_template = f"%-{max_name}s %-{max_type}s %-{max_collate}s %s"
-        return "    " + "\n,   ".join(
-            [col_template % (_[0], _[1], _[2], _[3]) for _ in sql_cols]
-        )
+        return "    " + "\n,   ".join([col_template % (_[0], _[1], _[2], _[3]) for _ in sql_cols])
 
     def _create_table_sql_text(
         self,
@@ -382,25 +353,19 @@ class BackendSynapseApi(BackendApiInterface):
         assert db_name
         assert table_name
         assert column_list
-        assert valid_column_list(column_list), (
-            "Incorrectly formed column_list: %s" % column_list
-        )
+        assert valid_column_list(column_list), "Incorrectly formed column_list: %s" % column_list
         if table_properties:
             assert isinstance(table_properties, dict)
         if sort_column_names:
             assert isinstance(sort_column_names, list)
 
         if partition_column_names:
-            raise NotImplementedError(
-                "Partitioning by column is not supported for Synapse"
-            )
+            raise NotImplementedError("Partitioning by column is not supported for Synapse")
         if external:
             assert location
             assert table_properties
 
-        col_projection = self._create_table_columns_clause(
-            column_list, external=external
-        )
+        col_projection = self._create_table_columns_clause(column_list, external=external)
 
         with_clauses = []
         if sort_column_names:
@@ -410,13 +375,9 @@ class BackendSynapseApi(BackendApiInterface):
                     % SYNAPSE_TYPE_MAX_TOKEN
                 )
             else:
-                sort_csv = ",".join(
-                    [self.enclose_identifier(_) for _ in sort_column_names]
-                )
+                sort_csv = ",".join([self.enclose_identifier(_) for _ in sort_column_names])
                 if sort_csv:
-                    with_clauses.append(
-                        "CLUSTERED COLUMNSTORE INDEX ORDER (%s)" % sort_csv
-                    )
+                    with_clauses.append("CLUSTERED COLUMNSTORE INDEX ORDER (%s)" % sort_csv)
 
         if external:
             external_clause = " EXTERNAL"
@@ -436,24 +397,19 @@ class BackendSynapseApi(BackendApiInterface):
             with_clauses.extend(["%s=%s" % (k, v) for k, v in table_properties.items()])
         with_clause = ""
         if with_clauses:
-            with_clause = "\nWITH (\n    %(with_statement)s\n)" % {
-                "with_statement": "\n,   ".join(with_clauses)
-            }
+            with_clause = "\nWITH (\n    %(with_statement)s\n)" % {"with_statement": "\n,   ".join(with_clauses)}
 
-        sql = (
-            dedent(
-                """\
+        sql = dedent(
+            """\
                     CREATE%(external)s TABLE %(db_table)s (
                     %(col_projection)s
                     )%(with_clause)s"""
-            )
-            % {
-                "external": external_clause,
-                "db_table": self.enclose_object_reference(db_name, table_name),
-                "col_projection": col_projection,
-                "with_clause": with_clause,
-            }
-        )
+        ) % {
+            "external": external_clause,
+            "db_table": self.enclose_object_reference(db_name, table_name),
+            "col_projection": col_projection,
+            "with_clause": with_clause,
+        }
         return sql
 
     def _execute_ddl_or_dml(
@@ -507,11 +463,8 @@ class BackendSynapseApi(BackendApiInterface):
         if self._global_session_parameters:
             if log_level is not None:
                 self._log("Setting global session options:", detail=log_level)
-            return self._execute_session_options(
-                self._global_session_parameters, log_level=log_level
-            )
-        else:
-            return []
+            return self._execute_session_options(self._global_session_parameters, log_level=log_level)
+        return []
 
     def _add_option_clause_to_sql_text(self, sql_text: str, option_dict: dict):
         assert isinstance(option_dict, dict)
@@ -557,24 +510,20 @@ class BackendSynapseApi(BackendApiInterface):
         assert sql
 
         if self._dry_run and not_when_dry_running:
-            self._log_or_not(
-                "%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level
-            )
+            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
             return None
 
         t1 = datetime.now().replace(microsecond=0)
         query_option_label = self._get_query_option_label_identifier()
         if profile and self._option_clause_valid_for_sql_text(sql):
-            sql = self._add_option_clause_to_sql_text(
-                sql, {"LABEL": query_option_label}
-            )
+            sql = self._add_option_clause_to_sql_text(sql, {"LABEL": query_option_label})
 
         self._open_cursor()
         try:
             self._execute_session_options(query_options, log_level=log_level)
-            self._log_or_not(
-                "%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level
-            )
+            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
+            if not self._cursor:
+                return [] if fetch_action == FETCH_ACTION_ALL else None
             if query_params:
                 self._log_or_not(
                     "%s SQL parameters: %s" % (self._sql_engine_name, query_params),
@@ -586,10 +535,7 @@ class BackendSynapseApi(BackendApiInterface):
             if fetch_action == FETCH_ACTION_ALL:
                 if as_dict:
                     columns = self._cursor_projection(self._cursor)
-                    rows = [
-                        self._cursor_row_to_dict(columns, _)
-                        for _ in self._cursor.fetchall()
-                    ]
+                    rows = [self._cursor_row_to_dict(columns, _) for _ in self._cursor.fetchall()]
                 else:
                     # pyodbc gives us back a list of pyodbc.Row and not tuple, in most cases no-big-deal, but there is
                     # a possibility for code to be using isinstance(, (tuple, list)) so we stay safe and convert to tuple.
@@ -597,13 +543,7 @@ class BackendSynapseApi(BackendApiInterface):
             elif fetch_action == FETCH_ACTION_ONE:
                 row = self._cursor.fetchone()
                 if as_dict:
-                    rows = (
-                        self._cursor_row_to_dict(
-                            self._cursor_projection(self._cursor), row
-                        )
-                        if row
-                        else row
-                    )
+                    rows = self._cursor_row_to_dict(self._cursor_projection(self._cursor), row) if row else row
                 else:
                     # pyodbc gives us back a pyodbc.Row and not a tuple, in practice no-big-deal but
                     # upsets a number of unit tests.
@@ -626,8 +566,7 @@ class BackendSynapseApi(BackendApiInterface):
 
         if fetch_action == FETCH_ACTION_CURSOR:
             return self._cursor
-        else:
-            return rows
+        return rows
 
     def _execute_sqls(
         self,
@@ -640,18 +579,14 @@ class BackendSynapseApi(BackendApiInterface):
         return_list = []
         sqls = [sql] if isinstance(sql, str) else sql
         self._open_cursor()
-        session_options = self._execute_session_options(
-            query_options, log_level=log_level
-        )
+        session_options = self._execute_session_options(query_options, log_level=log_level)
         if session_options:
             return_list.append(session_options)
         try:
             for i, run_sql in enumerate(sqls):
                 query_option_label = self._get_query_option_label_identifier()
                 if profile and self._option_clause_valid_for_sql_text(run_sql):
-                    run_sql = self._add_option_clause_to_sql_text(
-                        run_sql, {"LABEL": query_option_label}
-                    )
+                    run_sql = self._add_option_clause_to_sql_text(run_sql, {"LABEL": query_option_label})
                 self._log_or_not(
                     "%s SQL: %s" % (self._sql_engine_name, run_sql),
                     log_level=log_level,
@@ -662,9 +597,7 @@ class BackendSynapseApi(BackendApiInterface):
                     self._cursor.execute(run_sql)
                     if profile and self._option_clause_valid_for_sql_text(run_sql):
                         self._log(
-                            self._get_query_profile(
-                                query_identifier=query_option_label
-                            ),
+                            self._get_query_profile(query_identifier=query_option_label),
                             detail=VVERBOSE,
                         )
         finally:
@@ -684,7 +617,7 @@ class BackendSynapseApi(BackendApiInterface):
         if not query_options:
             return []
         assert isinstance(query_options, dict)
-        return ["SET {} {}".format(k, v) for k, v in query_options.items()]
+        return [f"SET {k} {v}" for k, v in query_options.items()]
 
     def _gen_max_column_values_sql(
         self,
@@ -731,27 +664,20 @@ class BackendSynapseApi(BackendApiInterface):
             # Analytic row_number() function tests very slow in Impala, group by method below much faster.
             # max() fastest but not multi column on supported backends at time of implementation.
             cols = ",".join(column_name_list)
-            proj_cols = ",".join(
-                [add_sql_cast(_, add_alias=True) for _ in column_name_list]
-            )
+            proj_cols = ",".join([add_sql_cast(_, add_alias=True) for _ in column_name_list])
             order_by = ",".join([_ + " DESC" for _ in column_name_list])
             where = (" WHERE " + filter_clause) if filter_clause else ""
-            sql = (
-                "SELECT %s FROM (SELECT TOP(1) %s FROM %s%s GROUP BY %s ORDER BY %s) v"
-                % (
-                    proj_cols,
-                    cols,
-                    self.enclose_object_reference(db_name, table_name),
-                    where,
-                    cols,
-                    order_by,
-                )
+            sql = "SELECT %s FROM (SELECT TOP(1) %s FROM %s%s GROUP BY %s ORDER BY %s) v" % (
+                proj_cols,
+                cols,
+                self.enclose_object_reference(db_name, table_name),
+                where,
+                cols,
+                order_by,
             )
         return sql
 
-    def _gen_sample_stats_sql_sample_clause(
-        self, db_name, table_name, sample_perc=None
-    ):
+    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
         assert db_name and table_name
         if (
             sample_perc is not None
@@ -760,8 +686,7 @@ class BackendSynapseApi(BackendApiInterface):
             and not self.is_view(db_name, table_name)
         ):
             return "TABLESAMPLE (%s)" % sample_perc
-        else:
-            return ""
+        return ""
 
     def _get_query_option_label_identifier(self):
         """Return a unique identifier for identifying a SQL statement"""
@@ -770,9 +695,7 @@ class BackendSynapseApi(BackendApiInterface):
     def _get_query_profile(self, query_identifier=None):
         """Build and return a str payload from _get_query_profile_tuples()"""
         profile = []
-        for label, payload in self._get_query_profile_tuples(
-            query_label=query_identifier
-        ):
+        for label, payload in self._get_query_profile_tuples(query_label=query_identifier):
             if payload:
                 profile.extend([label, payload])
             else:
@@ -863,8 +786,7 @@ class BackendSynapseApi(BackendApiInterface):
             if stats:
                 stats.insert(0, ("Statistic", "Value"))
                 return format_list_for_logging(stats)
-            else:
-                return ""
+            return ""
 
         assert query_label or request_id
 
@@ -872,32 +794,25 @@ class BackendSynapseApi(BackendApiInterface):
 
         self._open_cursor()
         if query_label:
-            self._log(
-                "Fetching query profile for label: %s" % query_label, detail=VVERBOSE
-            )
+            self._log("Fetching query profile for label: %s" % query_label, detail=VVERBOSE)
             requests_row = get_requests_information_by_label(query_label)
         else:
-            self._log(
-                "Fetching query profile for request: %s" % request_id, detail=VVERBOSE
-            )
+            self._log("Fetching query profile for request: %s" % request_id, detail=VVERBOSE)
             requests_row = get_requests_information_by_request_id(request_id)
 
         if not requests_row:
             self._log("Request information not found", detail=VVERBOSE)
             return []
+        request_id = requests_row.request_id
+
+        profile.append(("Request Information", list_for_logging([requests_row])))
+
+        request_steps_rows = get_request_steps_information(request_id)
+        if not request_steps_rows:
+            self._log("Request Steps information not found", detail=VVERBOSE)
+            profile.append(("Request Steps information not found", None))
         else:
-            request_id = requests_row.request_id
-
-            profile.append(("Request Information", list_for_logging([requests_row])))
-
-            request_steps_rows = get_request_steps_information(request_id)
-            if not request_steps_rows:
-                self._log("Request Steps information not found", detail=VVERBOSE)
-                profile.append(("Request Steps information not found", None))
-            else:
-                profile.append(
-                    ("Request Steps Information", list_for_logging(request_steps_rows))
-                )
+            profile.append(("Request Steps Information", list_for_logging(request_steps_rows)))
 
             # We're finding that the DMS queries take longer than most DML/DDL statements and therefore
             # have disabled them for the time being. This was done as part of PR for Incremental Update (GOE-2194).
@@ -928,19 +843,10 @@ class BackendSynapseApi(BackendApiInterface):
         assert isinstance(column_tuples[0], (tuple, list))
 
         column_clause = ", ".join(
-            "{} {}".format(self.enclose_identifier(col_name), col_type)
-            for col_name, col_type in column_tuples
+            f"{self.enclose_identifier(col_name)} {col_type}" for col_name, col_type in column_tuples
         )
-        sqls = [
-            "ALTER TABLE %s ADD %s"
-            % (self.enclose_object_reference(db_name, table_name), column_clause)
-        ]
-        sqls.extend(
-            [
-                self._create_statistics_sql(db_name, table_name, col_name)
-                for col_name, _ in column_tuples
-            ]
-        )
+        sqls = ["ALTER TABLE %s ADD %s" % (self.enclose_object_reference(db_name, table_name), column_clause)]
+        sqls.extend([self._create_statistics_sql(db_name, table_name, col_name) for col_name, _ in column_tuples])
         return self.execute_ddl(sqls)
 
     def backend_report_info(self):
@@ -987,8 +893,7 @@ class BackendSynapseApi(BackendApiInterface):
                 {
                     CONNECT_TEST: "Role",
                     CONNECT_STATUS: True,
-                    CONNECT_DETAIL: "Role exists: %s"
-                    % orchestration_options.synapse_role,
+                    CONNECT_DETAIL: "Role exists: %s" % orchestration_options.synapse_role,
                 }
             )
         else:
@@ -996,20 +901,16 @@ class BackendSynapseApi(BackendApiInterface):
                 {
                     CONNECT_TEST: "Role",
                     CONNECT_STATUS: False,
-                    CONNECT_DETAIL: "Role does not exist: %s"
-                    % orchestration_options.synapse_role,
+                    CONNECT_DETAIL: "Role does not exist: %s" % orchestration_options.synapse_role,
                 }
             )
 
-        if self.synapse_external_data_source_exists(
-            orchestration_options.synapse_data_source
-        ):
+        if self.synapse_external_data_source_exists(orchestration_options.synapse_data_source):
             results.append(
                 {
                     CONNECT_TEST: "Data source",
                     CONNECT_STATUS: True,
-                    CONNECT_DETAIL: "Data source exists: %s"
-                    % orchestration_options.synapse_data_source,
+                    CONNECT_DETAIL: "Data source exists: %s" % orchestration_options.synapse_data_source,
                 }
             )
         else:
@@ -1017,8 +918,7 @@ class BackendSynapseApi(BackendApiInterface):
                 {
                     CONNECT_TEST: "Data source",
                     CONNECT_STATUS: False,
-                    CONNECT_DETAIL: "Data source does not exist: %s"
-                    % orchestration_options.synapse_data_source,
+                    CONNECT_DETAIL: "Data source does not exist: %s" % orchestration_options.synapse_data_source,
                 }
             )
 
@@ -1027,8 +927,7 @@ class BackendSynapseApi(BackendApiInterface):
                 {
                     CONNECT_TEST: "File format",
                     CONNECT_STATUS: True,
-                    CONNECT_DETAIL: "File format exists: %s"
-                    % orchestration_options.synapse_file_format,
+                    CONNECT_DETAIL: "File format exists: %s" % orchestration_options.synapse_file_format,
                 }
             )
         else:
@@ -1079,9 +978,7 @@ class BackendSynapseApi(BackendApiInterface):
             )
         return self.execute_ddl(sqls) if sqls else sqls
 
-    def create_database(
-        self, db_name, comment=None, properties=None, with_terminator=False
-    ):
+    def create_database(self, db_name, comment=None, properties=None, with_terminator=False):
         """Create a Synapse schema which is a database in GOE terminology.
         properties: not applicable
         comment: not applicable
@@ -1121,16 +1018,11 @@ class BackendSynapseApi(BackendApiInterface):
         """
 
         def add_colation(column):
-            if (
-                column.is_string_based()
-                and not external
-                and self._connection_options.synapse_collation
-            ):
+            if column.is_string_based() and not external and self._connection_options.synapse_collation:
                 new_column = column.clone()
                 new_column.collation = self._connection_options.synapse_collation
                 return new_column
-            else:
-                return column
+            return column
 
         column_list_with_collations = [add_colation(_) for _ in column_list]
         sql = self._create_table_sql_text(
@@ -1163,24 +1055,19 @@ class BackendSynapseApi(BackendApiInterface):
             VIEW does not allow a database name to be specified. (103021) (SQLExecDirectW)')
         """
         projection = self._format_select_projection(column_tuples)
-        where_clause = (
-            "\nWHERE  " + "\nAND    ".join(filter_clauses) if filter_clauses else ""
-        )
-        sql = (
-            dedent(
-                """\
+        where_clause = "\nWHERE  " + "\nAND    ".join(filter_clauses) if filter_clauses else ""
+        sql = dedent(
+            """\
                 CREATE VIEW %(db)s.%(view)s AS
                 SELECT %(projection)s
                 FROM   %(from_tables)s%(where_clause)s"""
-            )
-            % {
-                "db": self.enclose_identifier(db_name),
-                "view": self.enclose_identifier(view_name),
-                "projection": projection,
-                "from_tables": ansi_joined_tables,
-                "where_clause": where_clause,
-            }
-        )
+        ) % {
+            "db": self.enclose_identifier(db_name),
+            "view": self.enclose_identifier(view_name),
+            "projection": projection,
+            "from_tables": ansi_joined_tables,
+            "where_clause": where_clause,
+        }
         return self.execute_ddl(sql, sync=sync)
 
     def current_date_sql_expression(self):
@@ -1215,25 +1102,22 @@ class BackendSynapseApi(BackendApiInterface):
     @staticmethod
     def default_storage_format():
         """Storage format out of our control"""
-        return None
+        return
 
     def detect_column_has_fractional_seconds(self, db_name, table_name, column):
         assert db_name and table_name
         assert isinstance(column, SynapseColumn)
         if not column.has_time_element():
             return False
-        sql = (
-            dedent(
-                """\
+        sql = dedent(
+            """\
                 SELECT TOP(1) %(col)s
                 FROM %(db_table)s
                 WHERE DATEPART(ns, %(col)s) != 0"""
-            )
-            % {
-                "db_table": self.enclose_object_reference(db_name, table_name),
-                "col": self.enclose_identifier(column.name),
-            }
-        )
+        ) % {
+            "db_table": self.enclose_object_reference(db_name, table_name),
+            "col": self.enclose_identifier(column.name),
+        }
         row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
         return True if row else False
 
@@ -1358,10 +1242,7 @@ class BackendSynapseApi(BackendApiInterface):
         )
 
     def exists(self, db_name, object_name):
-        return bool(
-            self.table_exists(db_name, object_name)
-            or self.view_exists(db_name, object_name)
-        )
+        return bool(self.table_exists(db_name, object_name) or self.view_exists(db_name, object_name))
 
     def extract_date_part_sql_expression(self, date_part, column):
         """Return a SQL expression that can be used to extract DAY, MONTH or YEAR from a column value.
@@ -1373,33 +1254,20 @@ class BackendSynapseApi(BackendApiInterface):
         column_name = column if isinstance(column, str) else column.name
         return f"{date_part.upper()}({column_name})"
 
-    def format_column_comparison(
-        self, left_col, operator, right_col, left_alias=None, right_alias=None
-    ):
+    def format_column_comparison(self, left_col, operator, right_col, left_alias=None, right_alias=None):
         """Format a simple 'column operator column' string for Synapse"""
         assert isinstance(left_col, SynapseColumn)
         assert isinstance(right_col, SynapseColumn)
         left_identifier = self.enclose_identifier(left_col.name)
         if left_alias:
-            left_identifier = "{}.{}".format(
-                self.enclose_identifier(left_alias), left_identifier
-            )
+            left_identifier = f"{self.enclose_identifier(left_alias)}.{left_identifier}"
         right_identifier = self.enclose_identifier(right_col.name)
         if right_alias:
-            right_identifier = "{}.{}".format(
-                self.enclose_identifier(right_alias), right_identifier
-            )
+            right_identifier = f"{self.enclose_identifier(right_alias)}.{right_identifier}"
         if left_col.collation or right_col.collation:
             # The columns are collation sensitive so ensure all comparisons are in SYNAPSE_COLLATION.
-            return "{}{} {} {}{}".format(
-                left_identifier,
-                self._collation_clause(self._connection_options.synapse_collation),
-                operator,
-                right_identifier,
-                self._collation_clause(self._connection_options.synapse_collation),
-            )
-        else:
-            return "{} {} {}".format(left_identifier, operator, right_identifier)
+            return f"{left_identifier}{self._collation_clause(self._connection_options.synapse_collation)} {operator} {right_identifier}{self._collation_clause(self._connection_options.synapse_collation)}"
+        return f"{left_identifier} {operator} {right_identifier}"
 
     def format_query_parameter(self, param_name):
         """No named parameters so always return "?" """
@@ -1439,28 +1307,23 @@ class BackendSynapseApi(BackendApiInterface):
         assert isinstance(column_tuples[0], (tuple, list))
         projection = self._format_select_projection(column_tuples)
         from_clause = (
-            "\nFROM   {}".format(
-                self.enclose_object_reference(from_db_name, from_table_name)
-            )
+            f"\nFROM   {self.enclose_object_reference(from_db_name, from_table_name)}"
             if from_db_name and from_table_name
             else ""
         )
-        limit_clause = "TOP({}) ".format(row_limit) if row_limit is not None else ""
-        sql = (
-            dedent(
-                """\
+        limit_clause = f"TOP({row_limit}) " if row_limit is not None else ""
+        sql = dedent(
+            """\
                     CREATE TABLE %(db_table)s
                     WITH (DISTRIBUTION = ROUND_ROBIN)
                     AS
                     SELECT %(limit_clause)s%(projection)s%(from_clause)s"""
-            )
-            % {
-                "db_table": self.enclose_object_reference(db_name, table_name),
-                "projection": projection,
-                "from_clause": from_clause,
-                "limit_clause": limit_clause,
-            }
-        )
+        ) % {
+            "db_table": self.enclose_object_reference(db_name, table_name),
+            "projection": projection,
+            "from_clause": from_clause,
+            "limit_clause": limit_clause,
+        }
         return sql
 
     def gen_default_numeric_column(self, column_name, data_scale=18):
@@ -1508,9 +1371,7 @@ class BackendSynapseApi(BackendApiInterface):
 
         projected_expressions = select_expr_tuples + (partition_expr_tuples or [])
         projection = self._format_select_projection(projected_expressions)
-        from_db_table = from_object_override or self.enclose_object_reference(
-            from_db_name, from_table_name
-        )
+        from_db_table = from_object_override or self.enclose_object_reference(from_db_name, from_table_name)
 
         where_clause = ""
         if filter_clauses:
@@ -1627,9 +1488,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                             co.column_id"""
         )
         object_id = "%s.%s" % (db_name, table_name)
-        rows = self.execute_query_fetch_all(
-            sql, log_level=VVERBOSE, query_params=[object_id, object_id]
-        )
+        rows = self.execute_query_fetch_all(sql, log_level=VVERBOSE, query_params=[object_id, object_id])
         return rows
 
     def get_distinct_column_values(
@@ -1646,16 +1505,10 @@ FROM   %(from_db_table)s%(where)s""" % {
         """
 
         def add_sql_cast(col):
-            return (
-                ("CONVERT(varchar, %s)" % col)
-                if col in (columns_to_cast_to_string or [])
-                else col
-            )
+            return ("CONVERT(varchar, %s)" % col) if col in (columns_to_cast_to_string or []) else col
 
         assert column_name_list and isinstance(column_name_list, list)
-        expression_list = [
-            add_sql_cast(self.enclose_identifier(_)) for _ in column_name_list
-        ]
+        expression_list = [add_sql_cast(self.enclose_identifier(_)) for _ in column_name_list]
         return self.get_distinct_expressions(
             db_name,
             table_name,
@@ -1696,9 +1549,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         """
         raise NotImplementedError("get_session_option not supported for Synapse")
 
-    def get_table_ddl(
-        self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False
-    ):
+    def get_table_ddl(self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False):
         """Mock up Synapse table DDL based on how GOE code would create a table.
         This is not ideal but Synapse doesn;t have a readily available DDL retrieval method. What this code
         does is derive the inputs as they should have been at table creation time and feeds them back through
@@ -1713,9 +1564,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                     FROM    sys.tables t
                     WHERE   t.object_id = OBJECT_ID(?)"""
             )
-            row = self.execute_query_fetch_one(
-                sql, log_level=VVERBOSE, query_params=[f"{db_name}.{table_name}"]
-            )
+            row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[f"{db_name}.{table_name}"])
             return bool(row and row[0])
 
         def get_external_table_options():
@@ -1730,9 +1579,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                     AND     t.file_format_id = ff.file_format_id
                     AND     t.object_id = OBJECT_ID(?)"""
             )
-            row = self.execute_query_fetch_one(
-                sql, log_level=VVERBOSE, query_params=[f"{db_name}.{table_name}"]
-            )
+            row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[f"{db_name}.{table_name}"])
             if row:
                 external_table_options = {
                     "DATA_SOURCE": self.enclose_identifier(row[0]),
@@ -1762,16 +1609,13 @@ FROM   %(from_db_table)s%(where)s""" % {
             sort_column_names=self.get_table_sort_columns(db_name, table_name),
         )
         if not ddl_str:
-            raise BackendApiException(
-                "Table does not exist for DDL retrieval: %s.%s" % (db_name, table_name)
-            )
+            raise BackendApiException("Table does not exist for DDL retrieval: %s.%s" % (db_name, table_name))
         self._debug("Table DDL: %s" % ddl_str)
         if terminate_sql:
             ddl_str += ";"
         if as_list:
             return ddl_str.split("\n")
-        else:
-            return ddl_str
+        return ddl_str
 
     def get_table_location(self, db_name, table_name):
         sql = dedent(
@@ -1785,9 +1629,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                     AND     s.name = ?
                     AND     t.name = ?"""
         )
-        row = self.execute_query_fetch_one(
-            sql, log_level=VVERBOSE, query_params=[db_name, table_name]
-        )
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[db_name, table_name])
         return row[0] if row else None
 
     def get_table_partition_count(self, db_name, table_name):
@@ -1806,9 +1648,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         not_when_dry_running=False,
         log_level=VVERBOSE,
     ):
-        sql = self._gen_select_count_sql_text_common(
-            db_name, table_name, filter_clause=filter_clause
-        )
+        sql = self._gen_select_count_sql_text_common(db_name, table_name, filter_clause=filter_clause)
         row = self.execute_query_fetch_one(
             sql,
             log_level=VVERBOSE,
@@ -1838,12 +1678,9 @@ FROM   %(from_db_table)s%(where)s""" % {
         )
         if row:
             row_count = row[sp_spaceused.rows.value].strip()
-            table_size = human_size_to_bytes(
-                row[sp_spaceused.reserved.value].strip().replace(" ", "")
-            )
+            table_size = human_size_to_bytes(row[sp_spaceused.reserved.value].strip().replace(" ", ""))
             return (int(table_size), int(row_count))
-        else:
-            return (None, None)
+        return (None, None)
 
     def get_table_sort_columns(self, db_name, table_name, as_csv=True):
         """Synapse can have
@@ -1869,9 +1706,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                     AND     t.name = ?
                     ORDER BY CASE WHEN ic.column_store_order_ordinal > 0 THEN ic.column_store_order_ordinal ELSE ic.key_ordinal END"""
         )
-        rows = self.execute_query_fetch_all(
-            sql, log_level=VVERBOSE, query_params=[db_name, table_name]
-        )
+        rows = self.execute_query_fetch_all(sql, log_level=VVERBOSE, query_params=[db_name, table_name])
         if not rows:
             return []
         cluster_cols = [row[0] for row in rows]
@@ -1915,27 +1750,14 @@ FROM   %(from_db_table)s%(where)s""" % {
                         [
                             col_stat_name[0],  # name
                             (
-                                int(
-                                    1
-                                    / stats_row[
-                                        dbcc_showstatistics_stat_header.density.value
-                                    ]
-                                )
-                                if stats_row[
-                                    dbcc_showstatistics_stat_header.density.value
-                                ]
+                                int(1 / stats_row[dbcc_showstatistics_stat_header.density.value])
+                                if stats_row[dbcc_showstatistics_stat_header.density.value]
                                 else 0
                             ),  # ndv
                             None,  # num_nulls
                             (
-                                int(
-                                    stats_row[
-                                        dbcc_showstatistics_stat_header.average_key_length.value
-                                    ]
-                                )
-                                if stats_row[
-                                    dbcc_showstatistics_stat_header.average_key_length.value
-                                ]
+                                int(stats_row[dbcc_showstatistics_stat_header.average_key_length.value])
+                                if stats_row[dbcc_showstatistics_stat_header.average_key_length.value]
                                 else 0
                             ),  # avg_col_len
                             None,  # low_value
@@ -1958,29 +1780,18 @@ FROM   %(from_db_table)s%(where)s""" % {
                     tab_stats, col_stats, self.get_column_names(db_name, table_name)
                 )
         else:
-            tab_stats = (
-                EMPTY_BACKEND_TABLE_STATS_DICT
-                if as_dict
-                else EMPTY_BACKEND_TABLE_STATS_LIST
-            )
-            col_stats = (
-                EMPTY_BACKEND_COLUMN_STATS_DICT
-                if as_dict
-                else EMPTY_BACKEND_COLUMN_STATS_LIST
-            )
+            tab_stats = EMPTY_BACKEND_TABLE_STATS_DICT if as_dict else EMPTY_BACKEND_TABLE_STATS_LIST
+            col_stats = EMPTY_BACKEND_COLUMN_STATS_DICT if as_dict else EMPTY_BACKEND_COLUMN_STATS_LIST
         return tab_stats, col_stats
 
     def get_table_and_partition_stats(self, db_name, table_name, as_dict=False):
         tab_stats, _ = self.get_table_stats(db_name, table_name, as_dict=as_dict)
         if as_dict:
             return tab_stats, {}, EMPTY_BACKEND_COLUMN_STATS_DICT
-        else:
-            return tab_stats, [], EMPTY_BACKEND_COLUMN_STATS_LIST
+        return tab_stats, [], EMPTY_BACKEND_COLUMN_STATS_LIST
 
     def get_table_stats_partitions(self, db_name, table_name):
-        raise NotImplementedError(
-            "get_table_stats_partitions not supported for Synapse"
-        )
+        raise NotImplementedError("get_table_stats_partitions not supported for Synapse")
 
     def get_user_name(self):
         sql = "SELECT SYSTEM_USER"
@@ -2038,9 +1849,7 @@ FROM   %(from_db_table)s%(where)s""" % {
             sql += "\nAND    schema_name LIKE ?"
             query_params.append(db_name_filter.replace("*", "%"))
         sql += "\nORDER BY schema_name"
-        rows = self.execute_query_fetch_all(
-            sql, log_level=VVERBOSE, query_params=query_params
-        )
+        rows = self.execute_query_fetch_all(sql, log_level=VVERBOSE, query_params=query_params)
         return [_[0] for _ in rows]
 
     def list_tables(self, db_name, table_name_filter=None, case_sensitive=True):
@@ -2057,9 +1866,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         if table_name_filter:
             sql += "\nAND table_name LIKE ?"
             query_params.append(table_name_filter.replace("*", "%"))
-        rows = self.execute_query_fetch_all(
-            sql, log_level=VVERBOSE, query_params=query_params
-        )
+        rows = self.execute_query_fetch_all(sql, log_level=VVERBOSE, query_params=query_params)
         return [_[0] for _ in rows]
 
     def list_udfs(self, db_name, udf_name_filter=None, case_sensitive=True):
@@ -2079,9 +1886,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         if view_name_filter:
             sql += "\nAND table_name LIKE ?"
             query_params.append(view_name_filter.replace("*", "%"))
-        rows = self.execute_query_fetch_all(
-            sql, log_level=VVERBOSE, query_params=query_params
-        )
+        rows = self.execute_query_fetch_all(sql, log_level=VVERBOSE, query_params=query_params)
         return [_[0] for _ in rows]
 
     def max_decimal_integral_magnitude(self):
@@ -2147,9 +1952,7 @@ FROM   %(from_db_table)s%(where)s""" % {
             "DELETE",
             "CREATE TABLE",
         ]
-        return any(
-            sql_text.lstrip().upper().startswith(_) for _ in valid_sql_start_tokens
-        )
+        return any(sql_text.lstrip().upper().startswith(_) for _ in valid_sql_start_tokens)
 
     def partition_column_requires_synthetic_column(self, backend_column, granularity):
         """Table partitioning not implemented at this stage on Synapse"""
@@ -2175,38 +1978,27 @@ FROM   %(from_db_table)s%(where)s""" % {
 
     def regexp_extract_decimal_scale_pattern(self):
         """Traditional regular expressions are not natively supported in Synapse SQL"""
-        raise NotImplementedError(
-            "regexp_extract_decimal_scale_pattern not supported for Synapse"
-        )
+        raise NotImplementedError("regexp_extract_decimal_scale_pattern not supported for Synapse")
 
     def regexp_extract_sql_expression(self, subject, pattern):
         """Traditional regular expressions are not natively supported in Synapse SQL"""
-        raise NotImplementedError(
-            "regexp_extract_sql_expression not supported for Synapse"
-        )
+        raise NotImplementedError("regexp_extract_sql_expression not supported for Synapse")
 
-    def rename_table(
-        self, from_db_name, from_table_name, to_db_name, to_table_name, sync=None
-    ):
+    def rename_table(self, from_db_name, from_table_name, to_db_name, to_table_name, sync=None):
         assert from_db_name and from_table_name
         assert to_db_name and to_table_name
 
         if not self._dry_run and not self.table_exists(from_db_name, from_table_name):
             raise BackendApiException(
-                "Source table does not exist, cannot rename table: %s.%s"
-                % (from_db_name, from_table_name)
+                "Source table does not exist, cannot rename table: %s.%s" % (from_db_name, from_table_name)
             )
 
         if not self._dry_run and self.exists(to_db_name, to_table_name):
             raise BackendApiException(
-                "Target table already exists, cannot rename table to: %s.%s"
-                % (to_db_name, to_table_name)
+                "Target table already exists, cannot rename table to: %s.%s" % (to_db_name, to_table_name)
             )
 
-        rename_sql = "RENAME OBJECT {} TO {}".format(
-            self.enclose_object_reference(from_db_name, from_table_name),
-            self.enclose_identifier(to_table_name),
-        )
+        rename_sql = f"RENAME OBJECT {self.enclose_object_reference(from_db_name, from_table_name)} TO {self.enclose_identifier(to_table_name)}"
 
         executed_sqls = self.execute_ddl(rename_sql, sync=sync)
         return executed_sqls
@@ -2221,19 +2013,13 @@ FROM   %(from_db_table)s%(where)s""" % {
                     WHERE  type = 'R'
                     AND    name = ?"""
         )
-        row = self.execute_query_fetch_one(
-            sql, log_level=VVERBOSE, query_params=[role_name]
-        )
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[role_name])
         return bool(row)
 
-    def set_column_stats(
-        self, db_name, table_name, new_column_stats, ndv_cap, num_null_factor
-    ):
+    def set_column_stats(self, db_name, table_name, new_column_stats, ndv_cap, num_null_factor):
         raise NotImplementedError("set_column_stats not supported for Synapse")
 
-    def set_partition_stats(
-        self, db_name, table_name, new_partition_stats, additive_stats
-    ):
+    def set_partition_stats(self, db_name, table_name, new_partition_stats, additive_stats):
         raise NotImplementedError("set_partition_stats not supported for Synapse")
 
     def set_session_db(self, db_name, log_level=VERBOSE):
@@ -2272,7 +2058,7 @@ FROM   %(from_db_table)s%(where)s""" % {
 
     def supported_date_based_partition_granularities(self):
         """Table partitioning not implemented at this stage on Synapse"""
-        return None
+        return
 
     def synapse_external_data_source_exists(self, external_data_source_name):
         """Check a Synapse external data source exists. This is Synapse only, hence synapse in the method name.
@@ -2285,9 +2071,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                     FROM   sys.external_data_sources
                     WHERE  name = ?"""
         )
-        row = self.execute_query_fetch_one(
-            sql, log_level=VVERBOSE, query_params=[external_data_source_name]
-        )
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[external_data_source_name])
         return bool(row)
 
     def synapse_file_format_exists(self, file_format_name):
@@ -2301,10 +2085,8 @@ FROM   %(from_db_table)s%(where)s""" % {
                     FROM   sys.external_file_formats
                     WHERE  name = ?"""
         )
-        row = self.execute_query_fetch_one(
-            sql, log_level=VVERBOSE, query_params=[file_format_name]
-        )
-        return bool((row and row[0] in self.valid_staging_formats()))
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[file_format_name])
+        return bool(row and row[0] in self.valid_staging_formats())
 
     def table_distribution(self, db_name, table_name):
         sql = dedent(
@@ -2313,9 +2095,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                     FROM sys.pdw_table_distribution_properties
                     WHERE object_id = OBJECT_ID(?)"""
         )
-        row = self.execute_query_fetch_one(
-            sql, log_level=VVERBOSE, query_params=[f"{db_name}.{table_name}"]
-        )
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[f"{db_name}.{table_name}"])
         return row[0] if row else row
 
     def table_exists(self, db_name: str, table_name: str) -> bool:
@@ -2369,9 +2149,7 @@ FROM   %(from_db_table)s%(where)s""" % {
     def transform_tokenize_data_type(self):
         return SYNAPSE_TYPE_VARCHAR
 
-    def transform_regexp_replace_expression(
-        self, backend_column, regexp_replace_pattern, regexp_replace_string
-    ):
+    def transform_regexp_replace_expression(self, backend_column, regexp_replace_pattern, regexp_replace_string):
         """Traditional regular expressions are not natively supported in Synapse SQL"""
         raise NotImplementedError("Translation function is not supported on Synapse")
 
@@ -2390,35 +2168,28 @@ FROM   %(from_db_table)s%(where)s""" % {
             target_type = canonical_override
         if column.is_number_based():
             if column.data_type in [SYNAPSE_TYPE_REAL, SYNAPSE_TYPE_FLOAT]:
-                return bool(
-                    target_type in [GOE_TYPE_DECIMAL, GOE_TYPE_DOUBLE, GOE_TYPE_FLOAT]
-                )
-            else:
-                return target_type in NUMERIC_CANONICAL_TYPES
-        elif column.is_date_based():
+                return bool(target_type in [GOE_TYPE_DECIMAL, GOE_TYPE_DOUBLE, GOE_TYPE_FLOAT])
+            return target_type in NUMERIC_CANONICAL_TYPES
+        if column.is_date_based():
             return bool(target_type in DATE_CANONICAL_TYPES)
-        elif column.is_string_based():
+        if column.is_string_based():
             if column.data_type in [SYNAPSE_TYPE_CHAR, SYNAPSE_TYPE_NCHAR]:
                 return bool(
-                    target_type in STRING_CANONICAL_TYPES
-                    or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
+                    target_type in STRING_CANONICAL_TYPES or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
                 )
-            else:
-                return bool(
-                    target_type in STRING_CANONICAL_TYPES
-                    or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
-                    or target_type in [GOE_TYPE_INTERVAL_DS, GOE_TYPE_INTERVAL_YM]
-                )
-        elif target_type not in ALL_CANONICAL_TYPES:
-            self._log(
-                "Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE
+            return bool(
+                target_type in STRING_CANONICAL_TYPES
+                or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
+                or target_type in [GOE_TYPE_INTERVAL_DS, GOE_TYPE_INTERVAL_YM]
             )
+        if target_type not in ALL_CANONICAL_TYPES:
+            self._log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
             return False
-        elif column.data_type not in self.supported_backend_data_types():
+        if column.data_type not in self.supported_backend_data_types():
             return False
-        elif column.data_type in [SYNAPSE_TYPE_BINARY, SYNAPSE_TYPE_VARBINARY]:
+        if column.data_type in [SYNAPSE_TYPE_BINARY, SYNAPSE_TYPE_VARBINARY]:
             return bool(target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
-        elif column.data_type == SYNAPSE_TYPE_TIME:
+        if column.data_type == SYNAPSE_TYPE_TIME:
             return bool(target_type == GOE_TYPE_TIME)
         return False
 
@@ -2486,7 +2257,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                 char_semantics=CANONICAL_CHAR_SEMANTICS_BYTE,
                 safe_mapping=True,
             )
-        elif column.data_type == SYNAPSE_TYPE_NCHAR:
+        if column.data_type == SYNAPSE_TYPE_NCHAR:
             return new_column(
                 column,
                 GOE_TYPE_FIXED_STRING,
@@ -2495,7 +2266,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                 char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
                 safe_mapping=True,
             )
-        elif column.data_type == SYNAPSE_TYPE_VARCHAR:
+        if column.data_type == SYNAPSE_TYPE_VARCHAR:
             return new_column(
                 column,
                 GOE_TYPE_VARIABLE_STRING,
@@ -2503,7 +2274,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                 char_length=column.char_length,
                 char_semantics=CANONICAL_CHAR_SEMANTICS_BYTE,
             )
-        elif column.data_type == SYNAPSE_TYPE_NVARCHAR:
+        if column.data_type == SYNAPSE_TYPE_NVARCHAR:
             return new_column(
                 column,
                 GOE_TYPE_VARIABLE_STRING,
@@ -2511,36 +2282,36 @@ FROM   %(from_db_table)s%(where)s""" % {
                 char_length=column.char_length,
                 char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
             )
-        elif column.data_type in (SYNAPSE_TYPE_BINARY, SYNAPSE_TYPE_VARBINARY):
+        if column.data_type in (SYNAPSE_TYPE_BINARY, SYNAPSE_TYPE_VARBINARY):
             return new_column(column, GOE_TYPE_BINARY, data_length=column.data_length)
-        elif column.data_type == SYNAPSE_TYPE_TINYINT:
+        if column.data_type == SYNAPSE_TYPE_TINYINT:
             # GOE_TYPE_INTEGER_1 does not fit in TINYINT but TINYINT *does* fit in GOE_TYPE_INTEGER_1
             return new_column(column, GOE_TYPE_INTEGER_1)
-        elif column.data_type == SYNAPSE_TYPE_SMALLINT:
+        if column.data_type == SYNAPSE_TYPE_SMALLINT:
             return new_column(column, GOE_TYPE_INTEGER_2)
-        elif column.data_type == SYNAPSE_TYPE_INT:
+        if column.data_type == SYNAPSE_TYPE_INT:
             return new_column(column, GOE_TYPE_INTEGER_4)
-        elif column.data_type == SYNAPSE_TYPE_BIGINT:
+        if column.data_type == SYNAPSE_TYPE_BIGINT:
             return new_column(column, GOE_TYPE_INTEGER_8)
-        elif column.data_type == SYNAPSE_TYPE_FLOAT:
+        if column.data_type == SYNAPSE_TYPE_FLOAT:
             return new_column(column, GOE_TYPE_DOUBLE)
-        elif column.data_type == SYNAPSE_TYPE_REAL:
+        if column.data_type == SYNAPSE_TYPE_REAL:
             return new_column(column, GOE_TYPE_FLOAT)
-        elif column.data_type == SYNAPSE_TYPE_MONEY:
+        if column.data_type == SYNAPSE_TYPE_MONEY:
             return new_column(
                 column,
                 GOE_TYPE_DECIMAL,
                 data_precision=column.data_precision or 19,
                 data_scale=column.data_scale or 4,
             )
-        elif column.data_type == SYNAPSE_TYPE_SMALLMONEY:
+        if column.data_type == SYNAPSE_TYPE_SMALLMONEY:
             return new_column(
                 column,
                 GOE_TYPE_DECIMAL,
                 data_precision=column.data_precision or 10,
                 data_scale=column.data_scale or 4,
             )
-        elif column.data_type in (SYNAPSE_TYPE_DECIMAL, SYNAPSE_TYPE_NUMERIC):
+        if column.data_type in (SYNAPSE_TYPE_DECIMAL, SYNAPSE_TYPE_NUMERIC):
             data_precision = column.data_precision
             data_scale = column.data_scale
             if data_precision is not None and data_scale is not None:
@@ -2566,42 +2337,32 @@ FROM   %(from_db_table)s%(where)s""" % {
                 else:
                     # The precision overflows our canonical integral types so store as a decimal.
                     integral_type = GOE_TYPE_DECIMAL
-                return new_column(
-                    column, integral_type, data_precision=data_precision, data_scale=0
-                )
-            else:
-                # If precision & scale are None then this is unsafe, otherwise leave it None to let
-                # new_column() logic take over.
-                safe_mapping = (
-                    False if data_precision is None and data_scale is None else None
-                )
-                return new_column(
-                    column,
-                    GOE_TYPE_DECIMAL,
-                    data_precision=data_precision,
-                    data_scale=data_scale,
-                    safe_mapping=safe_mapping,
-                )
-        elif column.data_type == SYNAPSE_TYPE_DATE:
-            return new_column(column, GOE_TYPE_DATE)
-        elif column.data_type == SYNAPSE_TYPE_TIME:
-            return new_column(column, GOE_TYPE_TIME, data_scale=column.data_scale)
-        elif column.data_type in (SYNAPSE_TYPE_DATETIME, SYNAPSE_TYPE_DATETIME2):
-            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=column.data_scale)
-        elif column.data_type == SYNAPSE_TYPE_SMALLDATETIME:
-            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=0)
-        elif column.data_type == SYNAPSE_TYPE_DATETIMEOFFSET:
+                return new_column(column, integral_type, data_precision=data_precision, data_scale=0)
+            # If precision & scale are None then this is unsafe, otherwise leave it None to let
+            # new_column() logic take over.
+            safe_mapping = False if data_precision is None and data_scale is None else None
             return new_column(
-                column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale
+                column,
+                GOE_TYPE_DECIMAL,
+                data_precision=data_precision,
+                data_scale=data_scale,
+                safe_mapping=safe_mapping,
             )
-        elif column.data_type == SYNAPSE_TYPE_UNIQUEIDENTIFIER:
+        if column.data_type == SYNAPSE_TYPE_DATE:
+            return new_column(column, GOE_TYPE_DATE)
+        if column.data_type == SYNAPSE_TYPE_TIME:
+            return new_column(column, GOE_TYPE_TIME, data_scale=column.data_scale)
+        if column.data_type in (SYNAPSE_TYPE_DATETIME, SYNAPSE_TYPE_DATETIME2):
+            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=column.data_scale)
+        if column.data_type == SYNAPSE_TYPE_SMALLDATETIME:
+            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=0)
+        if column.data_type == SYNAPSE_TYPE_DATETIMEOFFSET:
+            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale)
+        if column.data_type == SYNAPSE_TYPE_UNIQUEIDENTIFIER:
             # This mapping was initially BINARY(16) but Hybrid Query required switch to CHAR(36) because:
             #     "JDBC driver gives us a string for a uniqueidentifier and not the underlying bytes"
             return new_column(column, GOE_TYPE_FIXED_STRING, data_length=36)
-        else:
-            raise NotImplementedError(
-                "Unsupported Synapse SQL data type: %s" % column.data_type
-            )
+        raise NotImplementedError("Unsupported Synapse SQL data type: %s" % column.data_type)
 
     def from_canonical_column(self, column, decimal_padding_digits=0):
         def new_column(
@@ -2628,22 +2389,14 @@ FROM   %(from_db_table)s%(where)s""" % {
             )
 
         def nchar_or_char(data_type, char_semantics):
-            if (
-                data_type == SYNAPSE_TYPE_CHAR
-                and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE
-            ):
+            if data_type == SYNAPSE_TYPE_CHAR and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE:
                 return SYNAPSE_TYPE_NCHAR
-            elif (
-                data_type == SYNAPSE_TYPE_VARCHAR
-                and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE
-            ):
+            if data_type == SYNAPSE_TYPE_VARCHAR and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE:
                 return SYNAPSE_TYPE_NVARCHAR
             return data_type
 
         assert column
-        assert isinstance(
-            column, CanonicalColumn
-        ), "%s is not instance of CanonicalColumn" % type(column)
+        assert isinstance(column, CanonicalColumn), "%s is not instance of CanonicalColumn" % type(column)
 
         if column.data_type == GOE_TYPE_FIXED_STRING:
             return new_column(
@@ -2653,13 +2406,13 @@ FROM   %(from_db_table)s%(where)s""" % {
                 char_length=column.char_length,
                 safe_mapping=True,
             )
-        elif column.data_type == GOE_TYPE_LARGE_STRING:
+        if column.data_type == GOE_TYPE_LARGE_STRING:
             return new_column(
                 column,
                 nchar_or_char(SYNAPSE_TYPE_VARCHAR, column.char_semantics),
                 data_length=None,
             )
-        elif column.data_type == GOE_TYPE_VARIABLE_STRING:
+        if column.data_type == GOE_TYPE_VARIABLE_STRING:
             return new_column(
                 column,
                 nchar_or_char(SYNAPSE_TYPE_VARCHAR, column.char_semantics),
@@ -2667,20 +2420,18 @@ FROM   %(from_db_table)s%(where)s""" % {
                 char_length=column.char_length,
                 safe_mapping=True,
             )
-        elif column.data_type == GOE_TYPE_BINARY:
-            return new_column(
-                column, SYNAPSE_TYPE_VARBINARY, data_length=column.data_length
-            )
-        elif column.data_type == GOE_TYPE_LARGE_BINARY:
+        if column.data_type == GOE_TYPE_BINARY:
+            return new_column(column, SYNAPSE_TYPE_VARBINARY, data_length=column.data_length)
+        if column.data_type == GOE_TYPE_LARGE_BINARY:
             return new_column(column, SYNAPSE_TYPE_VARBINARY, data_length=None)
         # Synapse tinyint is unsigned, so cannot cater for all INTEGER_1 values; map to smallint
-        elif column.data_type in (GOE_TYPE_INTEGER_1, GOE_TYPE_INTEGER_2):
+        if column.data_type in (GOE_TYPE_INTEGER_1, GOE_TYPE_INTEGER_2):
             return new_column(column, SYNAPSE_TYPE_SMALLINT, safe_mapping=True)
-        elif column.data_type == GOE_TYPE_INTEGER_4:
+        if column.data_type == GOE_TYPE_INTEGER_4:
             return new_column(column, SYNAPSE_TYPE_INT, safe_mapping=True)
-        elif column.data_type == GOE_TYPE_INTEGER_8:
+        if column.data_type == GOE_TYPE_INTEGER_8:
             return new_column(column, SYNAPSE_TYPE_BIGINT, safe_mapping=True)
-        elif column.data_type == GOE_TYPE_INTEGER_38:
+        if column.data_type == GOE_TYPE_INTEGER_38:
             return new_column(
                 column,
                 SYNAPSE_TYPE_NUMERIC,
@@ -2688,37 +2439,27 @@ FROM   %(from_db_table)s%(where)s""" % {
                 data_scale=0,
                 safe_mapping=True,
             )
-        elif column.data_type == GOE_TYPE_DECIMAL:
+        if column.data_type == GOE_TYPE_DECIMAL:
             if column.data_precision is None and column.data_scale is None:
                 return self.gen_default_numeric_column(column.name)
-            else:
-                data_precision = (
-                    column.data_precision
-                    if column.data_precision
-                    else self.max_decimal_precision()
-                )
-                return new_column(
-                    column,
-                    SYNAPSE_TYPE_NUMERIC,
-                    data_precision=data_precision,
-                    data_scale=column.data_scale,
-                    safe_mapping=True,
-                )
-        elif column.data_type == GOE_TYPE_DATE:
-            return new_column(column, SYNAPSE_TYPE_DATE, safe_mapping=True)
-        elif column.data_type == GOE_TYPE_FLOAT:
-            return new_column(column, SYNAPSE_TYPE_REAL)
-        elif column.data_type == GOE_TYPE_DOUBLE:
-            return new_column(column, SYNAPSE_TYPE_FLOAT)
-        elif column.data_type == GOE_TYPE_TIME:
-            safe_mapping = bool(
-                column.data_scale is None
-                or column.data_scale <= self.max_datetime_scale()
+            data_precision = column.data_precision or self.max_decimal_precision()
+            return new_column(
+                column,
+                SYNAPSE_TYPE_NUMERIC,
+                data_precision=data_precision,
+                data_scale=column.data_scale,
+                safe_mapping=True,
             )
+        if column.data_type == GOE_TYPE_DATE:
+            return new_column(column, SYNAPSE_TYPE_DATE, safe_mapping=True)
+        if column.data_type == GOE_TYPE_FLOAT:
+            return new_column(column, SYNAPSE_TYPE_REAL)
+        if column.data_type == GOE_TYPE_DOUBLE:
+            return new_column(column, SYNAPSE_TYPE_FLOAT)
+        if column.data_type == GOE_TYPE_TIME:
+            safe_mapping = bool(column.data_scale is None or column.data_scale <= self.max_datetime_scale())
             data_scale = (
-                column.data_scale
-                if (column.data_scale or 0) < self.max_datetime_scale()
-                else self.max_datetime_scale()
+                column.data_scale if (column.data_scale or 0) < self.max_datetime_scale() else self.max_datetime_scale()
             )
             return new_column(
                 column,
@@ -2726,15 +2467,10 @@ FROM   %(from_db_table)s%(where)s""" % {
                 data_scale=data_scale,
                 safe_mapping=safe_mapping,
             )
-        elif column.data_type == GOE_TYPE_TIMESTAMP:
-            safe_mapping = bool(
-                column.data_scale is None
-                or column.data_scale <= self.max_datetime_scale()
-            )
+        if column.data_type == GOE_TYPE_TIMESTAMP:
+            safe_mapping = bool(column.data_scale is None or column.data_scale <= self.max_datetime_scale())
             data_scale = (
-                column.data_scale
-                if (column.data_scale or 0) < self.max_datetime_scale()
-                else self.max_datetime_scale()
+                column.data_scale if (column.data_scale or 0) < self.max_datetime_scale() else self.max_datetime_scale()
             )
             return new_column(
                 column,
@@ -2742,15 +2478,10 @@ FROM   %(from_db_table)s%(where)s""" % {
                 data_scale=data_scale,
                 safe_mapping=safe_mapping,
             )
-        elif column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            safe_mapping = bool(
-                column.data_scale is None
-                or column.data_scale <= self.max_datetime_scale()
-            )
+        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
+            safe_mapping = bool(column.data_scale is None or column.data_scale <= self.max_datetime_scale())
             data_scale = (
-                column.data_scale
-                if (column.data_scale or 0) < self.max_datetime_scale()
-                else self.max_datetime_scale()
+                column.data_scale if (column.data_scale or 0) < self.max_datetime_scale() else self.max_datetime_scale()
             )
             return new_column(
                 column,
@@ -2758,16 +2489,13 @@ FROM   %(from_db_table)s%(where)s""" % {
                 data_scale=data_scale,
                 safe_mapping=safe_mapping,
             )
-        elif column.data_type == GOE_TYPE_INTERVAL_DS:
+        if column.data_type == GOE_TYPE_INTERVAL_DS:
             return new_column(column, SYNAPSE_TYPE_VARCHAR, data_length=100)
-        elif column.data_type == GOE_TYPE_INTERVAL_YM:
+        if column.data_type == GOE_TYPE_INTERVAL_YM:
             return new_column(column, SYNAPSE_TYPE_VARCHAR, data_length=100)
-        elif column.data_type == GOE_TYPE_BOOLEAN:
+        if column.data_type == GOE_TYPE_BOOLEAN:
             return new_column(column, SYNAPSE_TYPE_BIT)
-        else:
-            raise NotImplementedError(
-                "Unsupported GOE data type: %s" % column.data_type
-            )
+        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
 
     def alter_sort_columns(self, db_name, table_name, sort_column_names, sync=None):
         raise NotImplementedError("alter_sort_columns not supported for Synapse")
@@ -2792,21 +2520,19 @@ FROM   %(from_db_table)s%(where)s""" % {
 
     def derive_native_partition_info(self, db_name, table_name, column, position):
         """Table partitioning not implemented at this stage on Synapse"""
-        return None
+        return
 
     def gen_native_range_partition_key_cast(self, partition_column):
         """Table partitioning not implemented at this stage on Synapse"""
-        raise NotImplementedError(
-            "gen_native_range_partition_key_cast not supported for Synapse"
-        )
+        raise NotImplementedError("gen_native_range_partition_key_cast not supported for Synapse")
 
     def supported_partition_function_parameter_data_types(self):
         """Table partitioning not implemented at this stage on Synapse"""
-        return None
+        return
 
     def supported_partition_function_return_data_types(self):
         """Table partitioning not implemented at this stage on Synapse"""
-        return None
+        return
 
     def synthetic_partition_numbers_are_string(self):
         """Table partitioning not implemented at this stage on Synapse"""

@@ -16,12 +16,13 @@
 import multiprocessing
 from pathlib import Path
 
-# Third Party Libraries
-from oracledb import DatabaseError as OracleDatabaseError
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.responses import ORJSONResponse
 from fastapi.staticfiles import StaticFiles
+
+# Third Party Libraries
+from oracledb import DatabaseError as OracleDatabaseError
 from pydantic import ValidationError
 from redis.exceptions import RedisError
 
@@ -55,8 +56,7 @@ exception_handler_map = {
 
 
 def get_app() -> FastAPI:
-    """
-    Get FastAPI application.
+    """Get FastAPI application.
 
     This is the main constructor of an application.
 
@@ -65,9 +65,9 @@ def get_app() -> FastAPI:
     # this is to prevent endless loops when using pyinstaller and bundlers
     multiprocessing.freeze_support()
 
-    # todo: initialize Offload Logging config here
+    # TODO: initialize Offload Logging config here
     logger = Logger.configure_logger()
-    # todo: bring in nested/structured config setup
+    # TODO: bring in nested/structured config setup
     app = FastAPI(
         # debug=settings.server.debug,
         docs_url=None,  # defined in route so that we can host Swagger JS locally
@@ -75,7 +75,7 @@ def get_app() -> FastAPI:
         redoc_url=None,  # defined in route so that we can host Swagger JS locally
         title="GOE Listener",
         description="GOE Listener",
-        terms_of_service="https://goe.com/terms-of-service/",  # todo: update this/embed a page/add text?
+        terms_of_service="https://goe.com/terms-of-service/",  # TODO: update this/embed a page/add text?
         version=strict_version_ready(version()),
         default_response_class=ORJSONResponse,
         on_startup=[events.on_startup],
@@ -95,7 +95,7 @@ def get_app() -> FastAPI:
     app.add_middleware(
         middleware.CORSMiddleware,
         path_regex="^/api",
-        allow_origins="*",  # todo: integrate the setting into the configuration
+        allow_origins="*",  # TODO: integrate the setting into the configuration
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["Authorization", "X-Requested-With"],

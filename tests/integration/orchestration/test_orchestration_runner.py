@@ -12,21 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Test library for orchestration commands.
+"""Test library for orchestration commands.
 We cannot test without making DB connections. These tests create a table in order to complete.
 """
 
-import pytest
 import threading
 import traceback
 from typing import TYPE_CHECKING
+
+import pytest
 
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.orchestration.orchestration_lock import OrchestrationLockTimeout
 from goe.orchestration.orchestration_runner import OrchestrationRunner
 from goe.schema_sync.schema_sync import SCHEMA_SYNC_LOCKED_MESSAGE_TEXT
-
 from tests.integration.test_functions import (
     cached_current_options,
     get_default_test_user,
@@ -113,38 +112,24 @@ def competing_commands(
                     "Unexpected %s exception: %s"
                     % (
                         thread_name,
-                        str(
-                            exceptions_caught_in_threads[thread_name]["exception"][
-                                "value"
-                            ]
-                        ),
+                        str(exceptions_caught_in_threads[thread_name]["exception"]["value"]),
                     )
                 )
                 messages.log(
                     "".join(
                         traceback.format_exception(
-                            exceptions_caught_in_threads[thread_name]["exception"][
-                                "type"
-                            ],
-                            exceptions_caught_in_threads[thread_name]["exception"][
-                                "value"
-                            ],
-                            exceptions_caught_in_threads[thread_name]["exception"][
-                                "traceback"
-                            ],
+                            exceptions_caught_in_threads[thread_name]["exception"]["type"],
+                            exceptions_caught_in_threads[thread_name]["exception"]["value"],
+                            exceptions_caught_in_threads[thread_name]["exception"]["traceback"],
                         )
                     )
                 )
-        assert (
-            not exceptions_caught_in_threads
-        ), "Unexpected Schema Sync exceptions detected, something is amiss"
-        assert text_in_log(
-            SCHEMA_SYNC_LOCKED_MESSAGE_TEXT, search_from_text=test_id
-        ), "Did not find Schema Sync lock message in log file"
+        assert not exceptions_caught_in_threads, "Unexpected Schema Sync exceptions detected, something is amiss"
+        assert text_in_log(SCHEMA_SYNC_LOCKED_MESSAGE_TEXT, search_from_text=test_id), (
+            "Did not find Schema Sync lock message in log file"
+        )
     else:
-        assert (
-            exceptions_caught_in_threads
-        ), "No sessions were blocked, something is amiss"
+        assert exceptions_caught_in_threads, "No sessions were blocked, something is amiss"
         if THREAD2_NAME in exceptions_caught_in_threads:
             # Assuming thread 2 is being blocked
             blocker = THREAD1_NAME
@@ -164,8 +149,7 @@ def competing_commands(
         )
         if blocker in exceptions_caught_in_threads:
             messages.log(
-                "Unexpected blocker exception: %s"
-                % str(exceptions_caught_in_threads[blocker]["exception"]["value"])
+                "Unexpected blocker exception: %s" % str(exceptions_caught_in_threads[blocker]["exception"]["value"])
             )
             messages.log(
                 "".join(
@@ -178,22 +162,16 @@ def competing_commands(
             )
         assert blocker not in exceptions_caught_in_threads
         assert waiter in exceptions_caught_in_threads
-        assert (
-            exceptions_caught_in_threads[waiter]["exception"]["type"]
-            is OrchestrationLockTimeout
-        )
+        assert exceptions_caught_in_threads[waiter]["exception"]["type"] is OrchestrationLockTimeout
         messages.log(
-            "Waiter encountered correct exception: %s"
-            % str(exceptions_caught_in_threads[waiter]["exception"]["type"]),
+            "Waiter encountered correct exception: %s" % str(exceptions_caught_in_threads[waiter]["exception"]["type"]),
             detail=VERBOSE,
         )
 
 
 def test_orchestration_runner_offload(config, schema):
     messages = get_test_messages(config, "test_orchestration_runner_offload")
-    frontend_api = get_frontend_testing_api(
-        config, messages, trace_action="test_orchestration_runner_offload"
-    )
+    frontend_api = get_frontend_testing_api(config, messages, trace_action="test_orchestration_runner_offload")
 
     # Setup
     run_setup_ddl(

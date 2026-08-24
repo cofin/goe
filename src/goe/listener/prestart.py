@@ -21,22 +21,20 @@ def validate_config():
     """"""
     try:
         # GOE
-        from goe.config.config_file import check_config_path  # noqa: WPS433 F401
+        from goe.config.config_file import check_config_path
 
         check_config_path()
     except Exception:
-        print(
-            "failed to validate configuration.  Please check your installation"
-        )  # noqa: WPS421
+        print("failed to validate configuration.  Please check your installation")
         sys.exit(1)
 
 
 async def validate_cache():
     """"""
     # GOE
-    from goe.listener import utils  # noqa: WPS433 F401
-    from goe.listener.config import settings  # noqa: WPS433 F401
-    from goe.listener.config.logging import Logger  # noqa: WPS433 F401
+    from goe.listener import utils
+    from goe.listener.config import settings
+    from goe.listener.config.logging import Logger
 
     try:
         logger = Logger.configure_logger()
@@ -54,14 +52,16 @@ async def validate_cache():
 
 def prestart() -> None:
     # Third Party Libraries
-    from tenacity import after_log  # noqa: WPS433 F401
-    from tenacity import before_log  # noqa: WPS433 F401
-    from tenacity import retry  # noqa: WPS433 F401
-    from tenacity import wait_fixed  # noqa: WPS433 F401
+    from goelib_contrib.asyncer import runnify
+    from tenacity import (
+        after_log,
+        before_log,
+        retry,
+        wait_fixed,
+    )
 
     # GOE
-    from goe.listener.config.logging import Logger  # noqa: WPS433 F401
-    from goelib_contrib.asyncer import runnify  # noqa: WPS433 F401
+    from goe.listener.config.logging import Logger
 
     logger = Logger.configure_logger()
     # max_tries = 60

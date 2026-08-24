@@ -39,6 +39,4 @@ api.include_router(
 
 router.include_router(docs.router)
 
-router.include_router(
-    api, prefix="/api", dependencies=[Security(security.valid_api_token)]
-)
+router.include_router(api, prefix="/api", dependencies=[Security(security.valid_api_token)])

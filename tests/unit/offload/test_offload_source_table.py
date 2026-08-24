@@ -17,36 +17,36 @@ from unittest import TestCase
 from numpy import datetime64
 
 from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
-from goe.offload.offload_constants import (
-    DBTYPE_MSSQL,
-    DBTYPE_ORACLE,
-)
-from goe.offload.offload_messages import OffloadMessages
 from goe.offload.microsoft.mssql_column import (
     MSSQL_TYPE_BIGINT,
     MSSQL_TYPE_DATETIME,
     MSSQL_TYPE_VARCHAR,
 )
+from goe.offload.offload_constants import (
+    DBTYPE_MSSQL,
+    DBTYPE_ORACLE,
+)
+from goe.offload.offload_messages import OffloadMessages
+from goe.offload.oracle import oracle_offload_source_table
 from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_DATE,
     ORACLE_TYPE_NUMBER,
     ORACLE_TYPE_TIMESTAMP,
     ORACLE_TYPE_VARCHAR2,
 )
-from goe.offload.oracle import oracle_offload_source_table
 from tests.unit.test_functions import (
-    build_mock_options,
-    optional_sql_server_dependency_exception,
-    optional_teradata_dependency_exception,
     FAKE_MSSQL_ENV,
     FAKE_ORACLE_ENV,
     FAKE_TERADATA_ENV,
+    build_mock_options,
+    optional_sql_server_dependency_exception,
+    optional_teradata_dependency_exception,
 )
 
 
 class TestOffloadSourceTable(TestCase):
     def __init__(self, *args, **kwargs):
-        super(TestOffloadSourceTable, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = None
         self.test_api = None
         self.config = None
@@ -114,9 +114,7 @@ class TestOffloadSourceTable(TestCase):
                 None,
                 strict=False,
             )
-            self.api.rdbms_literal_to_python(
-                self.api.gen_default_date_column("some_col"), "123", None, strict=False
-            )
+            self.api.rdbms_literal_to_python(self.api.gen_default_date_column("some_col"), "123", None, strict=False)
         except NotImplementedError:
             pass
 
@@ -125,42 +123,28 @@ class TestOffloadSourceTable(TestCase):
 
     def _test_supported_list_partition_data_type(self):
         try:
-            self.api.supported_list_partition_data_type(
-                self.api.gen_default_numeric_column("some_col").data_type
-            )
+            self.api.supported_list_partition_data_type(self.api.gen_default_numeric_column("some_col").data_type)
         except NotImplementedError:
             pass
 
     def _test_supported_range_partition_data_type(self):
         try:
-            self.api.supported_range_partition_data_type(
-                self.api.gen_default_numeric_column("some_col").data_type
-            )
+            self.api.supported_range_partition_data_type(self.api.gen_default_numeric_column("some_col").data_type)
         except NotImplementedError:
             pass
 
     def _test_to_rdbms_literal_with_sql_conv_fn(self):
         if self.config.db_type == DBTYPE_ORACLE:
             self.api.to_rdbms_literal_with_sql_conv_fn(123, ORACLE_TYPE_NUMBER)
-            self.api.to_rdbms_literal_with_sql_conv_fn(
-                self.api.min_datetime_value(), ORACLE_TYPE_DATE
-            )
-            self.api.to_rdbms_literal_with_sql_conv_fn(
-                datetime64(self.api.min_datetime_value()), ORACLE_TYPE_DATE
-            )
-            self.api.to_rdbms_literal_with_sql_conv_fn(
-                self.api.min_datetime_value(), ORACLE_TYPE_TIMESTAMP
-            )
-            self.api.to_rdbms_literal_with_sql_conv_fn(
-                datetime64(self.api.min_datetime_value()), ORACLE_TYPE_TIMESTAMP
-            )
+            self.api.to_rdbms_literal_with_sql_conv_fn(self.api.min_datetime_value(), ORACLE_TYPE_DATE)
+            self.api.to_rdbms_literal_with_sql_conv_fn(datetime64(self.api.min_datetime_value()), ORACLE_TYPE_DATE)
+            self.api.to_rdbms_literal_with_sql_conv_fn(self.api.min_datetime_value(), ORACLE_TYPE_TIMESTAMP)
+            self.api.to_rdbms_literal_with_sql_conv_fn(datetime64(self.api.min_datetime_value()), ORACLE_TYPE_TIMESTAMP)
             self.api.to_rdbms_literal_with_sql_conv_fn("Hello", ORACLE_TYPE_VARCHAR2)
         elif self.config.db_type == DBTYPE_MSSQL:
             try:
                 self.api.to_rdbms_literal_with_sql_conv_fn(123, MSSQL_TYPE_BIGINT)
-                self.api.to_rdbms_literal_with_sql_conv_fn(
-                    self.api.min_datetime_value(), MSSQL_TYPE_DATETIME
-                )
+                self.api.to_rdbms_literal_with_sql_conv_fn(self.api.min_datetime_value(), MSSQL_TYPE_DATETIME)
                 self.api.to_rdbms_literal_with_sql_conv_fn(
                     datetime64(self.api.min_datetime_value()), MSSQL_TYPE_DATETIME
                 )
@@ -191,7 +175,7 @@ class TestOffloadSourceTable(TestCase):
 class TestOracleOffloadSourceTable(TestOffloadSourceTable):
     def setUp(self):
         self.config = self._get_mock_config(FAKE_ORACLE_ENV)
-        super(TestOracleOffloadSourceTable, self).setUp()
+        super().setUp()
 
     def test_all_non_connecting_oracle_tests(self):
         self._run_all_tests()
@@ -201,7 +185,7 @@ class TestMSSQLOffloadSourceTable(TestOffloadSourceTable):
     def setUp(self):
         self.config = self._get_mock_config(FAKE_MSSQL_ENV)
         try:
-            super(TestMSSQLOffloadSourceTable, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if not optional_sql_server_dependency_exception(e):
                 raise
@@ -214,7 +198,7 @@ class TestTeradataOffloadSourceTable(TestOffloadSourceTable):
     def setUp(self):
         self.config = self._get_mock_config(FAKE_TERADATA_ENV)
         try:
-            super(TestTeradataOffloadSourceTable, self).setUp()
+            super().setUp()
         except ModuleNotFoundError as e:
             if not optional_teradata_dependency_exception(e):
                 raise

@@ -14,20 +14,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" SyntheticPartitionLiteral class for generating Python string literals for synthetic partition columns
+"""SyntheticPartitionLiteral class for generating Python string literals for synthetic partition columns
 
-    The methods will give the same outcome as BackendTableInterface implementations do via SQL except this class is
-    focused on Python variables, not backend SQL engines.
+The methods will give the same outcome as BackendTableInterface implementations do via SQL except this class is
+focused on Python variables, not backend SQL engines.
 
-    This initially started out as a collection of global functions but became a class because I wanted some methods to
-    be private and using underscore naming for "global" functions seemed wrong.
+This initially started out as a collection of global functions but became a class because I wanted some methods to
+be private and using underscore naming for "global" functions seemed wrong.
 
 """
 
-import logging
-from datetime import date
 import decimal
+import logging
 import re
+from datetime import date
 
 from numpy import datetime64
 
@@ -63,15 +63,11 @@ def gen_number_integral_floor_literal(number_value, granularity):
     for an integral numeric synthetic column.
     """
     assert granularity
-    assert isinstance(granularity, int), "Granularity must be integral not: %s" % type(
-        granularity
-    )
+    assert isinstance(granularity, int), "Granularity must be integral not: %s" % type(granularity)
     if not isinstance(number_value, decimal.Decimal):
         decimal.getcontext().prec = MAX_SUPPORTED_PRECISION
         number_value = decimal.Decimal(str(number_value))
-    floored_value = (number_value / granularity).to_integral_value(
-        rounding=decimal.ROUND_FLOOR
-    )
+    floored_value = (number_value / granularity).to_integral_value(rounding=decimal.ROUND_FLOOR)
     return (floored_value * granularity).to_integral_value()
 
 
@@ -80,7 +76,7 @@ def gen_number_integral_floor_literal(number_value, granularity):
 ###########################################################################
 
 
-class SyntheticPartitionLiteral(object):
+class SyntheticPartitionLiteral:
     ###########################################################################
     # PRIVATE METHODS
     ###########################################################################
@@ -88,9 +84,7 @@ class SyntheticPartitionLiteral(object):
     @staticmethod
     def _gen_date_as_string_literal(date_value, granularity):
         """Python literal matching the outcome of BackendTableInterface._gen_synthetic_part_date_as_string_sql_expr()"""
-        assert granularity in PART_COL_DATE_GRANULARITIES, (
-            "Unexpected granularity: %s" % granularity
-        )
+        assert granularity in PART_COL_DATE_GRANULARITIES, "Unexpected granularity: %s" % granularity
 
         if date_value is None:
             # Compare to None because Unix epoch is False in datetime64
@@ -114,27 +108,19 @@ class SyntheticPartitionLiteral(object):
         """Python literal matching the outcome of
         BackendTableInterface._gen_synthetic_partition_date_truncated_sql_expr()
         """
-        assert isinstance(
-            date_value, (date, datetime64)
-        ), "%s is not of type (date, datetime64)" % type(date_value)
-        assert granularity in PART_COL_DATE_GRANULARITIES, (
-            "Unexpected granularity: %s" % granularity
-        )
+        assert isinstance(date_value, (date, datetime64)), "%s is not of type (date, datetime64)" % type(date_value)
+        assert granularity in PART_COL_DATE_GRANULARITIES, "Unexpected granularity: %s" % granularity
 
         if isinstance(date_value, date):
-            date_truncated = date_value.replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            date_truncated = date_value.replace(hour=0, minute=0, second=0, microsecond=0)
             if granularity == PART_COL_GRANULARITY_MONTH:
                 date_truncated = date_truncated.replace(day=1)
             elif granularity == PART_COL_GRANULARITY_YEAR:
                 date_truncated = date_truncated.replace(month=1, day=1)
             return date_truncated
-        elif isinstance(date_value, datetime64):
+        if isinstance(date_value, datetime64):
             # Use astype() to truncate to granularity and then switch back to day granularity
-            date_truncated = date_value.astype(
-                "datetime64[{}]".format(granularity)
-            ).astype("datetime64[D]")
+            date_truncated = date_value.astype(f"datetime64[{granularity}]").astype("datetime64[D]")
             return date_truncated
 
     @staticmethod
@@ -145,24 +131,18 @@ class SyntheticPartitionLiteral(object):
         return int(gen_number_integral_floor_literal(number_value, granularity))
 
     @staticmethod
-    def _gen_number_string_literal(
-        number_value, granularity, synthetic_partition_digits
-    ):
+    def _gen_number_string_literal(number_value, granularity, synthetic_partition_digits):
         """Python literal matching the outcome of BackendTableInterface._gen_synthetic_part_number_floor_sql_expr()
         for a string synthetic column
         """
         floored_value = gen_number_integral_floor_literal(number_value, granularity)
-        return "{:0>{width}}".format(
-            str(floored_value), width=synthetic_partition_digits
-        )
+        return "{:0>{width}}".format(str(floored_value), width=synthetic_partition_digits)
 
     @staticmethod
     def _gen_string_literal(string_value, granularity):
         """Python literal matching the outcome of BackendTableInterface._gen_synthetic_part_string_sql_expr()"""
         assert granularity
-        assert isinstance(
-            granularity, int
-        ), "Granularity must be integral not: %s" % type(granularity)
+        assert isinstance(granularity, int), "Granularity must be integral not: %s" % type(granularity)
         if isinstance(string_value, datetime64):
             string_value = str(string_value).replace("T", " ")
         elif isinstance(string_value, date):
@@ -181,45 +161,27 @@ class SyntheticPartitionLiteral(object):
         source_column_name = partition_column.partition_info.source_column_name
         if source_column.name.upper() != (source_column_name or "").upper():
             raise SyntheticPartitionLiteralException(
-                "Source column mismatch: %s != %s"
-                % (source_column.name, source_column_name)
+                "Source column mismatch: %s != %s" % (source_column.name, source_column_name)
             )
 
         digits = partition_column.partition_info.digits
         granularity = partition_column.partition_info.granularity
         partition_fn = None
         if source_column.is_date_based() and partition_column.is_date_based():
-            partition_fn = (
-                lambda x: SyntheticPartitionLiteral._gen_date_truncated_literal(
-                    x, granularity
-                )
-            )
+            partition_fn = lambda x: SyntheticPartitionLiteral._gen_date_truncated_literal(x, granularity)
         elif source_column.is_date_based() and partition_column.is_string_based():
-            partition_fn = (
-                lambda x: SyntheticPartitionLiteral._gen_date_as_string_literal(
-                    x, granularity
-                )
-            )
+            partition_fn = lambda x: SyntheticPartitionLiteral._gen_date_as_string_literal(x, granularity)
         elif source_column.is_string_based():
             g = int(granularity)
             partition_fn = lambda x: SyntheticPartitionLiteral._gen_string_literal(x, g)
         elif source_column.is_number_based() and partition_column.is_string_based():
             g = int(granularity)
-            partition_fn = (
-                lambda x: SyntheticPartitionLiteral._gen_number_string_literal(
-                    x, g, digits
-                )
-            )
+            partition_fn = lambda x: SyntheticPartitionLiteral._gen_number_string_literal(x, g, digits)
         elif source_column.is_number_based() and partition_column.is_number_based():
             g = int(granularity)
-            partition_fn = (
-                lambda x: SyntheticPartitionLiteral._gen_number_integral_literal(x, g)
-            )
+            partition_fn = lambda x: SyntheticPartitionLiteral._gen_number_integral_literal(x, g)
         else:
-            raise NotImplementedError(
-                "Unsupported synthetic partition column data type: %s"
-                % source_column.data_type
-            )
+            raise NotImplementedError("Unsupported synthetic partition column data type: %s" % source_column.data_type)
         return partition_fn
 
     ###########################################################################
@@ -237,13 +199,9 @@ class SyntheticPartitionLiteral(object):
             part_col_obj = match_table_column(partition_column, table_columns)
         source_column_name = part_col_obj.partition_info.source_column_name
         source_column = match_table_column(source_column_name, table_columns)
-        return SyntheticPartitionLiteral._gen_synthetic_literal_function(
-            part_col_obj, source_column
-        )
+        return SyntheticPartitionLiteral._gen_synthetic_literal_function(part_col_obj, source_column)
 
     @staticmethod
     def gen_synthetic_literal(partition_column, table_columns, source_value):
-        conv_fn = SyntheticPartitionLiteral.gen_synthetic_literal_function(
-            partition_column, table_columns
-        )
+        conv_fn = SyntheticPartitionLiteral.gen_synthetic_literal_function(partition_column, table_columns)
         return conv_fn(source_value)

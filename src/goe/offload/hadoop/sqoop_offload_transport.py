@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import re
-from typing import Union
 
 from goe.config import orchestration_defaults
 from goe.offload.factory.offload_transport_rdbms_api_factory import (
@@ -27,26 +26,22 @@ from goe.offload.offload_constants import (
 )
 from goe.offload.offload_messages import VVERBOSE
 from goe.offload.offload_transport import (
-    OffloadTransportException,
-    OffloadTransport,
     OFFLOAD_TRANSPORT_METHOD_SQOOP,
     OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
     TRANSPORT_CXT_BYTES,
     TRANSPORT_CXT_ROWS,
+    OffloadTransport,
+    OffloadTransportException,
 )
 from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
 )
 from goe.orchestration import command_steps
-
 from goe.util.misc_functions import split_not_in_quotes, write_temp_file
-
 
 # Sqoop constants
 SQOOP_OPTIONS_FILE_PREFIX = "goe-sqoop-options-"
-SQOOP_LOG_ROW_COUNT_PATTERN = (
-    r"^.*mapreduce\.ImportJobBase: Retrieved (\d+) records\.\r?$"
-)
+SQOOP_LOG_ROW_COUNT_PATTERN = r"^.*mapreduce\.ImportJobBase: Retrieved (\d+) records\.\r?$"
 SQOOP_LOG_MODULE_PATTERN = r"^.*dbms_application_info.set_module\(module_name => '(.+)', action_name => '(.+)'\)"
 
 
@@ -65,7 +60,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
         """CONSTRUCTOR"""
         self._offload_transport_method = OFFLOAD_TRANSPORT_METHOD_SQOOP
 
-        super(OffloadTransportStandardSqoop, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -83,12 +78,8 @@ class OffloadTransportStandardSqoop(OffloadTransport):
             self._offload_transport_parallelism = 1
 
         self._sqoop_additional_options = offload_operation.sqoop_additional_options
-        self._sqoop_mapreduce_map_memory_mb = (
-            offload_operation.sqoop_mapreduce_map_memory_mb
-        )
-        self._sqoop_mapreduce_map_java_opts = (
-            offload_operation.sqoop_mapreduce_map_java_opts
-        )
+        self._sqoop_mapreduce_map_memory_mb = offload_operation.sqoop_mapreduce_map_memory_mb
+        self._sqoop_mapreduce_map_java_opts = offload_operation.sqoop_mapreduce_map_java_opts
 
     ###########################################################################
     # PRIVATE METHODS
@@ -110,9 +101,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
 
     def _sqoop_by_table_options(self, partition_chunk):
         """Options dictating that Sqoop should process a table/partition list and split data between mappers as it sees fit"""
-        sqoop_options = self._rdbms_api.sqoop_rdbms_specific_table_options(
-            self._rdbms_owner, self._rdbms_table_name
-        )
+        sqoop_options = self._rdbms_api.sqoop_rdbms_specific_table_options(self._rdbms_owner, self._rdbms_table_name)
         jvm_options = self._rdbms_api.sqoop_rdbms_specific_jvm_table_options(
             partition_chunk,
             self._rdbms_partition_type,
@@ -130,13 +119,9 @@ class OffloadTransportStandardSqoop(OffloadTransport):
     def _sqoop_memory_options(self):
         memory_flags = []
         if self._sqoop_mapreduce_map_memory_mb:
-            memory_flags.append(
-                "-Dmapreduce.map.memory.mb=%s" % self._sqoop_mapreduce_map_memory_mb
-            )
+            memory_flags.append("-Dmapreduce.map.memory.mb=%s" % self._sqoop_mapreduce_map_memory_mb)
         if self._sqoop_mapreduce_map_java_opts:
-            memory_flags.append(
-                "-Dmapreduce.map.java.opts=%s" % self._sqoop_mapreduce_map_java_opts
-            )
+            memory_flags.append("-Dmapreduce.map.java.opts=%s" % self._sqoop_mapreduce_map_java_opts)
         return memory_flags
 
     def _get_rows_imported_from_sqoop_log(self, log_string):
@@ -145,9 +130,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
         if not log_string:
             return None
         assert isinstance(log_string, str)
-        m = re.search(
-            SQOOP_LOG_ROW_COUNT_PATTERN, log_string, re.IGNORECASE | re.MULTILINE
-        )
+        m = re.search(SQOOP_LOG_ROW_COUNT_PATTERN, log_string, re.IGNORECASE | re.MULTILINE)
         if m:
             return int(m.group(1))
 
@@ -162,16 +145,11 @@ class OffloadTransportStandardSqoop(OffloadTransport):
             return (None, None)
         assert isinstance(log_string, str)
 
-        m = re.search(
-            SQOOP_LOG_MODULE_PATTERN, log_string, re.IGNORECASE | re.MULTILINE
-        )
+        m = re.search(SQOOP_LOG_MODULE_PATTERN, log_string, re.IGNORECASE | re.MULTILINE)
         if m and len(m.groups()) == 2:
             return m.groups()
-        else:
-            self._messages.log(
-                "Unable to identify Sqoop Oracle module/action", detail=VVERBOSE
-            )
-            return (None, None)
+        self._messages.log("Unable to identify Sqoop Oracle module/action", detail=VVERBOSE)
+        return (None, None)
 
     def _get_sqoop_cli_auth_vars(self):
         extra_jvm_options = []
@@ -193,9 +171,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
                 self._offload_options.sqoop_password_file,
             ]
         else:
-            sqoop_cli_safe_pass = self._sqoop_cli_safe_value(
-                self._offload_options.rdbms_app_pass
-            )
+            sqoop_cli_safe_pass = self._sqoop_cli_safe_value(self._offload_options.rdbms_app_pass)
             no_log_password = [{"item": sqoop_cli_safe_pass, "prior": "--password"}]
             app_pass_option = ["--password", sqoop_cli_safe_pass]
         return app_user_option, app_pass_option, extra_jvm_options, no_log_password
@@ -204,9 +180,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
         # Need to think about checks for non-Oracle rdbms
         ora_errors = [line for line in (cmd_out or "").splitlines() if "ORA-" in line]
         if ora_errors:
-            self.log(
-                "Sqoop exited cleanly, but the following errors were found in the output:"
-            )
+            self.log("Sqoop exited cleanly, but the following errors were found in the output:")
             self.log("\t" + "\n\t".join(ora_errors))
             self.log("This is a questionable Sqoop execution")
             raise OffloadTransportException("Errors in Sqoop output")
@@ -214,16 +188,12 @@ class OffloadTransportStandardSqoop(OffloadTransport):
     def _get_common_jvm_overrides(self):
         std_d_options = []
         if self._offload_transport_jvm_overrides:
-            std_d_options += split_not_in_quotes(
-                self._offload_transport_jvm_overrides, exclude_empty_tokens=True
-            )
+            std_d_options += split_not_in_quotes(self._offload_transport_jvm_overrides, exclude_empty_tokens=True)
 
         std_d_options += self._sqoop_memory_options()
 
         if self._offload_transport_queue_name:
-            std_d_options += [
-                "-Dmapreduce.job.queuename=%s" % self._offload_transport_queue_name
-            ]
+            std_d_options += ["-Dmapreduce.job.queuename=%s" % self._offload_transport_queue_name]
         return std_d_options
 
     def _sqoop_import(self, partition_chunk=None):
@@ -235,18 +205,13 @@ class OffloadTransportStandardSqoop(OffloadTransport):
             return 0
 
         if partition_chunk and partition_chunk.count() > 0:
-            if (
-                self._offload_options.sqoop_disable_direct
-                or self._offload_transport_parallelism < 2
-            ):
+            if self._offload_options.sqoop_disable_direct or self._offload_transport_parallelism < 2:
                 self.log(
                     "\nWARNING: Hybrid/partition offload without OraOop direct mode enabled may offload all partitions"
                 )
 
         if not self._offload_transport_consistent_read:
-            self.log(
-                "\nPerforming Sqoop import without consistent read.", detail=VVERBOSE
-            )
+            self.log("\nPerforming Sqoop import without consistent read.", detail=VVERBOSE)
 
         (
             oraoop_d_options,
@@ -270,16 +235,10 @@ class OffloadTransportStandardSqoop(OffloadTransport):
             # Ignore the actual table options and redirect to the options file instead
             offload_source_options = ["--options-file", options_file_remote_path]
 
-        self._run_os_cmd(
-            self._ssh_cmd_prefix() + ["mkdir", "-p", self._offload_options.sqoop_outdir]
-        )
+        self._run_os_cmd(self._ssh_cmd_prefix() + ["mkdir", "-p", self._offload_options.sqoop_outdir])
 
         sqoop_cmd = ["sqoop", "import"]
-        sqoop_cmd += (
-            self._get_common_jvm_overrides()
-            + self._sqoop_rdbms_specific_jvm_overrides()
-            + oraoop_d_options
-        )
+        sqoop_cmd += self._get_common_jvm_overrides() + self._sqoop_rdbms_specific_jvm_overrides() + oraoop_d_options
 
         connect_string = self._sqoop_cli_safe_value(self._rdbms_api.jdbc_url())
         sqoop_parallel = ["-m" + str(self._offload_transport_parallelism)]
@@ -297,11 +256,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
             + ["--fetch-size=%d" % int(self._offload_transport_fetch_size)]
             + self._column_type_read_remappings()
             + [
-                (
-                    "--as-avrodatafile"
-                    if self._staging_format == FILE_STORAGE_FORMAT_AVRO
-                    else "--as-parquetfile"
-                ),
+                ("--as-avrodatafile" if self._staging_format == FILE_STORAGE_FORMAT_AVRO else "--as-parquetfile"),
                 "--outdir=" + self._offload_options.sqoop_outdir,
             ]
         )
@@ -318,23 +273,17 @@ class OffloadTransportStandardSqoop(OffloadTransport):
         sqoop_cmd += ["--class-name", self._get_transport_app_name()]
 
         if self._sqoop_additional_options:
-            sqoop_cmd += split_not_in_quotes(
-                self._sqoop_additional_options, exclude_empty_tokens=True
-            )
+            sqoop_cmd += split_not_in_quotes(self._sqoop_additional_options, exclude_empty_tokens=True)
 
         try:
-            rc, cmd_out = self._run_os_cmd(
-                self._ssh_cmd_prefix() + sqoop_cmd, no_log_items=no_log_password
-            )
+            rc, cmd_out = self._run_os_cmd(self._ssh_cmd_prefix() + sqoop_cmd, no_log_items=no_log_password)
             self._check_for_ora_errors(cmd_out)
 
             rows_imported = None
             if not self._dry_run:
                 rows_imported = self._get_rows_imported_from_sqoop_log(cmd_out)
                 if self._offload_options.db_type == DBTYPE_ORACLE:
-                    module, action = self._get_oracle_module_action_from_sqoop_log(
-                        cmd_out
-                    )
+                    module, action = self._get_oracle_module_action_from_sqoop_log(cmd_out)
                     self._rdbms_api.log_sql_stats(
                         module,
                         action,
@@ -348,8 +297,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
         except:
             # Even in a sqoop failure we still want to chmod the load directory - if it exists
             self.log_dfs_cmd(
-                '(exception resilience) chmod(%s, "g+w")'
-                % self._staging_table_location,
+                '(exception resilience) chmod(%s, "g+w")' % self._staging_table_location,
                 detail=VVERBOSE,
             )
             if not self._dry_run:
@@ -358,8 +306,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
                 except Exception as exc:
                     # if we fail while coping with a Sqoop failure then do nothing except log it
                     self.log(
-                        "Unable to chmod(%s): %s"
-                        % (self._staging_table_location, str(exc)),
+                        "Unable to chmod(%s): %s" % (self._staging_table_location, str(exc)),
                         detail=VVERBOSE,
                     )
             raise
@@ -373,9 +320,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
 
     def _sqoop_rdbms_specific_jvm_overrides(self):
         return self._rdbms_api.sqoop_rdbms_specific_jvm_overrides(
-            self._get_rdbms_session_setup_commands(
-                include_fixed_sqoop=False, include_semi_colons=True
-            )
+            self._get_rdbms_session_setup_commands(include_fixed_sqoop=False, include_semi_colons=True)
         )
 
     def _verify_rdbms_connectivity(self):
@@ -406,13 +351,9 @@ class OffloadTransportStandardSqoop(OffloadTransport):
         sqoop_cmd += self._rdbms_api.sqoop_rdbms_specific_options()
 
         if self._sqoop_additional_options:
-            sqoop_cmd += split_not_in_quotes(
-                self._sqoop_additional_options, exclude_empty_tokens=True
-            )
+            sqoop_cmd += split_not_in_quotes(self._sqoop_additional_options, exclude_empty_tokens=True)
 
-        rc, cmd_out = self._run_os_cmd(
-            self._ssh_cmd_prefix() + sqoop_cmd, no_log_items=no_log_password
-        )
+        rc, cmd_out = self._run_os_cmd(self._ssh_cmd_prefix() + sqoop_cmd, no_log_items=no_log_password)
         self._check_for_ora_errors(cmd_out)
         # if we got this far then we're in good shape
         return True
@@ -421,7 +362,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
     # PUBLIC METHODS
     ###########################################################################
 
-    def transport(self, partition_chunk=None) -> Union[int, None]:
+    def transport(self, partition_chunk=None) -> int | None:
         """Table centric Sqoop transport"""
         self._reset_transport_context()
 
@@ -460,7 +401,7 @@ class OffloadTransportSqoopByQuery(OffloadTransportStandardSqoop):
     ):
         """CONSTRUCTOR"""
         self._offload_transport_method = OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY
-        super(OffloadTransportSqoopByQuery, self).__init__(
+        super().__init__(
             offload_source_table,
             offload_target_table,
             offload_operation,
@@ -489,13 +430,9 @@ class OffloadTransportSqoopByQuery(OffloadTransportStandardSqoop):
 
         boundary_query = [
             "--boundary-query",
-            self._rdbms_api.sqoop_by_query_boundary_query(
-                self._offload_transport_parallelism
-            ),
+            self._rdbms_api.sqoop_by_query_boundary_query(self._offload_transport_parallelism),
         ]
-        row_source = self._get_transport_row_source_query(
-            split_row_source_by, partition_chunk
-        )
+        row_source = self._get_transport_row_source_query(split_row_source_by, partition_chunk)
         outer_hint = self._rdbms_api.get_rdbms_session_setup_hint(
             self._offload_transport_rdbms_session_parameters, self._get_max_ts_scale()
         )
@@ -533,9 +470,7 @@ class OffloadTransportSqoopByQuery(OffloadTransportStandardSqoop):
             options_file_local_path,
         ) = self._sqoop_by_query_options(partition_chunk, write_options_to_file=True)
         if not options_file_local_path:
-            raise OffloadTransportException(
-                "Sqoop options file not created as expected"
-            )
+            raise OffloadTransportException("Sqoop options file not created as expected")
         return oraoop_d_options, offload_source_options, options_file_local_path
 
 
@@ -554,21 +489,13 @@ class OffloadTransportSqoopCanary(OffloadTransportStandardSqoop):
 
         self._create_basic_connectivity_attributes(offload_options)
 
-        self._offload_transport_consistent_read = (
-            orchestration_defaults.bool_option_from_string(
-                "OFFLOAD_TRANSPORT_CONSISTENT_READ",
-                orchestration_defaults.offload_transport_consistent_read_default(),
-            )
+        self._offload_transport_consistent_read = orchestration_defaults.bool_option_from_string(
+            "OFFLOAD_TRANSPORT_CONSISTENT_READ",
+            orchestration_defaults.offload_transport_consistent_read_default(),
         )
-        self._offload_transport_fetch_size = (
-            orchestration_defaults.offload_transport_fetch_size_default()
-        )
-        self._offload_transport_jvm_overrides = (
-            orchestration_defaults.sqoop_overrides_default()
-        )
-        self._offload_transport_queue_name = (
-            orchestration_defaults.sqoop_queue_name_default()
-        )
+        self._offload_transport_fetch_size = orchestration_defaults.offload_transport_fetch_size_default()
+        self._offload_transport_jvm_overrides = orchestration_defaults.sqoop_overrides_default()
+        self._offload_transport_queue_name = orchestration_defaults.sqoop_queue_name_default()
         self._offload_transport_parallelism = 2
         self._validation_polling_interval = (
             orchestration_defaults.offload_transport_validation_polling_interval_default()
@@ -576,9 +503,7 @@ class OffloadTransportSqoopCanary(OffloadTransportStandardSqoop):
         self._spark_config_properties = self._prepare_spark_config_properties(
             orchestration_defaults.offload_transport_spark_properties_default()
         )
-        self._sqoop_additional_options = (
-            orchestration_defaults.sqoop_additional_options_default()
-        )
+        self._sqoop_additional_options = orchestration_defaults.sqoop_additional_options_default()
         self._sqoop_mapreduce_map_memory_mb = None
         self._sqoop_mapreduce_map_java_opts = None
         # No OraOop for canary queries

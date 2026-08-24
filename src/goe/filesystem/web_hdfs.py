@@ -14,34 +14,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" WebHdfs: WebHDFS/HTTPFS implementation of GOEDfs
-"""
+"""WebHdfs: WebHDFS/HTTPFS implementation of GOEDfs"""
 
 import logging
 import os
-from os.path import exists as file_exists
 import re
-from requests import Session
-from requests_kerberos import HTTPKerberosAuth, OPTIONAL
-from requests_kerberos.exceptions import MutualAuthenticationError
-from urllib3 import disable_warnings
-from urllib3.exceptions import InsecureRequestWarning
+from os.path import exists as file_exists
 
 from google.api_core import retry
 from hdfs.ext.kerberos import KerberosClient
 from hdfs.util import HdfsError
+from requests import Session
+from requests_kerberos import OPTIONAL, HTTPKerberosAuth
+from requests_kerberos.exceptions import MutualAuthenticationError
+from urllib3 import disable_warnings
+from urllib3.exceptions import InsecureRequestWarning
 
 from goe.filesystem.goe_dfs import (
+    DFS_RETRY_TIMEOUT,
+    GOE_DFS_WEBHDFS,
+    OFFLOAD_FS_SCHEME_INHERIT,
+    OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER,
     GOEDfs,
     GOEDfsDeleteNotComplete,
     GOEDfsException,
     gen_fs_uri,
-    DFS_RETRY_TIMEOUT,
-    GOE_DFS_WEBHDFS,
-    OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER,
-    OFFLOAD_FS_SCHEME_INHERIT,
 )
-
 
 ###############################################################################
 # EXCEPTIONS
@@ -95,9 +93,7 @@ class GOEWebHdfsClient(KerberosClient):
     """
 
     def __init__(self, url, verify=None, user=None, **kwargs):
-        super(GOEWebHdfsClient, self).__init__(
-            url, session=get_hdfs_session(verify, user), **kwargs
-        )
+        super().__init__(url, session=get_hdfs_session(verify, user), **kwargs)
 
     def __del__(self):
         if hasattr(self, "_session") and self._session:
@@ -143,9 +139,7 @@ class WebHdfs(GOEDfs):
             % (hdfs_namenode, webhdfs_port, hdfs_user, use_kerberos, verify_ssl_cert)
         )
 
-        super(WebHdfs, self).__init__(
-            messages, dry_run=dry_run, do_not_connect=do_not_connect
-        )
+        super().__init__(messages, dry_run=dry_run, do_not_connect=do_not_connect)
 
         self._db_path_suffix = db_path_suffix
         self._hdfs_data = hdfs_data
@@ -189,17 +183,11 @@ class WebHdfs(GOEDfs):
 
         namenodes = [_.strip() for _ in hdfs_namenode.split(",")]
         if len(namenodes) > 1:
-            self.debug(
-                "Multiple WebHDFS namenodes detected, determining active namenode to use"
-            )
+            self.debug("Multiple WebHDFS namenodes detected, determining active namenode to use")
             session = get_hdfs_session(verify=verify_ssl_cert, user=auth_user)
             for namenode in namenodes:
-                self.debug("Checking namenode: {name_node}".format(name_node=namenode))
-                namenode_url = "{protocol}://{name_node}:{port}/jmx?qry=Hadoop:service=NameNode,name=NameNodeStatus".format(
-                    protocol=http_protocol(verify_ssl_cert),
-                    name_node=namenode,
-                    port=webhdfs_port,
-                )
+                self.debug(f"Checking namenode: {namenode}")
+                namenode_url = f"{http_protocol(verify_ssl_cert)}://{namenode}:{webhdfs_port}/jmx?qry=Hadoop:service=NameNode,name=NameNodeStatus"
                 try:
                     response = session.get(namenode_url, auth=get_auth)
                     if response.status_code == 200:
@@ -207,11 +195,7 @@ class WebHdfs(GOEDfs):
                             beans = response.json()["beans"]
                             if beans:
                                 if beans[0]["State"].lower() == "active":
-                                    self.debug(
-                                        "Namenode {name_node}, status: active".format(
-                                            name_node=namenode
-                                        )
-                                    )
+                                    self.debug(f"Namenode {namenode}, status: active")
                                     self._url = "%s://%s:%s" % (
                                         http_protocol(verify_ssl_cert),
                                         namenode,
@@ -219,49 +203,19 @@ class WebHdfs(GOEDfs):
                                     )
                                     break
                             else:
-                                self.notice(
-                                    "WebHDFS active namenode check failed for {name_node} with empty [beans]".format(
-                                        name_node=namenode
-                                    )
-                                )
-                                self.debug(
-                                    "Namenode {name_node} response: {json}".format(
-                                        name_node=namenode, json=response.json()
-                                    )
-                                )
+                                self.notice(f"WebHDFS active namenode check failed for {namenode} with empty [beans]")
+                                self.debug(f"Namenode {namenode} response: {response.json()}")
                         except KeyError:
-                            self.notice(
-                                "WebHDFS active namenode check failed for {name_node} with unknown response".format(
-                                    name_node=namenode
-                                )
-                            )
-                            self.debug(
-                                "Namenode {name_node} status unknown: KeyError: {json}".format(
-                                    name_node=namenode, json=response.json()
-                                )
-                            )
+                            self.notice(f"WebHDFS active namenode check failed for {namenode} with unknown response")
+                            self.debug(f"Namenode {namenode} status unknown: KeyError: {response.json()}")
                     else:
-                        self.debug(
-                            "Namenode {name_node} status code: {code}".format(
-                                name_node=namenode, code=response.status_code
-                            )
-                        )
+                        self.debug(f"Namenode {namenode} status code: {response.status_code}")
                 except (ConnectionError, MutualAuthenticationError) as exc:
-                    self.notice(
-                        "WebHDFS active namenode check failed for {name_node} with connection error".format(
-                            name_node=namenode
-                        )
-                    )
-                    self.debug(
-                        "Namenode {name_node} connection error: {message}".format(
-                            name_node=namenode, message=str(exc)
-                        )
-                    )
+                    self.notice(f"WebHDFS active namenode check failed for {namenode} with connection error")
+                    self.debug(f"Namenode {namenode} connection error: {exc!s}")
             if getattr(self, "_url", None) is None:
                 self.warning(
-                    "Multiple WebHDFS namenodes detected, unable to determine active node, defaulting to {name_node}".format(
-                        name_node=namenodes[0]
-                    )
+                    f"Multiple WebHDFS namenodes detected, unable to determine active node, defaulting to {namenodes[0]}"
                 )
                 self._url = "%s://%s:%s" % (
                     http_protocol(verify_ssl_cert),
@@ -277,9 +231,7 @@ class WebHdfs(GOEDfs):
 
         self.debug("Client url: %s" % self._url)
         self.debug("Verify SSL: %s" % verify_ssl_cert)
-        return GOEWebHdfsClient(
-            self._url, verify=verify_ssl_cert, user=auth_user, **kwargs
-        )
+        return GOEWebHdfsClient(self._url, verify=verify_ssl_cert, user=auth_user, **kwargs)
 
     def __str__(self):
         return self._url
@@ -365,14 +317,10 @@ class WebHdfs(GOEDfs):
         return new_mode
 
     def chmod(self, dfs_path, mode):
-        """chmod a file with mode in format 755 or g+w"""
+        """Chmod a file with mode in format 755 or g+w"""
         logger.info("chmod(%s, %s)" % (dfs_path, mode))
 
-        assert (
-            dfs_path
-            and mode
-            and (re.match(r"^\d+$", mode) or re.match(r"^[ugo]+[+\-][rwx]+$", mode))
-        )
+        assert dfs_path and mode and (re.match(r"^\d+$", mode) or re.match(r"^[ugo]+[+\-][rwx]+$", mode))
         assert isinstance(dfs_path, str)
 
         if self.stat(dfs_path):
@@ -384,9 +332,7 @@ class WebHdfs(GOEDfs):
                 # combine existing perms with mode
                 mode_delta = self.octstr_from_human_perm_delta(mode)
                 # combine existing perms with delta, e.g. 755 + 020 = 775
-                new_mode = self.apply_mode_delta(
-                    perms, mode_delta, self.regex_mode_delta(mode)[1]
-                )
+                new_mode = self.apply_mode_delta(perms, mode_delta, self.regex_mode_delta(mode)[1])
                 logger.debug("new_mode: %s" % new_mode)
             else:
                 raise GOEDfsException('Invalid chmod mode "%s"', mode)
@@ -395,10 +341,7 @@ class WebHdfs(GOEDfs):
                 if str(perms) != str(new_mode):
                     self._hdfs.set_permission(dfs_path, new_mode)
                 else:
-                    logger.debug(
-                        "NOOP as mode matches new mode: %s == %s"
-                        % (str(perms), str(new_mode))
-                    )
+                    logger.debug("NOOP as mode matches new mode: %s == %s" % (str(perms), str(new_mode)))
 
     def chgrp(self, dfs_path, group):
         logger.info("chgrp(%s, %s)" % (dfs_path, group))
@@ -429,19 +372,14 @@ class WebHdfs(GOEDfs):
                 self.debug("copy_from_local() returned: %s" % res)
             except HdfsError as exc:
                 if "already exists" in str(exc) and not overwrite:
-                    raise GOEDfsException(
-                        "Cannot copy file over existing file: %s" % dfs_path
-                    )
-                else:
-                    raise
+                    raise GOEDfsException("Cannot copy file over existing file: %s" % dfs_path)
+                raise
 
     def copy_to_local(self, dfs_path, local_path, overwrite=False):
         logger.info("copy_to_local(%s, %s)" % (dfs_path, local_path))
         if not self._dry_run:
             if file_exists(local_path) and not overwrite:
-                raise GOEDfsException(
-                    "Cannot copy file over existing file: %s" % local_path
-                )
+                raise GOEDfsException("Cannot copy file over existing file: %s" % local_path)
             res = self._hdfs.download(dfs_path, local_path, overwrite=overwrite)
             self.debug("copy_to_local() returned: %s" % res)
 
@@ -452,11 +390,8 @@ class WebHdfs(GOEDfs):
                 self._hdfs.write(dfs_path, data, overwrite)
             except HdfsError as exc:
                 if "already exists" in str(exc) and not overwrite:
-                    raise GOEDfsException(
-                        "Cannot copy file over existing file: %s" % dfs_path
-                    )
-                else:
-                    raise
+                    raise GOEDfsException("Cannot copy file over existing file: %s" % dfs_path)
+                raise
 
     def gen_uri(
         self,
@@ -477,9 +412,7 @@ class WebHdfs(GOEDfs):
             )
         else:
             prefix = self._hdfs_data if path_prefix is None else path_prefix
-            use_container = (
-                container if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER else None
-            )
+            use_container = container if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER else None
             uri = gen_fs_uri(
                 prefix,
                 self._db_path_suffix,
@@ -503,5 +436,4 @@ class WebHdfs(GOEDfs):
         logger.debug("list_dir(%s)" % dfs_path)
         if self._hdfs:
             return [os.path.join(dfs_path, _) for _ in self._hdfs.list(dfs_path)]
-        else:
-            return None
+        return None

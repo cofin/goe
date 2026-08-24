@@ -14,23 +14,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" BackendTable: Library for logic/interaction with a table that will
-    be either:
-      1) The target of an offload
-      2) The source of a present
-    This module enforces an interface with common, high level, methods for implementation
-    by each supported backend system, e.g. Impala, Hive, Google BigQuery
+"""BackendTable: Library for logic/interaction with a table that will
+be either:
+  1) The target of an offload
+  2) The source of a present
+This module enforces an interface with common, high level, methods for implementation
+by each supported backend system, e.g. Impala, Hive, Google BigQuery
 """
 
-from abc import ABCMeta, abstractmethod
 import collections
 import inspect
 import logging
-from typing import Callable, Optional, TYPE_CHECKING
+from abc import ABCMeta, abstractmethod
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.offload.backend_api import VALID_REMOTE_DB_TYPES
 from goe.offload.column_metadata import (
+    CANONICAL_CHAR_SEMANTICS_UNICODE,
     ColumnMetadataInterface,
     ColumnPartitionInfo,
     get_column_names,
@@ -40,9 +42,9 @@ from goe.offload.column_metadata import (
     regex_real_column_from_part_column,
     str_list_of_columns,
     valid_column_list,
-    CANONICAL_CHAR_SEMANTICS_UNICODE,
 )
 from goe.offload.factory.backend_api_factory import backend_api_factory
+from goe.offload.hadoop.hadoop_column import HADOOP_TYPE_STRING
 from goe.offload.offload_constants import (
     DBTYPE_IMPALA,
     INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT,
@@ -59,7 +61,6 @@ from goe.offload.offload_functions import (
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
 from goe.orchestration import command_steps
-from goe.offload.hadoop.hadoop_column import HADOOP_TYPE_STRING
 from goe.util.misc_functions import csv_split
 
 if TYPE_CHECKING:
@@ -88,20 +89,14 @@ TYPICAL_DATE_GRANULARITY_TERMS = {
 # Used for test assertions
 BACKEND_DB_COMMENT_TEMPLATE = "{db_name_type} {db_name_label} for GOE"
 CAST_VALIDATION_EXCEPTION_TEXT = "Data type conversion issue in load data"
-DATA_VALIDATION_SCALE_EXCEPTION_TEXT = (
-    "Include --allow-decimal-scale-rounding option to proceed with the offload"
-)
+DATA_VALIDATION_SCALE_EXCEPTION_TEXT = "Include --allow-decimal-scale-rounding option to proceed with the offload"
 DATA_VALIDATION_NOT_NULL_EXCEPTION_TEXT = "NOT NULL column has NULL values"
 NULL_BACKEND_PARTITION_VALUE_WARNING_TEXT = "Backend partition column has NULL values"
 OFFLOAD_CHUNK_COLUMN_MESSAGE_PATTERN = "Identified %s sub-chunks"
-PARTITION_KEY_OUT_OF_RANGE = (
-    "Value(s) for {column} exceed configured range ({start} - {end})"
-)
+PARTITION_KEY_OUT_OF_RANGE = "Value(s) for {column} exceed configured range ({start} - {end})"
 PARTITION_FUNCTION_ARG_COUNT_EXCEPTION_TEXT = "must only have 1 input parameter"
 PARTITION_FUNCTION_DOES_NOT_EXIST_EXCEPTION_TEXT = "Partition function does not exist"
-PARTITION_FUNCTION_ARG_TYPE_EXCEPTION_TEXT = (
-    "Partition function parameter type does not match data type"
-)
+PARTITION_FUNCTION_ARG_TYPE_EXCEPTION_TEXT = "Partition function parameter type does not match data type"
 
 
 ###########################################################################
@@ -181,10 +176,7 @@ class BackendTableInterface(metaclass=ABCMeta):
 
         # Details relating to a load db
         self._load_db_name = load_db_name(self.db_name)
-        if (
-            self._db_api.load_db_transport_supported()
-            and len(self._load_db_name) > self.max_db_name_length()
-        ):
+        if self._db_api.load_db_transport_supported() and len(self._load_db_name) > self.max_db_name_length():
             raise BackendTableException(
                 "Load database name %s is too long for %s: %s > %s"
                 % (
@@ -206,9 +198,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         self._log_profile_after_verification_queries = None
 
         # Pickup some orchestration_operation/offload_options attributes
-        self._offload_staging_format = getattr(
-            self._orchestration_config, "offload_staging_format", None
-        )
+        self._offload_staging_format = getattr(self._orchestration_config, "offload_staging_format", None)
         # If orchestration_operation is not set then we are not doing anything significant by way of offload/present
         self._ipa_predicate_type = None
         self._offload_distribute_enabled = None
@@ -220,33 +210,21 @@ class BackendTableInterface(metaclass=ABCMeta):
         if orchestration_operation:
             self._conv_view_db = getattr(orchestration_operation, "cast_owner", None)
             self._conv_view_name = getattr(orchestration_operation, "cast_name", None)
-            self._decimal_padding_digits = getattr(
-                orchestration_operation, "decimal_padding_digits", 0
-            )
+            self._decimal_padding_digits = getattr(orchestration_operation, "decimal_padding_digits", 0)
             self._execution_id = getattr(orchestration_operation, "execution_id", None)
             self._target_owner = orchestration_operation.target_owner
-            self._user_requested_impala_insert_hint = (
-                orchestration_operation.impala_insert_hint
-            )
+            self._user_requested_impala_insert_hint = orchestration_operation.impala_insert_hint
             if orchestration_operation.offload_chunk_column:
-                self._user_requested_offload_chunk_column = (
-                    orchestration_operation.offload_chunk_column.upper()
-                )
+                self._user_requested_offload_chunk_column = orchestration_operation.offload_chunk_column.upper()
             self._user_requested_allow_decimal_scale_rounding = getattr(
                 orchestration_operation, "allow_decimal_scale_rounding", False
             )
             self._user_requested_compute_load_table_stats = getattr(
                 orchestration_operation, "compute_load_table_stats", False
             )
-            self._user_requested_create_backend_db = getattr(
-                orchestration_operation, "create_backend_db", False
-            )
-            self._user_requested_storage_compression = getattr(
-                orchestration_operation, "storage_compression", None
-            )
-            self._user_requested_storage_format = getattr(
-                orchestration_operation, "storage_format", None
-            )
+            self._user_requested_create_backend_db = getattr(orchestration_operation, "create_backend_db", False)
+            self._user_requested_storage_compression = getattr(orchestration_operation, "storage_compression", None)
+            self._user_requested_storage_format = getattr(orchestration_operation, "storage_format", None)
         else:
             # Some tests cannot (and do not need to) pass a well formed orchestration_operation object.
             self._conv_view_db = None
@@ -274,9 +252,7 @@ class BackendTableInterface(metaclass=ABCMeta):
     ###########################################################################
 
     def _alter_table_sort_columns(self):
-        return self._db_api.alter_sort_columns(
-            self.db_name, self.table_name, self._sort_columns or []
-        )
+        return self._db_api.alter_sort_columns(self.db_name, self.table_name, self._sort_columns or [])
 
     def _cast_validation_columns(self, staging_columns: list):
         """Method returning columns and casts to be checked. That's both data type conversion
@@ -339,7 +315,7 @@ class BackendTableInterface(metaclass=ABCMeta):
                 "--partition-lower-value is required for partition column/type: %s/%s"
                 % (backend_column.name, backend_column.data_type)
             )
-        elif range_min and int(canonical_column.partition_info.range_start) < range_min:
+        if range_min and int(canonical_column.partition_info.range_start) < range_min:
             raise BackendTableException(
                 "--partition-lower-value is below minimum supported value: %s < %s"
                 % (canonical_column.partition_info.range_start, range_min)
@@ -350,7 +326,7 @@ class BackendTableInterface(metaclass=ABCMeta):
                 "--partition-upper-value is required for partition column/type: %s/%s"
                 % (backend_column.name, backend_column.data_type)
             )
-        elif range_max and int(canonical_column.partition_info.range_end) > range_max:
+        if range_max and int(canonical_column.partition_info.range_end) > range_max:
             raise BackendTableException(
                 "--partition-upper-value is above maximum supported value: %s > %s"
                 % (canonical_column.partition_info.range_end, range_max)
@@ -367,20 +343,17 @@ class BackendTableInterface(metaclass=ABCMeta):
                 detail=VERBOSE,
             )
             return []
-        elif not self.create_database_supported():
+        if not self.create_database_supported():
             return []
-        else:
-            return self._db_api.create_database(
-                db_name,
-                comment=comment,
-                properties=properties,
-                with_terminator=with_terminator,
-            )
+        return self._db_api.create_database(
+            db_name,
+            comment=comment,
+            properties=properties,
+            with_terminator=with_terminator,
+        )
 
     def _create_final_db(self, location=None, with_terminator=False):
-        comment = BACKEND_DB_COMMENT_TEMPLATE.format(
-            db_name_type="Offload", db_name_label=self.db_name_label()
-        )
+        comment = BACKEND_DB_COMMENT_TEMPLATE.format(db_name_type="Offload", db_name_label=self.db_name_label())
         return self._create_db(
             self.db_name,
             comment=comment,
@@ -389,9 +362,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         )
 
     def _create_load_db(self, location=None, with_terminator=False) -> list:
-        comment = BACKEND_DB_COMMENT_TEMPLATE.format(
-            db_name_type="Offload load", db_name_label=self.db_name_label()
-        )
+        comment = BACKEND_DB_COMMENT_TEMPLATE.format(db_name_type="Offload load", db_name_label=self.db_name_label())
         return self._create_db(
             self._load_db_name,
             comment=comment,
@@ -400,9 +371,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         )
 
     def _create_result_cache_db(self, location=None):
-        comment = BACKEND_DB_COMMENT_TEMPLATE.format(
-            db_name_type="Result Cache", db_name_label=self.db_name_label()
-        )
+        comment = BACKEND_DB_COMMENT_TEMPLATE.format(db_name_type="Result Cache", db_name_label=self.db_name_label())
         return self._create_db(
             self._result_cache_db_name,
             comment=comment,
@@ -429,20 +398,13 @@ class BackendTableInterface(metaclass=ABCMeta):
             return None, None, None
 
         assert column
-        column_name = (
-            column.name if isinstance(column, ColumnMetadataInterface) else column
-        )
-        self._debug(
-            "Deriving partition info for %s.%s.%s"
-            % (self.db_name, self.table_name, column_name)
-        )
+        column_name = column.name if isinstance(column, ColumnMetadataInterface) else column
+        self._debug("Deriving partition info for %s.%s.%s" % (self.db_name, self.table_name, column_name))
         partition_info = None
         if not partition_columns:
             # Need to call BackendApi for partition columns because this code is called while
             # populating BackendTable columns/partition columns.
-            partition_columns = self._db_api.get_partition_columns(
-                self.db_name, self.table_name
-            )
+            partition_columns = self._db_api.get_partition_columns(self.db_name, self.table_name)
         part_col_names = get_column_names(partition_columns, conv_fn=str.upper)
 
         if column_name.upper() in (part_col_names or []):
@@ -456,9 +418,7 @@ class BackendTableInterface(metaclass=ABCMeta):
                         part_fn_name = self._partition_functions[position]
                     except IndexError:
                         self._log(
-                            "IndexError reading partition_functions[position]: {}[{}]".format(
-                                self._partition_functions, position
-                            ),
+                            f"IndexError reading partition_functions[position]: {self._partition_functions}[{position}]",
                             detail=VERBOSE,
                         )
                         raise
@@ -468,20 +428,14 @@ class BackendTableInterface(metaclass=ABCMeta):
                 )
                 if partition_info:
                     # Use our in-column "metadata" to get the source column
-                    _, partition_info.source_column_name, _ = decode_synthetic_part_col(
-                        column_name
-                    )
+                    _, partition_info.source_column_name, _ = decode_synthetic_part_col(column_name)
                 else:
                     if isinstance(column, ColumnMetadataInterface):
                         backend_column = column
                     else:
-                        backend_column = self._db_api.get_column(
-                            self.db_name, self.table_name, column_name
-                        )
+                        backend_column = self._db_api.get_column(self.db_name, self.table_name, column_name)
                     # Fall back on our own in-column "metadata" for as much as we can retrieve
-                    granularity, source_column_name, digits = decode_synthetic_part_col(
-                        column_name
-                    )
+                    granularity, source_column_name, digits = decode_synthetic_part_col(column_name)
 
                     if digits and not backend_column.is_string_based():
                         # Digits is only relevant for padded string synthetic partition columns
@@ -495,8 +449,7 @@ class BackendTableInterface(metaclass=ABCMeta):
 
                 partition_info.function = part_fn_name
                 self._log(
-                    "Derived synthetic partition info for %s: %s"
-                    % (column_name, partition_info),
+                    "Derived synthetic partition info for %s: %s" % (column_name, partition_info),
                     detail=VVERBOSE,
                 )
             else:
@@ -505,8 +458,7 @@ class BackendTableInterface(metaclass=ABCMeta):
                     self.db_name, self.table_name, column_name, position
                 )
                 self._log(
-                    "Derived native partition info for %s: %s"
-                    % (column_name, partition_info),
+                    "Derived native partition info for %s: %s" % (column_name, partition_info),
                     detail=VVERBOSE,
                 )
         return partition_info
@@ -559,13 +511,9 @@ class BackendTableInterface(metaclass=ABCMeta):
 
     def _execute_ddl(self, sql, query_options=None, log_level=VERBOSE):
         assert sql
-        return self._db_api.execute_ddl(
-            sql, query_options=query_options, log_level=log_level
-        )
+        return self._db_api.execute_ddl(sql, query_options=query_options, log_level=log_level)
 
-    def _execute_dml(
-        self, sql, query_options=None, sync=None, log_level=VERBOSE, profile=None
-    ):
+    def _execute_dml(self, sql, query_options=None, sync=None, log_level=VERBOSE, profile=None):
         assert sql
         return self._db_api.execute_dml(
             sql,
@@ -591,9 +539,7 @@ class BackendTableInterface(metaclass=ABCMeta):
 
     def _format_staging_object_name(self):
         """For most backends this is the same as enclosure rules, some backends may override."""
-        return self._db_api.enclose_object_reference(
-            self._load_db_name, self._load_table_name
-        )
+        return self._db_api.enclose_object_reference(self._load_db_name, self._load_table_name)
 
     def _gen_final_insert_sqls(
         self,
@@ -652,8 +598,7 @@ class BackendTableInterface(metaclass=ABCMeta):
             _
             for _ in self.get_partition_columns()
             if _.partition_info
-            and _.partition_info.source_column_name.upper()
-            == self._user_requested_offload_chunk_column
+            and _.partition_info.source_column_name.upper() == self._user_requested_offload_chunk_column
         ]
         chunk_col = chunk_col[0] if chunk_col else None
         if not chunk_col:
@@ -669,9 +614,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         self._debug("Subchunk expression: %s" % subchunk_expr)
         # Can't order by COUNT(*) in Hive, we could alias and order by but then we need to check for column name clashes
         # This is a hidden option so let's not over complicate things
-        order_by = (
-            "\nORDER BY COUNT(*) DESC" if self._backend_type == DBTYPE_IMPALA else ""
-        )
+        order_by = "\nORDER BY COUNT(*) DESC" if self._backend_type == DBTYPE_IMPALA else ""
         subchunk_sql = "SELECT %s, COUNT(*)\nFROM %s.%s\nGROUP BY %s%s" % (
             subchunk_expr,
             self.enclose_identifier(self._load_db_name),
@@ -681,24 +624,14 @@ class BackendTableInterface(metaclass=ABCMeta):
         )
         self._log(subchunk_sql, detail=VERBOSE)
         if not self._dry_run:
-            subchunks = self._execute_query_fetch_all(
-                subchunk_sql, log_level=VERBOSE, not_when_dry_running=True
-            )
-            self._log(
-                OFFLOAD_CHUNK_COLUMN_MESSAGE_PATTERN % len(subchunks), detail=VERBOSE
-            )
+            subchunks = self._execute_query_fetch_all(subchunk_sql, log_level=VERBOSE, not_when_dry_running=True)
+            self._log(OFFLOAD_CHUNK_COLUMN_MESSAGE_PATTERN % len(subchunks), detail=VERBOSE)
         else:
             subchunks = [("?", -1)]
         subchunk_filter_clauses = []
         for subchunk_id, _ in subchunks:
-            subchunk_id = (
-                ("'%s'" % subchunk_id)
-                if chunk_col.data_type == HADOOP_TYPE_STRING
-                else subchunk_id
-            )
-            subchunk_filter_clauses.append(
-                "%s = %s" % (subchunk_expr, str(subchunk_id))
-            )
+            subchunk_id = ("'%s'" % subchunk_id) if chunk_col.data_type == HADOOP_TYPE_STRING else subchunk_id
+            subchunk_filter_clauses.append("%s = %s" % (subchunk_expr, str(subchunk_id)))
         return subchunk_filter_clauses
 
     def _gen_final_table_casts(self, rdbms_columns, staging_columns) -> dict:
@@ -714,27 +647,19 @@ class BackendTableInterface(metaclass=ABCMeta):
         for backend_col in backend_columns:
             # For partition columns rdbms_col needs to be from the source column so the cast is correct
             source_backend_col = backend_col
-            if backend_col.partition_info and self.is_synthetic_partition_column(
-                backend_col
-            ):
+            if backend_col.partition_info and self.is_synthetic_partition_column(backend_col):
                 self._log(
                     "Picking up source column for partition column %s: %s"
                     % (backend_col.name, backend_col.partition_info.source_column_name),
                     detail=VVERBOSE,
                 )
-                source_backend_col = self.get_column(
-                    backend_col.partition_info.source_column_name
-                )
+                source_backend_col = self.get_column(backend_col.partition_info.source_column_name)
 
             rdbms_col = match_table_column(source_backend_col.name, rdbms_columns)
             staging_col = match_table_column(source_backend_col.name, staging_columns)
-            cast_expr, cast_type, vcast_expr = self._staging_to_backend_cast(
-                rdbms_col, source_backend_col, staging_col
-            )
+            cast_expr, cast_type, vcast_expr = self._staging_to_backend_cast(rdbms_col, source_backend_col, staging_col)
 
-            if backend_col.partition_info and self.is_synthetic_partition_column(
-                backend_col
-            ):
+            if backend_col.partition_info and self.is_synthetic_partition_column(backend_col):
                 partition_expr = self._gen_synthetic_sql_cast(backend_col, cast_expr)
                 partition_vexpr = self._gen_synthetic_sql_cast(backend_col, vcast_expr)
                 final_table_casts[backend_col.name.upper()] = {
@@ -766,9 +691,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         Currently this applies to all backends, this may change in future.
         """
 
-        def get_threshold_where_clauses(
-            threshold_cols, lt_threshold_vals, gte_threshold_vals
-        ):
+        def get_threshold_where_clauses(threshold_cols, lt_threshold_vals, gte_threshold_vals):
             threshold_clauses = []
             if threshold_cols and lt_threshold_vals:
                 lt_threshold_vals = hvs_to_backend_sql_literals(
@@ -809,14 +732,10 @@ class BackendTableInterface(metaclass=ABCMeta):
             # We only insert by high value or predicate, not both at the same time
             threshold_clauses = insert_predicates
         else:
-            self._debug(
-                "Incremental insert columns: %s" % str_list_of_columns(threshold_cols)
-            )
+            self._debug("Incremental insert columns: %s" % str_list_of_columns(threshold_cols))
             self._debug("Incremental insert lt: %s" % str(lt_threshold_vals))
             self._debug("Incremental insert gte: %s" % str(gte_threshold_vals))
-            threshold_clauses = get_threshold_where_clauses(
-                threshold_cols, lt_threshold_vals, gte_threshold_vals
-            )
+            threshold_clauses = get_threshold_where_clauses(threshold_cols, lt_threshold_vals, gte_threshold_vals)
 
         return self._gen_final_insert_sqls(
             select_expr_tuples,
@@ -825,9 +744,7 @@ class BackendTableInterface(metaclass=ABCMeta):
             for_materialized_join=True,
         )
 
-    def _gen_synthetic_part_date_truncated_sql_expr(
-        self, date_value, granularity, synthetic_name, source_column_cast
-    ):
+    def _gen_synthetic_part_date_truncated_sql_expr(self, date_value, granularity, synthetic_name, source_column_cast):
         """Generates a SQL expression used to insert date synthetic partition key data into a date
         column in SQL, e.g.
           'expr(used(to_insert(column_name)))'
@@ -836,12 +753,8 @@ class BackendTableInterface(metaclass=ABCMeta):
         This is common to all backends with self._gen_synthetic_partition_date_truncated_sql_expr providing
         the variation.
         """
-        assert isinstance(date_value, str), "%s if not of type (str, unicode)" % type(
-            date_value
-        )
-        assert granularity in PART_COL_DATE_GRANULARITIES, (
-            "Unexpected granularity: %s" % granularity
-        )
+        assert isinstance(date_value, str), "%s if not of type (str, unicode)" % type(date_value)
+        assert granularity in PART_COL_DATE_GRANULARITIES, "Unexpected granularity: %s" % granularity
         assert synthetic_name
         assert source_column_cast
 
@@ -853,52 +766,40 @@ class BackendTableInterface(metaclass=ABCMeta):
             synthetic_name, date_value, granularity, source_column_cast
         )
 
-    def _gen_synthetic_part_date_as_string_sql_expr(
-        self, date_value, granularity, source_column_cast
-    ):
+    def _gen_synthetic_part_date_as_string_sql_expr(self, date_value, granularity, source_column_cast):
         """Generates a SQL expression used to insert DATE synthetic partition key data into a string
         column in SQL, e.g.
           'expr(used(to_insert(column_name)))'
         This is common to all backends with self._gen_synthetic_partition_date_as_string_sql_expr providing
         the variation.
         """
-        assert granularity in PART_COL_DATE_GRANULARITIES, (
-            "Unexpected granularity: %s" % granularity
-        )
+        assert granularity in PART_COL_DATE_GRANULARITIES, "Unexpected granularity: %s" % granularity
         assert source_column_cast
 
         if date_value is None:
             # Compare to None because Unix epoch is False in datetime64
             return None
 
-        assert isinstance(date_value, str), "%s if not of type (str, unicode)" % type(
-            date_value
-        )
+        assert isinstance(date_value, str), "%s if not of type (str, unicode)" % type(date_value)
         component_fn_list = [["YEAR", 4], ["MONTH", 2], ["DAY", 2]]
 
         partition_expr = []
         for component_fn, size_or_literal in component_fn_list:
             assert source_column_cast
             partition_expr.append(
-                self._gen_synthetic_partition_date_as_string_sql_expr(
-                    component_fn, size_or_literal, source_column_cast
-                )
+                self._gen_synthetic_partition_date_as_string_sql_expr(component_fn, size_or_literal, source_column_cast)
             )
             if granularity == component_fn[0]:
                 break
         return "CONCAT(%s)" % ",'-',".join(partition_expr)
 
-    def _gen_synthetic_part_number_sql_expr(
-        self, number_value, backend_col, granularity, synthetic_partition_digits
-    ):
+    def _gen_synthetic_part_number_sql_expr(self, number_value, backend_col, granularity, synthetic_partition_digits):
         """Generates a SQL expression used to insert numeric synthetic partition key data in SQL, e.g.
           'expr(used(to_insert(column_name)))'
         This is common to all backends, backend specifics in _gen_synthetic_part_number_granularity_sql_expr().
         """
         assert granularity
-        assert isinstance(
-            granularity, int
-        ), "Granularity must be integral not: %s" % type(granularity)
+        assert isinstance(granularity, int), "Granularity must be integral not: %s" % type(granularity)
         if self.synthetic_partition_numbers_are_string():
             assert synthetic_partition_digits is not None
         return self._gen_synthetic_part_number_granularity_sql_expr(
@@ -907,9 +808,7 @@ class BackendTableInterface(metaclass=ABCMeta):
 
     def _gen_synthetic_part_string_sql_expr(self, string_value, granularity):
         assert granularity
-        assert isinstance(
-            granularity, int
-        ), "Granularity must be integral not: %s" % type(granularity)
+        assert isinstance(granularity, int), "Granularity must be integral not: %s" % type(granularity)
         return self._gen_synthetic_part_string_granularity_sql_expr(
             self._format_staging_column_name(string_value), granularity
         )
@@ -925,17 +824,9 @@ class BackendTableInterface(metaclass=ABCMeta):
             # partition_fn needs to be a call to the backend.
 
             def partition_fn(source_value):
-                source_column = self.get_column(
-                    partition_column.partition_info.source_column_name
-                )
-                sql_literal = self._db_api.to_backend_literal(
-                    source_value, data_type=source_column.data_type
-                )
-                sql = "SELECT {}".format(
-                    self._partition_function_sql_expression(
-                        partition_column.partition_info, sql_literal
-                    )
-                )
+                source_column = self.get_column(partition_column.partition_info.source_column_name)
+                sql_literal = self._db_api.to_backend_literal(source_value, data_type=source_column.data_type)
+                sql = f"SELECT {self._partition_function_sql_expression(partition_column.partition_info, sql_literal)}"
                 row = self._db_api.execute_query_fetch_one(sql)
                 return row[0] if row else None
 
@@ -971,18 +862,13 @@ class BackendTableInterface(metaclass=ABCMeta):
                 source_column_name, granularity, source_column_cast
             )
         elif source_column.is_string_based():
-            partition_expr = self._gen_synthetic_part_string_sql_expr(
-                source_column_name, int(granularity)
-            )
+            partition_expr = self._gen_synthetic_part_string_sql_expr(source_column_name, int(granularity))
         elif source_column.is_number_based():
             partition_expr = self._gen_synthetic_part_number_sql_expr(
                 source_column_cast, source_column, int(granularity), digits
             )
         else:
-            raise NotImplementedError(
-                "Unsupported synthetic partition column data type: %s"
-                % source_column.data_type
-            )
+            raise NotImplementedError("Unsupported synthetic partition column data type: %s" % source_column.data_type)
         return partition_expr
 
     def _get_dfs_client(self):
@@ -1010,14 +896,14 @@ class BackendTableInterface(metaclass=ABCMeta):
 
     def _not_implemented_message(self, exception_text=None):
         # parent method name below, on Python3 we need to use: inspect.stack()[1].function
-        msg_text = exception_text or "{}()".format(inspect.stack()[1][3])
+        msg_text = exception_text or f"{inspect.stack()[1][3]}()"
         return "%s is not supported on %s" % (msg_text, self.backend_db_name())
 
     def _offload_step(
         self,
         step_constant: str,
         step_fn: Callable,
-        command_type: Optional[str] = None,
+        command_type: str | None = None,
         optional=False,
         mandatory_step=False,
     ):
@@ -1030,16 +916,11 @@ class BackendTableInterface(metaclass=ABCMeta):
             mandatory_step=mandatory_step,
         )
 
-    def _partition_column_requires_synthetic_column(
-        self, backend_column, partition_info
-    ):
+    def _partition_column_requires_synthetic_column(self, backend_column, partition_info):
         if partition_info.function:
             # A partition function mandates we need a synthetic column
             return True
-        else:
-            return self._db_api.partition_column_requires_synthetic_column(
-                backend_column, partition_info.granularity
-            )
+        return self._db_api.partition_column_requires_synthetic_column(backend_column, partition_info.granularity)
 
     def _partition_function_sql_expression(self, partition_info, sql_input_expression):
         """Return a string containing a call to a partition function UDF.
@@ -1047,10 +928,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         """
         assert partition_info
         udf_schema, udf_name = partition_info.function.split(".")
-        return "{}({})".format(
-            self._db_api.enclose_object_reference(udf_schema, udf_name),
-            sql_input_expression,
-        )
+        return f"{self._db_api.enclose_object_reference(udf_schema, udf_name)}({sql_input_expression})"
 
     def _partition_key_out_of_range_message(self, column):
         """This returns a stock warning for when data exceeds the --partition-lower/upper -value range.
@@ -1087,27 +965,17 @@ class BackendTableInterface(metaclass=ABCMeta):
             self._bucket_hash_col = self._hybrid_metadata.offload_bucket_column
             self._ipa_predicate_type = self._hybrid_metadata.incremental_predicate_type
             if self._hybrid_metadata.offload_partition_functions:
-                self._debug(
-                    "Partition functions from metadata: {}".format(
-                        self._hybrid_metadata.offload_partition_functions
-                    )
-                )
-                self._partition_functions = csv_split(
-                    self._hybrid_metadata.offload_partition_functions
-                )
+                self._debug(f"Partition functions from metadata: {self._hybrid_metadata.offload_partition_functions}")
+                self._partition_functions = csv_split(self._hybrid_metadata.offload_partition_functions)
             else:
                 self._partition_functions = None
         elif orchestration_operation:
             self._bucket_hash_col = orchestration_operation.bucket_hash_col
             self._ipa_predicate_type = orchestration_operation.ipa_predicate_type
             self._debug(
-                "Partition functions from offload options: {}".format(
-                    orchestration_operation.offload_partition_functions
-                )
+                f"Partition functions from offload options: {orchestration_operation.offload_partition_functions}"
             )
-            self._partition_functions = (
-                orchestration_operation.offload_partition_functions
-            )
+            self._partition_functions = orchestration_operation.offload_partition_functions
         else:
             self._bucket_hash_col = None
 
@@ -1117,9 +985,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         """
         return "%s IS NOT NULL" % self._format_staging_column_name(column_name)
 
-    def _validate_final_table_casts_verification_sql(
-        self, projection_list, predicate_or_list, limit=None
-    ):
+    def _validate_final_table_casts_verification_sql(self, projection_list, predicate_or_list, limit=None):
         """Verification SQL to display when final table casts have failed.
         Common to most backends but can be overridden if required.
         """
@@ -1144,13 +1010,10 @@ class BackendTableInterface(metaclass=ABCMeta):
             return
 
         cast_check_preds = [
-            "(%s AND %s IS NULL)"
-            % (self._staging_column_is_not_null_sql_expr(cname), ccast)
+            "(%s AND %s IS NULL)" % (self._staging_column_is_not_null_sql_expr(cname), ccast)
             for cname, ccast in cast_validation_cols
         ]
-        verify_cast_sql = self._validate_final_table_casts_verification_sql(
-            ["COUNT(*)"], cast_check_preds
-        )
+        verify_cast_sql = self._validate_final_table_casts_verification_sql(["COUNT(*)"], cast_check_preds)
         verify_cast_set = self._execute_query_fetch_one(
             verify_cast_sql,
             query_options=self._cast_verification_query_options(),
@@ -1161,38 +1024,22 @@ class BackendTableInterface(metaclass=ABCMeta):
 
         if verify_cast_set and verify_cast_set[0] > 0:
             # This query uses more resources than a simple COUNT(*) so only run it when the COUNT(*) identifies issues
-            cast_check_cols = [
-                self._format_staging_column_name(cname)
-                for cname, _ in cast_validation_cols
-            ]
+            cast_check_cols = [self._format_staging_column_name(cname) for cname, _ in cast_validation_cols]
             identify_projection = [
-                "MAX(CASE WHEN %s THEN %s END)" % (pred, i)
-                for i, pred in enumerate(cast_check_preds)
+                "MAX(CASE WHEN %s THEN %s END)" % (pred, i) for i, pred in enumerate(cast_check_preds)
             ]
-            identify_cast_sql = self._validate_final_table_casts_verification_sql(
-                identify_projection, cast_check_preds
-            )
+            identify_cast_sql = self._validate_final_table_casts_verification_sql(identify_projection, cast_check_preds)
             identify_cast_set = self._execute_query_fetch_one(
                 identify_cast_sql, query_options=self._cast_verification_query_options()
             )
-            failing_casts = [
-                cast_check_preds[col_number]
-                for col_number in identify_cast_set
-                if col_number is not None
-            ]
-            failing_cols = [
-                cast_check_cols[col_number]
-                for col_number in identify_cast_set
-                if col_number is not None
-            ]
+            failing_casts = [cast_check_preds[col_number] for col_number in identify_cast_set if col_number is not None]
+            failing_cols = [cast_check_cols[col_number] for col_number in identify_cast_set if col_number is not None]
             self._log(
                 "CAST() of load data will cause data loss due to lack of precision in target data type in %s rows"
                 % verify_cast_set[0],
                 ansi_code="red",
             )
-            self._log(
-                "Failing casts are:\n%s" % "\n".join(failing_casts), ansi_code="red"
-            )
+            self._log("Failing casts are:\n%s" % "\n".join(failing_casts), ansi_code="red")
             if failing_casts:
                 limit_sample_row_count = 50
                 suggest_sql = self._validate_final_table_casts_verification_sql(
@@ -1200,55 +1047,38 @@ class BackendTableInterface(metaclass=ABCMeta):
                     failing_casts,
                     min(verify_cast_set[0], limit_sample_row_count),
                 )
-                self._log(
-                    "The SQL below will assist identification of problem data:\n%s"
-                    % suggest_sql
-                )
+                self._log("The SQL below will assist identification of problem data:\n%s" % suggest_sql)
             raise DataValidationException(CAST_VALIDATION_EXCEPTION_TEXT)
 
-    def _validate_staged_data_rules(
-        self, rdbms_part_cols, rdbms_columns, staging_columns
-    ):
+    def _validate_staged_data_rules(self, rdbms_part_cols, rdbms_columns, staging_columns):
         """Rules to be used in validate_staged_data().
         Currently appropriate across all backends, this may change as more backends are added.
         """
         # pred_list contains tuples of validations to made on the load data, tuple structure named below
-        Validation = collections.namedtuple(
-            "Validation", "column_name expression fatal message"
-        )
+        Validation = collections.namedtuple("Validation", "column_name expression fatal message")
 
         def validation_rules_for_decimal_scale(pred_list):
-            for scale_check_col in [
-                _ for _ in self.get_non_synthetic_columns() if _.is_number_based()
-            ]:
+            for scale_check_col in [_ for _ in self.get_non_synthetic_columns() if _.is_number_based()]:
                 staging_col = match_table_column(scale_check_col.name, staging_columns)
                 if not staging_col.is_string_based():
                     # We can only validate scale when the data is staged to string
                     continue
                 rdbms_col = match_table_column(scale_check_col.name, rdbms_columns)
                 if rdbms_col.data_scale == 0:
-                    self._debug(
-                        "RDBMS column has integral data so no need to check data"
-                    )
+                    self._debug("RDBMS column has integral data so no need to check data")
                     continue
                 backend_scale = scale_check_col.data_scale
                 if backend_scale is None:
                     backend_scale = self.max_decimal_scale(scale_check_col.data_type)
-                if (
-                    rdbms_col.data_scale
-                    and rdbms_col.data_scale > 0
-                    and rdbms_col.data_scale < backend_scale
-                ):
+                if rdbms_col.data_scale and rdbms_col.data_scale > 0 and rdbms_col.data_scale < backend_scale:
                     self._debug(
                         "RDBMS column scale is safely below the backend so no need to check it: %s < %s"
                         % (rdbms_col.data_scale, backend_scale)
                     )
                     continue
-                is_invalid_scale_expr = (
-                    self._db_api.decimal_scale_validation_expression(
-                        column_name=self._format_staging_column_name(staging_col),
-                        column_scale=backend_scale,
-                    )
+                is_invalid_scale_expr = self._db_api.decimal_scale_validation_expression(
+                    column_name=self._format_staging_column_name(staging_col),
+                    column_scale=backend_scale,
                 )
                 pred_list.append(
                     Validation(
@@ -1269,9 +1099,7 @@ class BackendTableInterface(metaclass=ABCMeta):
             upper_fn = lambda x: x.upper()
 
             if self.not_null_column_supported():
-                nn_columns = get_column_names(
-                    [_ for _ in self.get_columns() if _.nullable == False], upper_fn
-                )
+                nn_columns = get_column_names([_ for _ in self.get_columns() if _.nullable == False], upper_fn)
                 for col_name in nn_columns:
                     staging_col = match_table_column(col_name, staging_columns)
                     pred_list.append(
@@ -1292,9 +1120,7 @@ class BackendTableInterface(metaclass=ABCMeta):
                 # Partitions with a single partition column containing a NULL will not be offloaded as they'll be in
                 # the MAXVALUE partition.
                 # If we change offload to include MAXVALUE partitions then the len() restriction above should be removed
-                extra_cols = set(
-                    get_column_names(rdbms_part_cols, upper_fn)
-                ).difference(cols_already_checked)
+                extra_cols = set(get_column_names(rdbms_part_cols, upper_fn)).difference(cols_already_checked)
                 for col_name in extra_cols:
                     staging_col = match_table_column(col_name, staging_columns)
                     pred_list.append(
@@ -1329,8 +1155,7 @@ class BackendTableInterface(metaclass=ABCMeta):
                                 meta_op_filter,
                             ),
                             fatal=False,
-                            message="%s: %s"
-                            % (NULL_BACKEND_PARTITION_VALUE_WARNING_TEXT, col_name),
+                            message="%s: %s" % (NULL_BACKEND_PARTITION_VALUE_WARNING_TEXT, col_name),
                         )
                     )
 
@@ -1343,29 +1168,20 @@ class BackendTableInterface(metaclass=ABCMeta):
                     and not partition_col.partition_info.function
                 ):
                     # Check partition digits for synthetic partition columns
-                    source_backend_col = self.get_column(
-                        partition_col.partition_info.source_column_name
-                    )
+                    source_backend_col = self.get_column(partition_col.partition_info.source_column_name)
                     if source_backend_col.is_number_based():
-                        granularity_expr = (
-                            self._gen_synthetic_part_number_granularity_sql_expr(
-                                self.get_verification_cast(
-                                    source_backend_col.name.upper()
-                                ),
-                                source_backend_col,
-                                partition_col.partition_info.granularity,
-                                partition_col.partition_info.digits,
-                                with_padding=False,
-                            )
+                        granularity_expr = self._gen_synthetic_part_number_granularity_sql_expr(
+                            self.get_verification_cast(source_backend_col.name.upper()),
+                            source_backend_col,
+                            partition_col.partition_info.granularity,
+                            partition_col.partition_info.digits,
+                            with_padding=False,
                         )
-                        length_expr = self._db_api.length_sql_expression(
-                            granularity_expr
-                        )
+                        length_expr = self._db_api.length_sql_expression(granularity_expr)
                         pred_list.append(
                             Validation(
                                 column_name=partition_col.partition_info.source_column_name.upper(),
-                                expression="%s > %s"
-                                % (length_expr, partition_col.partition_info.digits),
+                                expression="%s > %s" % (length_expr, partition_col.partition_info.digits),
                                 fatal=True,
                                 message="Synthetic value for %s exceeds digits %s, re-offload with larger value for --partition-digits"
                                 % (
@@ -1391,9 +1207,7 @@ class BackendTableInterface(metaclass=ABCMeta):
                                     partition_col.partition_info.range_end,
                                 ),
                                 fatal=False,
-                                message=self._partition_key_out_of_range_message(
-                                    partition_col
-                                ),
+                                message=self._partition_key_out_of_range_message(partition_col),
                             )
                         )
 
@@ -1402,9 +1216,7 @@ class BackendTableInterface(metaclass=ABCMeta):
 
         validation_rules_for_not_null_cols(pred_list, meta_op_filter)
 
-        nan_capable_column_names = [
-            col.name for col in rdbms_columns if col.is_nan_capable()
-        ]
+        nan_capable_column_names = [col.name for col in rdbms_columns if col.is_nan_capable()]
         if nan_capable_column_names and self._db_api.nan_supported():
             nan_message = 'Column "%s" has NaN values, RDBMS and %s predicate comparisons may not be consistent'
             for n in nan_capable_column_names:
@@ -1412,9 +1224,7 @@ class BackendTableInterface(metaclass=ABCMeta):
                 pred_list.append(
                     Validation(
                         column_name=n.upper(),
-                        expression=self._db_api.is_nan_sql_expression(
-                            self._format_staging_column_name(staging_col)
-                        ),
+                        expression=self._db_api.is_nan_sql_expression(self._format_staging_column_name(staging_col)),
                         fatal=False,
                         message=nan_message % (n.upper(), self.backend_db_name()),
                     )
@@ -1439,13 +1249,10 @@ class BackendTableInterface(metaclass=ABCMeta):
         Most tests produce warnings only, however some are coded to raise an exception (fatal=True)
         The most important test is that COUNT(*) of the staged data matches what we thought we transferred
         """
-        pred_list = self._validate_staged_data_rules(
-            rdbms_part_cols, rdbms_columns, staging_columns
-        )
-        projection = [
-            "MAX(CASE WHEN %s THEN %s END)" % (_.expression, i)
-            for i, _ in enumerate(pred_list)
-        ] + ["COUNT(*)"]
+        pred_list = self._validate_staged_data_rules(rdbms_part_cols, rdbms_columns, staging_columns)
+        projection = ["MAX(CASE WHEN %s THEN %s END)" % (_.expression, i) for i, _ in enumerate(pred_list)] + [
+            "COUNT(*)"
+        ]
         pred_messages = "\n,      ".join(projection)
         sql = """SELECT %s\nFROM   %s""" % (
             pred_messages,
@@ -1463,29 +1270,21 @@ class BackendTableInterface(metaclass=ABCMeta):
             count_star = validation_set.pop()
             if expected_rows is None:
                 self._log("Load table row count: %s" % count_star, detail=VERBOSE)
+            elif expected_rows == count_star:
+                self._log(
+                    "Offload row count matches load table row count (%s == %s)" % (expected_rows, count_star),
+                    detail=VERBOSE,
+                )
             else:
-                if expected_rows == count_star:
-                    self._log(
-                        "Offload row count matches load table row count (%s == %s)"
-                        % (expected_rows, count_star),
-                        detail=VERBOSE,
-                    )
-                else:
-                    self._log(
-                        "Offload row count != load table row count (%s != %s)"
-                        % (expected_rows, count_star),
-                        detail=VVERBOSE,
-                    )
-                    raise DataValidationException(
-                        "Offload row count does not match load table row count (%s != %s)"
-                        % (expected_rows, count_star)
-                    )
+                self._log(
+                    "Offload row count != load table row count (%s != %s)" % (expected_rows, count_star),
+                    detail=VVERBOSE,
+                )
+                raise DataValidationException(
+                    "Offload row count does not match load table row count (%s != %s)" % (expected_rows, count_star)
+                )
 
-            warnings = [
-                pred_list[msg_code].message
-                for msg_code in validation_set
-                if msg_code is not None
-            ]
+            warnings = [pred_list[msg_code].message for msg_code in validation_set if msg_code is not None]
             [self._messages.warning(msg, ansi_code="red") for msg in warnings]
             errors = [
                 pred_list[msg_code].message
@@ -1532,9 +1331,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def _gen_synthetic_partition_date_as_string_sql_expr(
-        self, extract_name, pad_size, source_column_cast
-    ):
+    def _gen_synthetic_partition_date_as_string_sql_expr(self, extract_name, pad_size, source_column_cast):
         pass
 
     @abstractmethod
@@ -1559,9 +1356,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _staging_to_backend_cast(
-        self, rdbms_column, backend_column, staging_column
-    ) -> tuple:
+    def _staging_to_backend_cast(self, rdbms_column, backend_column, staging_column) -> tuple:
         """Returns correctly cast or overridden columns ready for insert/select to final table.
         Be aware that setting return_type will result in validate_avro_to_hadoop_casts() checking the CAST(),
         you may not always want that, e.g. when overriding with NULL intentionally.
@@ -1599,52 +1394,29 @@ class BackendTableInterface(metaclass=ABCMeta):
         udfs = self._db_api.udf_details(db_name, udf_name)
         if not udfs:
             raise BackendTableException(
-                "{} in {}: {}.{}".format(
-                    PARTITION_FUNCTION_DOES_NOT_EXIST_EXCEPTION_TEXT,
-                    self.backend_db_name(),
-                    db_name,
-                    udf_name,
-                )
+                f"{PARTITION_FUNCTION_DOES_NOT_EXIST_EXCEPTION_TEXT} in {self.backend_db_name()}: {db_name}.{udf_name}"
             )
-        self._log("Partition function details: {}".format(str(udfs)), detail=VVERBOSE)
+        self._log(f"Partition function details: {udfs!s}", detail=VVERBOSE)
         if len(udfs) != 1:
             # We do not support UDF overloading
-            raise BackendTableException(
-                "Multiple partition functions are matched by {}.{}".format(
-                    db_name, udf_name
-                )
-            )
+            raise BackendTableException(f"Multiple partition functions are matched by {db_name}.{udf_name}")
 
         udf = udfs[0]
-        if not self._db_api.is_supported_partition_function_return_data_type(
-            udf.return_type
-        ):
+        if not self._db_api.is_supported_partition_function_return_data_type(udf.return_type):
             raise BackendTableException(
-                "Partition function {}.{} has invalid return type: {}".format(
-                    db_name, udf_name, udf.return_type
-                )
+                f"Partition function {db_name}.{udf_name} has invalid return type: {udf.return_type}"
             )
         if len(udf.parameters or []) != 1:
             raise BackendTableException(
-                "Partition function {}.{} {}: {}".format(
-                    db_name,
-                    udf_name,
-                    PARTITION_FUNCTION_ARG_COUNT_EXCEPTION_TEXT,
-                    udf.parameter_spec_string(),
-                )
+                f"Partition function {db_name}.{udf_name} {PARTITION_FUNCTION_ARG_COUNT_EXCEPTION_TEXT}: {udf.parameter_spec_string()}"
             )
-        if (
-            udf.parameters[0].data_type
-            not in self._db_api.supported_partition_function_parameter_data_types()
-        ):
+        if udf.parameters[0].data_type not in self._db_api.supported_partition_function_parameter_data_types():
             raise BackendTableException(
                 "Partition function {}.{} has invalid parameter type: {} not in {}".format(
                     db_name,
                     udf_name,
                     udf.parameters[0].data_type,
-                    ",".join(
-                        self._db_api.supported_partition_function_parameter_data_types()
-                    ),
+                    ",".join(self._db_api.supported_partition_function_parameter_data_types()),
                 )
             )
         return udf
@@ -1664,9 +1436,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         """
 
         assert canonical_columns
-        assert valid_column_list(canonical_columns), invalid_column_list_message(
-            canonical_columns
-        )
+        assert valid_column_list(canonical_columns), invalid_column_list_message(canonical_columns)
 
         new_backend_columns = []
         new_synthetic_columns = []
@@ -1683,22 +1453,12 @@ class BackendTableInterface(metaclass=ABCMeta):
 
                 if not self.is_valid_partitioning_data_type(partition_data_type):
                     raise BackendTableException(
-                        "Partition column data type is not supported in this version: %s"
-                        % partition_data_type
+                        "Partition column data type is not supported in this version: %s" % partition_data_type
                     )
-                if self._partition_column_requires_synthetic_column(
-                    backend_column, canonical_column.partition_info
-                ):
-                    if (
-                        backend_column.is_number_based()
-                        and not self.synthetic_partition_numbers_are_string()
-                    ):
-                        self._check_partition_info_range_start_end(
-                            canonical_column, backend_column
-                        )
-                    synthetic_name = canonical_column.partition_info.synthetic_name(
-                        canonical_columns
-                    )
+                if self._partition_column_requires_synthetic_column(backend_column, canonical_column.partition_info):
+                    if backend_column.is_number_based() and not self.synthetic_partition_numbers_are_string():
+                        self._check_partition_info_range_start_end(canonical_column, backend_column)
+                    synthetic_name = canonical_column.partition_info.synthetic_name(canonical_columns)
                     if canonical_column.partition_info.function:
                         new_synthetic_columns.append(
                             self._db_api.gen_column_object(
@@ -1709,17 +1469,13 @@ class BackendTableInterface(metaclass=ABCMeta):
                         )
                     else:
                         new_synthetic_columns.append(
-                            self._gen_synthetic_partition_column_object(
-                                synthetic_name, canonical_column
-                            )
+                            self._gen_synthetic_partition_column_object(synthetic_name, canonical_column)
                         )
                     backend_column.partition_info = None
                 else:
                     # Native numeric partition columns require lower/upper bounds
                     if backend_column.is_number_based():
-                        self._check_partition_info_range_start_end(
-                            canonical_column, backend_column
-                        )
+                        self._check_partition_info_range_start_end(canonical_column, backend_column)
                     backend_column.partition_info = canonical_column.partition_info
             new_backend_columns.append(backend_column)
 
@@ -1779,9 +1535,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         """
         assert column_tuples and isinstance(column_tuples, list)
         assert isinstance(column_tuples[0], tuple)
-        ansi_joined_tables = self._db_api.enclose_object_reference(
-            self.db_name, self.table_name
-        )
+        ansi_joined_tables = self._db_api.enclose_object_reference(self.db_name, self.table_name)
         self._db_api.create_view(
             self._conv_view_db,
             self._conv_view_name,
@@ -1794,8 +1548,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         """Generic code to create a load database, individual backends may have overrides."""
         if self._db_api.load_db_transport_supported():
             return self._create_load_db(with_terminator=with_terminator)
-        else:
-            return []
+        return []
 
     def db_exists(self):
         return self._db_api.database_exists(self.db_name)
@@ -1814,9 +1567,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         Some backends (e.g. Synpase) may override this method.
         """
         unicode_columns = [
-            _
-            for _ in self.get_canonical_columns()
-            if _.char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE
+            _ for _ in self.get_canonical_columns() if _.char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE
         ]
         return ",".join(_.name for _ in unicode_columns) if as_csv else unicode_columns
 
@@ -1830,15 +1581,12 @@ class BackendTableInterface(metaclass=ABCMeta):
         else:
             assert isinstance(backend_column, ColumnMetadataInterface)
             column = backend_column
-        return self._db_api.detect_column_has_fractional_seconds(
-            self.db_name, self.table_name, column
-        )
+        return self._db_api.detect_column_has_fractional_seconds(self.db_name, self.table_name, column)
 
     def drop(self, purge=False):
         if self.is_view():
             return self._db_api.drop_view(self.db_name, self.table_name)
-        else:
-            return self.drop_table(purge=purge)
+        return self.drop_table(purge=purge)
 
     def drop_conversion_view(self):
         assert self._conv_view_db and self._conv_view_name
@@ -1852,9 +1600,7 @@ class BackendTableInterface(metaclass=ABCMeta):
 
     def drop_load_view(self, sync=None):
         """Drop the staging/load view used when materialized a join"""
-        self._db_api.drop_view(
-            self._load_view_db_name, self._load_table_name, sync=sync
-        )
+        self._db_api.drop_view(self._load_view_db_name, self._load_table_name, sync=sync)
 
     def exists(self):
         return self._db_api.exists(self.db_name, self.table_name)
@@ -1866,18 +1612,12 @@ class BackendTableInterface(metaclass=ABCMeta):
         return self._db_api.enclosure_character()
 
     def from_canonical_column(self, column):
-        return self._db_api.from_canonical_column(
-            column, decimal_padding_digits=self._decimal_padding_digits
-        )
+        return self._db_api.from_canonical_column(column, decimal_padding_digits=self._decimal_padding_digits)
 
     def gen_default_numeric_column(self, column_name, data_scale=18):
-        return self._db_api.gen_default_numeric_column(
-            column_name, data_scale=data_scale
-        )
+        return self._db_api.gen_default_numeric_column(column_name, data_scale=data_scale)
 
-    def gen_synthetic_partition_col_expressions(
-        self, expr_from_columns=None, as_python_fns=False
-    ):
+    def gen_synthetic_partition_col_expressions(self, expr_from_columns=None, as_python_fns=False):
         """Takes the backend synthetic partition column information and returns a list of lists for the
         expressions we will actually partition by. e.g.:
         [
@@ -1948,18 +1688,13 @@ class BackendTableInterface(metaclass=ABCMeta):
                 # There aren't any real partition columns but, for join pushdown, we may have synthetic columns in
                 # the view projection. Therefore we need to fake a partition column list, just in case.
                 self._log(
-                    "Faking partition columns for view: %s.%s"
-                    % (self.db_name, self.table_name),
+                    "Faking partition columns for view: %s.%s" % (self.db_name, self.table_name),
                     detail=VVERBOSE,
                 )
-                part_cols = [
-                    _ for _ in columns if self.is_synthetic_partition_column(_)
-                ]
+                part_cols = [_ for _ in columns if self.is_synthetic_partition_column(_)]
                 self._log('View "partition" columns: %s' % part_cols, detail=VVERBOSE)
             else:
-                part_cols = self._db_api.get_partition_columns(
-                    self.db_name, self.table_name
-                )
+                part_cols = self._db_api.get_partition_columns(self.db_name, self.table_name)
             # Run through columns adding partition_info as we go.
             new_columns = []
             for column in columns:
@@ -1973,9 +1708,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         """Get a single column from get_columns()."""
         return match_table_column(column_name, self.get_columns())
 
-    def get_distinct_column_values(
-        self, column_name_list, columns_to_cast_to_string=None, order_results=False
-    ):
+    def get_distinct_column_values(self, column_name_list, columns_to_cast_to_string=None, order_results=False):
         """Run SQL to get distinct values for a list of columns
         The columns_to_cast_to_string parameter is because our Hive DB API does not support nanoseconds
         therefore we bring certain data types back as strings to avoid truncating to milliseconds
@@ -1993,9 +1726,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         Column can be a column name or a column object.
         """
         assert column
-        assert (
-            self._final_table_casts
-        ), "set_final_table_casts() has not been called to prepare casts"
+        assert self._final_table_casts, "set_final_table_casts() has not been called to prepare casts"
         if isinstance(column, ColumnMetadataInterface):
             column_name = column.name.upper()
         else:
@@ -2009,9 +1740,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         return self._load_table_name
 
     def get_max_column_length(self, column_name):
-        return self._db_api.get_max_column_length(
-            self.db_name, self.table_name, column_name
-        )
+        return self._db_api.get_max_column_length(self.db_name, self.table_name, column_name)
 
     def get_max_column_values(
         self,
@@ -2050,11 +1779,7 @@ class BackendTableInterface(metaclass=ABCMeta):
 
     def get_synthetic_columns(self):
         """Get synthetic partition/bucket columns for the base table."""
-        return [
-            _
-            for _ in self.get_partition_columns()
-            if self.is_synthetic_partition_column(_)
-        ]
+        return [_ for _ in self.get_partition_columns() if self.is_synthetic_partition_column(_)]
 
     def get_table_partitions(self):
         return self._db_api.get_table_partitions(self.db_name, self.table_name)
@@ -2063,22 +1788,16 @@ class BackendTableInterface(metaclass=ABCMeta):
         return self._db_api.get_table_partition_count(self.db_name, self.table_name)
 
     def get_table_row_count_from_metadata(self):
-        return self._db_api.get_table_row_count_from_metadata(
-            self.db_name, self.table_name
-        )
+        return self._db_api.get_table_row_count_from_metadata(self.db_name, self.table_name)
 
     def get_table_size(self, no_cache=False):
-        return self._db_api.get_table_size(
-            self.db_name, self.table_name, no_cache=no_cache
-        )
+        return self._db_api.get_table_size(self.db_name, self.table_name, no_cache=no_cache)
 
     def get_table_size_and_row_count(self):
         return self._db_api.get_table_size_and_row_count(self.db_name, self.table_name)
 
     def get_table_stats(self, as_dict=False):
-        return self._db_api.get_table_stats(
-            self.db_name, self.table_name, as_dict=as_dict
-        )
+        return self._db_api.get_table_stats(self.db_name, self.table_name, as_dict=as_dict)
 
     def get_table_stats_partitions(self):
         return self._db_api.get_table_stats_partitions(self.db_name, self.table_name)
@@ -2088,9 +1807,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         column can be a column name or a column object.
         """
         assert column
-        assert (
-            self._final_table_casts
-        ), "set_final_table_casts() has not been called to prepare casts"
+        assert self._final_table_casts, "set_final_table_casts() has not been called to prepare casts"
         if isinstance(column, ColumnMetadataInterface):
             column_name = column.name.upper()
         else:
@@ -2118,9 +1835,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         return self._db_api.is_valid_staging_format(self._offload_staging_format)
 
     def is_view(self, object_name_override=None):
-        return self._db_api.is_view(
-            self.db_name, object_name_override or self.table_name
-        )
+        return self._db_api.is_view(self.db_name, object_name_override or self.table_name)
 
     def max_column_name_length(self):
         return self._db_api.max_column_name_length()
@@ -2175,15 +1890,9 @@ class BackendTableInterface(metaclass=ABCMeta):
         """
         self._set_operational_attributes(offload_operation)
         if offload_operation:
-            self._offload_distribute_enabled = (
-                offload_operation.offload_distribute_enabled
-            )
+            self._offload_distribute_enabled = offload_operation.offload_distribute_enabled
             self._offload_stats_method = offload_operation.offload_stats_method
-            self._sort_columns = (
-                offload_operation.sort_columns
-                if self.sorted_table_supported()
-                else None
-            )
+            self._sort_columns = offload_operation.sort_columns if self.sorted_table_supported() else None
         if rdbms_columns:
             self.set_final_table_casts(rdbms_columns, staging_columns)
 
@@ -2213,19 +1922,13 @@ class BackendTableInterface(metaclass=ABCMeta):
         staging_columns: The column types for the staged data. For regular offload this will be a set of Avro or
                          Parquet columns, for a materialized view it will be a set of backend columns.
         """
-        self._final_table_casts = self._gen_final_table_casts(
-            rdbms_columns, staging_columns
-        )
+        self._final_table_casts = self._gen_final_table_casts(rdbms_columns, staging_columns)
 
     def set_partition_stats(self, new_partition_stats, additive_stats):
-        return self._db_api.set_partition_stats(
-            self.db_name, self.table_name, new_partition_stats, additive_stats
-        )
+        return self._db_api.set_partition_stats(self.db_name, self.table_name, new_partition_stats, additive_stats)
 
     def set_table_stats(self, new_table_stats, additive_stats):
-        return self._db_api.set_table_stats(
-            self.db_name, self.table_name, new_table_stats, additive_stats
-        )
+        return self._db_api.set_table_stats(self.db_name, self.table_name, new_table_stats, additive_stats)
 
     def supported_backend_data_types(self):
         return self._db_api.supported_backend_data_types()
@@ -2262,9 +1965,9 @@ class BackendTableInterface(metaclass=ABCMeta):
             return bool(column.has_time_element() and column.data_scale is None)
 
         assert backend_column
-        assert isinstance(
-            backend_column, ColumnMetadataInterface
-        ), "%s is not an instance of ColumnMetadataInterface" % type(backend_column)
+        assert isinstance(backend_column, ColumnMetadataInterface), (
+            "%s is not an instance of ColumnMetadataInterface" % type(backend_column)
+        )
         if canonical_overrides:
             assert valid_column_list(canonical_overrides)
 
@@ -2282,38 +1985,34 @@ class BackendTableInterface(metaclass=ABCMeta):
                         new_col.data_type.upper(),
                     )
                 )
-        else:
-            if detect_sizes and backend_column.is_unbound_string():
-                longest_string = self.get_max_column_length(backend_column.name)
-                longest_string = longest_string or 0
-                # Even hundreds, at least 25% greater than longest source string
-                safe_length = (int(1.25 * longest_string / 200) + 1) * 200
+        elif detect_sizes and backend_column.is_unbound_string():
+            longest_string = self.get_max_column_length(backend_column.name)
+            longest_string = longest_string or 0
+            # Even hundreds, at least 25% greater than longest source string
+            safe_length = (int(1.25 * longest_string / 200) + 1) * 200
+            self._log(
+                "Padded length %s to %s" % (str(longest_string), str(safe_length)),
+                detail=VVERBOSE,
+            )
+            detect_col = backend_column.clone(data_length=safe_length, char_length=safe_length)
+            new_col = self.to_canonical_column(detect_col)
+        elif detect_sizes and datetime_column_has_unbound_scale(backend_column):
+            detect_col = backend_column.clone()
+            if self.detect_column_has_fractional_seconds(backend_column):
+                detect_col.data_scale = max_rdbms_time_scale or 9
                 self._log(
-                    "Padded length %s to %s" % (str(longest_string), str(safe_length)),
+                    "Detected fractional seconds, using data_scale=%s" % str(detect_col.data_scale),
                     detail=VVERBOSE,
                 )
-                detect_col = backend_column.clone(
-                    data_length=safe_length, char_length=safe_length
-                )
-                new_col = self.to_canonical_column(detect_col)
-            elif detect_sizes and datetime_column_has_unbound_scale(backend_column):
-                detect_col = backend_column.clone()
-                if self.detect_column_has_fractional_seconds(backend_column):
-                    detect_col.data_scale = max_rdbms_time_scale or 9
-                    self._log(
-                        "Detected fractional seconds, using data_scale=%s"
-                        % str(detect_col.data_scale),
-                        detail=VVERBOSE,
-                    )
-                else:
-                    self._log(
-                        "No fractional seconds detected, using data_scale=0",
-                        detail=VVERBOSE,
-                    )
-                    detect_col.data_scale = 0
-                new_col = self.to_canonical_column(detect_col)
             else:
-                new_col = self.to_canonical_column(backend_column)
+                self._log(
+                    "No fractional seconds detected, using data_scale=0",
+                    detail=VVERBOSE,
+                )
+                detect_col.data_scale = 0
+            new_col = self.to_canonical_column(detect_col)
+        else:
+            new_col = self.to_canonical_column(backend_column)
         return new_col
 
     def to_canonical_column(self, column):
@@ -2343,7 +2042,7 @@ class BackendTableInterface(metaclass=ABCMeta):
 
     def _warning(self, msg):
         self._messages.warning(msg)
-        logger.warn(msg)
+        logger.warning(msg)
 
     # Final table enforced methods/properties
 
@@ -2356,7 +2055,6 @@ class BackendTableInterface(metaclass=ABCMeta):
         """Return the default location for current backend table when the backend supports per table FS locations.
         Only applies to Hadoop based backends.
         """
-        pass
 
     @abstractmethod
     def get_staging_table_location(self):
@@ -2381,28 +2079,20 @@ class BackendTableInterface(metaclass=ABCMeta):
         return self._offload_step(command_steps.STEP_ALTER_TABLE, step_fn)
 
     def cleanup_staging_area_step(self):
-        self._offload_step(
-            command_steps.STEP_STAGING_CLEANUP, lambda: self.cleanup_staging_area()
-        )
+        self._offload_step(command_steps.STEP_STAGING_CLEANUP, lambda: self.cleanup_staging_area())
 
-    def compute_final_table_stats_step(
-        self, incremental_stats, materialized_join=False
-    ):
+    def compute_final_table_stats_step(self, incremental_stats, materialized_join=False):
         if self.table_stats_compute_supported():
             self._offload_step(
                 command_steps.STEP_COMPUTE_STATS,
-                lambda: self.compute_final_table_stats(
-                    incremental_stats, materialized_join=materialized_join
-                ),
+                lambda: self.compute_final_table_stats(incremental_stats, materialized_join=materialized_join),
                 optional=True,
             )
 
     def create_backend_db_step(self) -> list:
         executed_commands = []
         if self.create_database_supported() and self._user_requested_create_backend_db:
-            executed_commands: list = self._offload_step(
-                command_steps.STEP_CREATE_DB, lambda: self.create_db()
-            )
+            executed_commands = self._offload_step(command_steps.STEP_CREATE_DB, lambda: self.create_db())
         return executed_commands
 
     def create_backend_table_step(self) -> list:
@@ -2418,9 +2108,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         )
 
     def load_final_table_step(self, sync=None):
-        self._offload_step(
-            command_steps.STEP_FINAL_LOAD, lambda: self.load_final_table(sync=sync)
-        )
+        self._offload_step(command_steps.STEP_FINAL_LOAD, lambda: self.load_final_table(sync=sync))
 
     def setup_staging_area_step(self, staging_file):
         self._offload_step(
@@ -2472,7 +2160,6 @@ class BackendTableInterface(metaclass=ABCMeta):
         """Copy data from the staged load table into the final backend table.
         Each backend has its own SQL for doing this.
         """
-        pass
 
     @abstractmethod
     def load_materialized_join(

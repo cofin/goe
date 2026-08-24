@@ -14,28 +14,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" goe_log: GOE general logging routines
+"""goe_log: GOE general logging routines
 
-    Replacement of 'loggers' from goe.py that avoid globals
-    and do not rely on 'expected' parameter structure
+Replacement of 'loggers' from goe.py that avoid globals
+and do not rely on 'expected' parameter structure
 """
 
-from argparse import Namespace
-from datetime import datetime
 import logging
 import sys
 import traceback
-
+from argparse import Namespace
+from datetime import datetime
 
 from goe.offload.offload_messages import (
-    OffloadMessages,
     NORMAL,
     VERBOSE,
-    VVERBOSE,
     VERBOSENESS,
+    VVERBOSE,
+    OffloadMessages,
 )
 from goe.util.misc_functions import get_option
-
 
 ###############################################################################
 # LOGGING
@@ -84,9 +82,7 @@ def get_default_log():
     return global_log_fh
 
 
-def log(
-    line, detail=NORMAL, ansi_code=None, log_fh=None, options=get_default_options()
-):
+def log(line, detail=NORMAL, ansi_code=None, log_fh=None, options=get_default_options()):
     # Log to a (text, on disk) log file
     log_handle = log_fh or global_log_fh
     if log_handle:
@@ -113,11 +109,7 @@ def log_exception(exception, detail=NORMAL, log_fh=None, options=get_default_opt
         log_handle.write(traceback.format_exc() + "\n")
         log_handle.flush()
 
-    if (
-        detail > NORMAL
-        or get_option(options, "verbose")
-        or get_option(options, "vverbose")
-    ):
+    if detail > NORMAL or get_option(options, "verbose") or get_option(options, "vverbose"):
         sys.stdout.write(traceback.format_exc() + "\n")
         sys.stdout.flush()
     else:
@@ -135,8 +127,7 @@ def log_timestamp(ansi_code="grey", options=get_default_options()):
         ts = ts.replace(microsecond=0)
         log(ts.strftime("%c"), detail=VERBOSE, ansi_code=ansi_code, options=options)
         return ts
-    else:
-        return None
+    return None
 
 
 def log_timedelta(start_time, ansi_code="grey", options=get_default_options()):

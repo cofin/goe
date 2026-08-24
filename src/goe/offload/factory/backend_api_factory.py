@@ -15,6 +15,7 @@
 # limitations under the License.
 
 from contextlib import contextmanager
+
 from goe.offload.backend_api import VALID_REMOTE_DB_TYPES
 from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
@@ -56,7 +57,7 @@ def backend_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_IMPALA:
+    if backend_type == DBTYPE_IMPALA:
         from goe.offload.hadoop.impala_backend_api import BackendImpalaApi
 
         return BackendImpalaApi(
@@ -67,7 +68,7 @@ def backend_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_BIGQUERY:
+    if backend_type == DBTYPE_BIGQUERY:
         from goe.offload.bigquery.bigquery_backend_api import BackendBigQueryApi
 
         return BackendBigQueryApi(
@@ -78,7 +79,7 @@ def backend_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_SPARK:
+    if backend_type == DBTYPE_SPARK:
         from goe.offload.spark.spark_thrift_backend_api import BackendSparkThriftApi
 
         return BackendSparkThriftApi(
@@ -89,7 +90,7 @@ def backend_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_SNOWFLAKE:
+    if backend_type == DBTYPE_SNOWFLAKE:
         from goe.offload.snowflake.snowflake_backend_api import BackendSnowflakeApi
 
         return BackendSnowflakeApi(
@@ -100,7 +101,7 @@ def backend_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    elif backend_type == DBTYPE_SYNAPSE:
+    if backend_type == DBTYPE_SYNAPSE:
         from goe.offload.microsoft.synapse_backend_api import BackendSynapseApi
 
         return BackendSynapseApi(
@@ -111,8 +112,7 @@ def backend_api_factory(
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-    else:
-        raise NotImplementedError("Unsupported remote system type: %s" % backend_type)
+    raise NotImplementedError("Unsupported remote system type: %s" % backend_type)
 
 
 @contextmanager

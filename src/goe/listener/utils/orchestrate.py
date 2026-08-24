@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Simple Orchestration utilities.
-"""
+"""Simple Orchestration utilities."""
 
 from goe.listener import exceptions
 from goe.orchestration.orchestration_lock import (
@@ -24,10 +22,7 @@ from goe.orchestration.orchestration_lock import (
 
 
 def check_for_running_command(owner_table: str) -> bool:
-    """
-
-
-    Args:
+    """Args:
         owner_table (str): _description_
 
     Returns:

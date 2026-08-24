@@ -27,11 +27,8 @@ from goe.connect.connect_functions import (
     test_header,
     warning,
 )
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
-from goe.offload import offload_constants
-from goe.util.goe_version import GOEVersion
-
 from goe.goe import (
+    NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE,
     comp_ver_check,
     nls_lang_exists,
     nls_lang_has_charset,
@@ -39,8 +36,10 @@ from goe.goe import (
     oracle_offload_transport_connection,
     set_nls_lang_default,
     verbose,
-    NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE,
 )
+from goe.offload import offload_constants
+from goe.offload.factory.frontend_api_factory import frontend_api_factory
+from goe.util.goe_version import GOEVersion
 
 GOE_MINIMUM_ORACLE_VERSION = "10.2.0.1"
 
@@ -52,8 +51,7 @@ def static_frontend_name(orchestration_config):
     """
     if orchestration_config.db_type == offload_constants.DBTYPE_MSSQL:
         return orchestration_config.db_type.upper()
-    else:
-        return orchestration_config.db_type.capitalize()
+    return orchestration_config.db_type.capitalize()
 
 
 def test_frontend_db_connectivity(orchestration_config, messages):
@@ -76,9 +74,7 @@ def test_frontend_db_connectivity(orchestration_config, messages):
         sys.exit(1)
 
     if orchestration_config.rdbms_app_user:
-        test_name = "%s transport user connectivity" % static_frontend_name(
-            orchestration_config
-        )
+        test_name = "%s transport user connectivity" % static_frontend_name(orchestration_config)
         try:
             test_header(test_name)
             # Ignore the client returned below, it is no use to us in connect.
@@ -138,21 +134,16 @@ def test_oracle(orchestration_config, messages):
         orchestration_config.db_type = offload_constants.DBTYPE_ORACLE
         set_nls_lang_default(orchestration_config)
         detail(
-            'NLS_LANG not specified in environment, this will be set at offload time to "%s"'
-            % os.environ["NLS_LANG"]
+            'NLS_LANG not specified in environment, this will be set at offload time to "%s"' % os.environ["NLS_LANG"]
         )
         warning(test_name)
+    elif not nls_lang_has_charset():
+        detail(NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE % os.environ["NLS_LANG"])
+        failure(test_name)
+        raise FatalTestFailure
     else:
-        if not nls_lang_has_charset():
-            detail(
-                NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE
-                % os.environ["NLS_LANG"]
-            )
-            failure(test_name)
-            raise FatalTestFailure
-        else:
-            detail(os.environ["NLS_LANG"])
-            success(test_name)
+        detail(os.environ["NLS_LANG"])
+        success(test_name)
 
     cx = test_oracle_connectivity(orchestration_config)
     frontend_api = frontend_api_factory(
@@ -185,18 +176,10 @@ def test_oracle(orchestration_config, messages):
         detail("Oracle component version matches binary version")
         success(test_name)
     elif v_goe[-3:] == "-RC":
-        detail(
-            "Binary version is release candidate (RC) cannot verify match with Oracle component version"
-        )
+        detail("Binary version is release candidate (RC) cannot verify match with Oracle component version")
         success(test_name)
     else:
-        detail(
-            "Mismatch between Oracle component version ("
-            + v_ora
-            + ") and binary version ("
-            + v_goe
-            + ")!"
-        )
+        detail("Mismatch between Oracle component version (" + v_ora + ") and binary version (" + v_goe + ")!")
         failure(test_name, test_hint)
 
     test_name = "Oracle charactersets (IANA)"
@@ -214,9 +197,7 @@ def test_oracle(orchestration_config, messages):
         try:
             test_name = "Oracle %s" % (attr)
             test_header(test_name)
-            r = frontend_api.execute_query_fetch_one(
-                "SELECT SYS_CONTEXT('USERENV', '" + attr + "') FROM dual"
-            )[0]
+            r = frontend_api.execute_query_fetch_one("SELECT SYS_CONTEXT('USERENV', '" + attr + "') FROM dual")[0]
             detail(r)
             success(test_name)
 
@@ -232,6 +213,6 @@ def run_frontend_tests(orchestration_config, messages):
         test_oracle(orchestration_config, messages)
     else:
         frontend_api = test_frontend_db_connectivity(orchestration_config, messages)
-        test_name = "{} version".format(static_frontend_name(orchestration_config))
+        test_name = f"{static_frontend_name(orchestration_config)} version"
         test_header(test_name)
         detail(frontend_api.frontend_version())

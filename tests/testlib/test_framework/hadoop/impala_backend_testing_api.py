@@ -15,40 +15,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Impala implementation of BackendTestingApi: An extension of BackendApi used purely for code relating to the setup,
-    processing and verification of integration tests.
+"""Impala implementation of BackendTestingApi: An extension of BackendApi used purely for code relating to the setup,
+processing and verification of integration tests.
 """
 
 import logging
 
 from goe.offload.column_metadata import (
-    CanonicalColumn,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_VARIABLE_STRING,
     GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_FLOAT,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
+    GOE_TYPE_INTERVAL_DS,
+    GOE_TYPE_INTERVAL_YM,
+    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_LARGE_STRING,
     GOE_TYPE_TIME,
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_BOOLEAN,
+    GOE_TYPE_VARIABLE_STRING,
+    CanonicalColumn,
 )
 from goe.offload.hadoop.hadoop_column import (
-    HadoopColumn,
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_BOOLEAN,
-    HADOOP_TYPE_CHAR,
     HADOOP_TYPE_DATE,
     HADOOP_TYPE_DECIMAL,
     HADOOP_TYPE_DOUBLE,
@@ -59,12 +57,12 @@ from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_STRING,
     HADOOP_TYPE_TIMESTAMP,
     HADOOP_TYPE_TINYINT,
+    HadoopColumn,
 )
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.offload_messages import VVERBOSE
 from tests.testlib.test_framework.hadoop.hadoop_backend_testing_api import (
     BackendHadoopTestingApi,
 )
-
 
 ###############################################################################
 # CONSTANTS
@@ -97,7 +95,7 @@ class BackendImpalaTestingApi(BackendHadoopTestingApi):
         do_not_connect=False,
     ):
         """CONSTRUCTOR"""
-        super(BackendImpalaTestingApi, self).__init__(
+        super().__init__(
             connection_options,
             backend_type,
             messages,
@@ -113,13 +111,10 @@ class BackendImpalaTestingApi(BackendHadoopTestingApi):
     def _create_table_properties(self):
         if self._db_api.transactional_tables_default():
             return {"external.table.purge": "TRUE"}, True
-        else:
-            return None, False
+        return None, False
 
     def _define_test_partition_function(self, udf_name):
-        raise NotImplementedError(
-            "_define_test_partition_function() not implemented for Impala"
-        )
+        raise NotImplementedError("_define_test_partition_function() not implemented for Impala")
 
     def _goe_type_mapping_column_definitions(self, filter_column=None):
         """Returns a dict of dicts defining columns for GOE_BACKEND_TYPE_MAPPING test table.
@@ -129,28 +124,20 @@ class BackendImpalaTestingApi(BackendHadoopTestingApi):
         def name(*args):
             return self._goe_type_mapping_column_name(*args)
 
-        all_columns = super(
-            BackendImpalaTestingApi, self
-        )._goe_type_mapping_column_definitions(filter_column=filter_column)
+        all_columns = super()._goe_type_mapping_column_definitions(filter_column=filter_column)
         all_columns.update(
             {
                 name(HADOOP_TYPE_REAL): {
                     "column": HadoopColumn(name(HADOOP_TYPE_REAL), HADOOP_TYPE_REAL),
-                    "expected_canonical_column": CanonicalColumn(
-                        name(HADOOP_TYPE_REAL), GOE_TYPE_DOUBLE
-                    ),
+                    "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_REAL), GOE_TYPE_DOUBLE),
                 },
                 name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL): {
-                    "column": HadoopColumn(
-                        name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL), HADOOP_TYPE_REAL
-                    ),
+                    "column": HadoopColumn(name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL), HADOOP_TYPE_REAL),
                     "expected_canonical_column": CanonicalColumn(
                         name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
                     ),
                     "present_options": {
-                        "decimal_columns_csv_list": [
-                            name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL)
-                        ],
+                        "decimal_columns_csv_list": [name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL)],
                         "decimal_columns_type_list": ["38,18"],
                     },
                 },
@@ -158,17 +145,14 @@ class BackendImpalaTestingApi(BackendHadoopTestingApi):
         )
         if filter_column:
             return all_columns[filter_column]
-        else:
-            return all_columns
+        return all_columns
 
     ###########################################################################
     # PUBLIC METHODS
     ###########################################################################
 
     def backend_test_type_canonical_time(self):
-        raise NotImplementedError(
-            "backend_test_type_canonical_time() is not implemented for Impala"
-        )
+        raise NotImplementedError("backend_test_type_canonical_time() is not implemented for Impala")
 
     def create_backend_offload_location(self, goe_user=None):
         """Create HDFS_HOME and HDFS_DATA for Impala"""
@@ -222,21 +206,9 @@ class BackendImpalaTestingApi(BackendHadoopTestingApi):
         return self.execute_ddl(sql, sync=sync)
 
     def expected_canonical_to_backend_type_map(self, override_used=None):
-        tinyint_override = (
-            HADOOP_TYPE_TINYINT
-            if "integer_1_columns_csv" in (override_used or {})
-            else None
-        )
-        smallint_override = (
-            HADOOP_TYPE_SMALLINT
-            if "integer_2_columns_csv" in (override_used or {})
-            else None
-        )
-        int_override = (
-            HADOOP_TYPE_INT
-            if "integer_4_columns_csv" in (override_used or {})
-            else None
-        )
+        tinyint_override = HADOOP_TYPE_TINYINT if "integer_1_columns_csv" in (override_used or {}) else None
+        smallint_override = HADOOP_TYPE_SMALLINT if "integer_2_columns_csv" in (override_used or {}) else None
+        int_override = HADOOP_TYPE_INT if "integer_4_columns_csv" in (override_used or {}) else None
         return {
             GOE_TYPE_FIXED_STRING: HADOOP_TYPE_STRING,
             GOE_TYPE_LARGE_STRING: HADOOP_TYPE_STRING,
@@ -251,9 +223,7 @@ class BackendImpalaTestingApi(BackendHadoopTestingApi):
             GOE_TYPE_DECIMAL: HADOOP_TYPE_DECIMAL,
             GOE_TYPE_FLOAT: HADOOP_TYPE_FLOAT,
             GOE_TYPE_DOUBLE: HADOOP_TYPE_DOUBLE,
-            GOE_TYPE_DATE: HADOOP_TYPE_DATE
-            if self.canonical_date_supported()
-            else HADOOP_TYPE_TIMESTAMP,
+            GOE_TYPE_DATE: HADOOP_TYPE_DATE if self.canonical_date_supported() else HADOOP_TYPE_TIMESTAMP,
             GOE_TYPE_TIME: HADOOP_TYPE_STRING,
             GOE_TYPE_TIMESTAMP: HADOOP_TYPE_TIMESTAMP,
             GOE_TYPE_TIMESTAMP_TZ: HADOOP_TYPE_TIMESTAMP,
@@ -262,9 +232,7 @@ class BackendImpalaTestingApi(BackendHadoopTestingApi):
             GOE_TYPE_BOOLEAN: HADOOP_TYPE_BOOLEAN,
         }
 
-    def partition_has_stats(
-        self, db_name, table_name, partition_tuples, colstats=False
-    ):
+    def partition_has_stats(self, db_name, table_name, partition_tuples, colstats=False):
         """This code was moved from test suite, I don't fully understand the logic hence not put in
         BackendApi. If we come to need this functionality in production code then we should
         make this a wrapper for a fully understood version
@@ -272,14 +240,10 @@ class BackendImpalaTestingApi(BackendHadoopTestingApi):
         """
         assert db_name and table_name
         assert partition_tuples
-        assert isinstance(partition_tuples, list) and isinstance(
-            partition_tuples[0], (tuple, list)
-        )
+        assert isinstance(partition_tuples, list) and isinstance(partition_tuples[0], (tuple, list))
         partition = self._db_api.format_hadoop_partition_clause(partition_tuples)
         self._debug("Testing partition has stats: %s" % partition)
-        _, part_stats, col_stats = self._db_api.get_table_and_partition_stats(
-            db_name, table_name, as_dict=False
-        )
+        _, part_stats, col_stats = self._db_api.get_table_and_partition_stats(db_name, table_name, as_dict=False)
         if colstats:
             self._log("Checking column stats in: %s" % str(col_stats), detail=VVERBOSE)
             if not col_stats:
@@ -288,17 +252,13 @@ class BackendImpalaTestingApi(BackendHadoopTestingApi):
             if part_stat:
                 if part_stat[1] > 0:
                     return True
-                else:
-                    return False
+                return False
         else:
-            self._log(
-                "Checking partition stats in: %s" % str(part_stats), detail=VVERBOSE
-            )
+            self._log("Checking partition stats in: %s" % str(part_stats), detail=VVERBOSE)
             part_stat = [
                 part[1]
                 for part in part_stats
-                if part[0].replace('"', "").replace(",", "/")
-                == partition.replace('"', "")
+                if part[0].replace('"', "").replace(",", "/") == partition.replace('"', "")
             ]
             if part_stat:
                 if part_stat[0] > -1:

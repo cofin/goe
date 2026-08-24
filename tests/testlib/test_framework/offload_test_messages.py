@@ -29,9 +29,7 @@ class OffloadTestMessages:
     # PUBLIC METHODS
     ###########################################################################
 
-    def get_lines_from_log(
-        self, search_text, search_from_text="", max_matches=None, log_file: str = None
-    ) -> list:
+    def get_lines_from_log(self, search_text, search_from_text="", max_matches=None, log_file: str = None) -> list:
         """Searches for text in the logfile starting from search_from_text
         or the top of the file if search_from_text is blank.
         Returns all matching lines (up to max_matches).
@@ -47,16 +45,13 @@ class OffloadTestMessages:
             for line in lf:
                 if not start_found:
                     start_found = search_from_text in line
-                else:
-                    if search_text in line:
-                        matches.append(line)
-                        if max_matches and len(matches) >= max_matches:
-                            return matches
+                elif search_text in line:
+                    matches.append(line)
+                    if max_matches and len(matches) >= max_matches:
+                        return matches
         return matches
 
-    def get_line_from_log(
-        self, search_text, search_from_text="", log_file: str = None
-    ) -> str:
+    def get_line_from_log(self, search_text, search_from_text="", log_file: str = None) -> str:
         matches = self.get_lines_from_log(
             search_text,
             search_from_text=search_from_text,

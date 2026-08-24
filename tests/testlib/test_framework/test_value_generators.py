@@ -14,11 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Function to generate test values, e.g. a decimal of precision/scale p, s.
-"""
+"""Function to generate test values, e.g. a decimal of precision/scale p, s."""
 
-from decimal import Decimal
 import random
+from decimal import Decimal
 
 
 def decimal_string(p, s, ch="9", cx_safe=False):
@@ -38,7 +37,7 @@ def decimal_string(p, s, ch="9", cx_safe=False):
     return str_num.rjust(p, ch)
 
 
-class TestDecimal(object):
+class TestDecimal:
     """Generate a Python Decimal"""
 
     @classmethod
@@ -59,5 +58,4 @@ class TestDecimal(object):
         if s:
             decimal_part = random.randint(0, (10**s) - 1)
             return Decimal("%d.%s" % (integral_part, str(decimal_part).zfill(s)))
-        else:
-            return Decimal(str(integral_part))
+        return Decimal(str(integral_part))

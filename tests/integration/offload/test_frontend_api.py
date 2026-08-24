@@ -27,7 +27,6 @@ from tests.testlib.test_framework.factory.frontend_testing_api_factory import (
 from tests.testlib.test_framework.test_functions import get_test_messages
 from tests.unit.offload.test_frontend_api import TestFrontendApi
 
-
 DIM_NAME = "INTEG_FRONTEND_API_DIM"
 FACT_NAME = "INTEG_FRONTEND_API_FACT"
 
@@ -79,9 +78,7 @@ class TestCurrentFrontendApi(TestFrontendApi):
             self.config,
             self.test_api,
             messages,
-            self.test_api.sales_based_fact_create_ddl(
-                self.db, self.part_table, simple_partition_names=True
-            ),
+            self.test_api.sales_based_fact_create_ddl(self.db, self.part_table, simple_partition_names=True),
         )
 
     def test_full_api_on_current_frontend(self):

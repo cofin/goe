@@ -17,9 +17,9 @@ from textwrap import dedent
 import pytest
 
 from goe.offload.offload_constants import (
+    CONFLICTING_DATA_ID_OPTIONS_EXCEPTION_TEXT,
     DBTYPE_ORACLE,
     DBTYPE_TERADATA,
-    CONFLICTING_DATA_ID_OPTIONS_EXCEPTION_TEXT,
     IPA_PREDICATE_TYPE_FIRST_OFFLOAD_EXCEPTION_TEXT,
     IPA_PREDICATE_TYPE_REQUIRES_PREDICATE_EXCEPTION_TEXT,
 )
@@ -45,7 +45,6 @@ from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )
-
 from tests.integration.scenarios.assertion_functions import (
     backend_table_exists,
     check_metadata,
@@ -67,7 +66,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 EXC_TABLE = "STORY_PBO_EXC"
 DIM_TABLE = "STORY_PBO_DIM"
@@ -102,24 +100,18 @@ def data_db(schema, config):
 def const_to_date_expr(config, constant):
     if config.db_type == DBTYPE_TERADATA:
         return f"DATE '{constant}'"
-    else:
-        return f"DATE' {constant}'"
+    return f"DATE' {constant}'"
 
 
 def late_dim_filter_clause(config):
-    return "time_id BETWEEN {} AND  {}".format(
-        const_to_date_expr(config, test_constants.SALES_BASED_FACT_HV_3),
-        const_to_date_expr(config, test_constants.SALES_BASED_FACT_HV_4),
-    )
+    return f"time_id BETWEEN {const_to_date_expr(config, test_constants.SALES_BASED_FACT_HV_3)} AND  {const_to_date_expr(config, test_constants.SALES_BASED_FACT_HV_4)}"
 
 
-def gen_simple_unicode_dimension_ddl(
-    config, frontend_api, schema, table_name, unicode_ch1, unicode_ch2
-) -> list:
+def gen_simple_unicode_dimension_ddl(config, frontend_api, schema, table_name, unicode_ch1, unicode_ch2) -> list:
     if config.db_type == DBTYPE_ORACLE:
-        subquery = (
-            """SELECT 1 AS id, '%s' AS data FROM dual UNION ALL SELECT 2 AS id, '%s' AS data FROM dual"""
-            % (unicode_ch1, unicode_ch2)
+        subquery = """SELECT 1 AS id, '%s' AS data FROM dual UNION ALL SELECT 2 AS id, '%s' AS data FROM dual""" % (
+            unicode_ch1,
+            unicode_ch2,
         )
     elif config.db_type == DBTYPE_TERADATA:
         subquery = dedent(
@@ -202,26 +194,18 @@ def check_pbo_metadata(
         messages.log("Failed metadata check")
         return False
     if number_of_predicates is not None:
-        if (
-            len(metadata.decode_incremental_predicate_values() or [])
-            != number_of_predicates
-        ):
+        if len(metadata.decode_incremental_predicate_values() or []) != number_of_predicates:
             messages.log(
-                "Length of decode_incremental_predicate_values(%s) != %s"
-                % (frontend_name, number_of_predicates)
+                "Length of decode_incremental_predicate_values(%s) != %s" % (frontend_name, number_of_predicates)
             )
             return False
     for check_val in values_in_predicate_value_metadata or []:
         if not any(check_val in _ for _ in metadata.incremental_predicate_value):
-            messages.log(
-                "Value not found in INCREMENTAL_PREDICATE_VALUE: %s" % check_val
-            )
+            messages.log("Value not found in INCREMENTAL_PREDICATE_VALUE: %s" % check_val)
             return False
     for check_val in values_not_in_predicate_value_metadata or []:
         if any(check_val in _ for _ in (metadata.incremental_predicate_value or [])):
-            messages.log(
-                "Value should NOT be in INCREMENTAL_PREDICATE_VALUE: %s" % check_val
-            )
+            messages.log("Value should NOT be in INCREMENTAL_PREDICATE_VALUE: %s" % check_val)
             return False
     return True
 
@@ -237,9 +221,7 @@ def check_predicate_count_matches_log(
 ):
     """Compare RDBMS count to logged count."""
     test_messages.log("check_predicate_count_matches_log(%s)" % test_id)
-    app_count = frontend_api.get_table_row_count(
-        schema, table_name, filter_clause=where_clause
-    )
+    app_count = frontend_api.get_table_row_count(schema, table_name, filter_clause=where_clause)
     offload_count = get_offload_row_count_from_log(offload_messages, test_messages)
     if app_count != offload_count:
         test_messages.log("%s != %s" % (app_count, offload_count))
@@ -288,9 +270,10 @@ def pbo_assertion(
 def test_offload_pbo_exceptions(config, schema, data_db):
     """Check exceptions are thrown in correct cases."""
     id = "test_offload_pbo_exceptions"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         # Setup
@@ -299,22 +282,16 @@ def test_offload_pbo_exceptions(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, EXC_TABLE
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, EXC_TABLE),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, EXC_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, EXC_TABLE),
             ],
         )
 
         # Initial offload with --no-modify-hybrid-view should fail.
         options = {
             "owner_table": schema + "." + EXC_TABLE,
-            "offload_predicate": GenericPredicate(
-                'column(prod_subcategory) = string("Camcorders")'
-            ),
+            "offload_predicate": GenericPredicate('column(prod_subcategory) = string("Camcorders")'),
             "offload_predicate_modify_hybrid_view": False,
             "reset_backend_table": True,
             "execute": False,
@@ -361,9 +338,7 @@ def test_offload_pbo_exceptions(config, schema, data_db):
         # Offload With Invalid Options: unknown column name.
         options = {
             "owner_table": schema + "." + EXC_TABLE,
-            "offload_predicate": GenericPredicate(
-                'column(not_a_column) = string("NOPE")'
-            ),
+            "offload_predicate": GenericPredicate('column(not_a_column) = string("NOPE")'),
             "reset_backend_table": True,
             "execute": False,
         }
@@ -377,9 +352,7 @@ def test_offload_pbo_exceptions(config, schema, data_db):
         # Offload with no matching rows.
         options = {
             "owner_table": schema + "." + EXC_TABLE,
-            "offload_predicate": GenericPredicate(
-                'column(txn_desc) = string("No such data")'
-            ),
+            "offload_predicate": GenericPredicate('column(txn_desc) = string("No such data")'),
             "reset_backend_table": True,
             "execute": False,
         }
@@ -394,13 +367,12 @@ def test_offload_pbo_exceptions(config, schema, data_db):
 def test_offload_pbo_dim(config, schema, data_db):
     """Standard PBO on a non-partitioned table."""
     id = "test_offload_pbo_dim"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -408,13 +380,9 @@ def test_offload_pbo_dim(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(
-                schema, DIM_TABLE
-            ),
+            frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, DIM_TABLE),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, DIM_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, DIM_TABLE),
             ],
         )
 
@@ -430,9 +398,7 @@ def test_offload_pbo_dim(config, schema, data_db):
             config,
             messages,
         )
-        assert not backend_table_exists(
-            config, backend_api, messages, data_db, DIM_TABLE
-        )
+        assert not backend_table_exists(config, backend_api, messages, data_db, DIM_TABLE)
 
         # Offload 1st string predicate of dimension.
         options = {
@@ -592,13 +558,12 @@ def test_offload_pbo_dim(config, schema, data_db):
 def test_offload_pbo_unicode(config, schema, data_db):
     """PBO testing with unicode data."""
     id = "test_offload_pbo_unicode"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -610,9 +575,7 @@ def test_offload_pbo_unicode(config, schema, data_db):
                 config, frontend_api, schema, UNICODE_TABLE, UCODE_VALUE1, UCODE_VALUE2
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, UNICODE_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, UNICODE_TABLE),
             ],
         )
 
@@ -621,8 +584,7 @@ def test_offload_pbo_unicode(config, schema, data_db):
             "owner_table": schema + "." + UNICODE_TABLE,
             "unicode_string_columns_csv": "data",
             "offload_predicate": GenericPredicate(
-                '((column(id) = numeric(1)) and (column(data) = string("%s")))'
-                % UCODE_VALUE1
+                '((column(id) = numeric(1)) and (column(data) = string("%s")))' % UCODE_VALUE1
             ),
             "reset_backend_table": True,
             "create_backend_db": True,
@@ -665,9 +627,7 @@ def test_offload_pbo_unicode(config, schema, data_db):
         # Offload 2nd unicode predicate of dimension.
         options = {
             "owner_table": schema + "." + UNICODE_TABLE,
-            "offload_predicate": GenericPredicate(
-                '((column(data) = string("%s")))' % UCODE_VALUE2
-            ),
+            "offload_predicate": GenericPredicate('((column(data) = string("%s")))' % UCODE_VALUE2),
             "execute": True,
         }
         messages.log(f"{id}:2", detail=VVERBOSE)
@@ -708,13 +668,12 @@ def test_offload_pbo_unicode(config, schema, data_db):
 def test_offload_pbo_char_pad(config, schema, data_db):
     """PBO testing with CHAR padded column."""
     id = "test_offload_pbo_char_pad"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -722,13 +681,9 @@ def test_offload_pbo_char_pad(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=gen_char_frontend_ddl(
-                config, frontend_api, schema, CHAR_TABLE
-            ),
+            frontend_sqls=gen_char_frontend_ddl(config, frontend_api, schema, CHAR_TABLE),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, CHAR_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, CHAR_TABLE),
             ],
         )
 
@@ -791,13 +746,12 @@ def test_offload_pbo_char_pad(config, schema, data_db):
 def test_offload_pbo_ts(config, schema, data_db):
     """PBO testing with a TIMESTAMP column."""
     id = "test_offload_pbo_ts"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -807,18 +761,14 @@ def test_offload_pbo_ts(config, schema, data_db):
             messages,
             frontend_sqls=gen_ts_frontend_ddl(config, frontend_api, schema, TS_TABLE),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, TS_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, TS_TABLE),
             ],
         )
 
         # Offload 1st TIMESTAMP predicate.
         options = {
             "owner_table": schema + "." + TS_TABLE,
-            "offload_predicate": GenericPredicate(
-                "(column(ts) < datetime(2020-02-01))"
-            ),
+            "offload_predicate": GenericPredicate("(column(ts) < datetime(2020-02-01))"),
             "allow_nanosecond_timestamp_columns": True,
             "reset_backend_table": True,
             "create_backend_db": True,
@@ -862,13 +812,12 @@ def test_offload_pbo_ts(config, schema, data_db):
 def test_offload_pbo_range(config, schema, data_db):
     """PBO testing with a RANGE partitioned table."""
     id = "test_offload_pbo_range"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -876,13 +825,9 @@ def test_offload_pbo_range(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.sales_based_fact_create_ddl(
-                schema, RANGE_TABLE, simple_partition_names=True
-            ),
+            frontend_sqls=frontend_api.sales_based_fact_create_ddl(schema, RANGE_TABLE, simple_partition_names=True),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, RANGE_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, RANGE_TABLE),
             ],
         )
 
@@ -890,8 +835,7 @@ def test_offload_pbo_range(config, schema, data_db):
         options = {
             "owner_table": schema + "." + RANGE_TABLE,
             "offload_predicate": GenericPredicate(
-                "(column(time_id) = datetime(%s))"
-                % (test_constants.SALES_BASED_FACT_HV_1)
+                "(column(time_id) = datetime(%s))" % (test_constants.SALES_BASED_FACT_HV_1)
             ),
             "ipa_predicate_type": INCREMENTAL_PREDICATE_TYPE_RANGE,
             "reset_backend_table": True,
@@ -1012,16 +956,15 @@ def test_offload_pbo_range(config, schema, data_db):
 def test_offload_pbo_list(config, schema, data_db):
     """PBO testing with a LIST partitioned table."""
     id = "test_offload_pbo_list"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         if not frontend_api.goe_lpa_supported():
             pytest.skip(f"Skipping {id} for system/type: {config.db_type}/LIST")
 
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -1037,9 +980,7 @@ def test_offload_pbo_list(config, schema, data_db):
                 with_drop=True,
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LIST_TABLE
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LIST_TABLE),
             ],
         )
 
@@ -1103,8 +1044,7 @@ def test_offload_pbo_list(config, schema, data_db):
             schema,
             LIST_TABLE,
             id,
-            "yrmon = %s AND channel_id = 3"
-            % const_to_date_expr(config, test_constants.SALES_BASED_FACT_HV_1),
+            "yrmon = %s AND channel_id = 3" % const_to_date_expr(config, test_constants.SALES_BASED_FACT_HV_1),
         )
 
         # Attempt to offload partition from LIST table while already in PREDICATE mode.
@@ -1153,6 +1093,5 @@ def test_offload_pbo_list(config, schema, data_db):
             schema,
             LIST_TABLE,
             id,
-            "yrmon = %s AND channel_id = 4"
-            % const_to_date_expr(config, test_constants.SALES_BASED_FACT_HV_1),
+            "yrmon = %s AND channel_id = 4" % const_to_date_expr(config, test_constants.SALES_BASED_FACT_HV_1),
         )

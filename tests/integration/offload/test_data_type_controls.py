@@ -12,21 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 from typing import TYPE_CHECKING
 
+import pytest
+
 from goe.config import orchestration_defaults
-from goe.offload.column_metadata import (
-    match_table_column,
-    CANONICAL_CHAR_SEMANTICS_UNICODE,
-)
 from goe.offload import offload_constants
+from goe.offload.column_metadata import (
+    CANONICAL_CHAR_SEMANTICS_UNICODE,
+    match_table_column,
+)
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
 from goe.offload.offload_messages import OffloadMessages
-
 from tests.integration.test_functions import (
     build_current_options,
     get_default_test_user,
@@ -92,9 +92,7 @@ def create_test_table(
             max_backend_scale=max_decimal_scale,
             max_decimal_integral_magnitude=max_decimal_integral_magnitude,
             all_chars_notnull=all_chars_notnull,
-            supported_canonical_types=list(
-                backend_api.expected_canonical_to_backend_type_map().keys()
-            ),
+            supported_canonical_types=list(backend_api.expected_canonical_to_backend_type_map().keys()),
         )
 
 
@@ -124,18 +122,11 @@ def check_type_mapping_offload_columns(
             offload_constants.DBTYPE_SYNAPSE,
         ]:
             # This is horrible and will be reversed by issue-180 - simply remove this entire "if" block
-            messages.log(
-                "Skipping column COL_BINARY_FLOAT_DOUBLE until issue-180 is actioned"
-            )
+            messages.log("Skipping column COL_BINARY_FLOAT_DOUBLE until issue-180 is actioned")
             continue
         use_overrides = overrides
-        if (
-            expected_canonical_column.char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE
-            and not overrides
-        ):
-            use_overrides = {
-                "unicode_string_columns_csv": expected_canonical_column.name
-            }
+        if expected_canonical_column.char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE and not overrides:
+            use_overrides = {"unicode_string_columns_csv": expected_canonical_column.name}
         expected_backend_column = backend_api.expected_backend_column(
             expected_canonical_column,
             override_used=use_overrides,
@@ -143,21 +134,19 @@ def check_type_mapping_offload_columns(
         )
         if expected_backend_column:
             backend_column = match_table_column(column_name, backend_columns)
-            assert (
-                backend_column is not None
-            ), f"{column_name} is not in backend columns: {backend_columns}"
+            assert backend_column is not None, f"{column_name} is not in backend columns: {backend_columns}"
             if expected_backend_column.data_precision:
-                assert (
-                    backend_column.data_type == expected_backend_column.data_type
-                ), f"{column_name}: Backend type != expected type"
+                assert backend_column.data_type == expected_backend_column.data_type, (
+                    f"{column_name}: Backend type != expected type"
+                )
                 assert (backend_column.data_precision, backend_column.data_scale) == (
                     expected_backend_column.data_precision,
                     expected_backend_column.data_scale,
                 ), f"{column_name}: Backend precision/scale != expected precision/scale"
             else:
-                assert (
-                    backend_column.data_type == expected_backend_column.data_type
-                ), f"{column_name}: Backend type != expected type"
+                assert backend_column.data_type == expected_backend_column.data_type, (
+                    f"{column_name}: Backend type != expected type"
+                )
 
 
 def test_data_type_mapping_offload(config, schema, data_db):
@@ -203,9 +192,7 @@ def test_data_type_mapping_offload(config, schema, data_db):
     offload_options.update(offload_modifiers)
     run_offload(offload_options)
 
-    check_type_mapping_offload_columns(
-        frontend_api, backend_api, data_db, config, messages
-    )
+    check_type_mapping_offload_columns(frontend_api, backend_api, data_db, config, messages)
 
     # Connections are being left open, explicitly close them.
     frontend_api.close()

@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pdb import post_mortem
 import requests
-import json
 
 # The client would pass the API-KEY in the headers
 headers = {"Content-Type": "application/json", "Authorization": "Bearer SECRET-API-KEY"}

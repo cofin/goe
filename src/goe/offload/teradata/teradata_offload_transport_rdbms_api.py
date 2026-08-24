@@ -26,28 +26,28 @@ from goe.offload.offload_transport_functions import (
     split_ranges_for_id_range,
 )
 from goe.offload.offload_transport_rdbms_api import (
-    OffloadTransportRdbmsApiInterface,
-    TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE,
+    TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_TERADATA_AMP,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_TERADATA_HASHAMP,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT,
+    OffloadTransportRdbmsApiInterface,
 )
 from goe.offload.teradata.teradata_column import (
     TERADATA_TYPE_BIGINT,
     TERADATA_TYPE_BYTEINT,
+    TERADATA_TYPE_DATE,
     TERADATA_TYPE_DECIMAL,
     TERADATA_TYPE_INTEGER,
+    TERADATA_TYPE_INTERVAL_DS,
+    TERADATA_TYPE_INTERVAL_YM,
     TERADATA_TYPE_NUMBER,
     TERADATA_TYPE_SMALLINT,
-    TERADATA_TYPE_DATE,
     TERADATA_TYPE_TIME,
     TERADATA_TYPE_TIMESTAMP,
     TERADATA_TYPE_TIMESTAMP_TZ,
-    TERADATA_TYPE_INTERVAL_DS,
-    TERADATA_TYPE_INTERVAL_YM,
 )
 from goe.util.misc_functions import id_generator
 
@@ -89,10 +89,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
             messages,
             dry_run=dry_run,
         )
-        self.debug(
-            "OffloadTransportTeradataApi setup: (%s, %s)"
-            % (rdbms_owner, rdbms_table_name)
-        )
+        self.debug("OffloadTransportTeradataApi setup: (%s, %s)" % (rdbms_owner, rdbms_table_name))
         self._transport_row_source_query_split_methods = [
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE,
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE,
@@ -148,9 +145,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         id_str = id_generator()
         return "%s_%s" % (id_str, self._rdbms_table_name.lower())
 
-    def get_id_range(
-        self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk=None
-    ) -> tuple:
+    def get_id_range(self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk=None) -> tuple:
         """Function to get the MIN and MAX values for an id column.
 
         Used to create non-overlapping ranges for splitting IOT tables between transport processes.
@@ -158,9 +153,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         """
         predicates = []
         if partition_chunk and partition_chunk.count() == 1:
-            predicates.append(
-                "PARTITION = {}".format(partition_chunk.partition_names().pop())
-            )
+            predicates.append(f"PARTITION = {partition_chunk.partition_names().pop()}")
         if predicate_offload_clause:
             predicates.append(predicate_offload_clause)
 
@@ -168,19 +161,14 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         if predicates:
             predicate = "\nWHERE " + "\nAND ".join(predicates)
 
-        min_max_qry = (
-            'SELECT MIN(%(col)s), MAX(%(col)s) FROM "%(owner)s"."%(table)s"%(predicate)s'
-            % {
-                "owner": self._rdbms_owner,
-                "table": self._rdbms_table_name,
-                "col": rdbms_col_name,
-                "predicate": predicate,
-            }
-        )
+        min_max_qry = 'SELECT MIN(%(col)s), MAX(%(col)s) FROM "%(owner)s"."%(table)s"%(predicate)s' % {
+            "owner": self._rdbms_owner,
+            "table": self._rdbms_table_name,
+            "col": rdbms_col_name,
+            "predicate": predicate,
+        }
         transport_frontend_api = self._get_transport_frontend_api()
-        min_max_row = transport_frontend_api.execute_query_fetch_one(
-            min_max_qry, log_level=VVERBOSE
-        )
+        min_max_row = transport_frontend_api.execute_query_fetch_one(min_max_qry, log_level=VVERBOSE)
         if min_max_row:
             self.log(
                 "MIN/MAX: %s (%s)/%s (%s)"
@@ -193,15 +181,10 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
                 detail=VVERBOSE,
             )
             return min_max_row[0], min_max_row[1]
-        else:
-            return None, None
+        return None, None
 
-    def get_offload_transport_sql_stats_function(
-        self, rdbms_module, rdbms_action, conn_action=None
-    ):
-        raise NotImplementedError(
-            "Teradata get_offload_transport_sql_stats_function() not implemented"
-        )
+    def get_offload_transport_sql_stats_function(self, rdbms_module, rdbms_action, conn_action=None):
+        raise NotImplementedError("Teradata get_offload_transport_sql_stats_function() not implemented")
 
     def get_rdbms_query_cast(
         self,
@@ -218,19 +201,16 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         cast_expression = column_expression
         if rdbms_column.data_type == TERADATA_TYPE_TIMESTAMP_TZ:
             # We need to cast this in the DB to ensure we use tzinfo matching the DB - not matching the client
-            cast_expression = (
-                "TO_CHAR(%s AT TIME ZONE '00:00','YYYY-MM-DD HH24:MI:SS.FF%s TZH:TZM')"
-                % (column_expression, ff_scale)
+            cast_expression = "TO_CHAR(%s AT TIME ZONE '00:00','YYYY-MM-DD HH24:MI:SS.FF%s TZH:TZM')" % (
+                column_expression,
+                ff_scale,
             )
-        elif (
-            rdbms_column.data_type == TERADATA_TYPE_DATE
-            and convert_expressions_on_rdbms_side
-        ):
+        elif rdbms_column.data_type == TERADATA_TYPE_DATE and convert_expressions_on_rdbms_side:
             cast_expression = "TO_CHAR(%s,'YYYY-MM-DD')" % column_expression
         elif rdbms_column.data_type == TERADATA_TYPE_TIMESTAMP:
-            cast_expression = (
-                "TO_CHAR(%s AT TIME ZONE '00:00','YYYY-MM-DD HH24:MI:SS.FF%s')"
-                % (column_expression, ff_scale)
+            cast_expression = "TO_CHAR(%s AT TIME ZONE '00:00','YYYY-MM-DD HH24:MI:SS.FF%s')" % (
+                column_expression,
+                ff_scale,
             )
         elif rdbms_column.data_type == TERADATA_TYPE_TIME:
             cast_expression = "TO_CHAR(%s AT TIME ZONE '00:00','HH24:MI:SS.FF%s')" % (
@@ -288,9 +268,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
     ) -> "ColumnMetadataInterface":
         if len(rdbms_table.get_primary_key_columns()) != 1:
             return None
-        pk_col = match_table_column(
-            rdbms_table.get_primary_key_columns()[0], rdbms_table.columns
-        )
+        pk_col = match_table_column(rdbms_table.get_primary_key_columns()[0], rdbms_table.columns)
         if pk_col.is_number_based() or pk_col.is_date_based():
             return pk_col
         return None
@@ -308,8 +286,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         predicate_offload_clause: str,
         native_range_split_available: bool = False,
     ) -> tuple:
-        """
-        Return split type and any tuned transport parallelism.
+        """Return split type and any tuned transport parallelism.
 
         Splitter decisions:
         1) If # partitions >= parallelism then split by partition. Parallelism unaffected.
@@ -321,21 +298,14 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         5) Probably a full offload without a primary key. Split by AMP and tuned parallelism down to # AMPs.
         """
 
-        def hashamp_transport_available(
-            partition_count, predicate_offload_clause, primary_index_cols
-        ) -> bool:
-            """
-            Return True/False if HASHAMP splitter is available.
+        def hashamp_transport_available(partition_count, predicate_offload_clause, primary_index_cols) -> bool:
+            """Return True/False if HASHAMP splitter is available.
             We can't use AMP splitter when offloading by partition or predicate because no additional WHERE clause
             can be supplied but we can combine a secondary filter with a HASHAMP clause as long as we have a
             PRIMARY INDEX we can utilise.
             """
-            hashamp_available = bool(
-                (partition_count > 0 or predicate_offload_clause) and primary_index_cols
-            )
-            self.log(
-                f"HASHAMP split type available: {hashamp_available}", detail=VVERBOSE
-            )
+            hashamp_available = bool((partition_count > 0 or predicate_offload_clause) and primary_index_cols)
+            self.log(f"HASHAMP split type available: {hashamp_available}", detail=VVERBOSE)
             if not hashamp_available:
                 self.debug(f"partition_count: {partition_count}")
                 self.debug(f"predicate_offload_clause: {predicate_offload_clause}")
@@ -358,9 +328,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
             self.log("Splitting partitioned table by partition", detail=VVERBOSE)
             partition_by = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION
         elif (
-            hashamp_transport_available(
-                partition_count, predicate_offload_clause, primary_index_cols
-            )
+            hashamp_transport_available(partition_count, predicate_offload_clause, primary_index_cols)
             and len(self._table_amps(rdbms_table)) >= parallelism
         ):
             self.log("Splitting table by HASHAMP", detail=VVERBOSE)
@@ -373,9 +341,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
             self.log("Splitting table into numeric id ranges", detail=VVERBOSE)
             # TODO we should extend this to other index types, e.g. PRIMARY INDEX or UNIQUE INDEX
             partition_by = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE
-        elif hashamp_transport_available(
-            partition_count, predicate_offload_clause, primary_index_cols
-        ):
+        elif hashamp_transport_available(partition_count, predicate_offload_clause, primary_index_cols):
             self.log(
                 "Splitting table by HASHAMP and reducing parallelism to AMP count",
                 detail=VVERBOSE,
@@ -398,9 +364,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
             partition_by = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION
             tuned_parallelism = partition_count
 
-        self.log(
-            TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT + partition_by, detail=VVERBOSE
-        )
+        self.log(TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT + partition_by, detail=VVERBOSE)
         assert partition_by in self._transport_row_source_query_split_methods
         return partition_by, tuned_parallelism
 
@@ -425,15 +389,11 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         pad: Number of spaces with which to pad any CRs.
         """
 
-        def get_chunk_partition_filter(
-            pseudo_part_column, partition_chunk, filter_operator="AND"
-        ):
+        def get_chunk_partition_filter(pseudo_part_column, partition_chunk, filter_operator="AND"):
             partition_filter = ""
             if partition_count > 0:
                 partition_csv = ",".join(partition_chunk.partition_names())
-                partition_filter = (
-                    f" {filter_operator} {pseudo_part_column} IN ({partition_csv})"
-                )
+                partition_filter = f" {filter_operator} {pseudo_part_column} IN ({partition_csv})"
             return partition_filter
 
         assert partition_by_prm in self._transport_row_source_query_split_methods
@@ -452,9 +412,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         union_all = self._row_source_query_union_all_clause(pad)
 
         if partition_by_prm == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION:
-            part_csvs = split_lists_for_id_list(
-                partition_chunk.partition_names(), parallelism, as_csvs=True
-            )
+            part_csvs = split_lists_for_id_list(partition_chunk.partition_names(), parallelism, as_csvs=True)
             union_branch_template = "SELECT g.*, %(batch)s AS %(batch_col)s FROM %(owner_table)s g WHERE %(pseudo_column)s IN (%(part_csv)s)"
             row_source = union_all.join(
                 [
@@ -478,9 +436,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
             if predicate_offload_clause:
                 row_source += "\nWHERE (%s)" % predicate_offload_clause
         elif partition_by_prm == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE:
-            partition_filter = get_chunk_partition_filter(
-                pseudo_part_column, partition_chunk
-            )
+            partition_filter = get_chunk_partition_filter(pseudo_part_column, partition_chunk)
             # Create a range of min/max tuples spanning the entire id range
             id_ranges = split_ranges_for_id_range(id_col_min, id_col_max, parallelism)
             union_branch_template = (
@@ -524,14 +480,11 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         elif partition_by_prm == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_TERADATA_HASHAMP:
             # Split by HASHAMP taken from example if Teradata docs:
             #     HASHAMP (HASHBUCKET (HASHROW (column_1,column_2)))
-            partition_filter = get_chunk_partition_filter(
-                pseudo_part_column, partition_chunk
-            )
+            partition_filter = get_chunk_partition_filter(pseudo_part_column, partition_chunk)
             table_amps = self._table_amps(rdbms_table)
             amp_csvs = split_lists_for_id_list(table_amps, parallelism, as_csvs=True)
             pi_col_csv = ",".join(
-                rdbms_table.enclose_identifier(_.name)
-                for _ in rdbms_table.get_primary_index_columns()
+                rdbms_table.enclose_identifier(_.name) for _ in rdbms_table.get_primary_index_columns()
             )
             union_branch_template = "SELECT g.*, %(batch)s AS %(batch_col)s FROM %(owner_table)s g WHERE HASHAMP(HASHBUCKET(HASHROW(%(pi_col_csv)s))) = %(batch)s%(partition_filter)s"
             if predicate_offload_clause:
@@ -552,9 +505,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
                 ]
             )
         else:
-            raise NotImplementedError(
-                f"Unsupported Teradata extraction splitter: {partition_by_prm}"
-            )
+            raise NotImplementedError(f"Unsupported Teradata extraction splitter: {partition_by_prm}")
         return row_source
 
     def get_transport_row_source_query_hint_block(self) -> str:
@@ -591,8 +542,7 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         transport_frontend_api = self._get_transport_frontend_api()
 
         self.log(
-            "Importing load data with arraysize=%s, compression=%s"
-            % (fetch_size, compress),
+            "Importing load data with arraysize=%s, compression=%s" % (fetch_size, compress),
             detail=VERBOSE,
         )
 
@@ -617,4 +567,4 @@ class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
         return ["--driver=com.teradata.jdbc.TeraDriver"]
 
     def sqoop_rdbms_specific_table_options(self, rdbms_owner, table_name) -> list:
-        return ["--table", self._ssh_cli_safe_value((rdbms_owner + "." + table_name))]
+        return ["--table", self._ssh_cli_safe_value(rdbms_owner + "." + table_name)]

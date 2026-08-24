@@ -1,79 +1,98 @@
-# Copied from https://github.com/googleapis/synthtool/blob/master/synthtool/gcp/templates/python_library/.gitignore
-
+# Byte-compiled / optimized / DLL files
+__pycache__/
 *.py[cod]
+*$py.class
 *.sw[op]
+*~
 
 # C extensions
 *.so
 
-# Packages
-*.egg
-*.egg-info
-dist
-build
-eggs
-.eggs
-parts
-var
-sdist
-develop-eggs
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
 .installed.cfg
-lib
-lib64
-__pycache__
+*.egg
+MANIFEST
 
-# Installer logs
+# Installer & Cache
 pip-log.txt
+pip-delete-this-directory.txt
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
 # Unit test / coverage reports
+htmlcov/
+.tox/
 .coverage
-.nox
+.coverage.*
 .cache
-.pytest_cache
-
-
-# Mac
-.DS_Store
-
-# JetBrains
-.idea
-
-# VS Code
-.vscode
-
-# emacs
-*~
-
-# Built documentation
-docs/_build
-bigquery/docs/generated
-docs.metadata
-
-# Virtual environment
-env/
-venv/
-
-# Test logs
+.pytest_cache/
 coverage.xml
 *sponge_log.xml
 
-# System test environment variables.
-system_tests/local_test_setup
+# Built documentation
+docs/_build/
+bigquery/docs/generated/
+docs.metadata
 
-# Make sure a generated file isn't accidentally committed.
-pylintrc
-pylintrc.test
+# Jupyter & IPython
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
 
-
-# GOE custom entries
-
+# Virtual environments & UV
 .venv/
-LICENSE.txt
-target/
-target/transport/
+venv/
+ENV/
+uv.toml
+
+# IDE & Editor files
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# OS specific
+.DS_Store
+.ds_store
+
+# Environment & Secrets
+.env
+!.env.example
+service_account.json
+
+# GOE Runtime, Build & Packaging Targets
+target/*
+!target/Makefile
 *.tmp
-tools/spark-listener/target
-tools/spark-listener/project/target
-tools/spark-listener/project
 afiedt.buf
 goe_*.tar.gz
+tools/spark-listener/target/
+tools/spark-listener/project/target/
+tools/spark-listener/project/
+system_tests/local_test_setup
+LICENSE.txt
+
+# Logs
+*.log
+log/
+run/
+
+# Gemini / Local Agent
+.gemini/

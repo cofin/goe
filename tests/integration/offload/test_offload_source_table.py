@@ -20,13 +20,13 @@ This is split into two categories:
 2) For the current backend test API calls that need to connect to the system.
    This class has Current in the name: TestCurrentOffloadSourceTable
 """
+
 from unittest import TestCase, main
 
 from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_constants import DBTYPE_ORACLE
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_source_table import OffloadSourceTableException
-
 from tests.integration.test_functions import (
     build_current_options,
     get_default_test_user,
@@ -36,7 +36,6 @@ from tests.testlib.test_framework.factory.frontend_testing_api_factory import (
     frontend_testing_api_factory,
 )
 from tests.testlib.test_framework.test_functions import get_test_messages
-
 
 FACT_NAME = "INTEG_SOURCE_TABLE_FACT"
 
@@ -54,9 +53,7 @@ class TestCurrentOffloadSourceTable(TestCase):
             self.config,
             self.test_api,
             messages,
-            self.test_api.sales_based_fact_create_ddl(
-                self.db, self.table, simple_partition_names=True
-            ),
+            self.test_api.sales_based_fact_create_ddl(self.db, self.table, simple_partition_names=True),
         )
 
     def _test__get_column_low_high_values(self):
@@ -64,12 +61,8 @@ class TestCurrentOffloadSourceTable(TestCase):
             if self.api.columns:
                 try:
                     # Testing Oracle only private method
-                    self.api._get_column_low_high_values(
-                        self.api.columns[0].name, from_stats=True, sample_perc=1
-                    )
-                    self.api._get_column_low_high_values(
-                        self.api.columns[0].name, from_stats=False, sample_perc=1
-                    )
+                    self.api._get_column_low_high_values(self.api.columns[0].name, from_stats=True, sample_perc=1)
+                    self.api._get_column_low_high_values(self.api.columns[0].name, from_stats=False, sample_perc=1)
                 except NotImplementedError:
                     pass
 
@@ -169,9 +162,7 @@ class TestCurrentOffloadSourceTable(TestCase):
 
     def _test_sample_rdbms_data_types(self):
         # Sampling only supports numeric and date based columns
-        columns_to_sample = [
-            _ for _ in self.api.columns if _.is_number_based() or _.is_date_based()
-        ]
+        columns_to_sample = [_ for _ in self.api.columns if _.is_number_based() or _.is_date_based()]
         if columns_to_sample:
             # The backend limit parameters ought to be from a backend but doesn't really matter for unit testing
             max_integral_magnitude = max_scale = 38

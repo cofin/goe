@@ -17,12 +17,13 @@ import atexit
 import logging
 import multiprocessing
 import threading
-from multiprocessing.util import _exit_function  # noqa: WPS433 WPS450
+from multiprocessing.util import _exit_function
+
+from goelib_contrib.asyncer import runnify
 
 # GOE
 from goe.listener import services
 from goe.listener.config.logging import Logger
-from goelib_contrib.asyncer import runnify
 
 logger = logging.getLogger()
 # the following is used to prevent this error when running using mutliprocessing

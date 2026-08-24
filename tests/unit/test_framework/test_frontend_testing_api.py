@@ -12,39 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestFrontendTestingApi: Unit test library to test the testing API for all supported frontends
-    This is split into two categories
-    1) For all possible frontends test API calls that do not need to connect to the system
-       Because there is no connection we can fake any frontend and test functionality
-       These classes have the system in the name: TestHiveFrontendApi, TestImpalaFrontendApi, etc
-    2) For the current frontend test API calls that need to connect to the system
-       This class has Current in the name: TestCurrentFrontendApi
+"""TestFrontendTestingApi: Unit test library to test the testing API for all supported frontends
+This is split into two categories
+1) For all possible frontends test API calls that do not need to connect to the system
+   Because there is no connection we can fake any frontend and test functionality
+   These classes have the system in the name: TestHiveFrontendApi, TestImpalaFrontendApi, etc
+2) For the current frontend test API calls that need to connect to the system
+   This class has Current in the name: TestCurrentFrontendApi
 """
 
 from unittest import TestCase, main
 
 from goe.offload.column_metadata import ALL_CANONICAL_TYPES
-from goe.offload.offload_constants import DBTYPE_ORACLE, DBTYPE_MSSQL, DBTYPE_TERADATA
+from goe.offload.offload_constants import DBTYPE_MSSQL, DBTYPE_ORACLE, DBTYPE_TERADATA
 from goe.offload.offload_messages import OffloadMessages
-from tests.unit.test_functions import (
-    build_mock_options,
-    optional_sql_server_dependency_exception,
-    optional_teradata_dependency_exception,
-    FAKE_MSSQL_ENV,
-    FAKE_ORACLE_ENV,
-    FAKE_TERADATA_ENV,
-)
 from tests.testlib.test_framework.factory.frontend_testing_api_factory import (
     frontend_testing_api_factory,
 )
-
+from tests.unit.test_functions import (
+    FAKE_MSSQL_ENV,
+    FAKE_ORACLE_ENV,
+    FAKE_TERADATA_ENV,
+    build_mock_options,
+    optional_sql_server_dependency_exception,
+    optional_teradata_dependency_exception,
+)
 
 transient_error_global_counter = 0
 
 
 class TestFrontendTestingApi(TestCase):
     def __init__(self, *args, **kwargs):
-        super(TestFrontendTestingApi, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.test_api = None
         self.config = None
         self.db = None
@@ -69,9 +68,7 @@ class TestFrontendTestingApi(TestCase):
 
     def _test_expected_sales_offload_predicates(self):
         try:
-            self.assertIsInstance(
-                self.test_api.expected_sales_offload_predicates(), list
-            )
+            self.assertIsInstance(self.test_api.expected_sales_offload_predicates(), list)
         except NotImplementedError:
             pass
 

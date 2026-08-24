@@ -14,8 +14,8 @@
 
 from typing import TYPE_CHECKING
 
-from goe.util.ora_query import get_oracle_connection
 from goe.offload.factory.backend_api_factory import backend_api_factory
+from goe.util.ora_query import get_oracle_connection
 
 if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     )
 
 
-class SchemaSyncStep(object):
+class SchemaSyncStep:
     """Base class for individual steps within the Schema Sync routine. The purpose of this
     class is to enforce some basic invariants that each step must follow, and to implement
     some boilerplate routines in terms of those invariants
@@ -67,18 +67,14 @@ class SchemaSyncStep(object):
     def check_preconditions(self, run_params):
         """Assert that all of the bindings required by this step are present *before* running this step"""
         assert "type" in run_params, "No change type detected"
-        assert (
-            run_params["type"] == self.name
-        ), 'Incorrect change type "{}" detected'.format(run_params["type"])
+        assert run_params["type"] == self.name, 'Incorrect change type "{}" detected'.format(run_params["type"])
 
     def check_postconditions(self, run_commands):
         """Assert that all of the bindings that are supposed to be set as results by this step are
         present *after* running this step
         """
         if run_commands:
-            assert isinstance(
-                run_commands, list
-            ), "Commands returned from step must be list"
+            assert isinstance(run_commands, list), "Commands returned from step must be list"
 
     def run(self, run_params):
         """Delegate to the subclass's _do_run implementation to perform the actions entailed by this step,

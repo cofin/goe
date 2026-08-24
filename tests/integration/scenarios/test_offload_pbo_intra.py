@@ -40,7 +40,6 @@ from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE,
 )
-
 from tests.integration.scenarios.assertion_functions import (
     sales_based_fact_assertion,
 )
@@ -63,7 +62,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 RANGE_TABLE_INTRA = "STORY_PBO_R_INTRA"
 LAR_TABLE_INTRA = "STORY_PBO_LAR_INTRA"
@@ -101,9 +99,7 @@ def offload_pbo_intra_day_std_range_tests(
     def gen_pred(hv_template, hv_1, hv_2, channel_id):
         date_part = hv_template % {"hv_1": hv_1, "hv_2": hv_2}
         if isinstance(channel_id, (list, tuple)):
-            channel_part = "(column(channel_id) in (%s))" % ",".join(
-                "numeric({})".format(_) for _ in channel_id
-            )
+            channel_part = "(column(channel_id) in (%s))" % ",".join(f"numeric({_})" for _ in channel_id)
         else:
             channel_part = "(column(channel_id) = numeric(%s))" % channel_id
         return date_part + " and" + channel_part
@@ -123,9 +119,7 @@ def offload_pbo_intra_day_std_range_tests(
         metadata_chk_hvs = [hv_1, hv_2]
     elif table_name == LAR_TABLE_INTRA:
         if config.db_type == offload_constants.DBTYPE_TERADATA:
-            messages.log(
-                "Skipping LAR tests on Teradata because CASE_N is not yet supported"
-            )
+            messages.log("Skipping LAR tests on Teradata because CASE_N is not yet supported")
             return
         test_id = "lar"
         inc_key = "YRMON"
@@ -282,9 +276,7 @@ def offload_pbo_intra_day_std_range_tests(
     # Offloads 2nd predicate (IN list) on top of HV_1 to top up data.
     options = {
         "owner_table": schema + "." + table_name,
-        "offload_predicate": GenericPredicate(
-            gen_pred(hv_pred, hv_1, hv_2, ["3", "4"])
-        ),
+        "offload_predicate": GenericPredicate(gen_pred(hv_pred, hv_1, hv_2, ["3", "4"])),
         "execute": True,
     }
     messages.log(f"{test_id}:2", detail=VVERBOSE)
@@ -441,13 +433,12 @@ def offload_pbo_intra_day_std_range_tests(
 def test_offload_pbo_intra_range(config, schema, data_db):
     """Tests for Intra Day Predicate Based Offload."""
     id = "test_offload_pbo_intra_range"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -459,9 +450,7 @@ def test_offload_pbo_intra_range(config, schema, data_db):
                 schema, RANGE_TABLE_INTRA, simple_partition_names=True
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, RANGE_TABLE_INTRA
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, RANGE_TABLE_INTRA),
             ],
         )
 
@@ -481,13 +470,12 @@ def test_offload_pbo_intra_range(config, schema, data_db):
 def test_offload_pbo_intra_lar(config, schema, data_db):
     """Tests for intra day predicate based offload on LIST_AS_RANGE table."""
     id = "test_offload_pbo_intra_lar"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -501,9 +489,7 @@ def test_offload_pbo_intra_lar(config, schema, data_db):
                 part_key_type=frontend_api.test_type_canonical_date(),
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LAR_TABLE_INTRA
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LAR_TABLE_INTRA),
             ],
         )
 
@@ -523,9 +509,10 @@ def test_offload_pbo_intra_lar(config, schema, data_db):
 def test_offload_pbo_intra_list(config, schema, data_db):
     """Tests for Intra Day Predicate Based Offload."""
     id = "test_offload_pbo_intra_list_as_range"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         # Setup
@@ -541,9 +528,7 @@ def test_offload_pbo_intra_list(config, schema, data_db):
                 default_partition=True,
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, LIST_TABLE_INTRA
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, LIST_TABLE_INTRA),
             ],
         )
 

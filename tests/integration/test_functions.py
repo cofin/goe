@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from functools import lru_cache
 import os
+from functools import cache
 from typing import TYPE_CHECKING
 
-from goe.goe import OffloadOperation
 from goe.config.orchestration_config import OrchestrationConfig
+from goe.goe import OffloadOperation
 from goe.offload.offload_constants import DBTYPE_MSSQL, DBTYPE_TERADATA
-from goe.offload.offload_messages import OffloadMessages, VVERBOSE
+from goe.offload.offload_messages import VVERBOSE, OffloadMessages
 from goe.orchestration.orchestration_runner import OrchestrationRunner
-
 from tests.testlib.test_framework.offload_test_messages import OffloadTestMessages
 
 if TYPE_CHECKING:
@@ -35,7 +34,7 @@ def build_current_options():
     return OrchestrationConfig.from_dict({"verbose": False})
 
 
-@lru_cache(maxsize=None)
+@cache
 def cached_current_options():
     return build_current_options()
 
@@ -51,9 +50,7 @@ def build_offload_operation(operation_dict=None, options=None, messages=None):
         offload_messages = OffloadMessages()
     if not operation_dict:
         operation_dict = {"owner_table": "x.y"}
-    offload_operation = OffloadOperation.from_dict(
-        operation_dict, offload_options, offload_messages
-    )
+    offload_operation = OffloadOperation.from_dict(operation_dict, offload_options, offload_messages)
     return offload_operation
 
 
@@ -61,7 +58,7 @@ def get_default_test_user():
     return os.environ.get("GOE_TEST_USER", "GOE_TEST")
 
 
-@lru_cache(maxsize=None)
+@cache
 def cached_default_test_user():
     return get_default_test_user()
 

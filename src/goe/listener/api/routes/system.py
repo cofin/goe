@@ -15,10 +15,10 @@
 # Third Party Libraries
 import orjson as json
 from fastapi import APIRouter, status
+from goelib_contrib.asyncer import asyncify
 
 # GOE
 from goe.listener import schemas, services, utils
-from goelib_contrib.asyncer import asyncify
 
 STATUS_OK = "OK"
 
@@ -165,19 +165,13 @@ async def get_table_partitions(schema_name: str, table_name: str):
         HTTPException: If listener cannot determine the version.
 
     """
-    partitions = await asyncify(services.system.get_table_partitions)(
-        schema_name, table_name
-    )
-    subpartitions = await asyncify(services.system.get_table_subpartitions)(
-        schema_name, table_name
-    )
+    partitions = await asyncify(services.system.get_table_partitions)(schema_name, table_name)
+    subpartitions = await asyncify(services.system.get_table_subpartitions)(schema_name, table_name)
     # partitions_obj = jsonable_encoder(partitions)
     for partition in partitions:
         partition.update(
             {
-                "subpartitions": utils.groupby(
-                    lambda partition: partition.partition_name, subpartitions
-                ).get(
+                "subpartitions": utils.groupby(lambda partition: partition.partition_name, subpartitions).get(
                     partition.get("partition_name", None),
                     [],
                 )

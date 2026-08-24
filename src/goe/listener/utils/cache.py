@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # Copyright 2016 The GOE Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +13,11 @@
 # limitations under the License.
 
 """Redis client class utility."""
+
 # Standard Library
 import logging
 from datetime import timedelta
-from typing import List, Optional, Union
+from typing import Optional
 
 # Third Party Libraries
 from redis import asyncio as aioredis
@@ -29,7 +28,7 @@ from redis.exceptions import RedisError
 from goe.listener.config import settings
 
 
-class RedisClient(object):
+class RedisClient:
     """Redis client utility.
 
     Utility class for handling Redis database connection and operations.
@@ -43,7 +42,7 @@ class RedisClient(object):
     """
 
     _instance: Optional["RedisClient"] = None
-    redis_client: Optional[aioredis.Redis] = None
+    redis_client: aioredis.Redis | None = None
     logger: logging.Logger = logging.getLogger(__name__)
     base_redis_init_kwargs: dict = {
         "encoding": "utf-8",
@@ -132,15 +131,11 @@ class RedisClient(object):
         try:
             return await redis_client.ping()
         except RedisError as exc:
-            cls.logger.error(
-                f"Redis PING command finished with exception  - {exc.__class__.__qualname__}"
-            )
+            cls.logger.error(f"Redis PING command finished with exception  - {exc.__class__.__qualname__}")
             return False
 
     @classmethod
-    async def set(
-        cls, key: str, value: str, ttl: Optional[Union[int, timedelta]] = None
-    ):
+    async def set(cls, key: str, value: str, ttl: int | timedelta | None = None):
         """Execute Redis SET command.
 
         Set key to hold the string value. If key already holds a value, it is
@@ -164,9 +159,7 @@ class RedisClient(object):
         try:
             await redis_client.set(key, value, ex=ttl)
         except RedisError as exc:
-            cls.logger.error(
-                f"Redis SET command finished with exception - {exc.__class__.__qualname__}"
-            )
+            cls.logger.error(f"Redis SET command finished with exception - {exc.__class__.__qualname__}")
             raise exc
 
     @classmethod
@@ -185,15 +178,11 @@ class RedisClient(object):
         """
         redis_client = cls.redis_client
 
-        cls.logger.debug(
-            f"Executing Redis SCAN command, match: {match}, count: {count}"
-        )
+        cls.logger.debug(f"Executing Redis SCAN command, match: {match}, count: {count}")
         try:
             return await redis_client.scan(match=match, count=count)
         except RedisError as exc:
-            cls.logger.error(
-                f"Redis SCAN command finished with exception  - {exc.__class__.__qualname__}"
-            )
+            cls.logger.error(f"Redis SCAN command finished with exception  - {exc.__class__.__qualname__}")
             raise exc
 
     @classmethod
@@ -220,15 +209,11 @@ class RedisClient(object):
         try:
             return await redis_client.keys(pattern)
         except RedisError as exc:
-            cls.logger.error(
-                f"Redis KEYS command finished with exception  - {exc.__class__.__qualname__}"
-            )
+            cls.logger.error(f"Redis KEYS command finished with exception  - {exc.__class__.__qualname__}")
             raise exc
 
     @classmethod
-    async def rpush(
-        cls, key: str, value: str, ttl: Optional[Union[int, timedelta]] = None
-    ):
+    async def rpush(cls, key: str, value: str, ttl: int | timedelta | None = None):
         """Execute Redis RPUSH command.
 
         Insert all the specified values at the tail of the list stored at key.
@@ -260,13 +245,11 @@ class RedisClient(object):
             else:
                 await redis_client.rpush(key, value)
         except RedisError as exc:
-            cls.logger.error(
-                f"Redis RPUSH command finished with exception  - {exc.__class__.__qualname__}"
-            )
+            cls.logger.error(f"Redis RPUSH command finished with exception  - {exc.__class__.__qualname__}")
             raise exc
 
     @classmethod
-    async def expire(cls, key: str, ttl: Union[int, timedelta]):
+    async def expire(cls, key: str, ttl: int | timedelta):
         """Execute Redis EXPIRE command.
 
         Sets the TTL for a key.
@@ -288,9 +271,7 @@ class RedisClient(object):
         try:
             await redis_client.expire(key, ttl)
         except RedisError as exc:
-            cls.logger.error(
-                f"Redis EXPIRE command finished with exception  - {exc.__class__.__qualname__}"
-            )
+            cls.logger.error(f"Redis EXPIRE command finished with exception  - {exc.__class__.__qualname__}")
             raise exc
 
     @classmethod
@@ -315,9 +296,7 @@ class RedisClient(object):
         try:
             return await redis_client.exists(key)
         except RedisError as exc:
-            cls.logger.error(
-                f"Redis EXISTS command finished with exception  - {exc.__class__.__qualname__}"
-            )
+            cls.logger.error(f"Redis EXISTS command finished with exception  - {exc.__class__.__qualname__}")
             raise exc
 
     @classmethod
@@ -344,13 +323,11 @@ class RedisClient(object):
         try:
             return await redis_client.get(key)
         except RedisError as exc:
-            cls.logger.error(
-                f"Redis GET command finished with exception  - {exc.__class__.__qualname__}"
-            )
+            cls.logger.error(f"Redis GET command finished with exception  - {exc.__class__.__qualname__}")
             raise exc
 
     @classmethod
-    async def mget(cls, keys: List[str]):
+    async def mget(cls, keys: list[str]):
         """Execute Redis MGET command.
 
         Get the value of keys. If the keys do not exist the special value None
@@ -373,9 +350,7 @@ class RedisClient(object):
         try:
             return await redis_client.mget(keys)
         except RedisError as exc:
-            cls.logger.error(
-                f"Redis MGET command finished with exception  - {exc.__class__.__qualname__}"
-            )
+            cls.logger.error(f"Redis MGET command finished with exception  - {exc.__class__.__qualname__}")
             raise exc
 
     @classmethod
@@ -409,9 +384,7 @@ class RedisClient(object):
         try:
             return await redis_client.lrange(key, start, end)
         except RedisError as exc:
-            cls.logger.error(
-                f"Redis LRANGE command finished with exception  - {exc.__class__.__qualname__}"
-            )
+            cls.logger.error(f"Redis LRANGE command finished with exception  - {exc.__class__.__qualname__}")
             raise exc
 
     @classmethod

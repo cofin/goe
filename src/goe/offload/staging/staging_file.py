@@ -14,11 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" OffloadStagingFile: Library for logic/interaction with a staging file/table that will be populated during Offload Transport
-"""
+"""OffloadStagingFile: Library for logic/interaction with a staging file/table that will be populated during Offload Transport"""
 
-from abc import ABCMeta, abstractmethod
 import logging
+from abc import ABCMeta, abstractmethod
 
 from goe.offload.column_metadata import valid_column_list
 from goe.offload.offload_constants import (
@@ -26,7 +25,6 @@ from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_PARQUET,
 )
 from goe.offload.offload_messages import VVERBOSE
-
 
 ###############################################################################
 # CONSTANTS
@@ -128,9 +126,7 @@ class OffloadStagingFileInterface(metaclass=ABCMeta):
         as strings.
         """
         return [
-            self.to_canonical_column(
-                staging_column, use_staging_file_name=use_staging_file_names
-            )
+            self.to_canonical_column(staging_column, use_staging_file_name=use_staging_file_names)
             for staging_column in self.get_staging_columns()
         ]
 

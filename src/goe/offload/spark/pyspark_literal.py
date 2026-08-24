@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" PysparkLiteral: Format a Pyspark literal based on value type.
-"""
+"""PysparkLiteral: Format a Pyspark literal based on value type."""
 
-from datetime import date
 import logging
+from datetime import date
 
 from numpy import datetime64
 

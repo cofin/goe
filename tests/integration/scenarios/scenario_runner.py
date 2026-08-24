@@ -17,7 +17,7 @@ import time
 import traceback
 from typing import TYPE_CHECKING
 
-from goe.offload.offload_messages import OffloadMessages, VERBOSE, VVERBOSE
+from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessages
 from goe.orchestration import orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
 from goe.orchestration.orchestration_runner import OrchestrationRunner
@@ -40,9 +40,7 @@ class ScenarioRunnerException(Exception):
     pass
 
 
-def get_config_overrides(
-    config_dict: dict, orchestration_config: "OrchestrationRepoClientInterface"
-):
+def get_config_overrides(config_dict: dict, orchestration_config: "OrchestrationRepoClientInterface"):
     """Return config from story enhanced with certain attributes from orchestration_config"""
     base_config = {
         "verbose": orchestration_config.verbose,
@@ -80,27 +78,16 @@ def run_offload(
             messages_override=messages_override,
         )
         if expected_status is not None and status != expected_status:
-            raise ScenarioRunnerException(
-                "Tested offload() return != %s" % expected_status
-            )
+            raise ScenarioRunnerException("Tested offload() return != %s" % expected_status)
         if expected_exception_string:
             # We shouldn't get here if we're expecting an exception
-            parent_messages.log(
-                "Missing exception containing: %s" % expected_exception_string
-            )
+            parent_messages.log("Missing exception containing: %s" % expected_exception_string)
             # Can't include exception in error below otherwise we'll end up with a pass
             raise ScenarioRunnerException("offload() did not throw expected exception")
     except Exception as exc:
-        if (
-            expected_exception_string
-            and expected_exception_string.lower() in str(exc).lower()
-        ):
-            parent_messages.log(
-                "Test caught expected exception:%s\n%s" % (type(exc), str(exc))
-            )
-            parent_messages.log(
-                "Ignoring exception containing: %s" % expected_exception_string
-            )
+        if expected_exception_string and expected_exception_string.lower() in str(exc).lower():
+            parent_messages.log("Test caught expected exception:%s\n%s" % (type(exc), str(exc)))
+            parent_messages.log("Ignoring exception containing: %s" % expected_exception_string)
         else:
             parent_messages.log(traceback.format_exc())
             raise
@@ -142,10 +129,7 @@ def run_setup(
                 ]
             for fn in python_fns:
                 if not inspect.isfunction(fn):
-                    raise ScenarioRunnerException(
-                        "Row in python_fns is not a function: %s %s"
-                        % (type(fn), str(fn))
-                    )
+                    raise ScenarioRunnerException("Row in python_fns is not a function: %s %s" % (type(fn), str(fn)))
                 try:
                     fn()
                 except Exception as exc:
@@ -187,9 +171,7 @@ def run_shell_cmd(
     expected_exception_string: str = None,
 ):
     messages.log("Running subproc_cmd: %s" % shell_command, detail=VERBOSE)
-    tmp_file = create_goe_shell_runner(
-        orchestration_config, messages, shell_command, cwd=cwd
-    )
+    tmp_file = create_goe_shell_runner(orchestration_config, messages, shell_command, cwd=cwd)
     try:
         returncode, output = subproc_cmd([tmp_file], orchestration_config, messages)
         messages.log("subproc_cmd return code: %s" % returncode, detail=VVERBOSE)
@@ -197,18 +179,12 @@ def run_shell_cmd(
         acceptable_return_codes = acceptable_return_codes or [0]
         if returncode not in acceptable_return_codes:
             raise ScenarioRunnerException(
-                "Tested shell_command return %s not in %s: %s"
-                % (returncode, acceptable_return_codes, shell_command[0])
+                "Tested shell_command return %s not in %s: %s" % (returncode, acceptable_return_codes, shell_command[0])
             )
     except Exception as exc:
-        if (
-            expected_exception_string
-            and expected_exception_string.lower() in str(exc).lower()
-        ):
+        if expected_exception_string and expected_exception_string.lower() in str(exc).lower():
             messages.log("Test caught expected exception:\n%s" % str(exc))
-            messages.log(
-                'Ignoring exception containing "%s"' % expected_exception_string
-            )
+            messages.log('Ignoring exception containing "%s"' % expected_exception_string)
         else:
             messages.log(traceback.format_exc())
             raise

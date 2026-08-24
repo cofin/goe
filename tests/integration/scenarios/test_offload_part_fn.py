@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Test functionality around requesting and validating partition functions.
-    The testing is done on a simple dimension table.
-    Partition functions are also tested in the assorted partition append stories:
-        $ grep -l "offload_partition_functions" tests/integration/scenarios/test_*.py
+"""Test functionality around requesting and validating partition functions.
+The testing is done on a simple dimension table.
+Partition functions are also tested in the assorted partition append stories:
+    $ grep -l "offload_partition_functions" tests/integration/scenarios/test_*.py
 """
 
 import pytest
@@ -23,8 +23,8 @@ import pytest
 from goe.offload import offload_constants
 from goe.offload.backend_table import (
     PARTITION_FUNCTION_ARG_COUNT_EXCEPTION_TEXT,
-    PARTITION_FUNCTION_DOES_NOT_EXIST_EXCEPTION_TEXT,
     PARTITION_FUNCTION_ARG_TYPE_EXCEPTION_TEXT,
+    PARTITION_FUNCTION_DOES_NOT_EXIST_EXCEPTION_TEXT,
 )
 from goe.offload.bigquery.bigquery_column import (
     BIGQUERY_TYPE_FLOAT64,
@@ -42,7 +42,6 @@ from goe.offload.operation.partition_controls import (
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
-
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
     standard_dimension_assertion,
@@ -65,7 +64,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 DIM_EXC = "PFN_DIM_EXC"
 DIM_NUM = "PFN_DIM_NUM"
@@ -134,10 +132,9 @@ def create_incompatible_test_bigquery_udf_fns(backend_api, data_db):
 def expected_udf_metadata(config, data_db, udf_name_option):
     if "." in udf_name_option:
         return udf_name_option
-    elif config.target == offload_constants.DBTYPE_IMPALA:
+    if config.target == offload_constants.DBTYPE_IMPALA:
         return "default." + udf_name_option
-    else:
-        return data_db + "." + udf_name_option
+    return data_db + "." + udf_name_option
 
 
 def offload_part_fn_assertion(
@@ -152,36 +149,27 @@ def offload_part_fn_assertion(
 ):
     synth_col = synthetic_part_col_name(f"U{synth_position}", source_column)
     synth_col = convert_backend_identifier_case(config, synth_col)
-    if not backend_column_exists(
-        config, backend_api, messages, data_db, table_name, synth_col
-    ):
+    if not backend_column_exists(config, backend_api, messages, data_db, table_name, synth_col):
         return False
     if udf:
         backend_name = convert_backend_identifier_case(config, table_name)
-        check_sql = "SELECT COUNT(*) FROM {} WHERE {}({}) != {}".format(
-            backend_api.enclose_object_reference(data_db, backend_name),
-            backend_api.enclose_object_reference(data_db, udf),
-            source_column,
-            synth_col,
-        )
+        check_sql = f"SELECT COUNT(*) FROM {backend_api.enclose_object_reference(data_db, backend_name)} WHERE {backend_api.enclose_object_reference(data_db, udf)}({source_column}) != {synth_col}"
         mismatch_row = backend_api.execute_query_fetch_one(check_sql, log_level=VERBOSE)
         if not mismatch_row:
             messages.log("No data in backend_table")
             return False
         if mismatch_row[0] != 0:
-            messages.log(
-                "Unexpected values in backend_table synthetic column for %s rows"
-                % mismatch_row[0]
-            )
+            messages.log("Unexpected values in backend_table synthetic column for %s rows" % mismatch_row[0])
             return False
     return True
 
 
 def test_offload_part_fn_exceptions(config, schema, data_db):
     id = "test_offload_part_fn_exceptions"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
 
         # Setup
@@ -194,9 +182,7 @@ def test_offload_part_fn_exceptions(config, schema, data_db):
                 schema, DIM_EXC, extra_col_tuples=[("'-123'", "STR_PROD_ID")]
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, DIM_EXC
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, DIM_EXC),
             ],
         )
 
@@ -215,12 +201,8 @@ def test_offload_part_fn_exceptions(config, schema, data_db):
                 expected_exception_string=PARTITION_FUNCTIONS_NOT_SUPPORTED_EXCEPTION_TEXT,
             )
 
-            messages.log(
-                f"Skipping most of {id} due to goe_partition_functions_supported() == False"
-            )
-            pytest.skip(
-                f"Skipping most of {id} due to goe_partition_functions_supported() == False"
-            )
+            messages.log(f"Skipping most of {id} due to goe_partition_functions_supported() == False")
+            pytest.skip(f"Skipping most of {id} due to goe_partition_functions_supported() == False")
 
         # Create a series of UDFs, some incompatible with GOE, for use throughout these tests.
         run_setup(
@@ -317,18 +299,15 @@ def test_offload_part_fn_exceptions(config, schema, data_db):
 
 def test_offload_part_fn_num(config, schema, data_db):
     id = "test_offload_part_fn_num"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         if not backend_api.goe_partition_functions_supported():
-            pytest.skip(
-                f"Skipping most of {id} due to goe_partition_functions_supported() == False"
-            )
+            pytest.skip(f"Skipping most of {id} due to goe_partition_functions_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -338,9 +317,7 @@ def test_offload_part_fn_num(config, schema, data_db):
             messages,
             frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, DIM_NUM),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, DIM_NUM
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, DIM_NUM),
             ],
         )
 
@@ -368,14 +345,10 @@ def test_offload_part_fn_num(config, schema, data_db):
             schema,
             data_db,
             DIM_NUM,
-            partition_functions=expected_udf_metadata(
-                config, data_db, data_db + "." + INT8_UDF
-            ),
+            partition_functions=expected_udf_metadata(config, data_db, data_db + "." + INT8_UDF),
             offload_messages=offload_messages,
         )
-        assert offload_part_fn_assertion(
-            config, backend_api, messages, data_db, DIM_NUM, udf=INT8_UDF
-        )
+        assert offload_part_fn_assertion(config, backend_api, messages, data_db, DIM_NUM, udf=INT8_UDF)
 
         # Offload with non-prefixed INT64 partition function UDF.
         options = {
@@ -401,25 +374,20 @@ def test_offload_part_fn_num(config, schema, data_db):
             partition_functions=expected_udf_metadata(config, data_db, INT8_UDF),
             offload_messages=offload_messages,
         )
-        assert offload_part_fn_assertion(
-            config, backend_api, messages, data_db, DIM_NUM, udf=INT8_UDF
-        )
+        assert offload_part_fn_assertion(config, backend_api, messages, data_db, DIM_NUM, udf=INT8_UDF)
 
 
 def test_offload_part_fn_dec(config, schema, data_db):
     id = "test_offload_part_fn_dec"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         if not backend_api.goe_partition_functions_supported():
-            pytest.skip(
-                f"Skipping most of {id} due to goe_partition_functions_supported() == False"
-            )
+            pytest.skip(f"Skipping most of {id} due to goe_partition_functions_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -429,9 +397,7 @@ def test_offload_part_fn_dec(config, schema, data_db):
             messages,
             frontend_sqls=frontend_api.standard_dimension_frontend_ddl(schema, DIM_DEC),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, DIM_DEC
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, DIM_DEC),
             ],
         )
 
@@ -462,9 +428,7 @@ def test_offload_part_fn_dec(config, schema, data_db):
             partition_functions=expected_udf_metadata(config, data_db, INT38_UDF),
             offload_messages=offload_messages,
         )
-        assert offload_part_fn_assertion(
-            config, backend_api, messages, data_db, DIM_DEC, udf=INT38_UDF
-        )
+        assert offload_part_fn_assertion(config, backend_api, messages, data_db, DIM_DEC, udf=INT38_UDF)
 
         # Offload with a BIGNUMERIC partition function UDF.
         options = {
@@ -491,25 +455,20 @@ def test_offload_part_fn_dec(config, schema, data_db):
             partition_functions=expected_udf_metadata(config, data_db, DEC19_UDF),
             offload_messages=offload_messages,
         )
-        assert offload_part_fn_assertion(
-            config, backend_api, messages, data_db, DIM_DEC, udf=DEC19_UDF
-        )
+        assert offload_part_fn_assertion(config, backend_api, messages, data_db, DIM_DEC, udf=DEC19_UDF)
 
 
 def test_offload_part_fn_str(config, schema, data_db):
     id = "test_offload_part_fn_str"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
         if not backend_api.goe_partition_functions_supported():
-            pytest.skip(
-                f"Skipping most of {id} due to goe_partition_functions_supported() == False"
-            )
+            pytest.skip(f"Skipping most of {id} due to goe_partition_functions_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -521,15 +480,11 @@ def test_offload_part_fn_str(config, schema, data_db):
                 schema, DIM_STR, extra_col_tuples=[("'-123'", "STR_PROD_ID")]
             ),
             python_fns=[
-                lambda: drop_backend_test_table(
-                    config, backend_api, messages, data_db, DIM_STR
-                ),
+                lambda: drop_backend_test_table(config, backend_api, messages, data_db, DIM_STR),
             ],
         )
 
-        backend_api.create_test_partition_functions(
-            data_db, udf=test_constants.PARTITION_FUNCTION_TEST_FROM_STRING
-        )
+        backend_api.create_test_partition_functions(data_db, udf=test_constants.PARTITION_FUNCTION_TEST_FROM_STRING)
 
         # Offload with a STRING partition function UDF.
         options = {

@@ -17,9 +17,8 @@
 """data_type_controls: Library of functions used in GOE to process data type control options/structures."""
 
 from goe.offload.column_metadata import (
-    CanonicalColumn,
-    CANONICAL_TYPE_OPTION_NAMES,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
+    CANONICAL_TYPE_OPTION_NAMES,
     GOE_TYPE_DECIMAL,
     GOE_TYPE_DOUBLE,
     GOE_TYPE_INTEGER_1,
@@ -28,14 +27,15 @@ from goe.offload.column_metadata import (
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
     GOE_TYPE_VARIABLE_STRING,
+    CanonicalColumn,
     get_column_names,
     match_table_column,
 )
-from goe.offload.offload_functions import expand_columns_csv
 from goe.offload.offload_constants import (
     INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT,
 )
-from goe.offload.offload_messages import OffloadMessages, VERBOSE, VVERBOSE
+from goe.offload.offload_functions import expand_columns_csv
+from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessages
 from goe.offload.offload_source_table import DATA_SAMPLE_SIZE_AUTO
 from goe.offload.operation.not_null_columns import apply_not_null_columns_csv
 
@@ -60,7 +60,9 @@ BACKEND_DATA_TYPE_CONTROL_OPTIONS = {
 
 CONFLICTING_DATA_TYPE_OPTIONS_EXCEPTION_TEXT = "Data type conflict for columns"
 
-DECIMAL_COL_TYPE_SYNTAX_TEMPLATE = 'must be of format "precision,scale" where 1<=precision<={p} and 0<=scale<={s} and scale<=precision'
+DECIMAL_COL_TYPE_SYNTAX_TEMPLATE = (
+    'must be of format "precision,scale" where 1<=precision<={p} and 0<=scale<={s} and scale<=precision'
+)
 
 ###############################################################################
 # GLOBAL FUNCTIONS
@@ -79,9 +81,7 @@ def canonical_columns_from_columns_csv(
     if not column_list_csv:
         return []
     column_list = expand_columns_csv(column_list_csv, reference_columns)
-    conflicting_columns = [
-        _.name for _ in existing_canonical_list if _.name in column_list
-    ]
+    conflicting_columns = [_.name for _ in existing_canonical_list if _.name in column_list]
     if conflicting_columns:
         raise OffloadDataTypeControlsException(
             "%s %s when assigning type with %s"
@@ -92,15 +92,11 @@ def canonical_columns_from_columns_csv(
             )
         )
     canonical_list = [
-        CanonicalColumn(
-            _, data_type, data_precision=precision, data_scale=scale, from_override=True
-        )
+        CanonicalColumn(_, data_type, data_precision=precision, data_scale=scale, from_override=True)
         for _ in column_list
     ]
     if "*" in column_list_csv and not canonical_list:
-        raise OffloadDataTypeControlsException(
-            f"No columns match pattern: {column_list_csv}"
-        )
+        raise OffloadDataTypeControlsException(f"No columns match pattern: {column_list_csv}")
     return canonical_list
 
 
@@ -108,13 +104,9 @@ def char_semantics_override_map(unicode_string_columns_csv, reference_columns):
     """Return a dictionary map of char semantics overrides"""
     if not unicode_string_columns_csv:
         return {}
-    unicode_string_columns_list = expand_columns_csv(
-        unicode_string_columns_csv, reference_columns
-    )
+    unicode_string_columns_list = expand_columns_csv(unicode_string_columns_csv, reference_columns)
     if "*" in unicode_string_columns_csv and not unicode_string_columns_list:
-        raise OffloadDataTypeControlsException(
-            f"No columns match pattern: {unicode_string_columns_csv}"
-        )
+        raise OffloadDataTypeControlsException(f"No columns match pattern: {unicode_string_columns_csv}")
     for col in unicode_string_columns_list:
         rdbms_column = match_table_column(col, reference_columns)
         if not rdbms_column.is_string_based():
@@ -140,10 +132,7 @@ def date_min_max_incompatible(offload_source_table, offload_target_table):
     Currently only looking at the min when checking this. We could add max checks to this
     in the future
     """
-    if (
-        offload_source_table.min_datetime_value()
-        < offload_target_table.min_datetime_value()
-    ):
+    if offload_source_table.min_datetime_value() < offload_target_table.min_datetime_value():
         return True
     return False
 
@@ -166,21 +155,15 @@ def offload_source_to_canonical_mappings(
     )
     sample_candidate_columns = []
     messages.log(
-        "Canonical overrides: {}".format(
-            str([(_.name, _.data_type) for _ in canonical_overrides])
-        ),
+        f"Canonical overrides: {[(_.name, _.data_type) for _ in canonical_overrides]!s}",
         detail=VVERBOSE,
     )
     canonical_mappings = {}
     for tab_col in offload_source_table.columns:
-        new_col = offload_source_table.to_canonical_column_with_overrides(
-            tab_col, canonical_overrides
-        )
+        new_col = offload_source_table.to_canonical_column_with_overrides(tab_col, canonical_overrides)
         canonical_mappings[tab_col.name] = new_col
 
-        if (
-            new_col.is_number_based() or new_col.is_date_based()
-        ) and new_col.safe_mapping is False:
+        if (new_col.is_number_based() or new_col.is_date_based()) and new_col.safe_mapping is False:
             messages.log(
                 "Sampling column because of unsafe mapping: %s" % tab_col.name,
                 detail=VVERBOSE,
@@ -190,8 +173,7 @@ def offload_source_to_canonical_mappings(
         elif (
             new_col.is_number_based()
             and tab_col.data_precision is not None
-            and (tab_col.data_precision - tab_col.data_scale)
-            > offload_target_table.max_decimal_integral_magnitude()
+            and (tab_col.data_precision - tab_col.data_scale) > offload_target_table.max_decimal_integral_magnitude()
         ):
             # precision - scale allows data beyond that supported by the backend system, fall back on sampling
             messages.log(
@@ -209,18 +191,14 @@ def offload_source_to_canonical_mappings(
             # Scale allows data beyond that supported by the backend system, fall back on sampling.
             # Use new_col above so that any user override of the scale is taken into account.
             messages.log(
-                "Sampling column because scale > %s: %s"
-                % (offload_target_table.max_decimal_scale(), tab_col.name),
+                "Sampling column because scale > %s: %s" % (offload_target_table.max_decimal_scale(), tab_col.name),
                 detail=VVERBOSE,
             )
             sample_candidate_columns.append(tab_col)
 
-        elif new_col.is_date_based() and date_min_max_incompatible(
-            offload_source_table, offload_target_table
-        ):
+        elif new_col.is_date_based() and date_min_max_incompatible(offload_source_table, offload_target_table):
             messages.log(
-                "Sampling column because of system date boundary incompatibility: %s"
-                % tab_col.name,
+                "Sampling column because of system date boundary incompatibility: %s" % tab_col.name,
                 detail=VVERBOSE,
             )
             sample_candidate_columns.append(tab_col)
@@ -248,13 +226,9 @@ def offload_source_to_canonical_mappings(
         if sampled_rdbms_cols:
             for tab_col in sampled_rdbms_cols:
                 # Overwrite any previous canonical mapping with the post sampled version
-                canonical_mappings[tab_col.name] = (
-                    offload_source_table.to_canonical_column(tab_col)
-                )
+                canonical_mappings[tab_col.name] = offload_source_table.to_canonical_column(tab_col)
 
-        report_data_type_control_options_to_simulate_sampling(
-            sampled_rdbms_cols, canonical_mappings, messages
-        )
+        report_data_type_control_options_to_simulate_sampling(sampled_rdbms_cols, canonical_mappings, messages)
 
     # Process any char semantics overrides
     for col_name, char_semantics in char_semantics_override_map(
@@ -264,9 +238,7 @@ def offload_source_to_canonical_mappings(
         canonical_mappings[col_name].from_override = True
 
     # Get a fresh list of canonical columns in order to maintain column order
-    canonical_columns = [
-        canonical_mappings[_.name] for _ in offload_source_table.columns
-    ]
+    canonical_columns = [canonical_mappings[_.name] for _ in offload_source_table.columns]
 
     canonical_columns = apply_not_null_columns_csv(
         canonical_columns,
@@ -292,9 +264,7 @@ def report_data_type_control_options_to_simulate_sampling(
         return
 
     sampled_canonical_columns = [canonical_mappings[_.name] for _ in sampled_rdbms_cols]
-    canonical_types_used = sorted(
-        list(set(_.data_type for _ in sampled_canonical_columns))
-    )
+    canonical_types_used = sorted(list(set(_.data_type for _ in sampled_canonical_columns)))
 
     messages.notice(
         "Data types were identified by sampling data for columns: "
@@ -308,47 +278,23 @@ def report_data_type_control_options_to_simulate_sampling(
         if used_type == GOE_TYPE_DECIMAL:
             # Need to use a combination of options for each precision/scale combo
             ps_tuples = list(
-                set(
-                    [
-                        (_.data_precision, _.data_scale)
-                        for _ in sampled_canonical_columns
-                        if _.data_type == used_type
-                    ]
-                )
+                set([(_.data_precision, _.data_scale) for _ in sampled_canonical_columns if _.data_type == used_type])
             )
-            messages.debug(
-                "Decimal precision/scale combinations used: %s" % str(ps_tuples)
-            )
+            messages.debug("Decimal precision/scale combinations used: %s" % str(ps_tuples))
             for p, s in ps_tuples:
                 column_name_csv = ",".join(
                     sorted(
                         [
                             _.name
                             for _ in sampled_canonical_columns
-                            if _.data_type == used_type
-                            and _.data_precision == p
-                            and _.data_scale == s
+                            if _.data_type == used_type and _.data_precision == p and _.data_scale == s
                         ]
                     )
                 )
-                messages.log(
-                    "--decimal-columns=%s --decimal-columns-type=%s,%s"
-                    % (column_name_csv, p, s)
-                )
+                messages.log("--decimal-columns=%s --decimal-columns-type=%s,%s" % (column_name_csv, p, s))
         else:
-            column_name_csv = ",".join(
-                sorted(
-                    [
-                        _.name
-                        for _ in sampled_canonical_columns
-                        if _.data_type == used_type
-                    ]
-                )
-            )
+            column_name_csv = ",".join(sorted([_.name for _ in sampled_canonical_columns if _.data_type == used_type]))
             if used_type in BACKEND_DATA_TYPE_CONTROL_OPTIONS:
-                messages.log(
-                    "%s=%s"
-                    % (BACKEND_DATA_TYPE_CONTROL_OPTIONS[used_type], column_name_csv)
-                )
+                messages.log("%s=%s" % (BACKEND_DATA_TYPE_CONTROL_OPTIONS[used_type], column_name_csv))
             else:
                 messages.log("%s: %s" % (used_type, column_name_csv))

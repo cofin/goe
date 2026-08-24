@@ -14,16 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" SynapseLiteral: Format an Synapse literal based on data type.
-"""
+"""SynapseLiteral: Format an Synapse literal based on data type."""
 
-from datetime import date, time
 import logging
-
 import re
+from datetime import date, time
+
 from numpy import datetime64
 
-from goe.offload.format_literal import FormatLiteralInterface, RE_TIMEZONE_NO_COLON
+from goe.offload.format_literal import RE_TIMEZONE_NO_COLON, FormatLiteralInterface
 from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_BINARY,
     SYNAPSE_TYPE_DATE,
@@ -36,7 +35,6 @@ from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_TIME,
     SYNAPSE_TYPE_VARBINARY,
 )
-
 
 logger = logging.getLogger(__name__)
 # Disabling logging by default
@@ -69,41 +67,30 @@ class SynapseLiteral(FormatLiteralInterface):
         def format_date_for_data_type(str_val, data_type):
             if data_type == SYNAPSE_TYPE_DATE:
                 return "'%s'" % str_val[:10]
-            elif data_type in [
+            if data_type in [
                 SYNAPSE_TYPE_DATETIME,
                 SYNAPSE_TYPE_DATETIME2,
                 SYNAPSE_TYPE_SMALLDATETIME,
             ]:
                 return "'%s'" % cls._strip_unused_time_scale(str_val)
-            elif data_type == SYNAPSE_TYPE_DATETIMEOFFSET and re.match(
-                RE_TIMEZONE_NO_COLON, str_val
-            ):
+            if data_type == SYNAPSE_TYPE_DATETIMEOFFSET and re.match(RE_TIMEZONE_NO_COLON, str_val):
                 # %z in strftime does not have a colon in the timezone offset which Synapse requires
-                return "'{0}:{1}'".format(str_val[:-2], str_val[-2:])
-            else:
-                return "'%s'" % str_val
+                return f"'{str_val[:-2]}:{str_val[-2:]}'"
+            return "'%s'" % str_val
 
         logger.debug("Formatting %s literal: %r" % (type(python_value), python_value))
         logger.debug("For data type: %s" % data_type)
         if isinstance(python_value, datetime64):
             if data_type == SYNAPSE_TYPE_TIME:
-                new_py_val = format_date_for_data_type(
-                    str(python_value).split("T")[1], data_type
-                )
+                new_py_val = format_date_for_data_type(str(python_value).split("T")[1], data_type)
             elif data_type:
-                new_py_val = format_date_for_data_type(
-                    str(python_value).replace("T", " "), data_type
-                )
+                new_py_val = format_date_for_data_type(str(python_value).replace("T", " "), data_type)
             else:
                 # Assuming DATETIME if no data_type specified
-                new_py_val = format_date_for_data_type(
-                    str(python_value).replace("T", " "), SYNAPSE_TYPE_DATETIME
-                )
+                new_py_val = format_date_for_data_type(str(python_value).replace("T", " "), SYNAPSE_TYPE_DATETIME)
         elif isinstance(python_value, date):
             if data_type == SYNAPSE_TYPE_DATE:
-                new_py_val = format_date_for_data_type(
-                    python_value.strftime("%Y-%m-%d"), data_type
-                )
+                new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d"), data_type)
             elif data_type == SYNAPSE_TYPE_DATETIMEOFFSET:
                 if not python_value.tzinfo:
                     # Assume empty TZ means UTC
@@ -112,17 +99,11 @@ class SynapseLiteral(FormatLiteralInterface):
                     )
                 else:
                     # Synapse only understands HH:MM time zone offset, not named time zones
-                    new_py_val = format_date_for_data_type(
-                        python_value.strftime("%Y-%m-%d %H:%M:%S.%f %z"), data_type
-                    )
+                    new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S.%f %z"), data_type)
             elif data_type == SYNAPSE_TYPE_TIME:
-                new_py_val = format_date_for_data_type(
-                    python_value.strftime("%H:%M:%S.%f"), data_type
-                )
+                new_py_val = format_date_for_data_type(python_value.strftime("%H:%M:%S.%f"), data_type)
             elif data_type:
-                new_py_val = format_date_for_data_type(
-                    python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type
-                )
+                new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type)
             else:
                 # Assuming DATETIME if no data_type specified
                 new_py_val = format_date_for_data_type(
@@ -132,9 +113,7 @@ class SynapseLiteral(FormatLiteralInterface):
             return "NULL"
         elif data_type == SYNAPSE_TYPE_TIME:
             if isinstance(python_value, time):
-                new_py_val = format_date_for_data_type(
-                    python_value.strftime("%H:%M:%S.%f"), data_type
-                )
+                new_py_val = format_date_for_data_type(python_value.strftime("%H:%M:%S.%f"), data_type)
             else:
                 new_py_val = format_date_for_data_type(python_value, data_type)
         elif data_type in [SYNAPSE_TYPE_NCHAR, SYNAPSE_TYPE_NVARCHAR]:

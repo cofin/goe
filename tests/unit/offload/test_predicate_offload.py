@@ -14,24 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-    Offload predicate test code.
-"""
+"""Offload predicate test code."""
 
-from unittest import TestCase, main
 from optparse import OptionValueError
+from unittest import TestCase, main
 
-from lark import Tree, Token
 import numpy as np
+from lark import Token, Tree
 
-from goe.offload.predicate_offload import GenericPredicate, parse_predicate_dsl
 from goe.offload.bigquery import bigquery_column, bigquery_predicate
 from goe.offload.hadoop import hadoop_column, hadoop_predicate
 from goe.offload.microsoft import synapse_column, synapse_predicate
 from goe.offload.oracle import oracle_column, oracle_predicate
+from goe.offload.predicate_offload import GenericPredicate, parse_predicate_dsl
 from goe.offload.snowflake import snowflake_column, snowflake_predicate
 from goe.offload.teradata import teradata_column, teradata_predicate
-
 
 BIGQUERY_COLUMNS = [
     bigquery_column.BigQueryColumn("COL_INT", bigquery_column.BIGQUERY_TYPE_INT64),
@@ -56,14 +53,10 @@ HADOOP_COLUMNS = [
     ),
 ]
 ORACLE_COLUMNS = [
-    oracle_column.OracleColumn(
-        "COL_INT", oracle_column.ORACLE_TYPE_NUMBER, data_precision=5, data_scale=0
-    ),
+    oracle_column.OracleColumn("COL_INT", oracle_column.ORACLE_TYPE_NUMBER, data_precision=5, data_scale=0),
     oracle_column.OracleColumn("COL_STRING", oracle_column.ORACLE_TYPE_VARCHAR2),
     oracle_column.OracleColumn("COL_DATE", oracle_column.ORACLE_TYPE_DATE),
-    oracle_column.OracleColumn(
-        "COL_DECIMAL", oracle_column.ORACLE_TYPE_NUMBER, data_precision=10, data_scale=2
-    ),
+    oracle_column.OracleColumn("COL_DECIMAL", oracle_column.ORACLE_TYPE_NUMBER, data_precision=10, data_scale=2),
 ]
 SNOWFLAKE_COLUMNS = [
     snowflake_column.SnowflakeColumn(
@@ -72,12 +65,8 @@ SNOWFLAKE_COLUMNS = [
         data_precision=5,
         data_scale=0,
     ),
-    snowflake_column.SnowflakeColumn(
-        "COL_STRING", snowflake_column.SNOWFLAKE_TYPE_TEXT
-    ),
-    snowflake_column.SnowflakeColumn(
-        "COL_DATE", snowflake_column.SNOWFLAKE_TYPE_TIMESTAMP_NTZ
-    ),
+    snowflake_column.SnowflakeColumn("COL_STRING", snowflake_column.SNOWFLAKE_TYPE_TEXT),
+    snowflake_column.SnowflakeColumn("COL_DATE", snowflake_column.SNOWFLAKE_TYPE_TIMESTAMP_NTZ),
     snowflake_column.SnowflakeColumn(
         "COL_DECIMAL",
         snowflake_column.SNOWFLAKE_TYPE_NUMBER,
@@ -97,9 +86,7 @@ SYNAPSE_COLUMNS = [
     ),
 ]
 TERADATA_COLUMNS = [
-    teradata_column.TeradataColumn(
-        "COL_INT", teradata_column.TERADATA_TYPE_NUMBER, data_precision=5, data_scale=0
-    ),
+    teradata_column.TeradataColumn("COL_INT", teradata_column.TERADATA_TYPE_NUMBER, data_precision=5, data_scale=0),
     teradata_column.TeradataColumn("COL_STRING", teradata_column.TERADATA_TYPE_VARCHAR),
     teradata_column.TeradataColumn("COL_DATE", teradata_column.TERADATA_TYPE_DATE),
     teradata_column.TeradataColumn(
@@ -114,58 +101,44 @@ TERADATA_COLUMNS = [
 class TestIdaPredicateParse(TestCase):
     def _test_parse_single_numeric(self, dsl_value_str, ast_token_values):
         self.assertEqual(
-            parse_predicate_dsl(
-                "numeric({})".format(dsl_value_str), top_level_node="value"
-            ),
+            parse_predicate_dsl(f"numeric({dsl_value_str})", top_level_node="value"),
             Tree("numeric_value", [Token(*ast_token_values)]),
         )
 
     def test_parse_numeric(self):
-        self._test_parse_single_numeric("3.141", ("SIGNED_DECIMAL", float(3.141)))
-        self._test_parse_single_numeric("+3.141", ("SIGNED_DECIMAL", float(3.141)))
-        self._test_parse_single_numeric("-3.141", ("SIGNED_DECIMAL", float(-3.141)))
-        self._test_parse_single_numeric(" 3.141", ("SIGNED_DECIMAL", float(3.141)))
-        self._test_parse_single_numeric(" 3.141 ", ("SIGNED_DECIMAL", float(3.141)))
+        self._test_parse_single_numeric("3.141", ("SIGNED_DECIMAL", 3.141))
+        self._test_parse_single_numeric("+3.141", ("SIGNED_DECIMAL", 3.141))
+        self._test_parse_single_numeric("-3.141", ("SIGNED_DECIMAL", (-3.141)))
+        self._test_parse_single_numeric(" 3.141", ("SIGNED_DECIMAL", 3.141))
+        self._test_parse_single_numeric(" 3.141 ", ("SIGNED_DECIMAL", 3.141))
         self._test_parse_single_numeric("3.", ("SIGNED_DECIMAL", float(3)))
 
-        self._test_parse_single_numeric("3", ("SIGNED_INTEGER", int(3)))
-        self._test_parse_single_numeric("+3", ("SIGNED_INTEGER", int(3)))
-        self._test_parse_single_numeric("-3", ("SIGNED_INTEGER", int(-3)))
+        self._test_parse_single_numeric("3", ("SIGNED_INTEGER", 3))
+        self._test_parse_single_numeric("+3", ("SIGNED_INTEGER", 3))
+        self._test_parse_single_numeric("-3", ("SIGNED_INTEGER", (-3)))
 
-        self._test_parse_single_numeric(" 3", ("SIGNED_INTEGER", int(3)))
-        self._test_parse_single_numeric("3 ", ("SIGNED_INTEGER", int(3)))
-        self._test_parse_single_numeric(" 3 ", ("SIGNED_INTEGER", int(3)))
+        self._test_parse_single_numeric(" 3", ("SIGNED_INTEGER", 3))
+        self._test_parse_single_numeric("3 ", ("SIGNED_INTEGER", 3))
+        self._test_parse_single_numeric(" 3 ", ("SIGNED_INTEGER", 3))
 
     def _test_parse_single_datetime(self, dsl_value_str, ast_token_values):
         self.assertEqual(
-            parse_predicate_dsl(
-                "datetime({})".format(dsl_value_str), top_level_node="value"
-            ),
+            parse_predicate_dsl(f"datetime({dsl_value_str})", top_level_node="value"),
             Tree("datetime_value", [Token(*ast_token_values)]),
         )
 
     def test_parse_datetime(self):
-        self._test_parse_single_datetime(
-            "2012-01-01", ("DATE", np.datetime64("2012-01-01"))
-        )
-        self.assertRaises(
-            OptionValueError, self._test_parse_single_datetime, "2012-01-0", None
-        )
-        self.assertRaises(
-            OptionValueError, self._test_parse_single_datetime, "2012-0101", None
-        )
+        self._test_parse_single_datetime("2012-01-01", ("DATE", np.datetime64("2012-01-01")))
+        self.assertRaises(OptionValueError, self._test_parse_single_datetime, "2012-01-0", None)
+        self.assertRaises(OptionValueError, self._test_parse_single_datetime, "2012-0101", None)
         self.assertRaises(OptionValueError, self._test_parse_single_datetime, "", None)
 
         # below literal value correctness testing is out of scope
         # self.assertRaises(OptionValueError, self._test_parse_single_datetime, '2012-01-00', None)
         # self.assertRaises(OptionValueError, self._test_parse_single_datetime, '2012-00-01', None)
 
-        self._test_parse_single_datetime(
-            "2001-01-01 12:00:01", ("TIMESTAMP", np.datetime64("2001-01-01 12:00:01"))
-        )
-        self._test_parse_single_datetime(
-            "2001-01-01 06:00:01", ("TIMESTAMP", np.datetime64("2001-01-01 06:00:01"))
-        )
+        self._test_parse_single_datetime("2001-01-01 12:00:01", ("TIMESTAMP", np.datetime64("2001-01-01 12:00:01")))
+        self._test_parse_single_datetime("2001-01-01 06:00:01", ("TIMESTAMP", np.datetime64("2001-01-01 06:00:01")))
         self.assertRaises(
             OptionValueError,
             self._test_parse_single_datetime,
@@ -204,9 +177,7 @@ class TestIdaPredicateParse(TestCase):
     def _test_parse_single_string(self, dsl_value_str, ast_value_str=None):
         ast_value_str = dsl_value_str if ast_value_str is None else ast_value_str
         self.assertEqual(
-            parse_predicate_dsl(
-                'string("{}")'.format(dsl_value_str), top_level_node="value"
-            ),
+            parse_predicate_dsl(f'string("{dsl_value_str}")', top_level_node="value"),
             Tree(
                 "string_value",
                 [Token("ESCAPED_STRING", ast_value_str.replace('\\"', '"'))],
@@ -243,24 +214,12 @@ class TestIdaPredicateParse(TestCase):
         self.assertRaises(OptionValueError, parse_predicate_dsl, "")
         self.assertRaises(OptionValueError, parse_predicate_dsl, "column(hi)")
         self.assertRaises(OptionValueError, parse_predicate_dsl, "column(hi) >")
-        self.assertRaises(
-            OptionValueError, parse_predicate_dsl, "column(hi) > numeric()"
-        )
-        self.assertRaises(
-            OptionValueError, parse_predicate_dsl, "column(hi) > numeric(+-23)"
-        )
-        self.assertRaises(
-            OptionValueError, parse_predicate_dsl, "column(hi) == numeric(23)"
-        )
-        self.assertRaises(
-            OptionValueError, parse_predicate_dsl, "(column(hi) = numeric(23)"
-        )
-        self.assertRaises(
-            OptionValueError, parse_predicate_dsl, "Column(hi) = numeric(23)"
-        )
-        self.assertRaises(
-            OptionValueError, parse_predicate_dsl, "column(hi) = column(there)"
-        )
+        self.assertRaises(OptionValueError, parse_predicate_dsl, "column(hi) > numeric()")
+        self.assertRaises(OptionValueError, parse_predicate_dsl, "column(hi) > numeric(+-23)")
+        self.assertRaises(OptionValueError, parse_predicate_dsl, "column(hi) == numeric(23)")
+        self.assertRaises(OptionValueError, parse_predicate_dsl, "(column(hi) = numeric(23)")
+        self.assertRaises(OptionValueError, parse_predicate_dsl, "Column(hi) = numeric(23)")
+        self.assertRaises(OptionValueError, parse_predicate_dsl, "column(hi) = column(there)")
 
     def test_parse_complex_dsl(self):
         parse_dsl = [
@@ -268,8 +227,8 @@ class TestIdaPredicateParse(TestCase):
             "(column(YEAR) < numeric(2012) OR (column(YEAR) = numeric(2012) AND column(MONTH) < numeric(6)))",
             "((column(YEAR) < numeric(2012)) OR ((column(YEAR) = numeric(2012)) AND (column(MONTH) < numeric(6))))",
             "(((column(YEAR) < numeric(2012)) "
-            + "OR ((column(YEAR) = numeric(2012)) AND (column(MONTH) < numeric(6)))) "
-            + "OR (((column(YEAR) = numeric(2012)) AND (column(MONTH) = numeric(6))) AND (column(DAY) < numeric(30))))",
+            "OR ((column(YEAR) = numeric(2012)) AND (column(MONTH) < numeric(6)))) "
+            "OR (((column(YEAR) = numeric(2012)) AND (column(MONTH) = numeric(6))) AND (column(DAY) < numeric(30))))",
         ]
 
         for predicate_dsl in parse_dsl:
@@ -278,7 +237,7 @@ class TestIdaPredicateParse(TestCase):
 
 class TestIdaPredicateMethods(TestCase):
     def __init__(self, *args, **kwargs):
-        super(TestIdaPredicateMethods, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def test_rename_column(self):
         pred = GenericPredicate("column(original_name) IS NOT NULL")
@@ -295,9 +254,7 @@ class TestIdaPredicateMethods(TestCase):
 
         dsl = "((column(original_name) = numeric(3) AND column(original_name) != datetime(2001-01-01)) OR (column(new_name) IN (numeric(7)) OR column(other_name) NOT IN (numeric(12))))"
         pred = GenericPredicate(dsl)
-        self.assertEqual(
-            set(pred.column_names()), set(["ORIGINAL_NAME", "NEW_NAME", "OTHER_NAME"])
-        )
+        self.assertEqual(set(pred.column_names()), set(["ORIGINAL_NAME", "NEW_NAME", "OTHER_NAME"]))
         pred.rename_column("original_name", "new_name")
         self.assertEqual(set(pred.column_names()), set(["NEW_NAME", "OTHER_NAME"]))
         self.assertEqual(
@@ -335,7 +292,7 @@ class TestIdaPredicateMethods(TestCase):
 
 class TestIdaPredicateRenderToDSL(TestCase):
     def __init__(self, *args, **kwargs):
-        super(TestIdaPredicateRenderToDSL, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def test_render_dsl(self):
         expect_dsl = [

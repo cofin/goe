@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" TestOrchestrationMetadata: Unit test library to test orchestration metadata API for configured frontend.
-"""
+"""TestOrchestrationMetadata: Unit test library to test orchestration metadata API for configured frontend."""
 
 from unittest import TestCase, main
 
@@ -23,10 +22,9 @@ from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
 from goe.persistence.orchestration_metadata import (
-    OrchestrationMetadata,
     METADATA_ATTRIBUTES,
+    OrchestrationMetadata,
 )
-
 from tests.integration.test_functions import (
     build_current_options,
     get_default_test_user,
@@ -34,7 +32,6 @@ from tests.integration.test_functions import (
 from tests.testlib.test_framework.test_functions import (
     get_test_messages,
 )
-
 
 UNITTEST_METADATA_NAME = "INTTEST_METADATA_SALES"
 
@@ -186,9 +183,7 @@ class TestOrchestrationMetadata(TestCase):
             self.db,
             UNITTEST_METADATA_NAME + (table_name_suffix or ""),
         )
-        return OrchestrationMetadata(
-            new_metadata_dict, connection_options=self.config, messages=self.messages
-        )
+        return OrchestrationMetadata(new_metadata_dict, connection_options=self.config, messages=self.messages)
 
     def _test_metadata(
         self,
@@ -248,9 +243,7 @@ class TestOrchestrationMetadata(TestCase):
         # Change by dict:
         test_metadata_dict = test_metadata.as_dict()
         test_metadata_dict["INCREMENTAL_HIGH_VALUE"] = EXAMPLE_SALES_METADATA_DICT_HV3
-        test_metadata = OrchestrationMetadata(
-            test_metadata_dict, client=test_metadata.client
-        )
+        test_metadata = OrchestrationMetadata(test_metadata_dict, client=test_metadata.client)
         test_metadata.save()
         saved_metadata = OrchestrationMetadata.from_name(
             self.db,
@@ -288,9 +281,7 @@ class TestOrchestrationMetadata(TestCase):
             self.messages,
             trace_action="repo_client(test_metadata_by_client)",
         )
-        self._test_metadata(
-            self._gen_test_metadata(table_name_suffix="_CLI"), client=client
-        )
+        self._test_metadata(self._gen_test_metadata(table_name_suffix="_CLI"), client=client)
 
     def test_metadata_direct(self):
         """Tests we can interact with OrchestrationMetadata without creating a client.
@@ -307,19 +298,13 @@ class TestOrchestrationMetadata(TestCase):
         source_metadata = self._gen_test_metadata(table_name_suffix="_GM")
         source_metadata_dict = source_metadata.as_dict()
         # Generate a new metadata object using constructor attributes
-        attributes = {
-            k: source_metadata_dict[v] for k, v in METADATA_ATTRIBUTES.items()
-        }
+        attributes = {k: source_metadata_dict[v] for k, v in METADATA_ATTRIBUTES.items()}
         new_metadata = OrchestrationMetadata.from_attributes(
             connection_options=self.config, messages=self.messages, **attributes
         )
         self.assertIsInstance(new_metadata, OrchestrationMetadata)
-        self.assertEqual(
-            source_metadata_dict, new_metadata.as_dict(), "Generated metadata mismatch"
-        )
-        self._test_metadata(
-            new_metadata, connection_options=self.config, messages=self.messages
-        )
+        self.assertEqual(source_metadata_dict, new_metadata.as_dict(), "Generated metadata mismatch")
+        self._test_metadata(new_metadata, connection_options=self.config, messages=self.messages)
 
     def test_is_subpartition_offload(self):
         channels_metadata = OrchestrationMetadata(EXAMPLE_CHANNELS_METADATA_DICT)
@@ -330,12 +315,8 @@ class TestOrchestrationMetadata(TestCase):
         self.assertIsInstance(sales_metadata.is_subpartition_offload(), bool)
         self.assertEqual(sales_metadata.is_subpartition_offload(), False)
 
-        goe_list_range_day_dt_metadata = OrchestrationMetadata(
-            EXAMPLE_GOE_LIST_RANGE_DAY_DT_METADATA_DICT
-        )
-        self.assertIsInstance(
-            goe_list_range_day_dt_metadata.is_subpartition_offload(), bool
-        )
+        goe_list_range_day_dt_metadata = OrchestrationMetadata(EXAMPLE_GOE_LIST_RANGE_DAY_DT_METADATA_DICT)
+        self.assertIsInstance(goe_list_range_day_dt_metadata.is_subpartition_offload(), bool)
         self.assertEqual(goe_list_range_day_dt_metadata.is_subpartition_offload(), True)
 
     def test_is_hwm_in_hybrid_view(self):
@@ -355,36 +336,20 @@ class TestOrchestrationMetadata(TestCase):
         # Offload dimension
         channels_metadata = OrchestrationMetadata(EXAMPLE_CHANNELS_METADATA_DICT)
         self.assertIsInstance(channels_metadata.incremental_data_append_feature(), str)
-        self.assertNotIn(
-            "partition", channels_metadata.incremental_data_append_feature().lower()
-        )
-        self.assertNotIn(
-            "sub", channels_metadata.incremental_data_append_feature().lower()
-        )
-        self.assertNotIn(
-            "predicate", channels_metadata.incremental_data_append_feature().lower()
-        )
+        self.assertNotIn("partition", channels_metadata.incremental_data_append_feature().lower())
+        self.assertNotIn("sub", channels_metadata.incremental_data_append_feature().lower())
+        self.assertNotIn("predicate", channels_metadata.incremental_data_append_feature().lower())
 
         # Offload by partition
         sales_metadata = OrchestrationMetadata(EXAMPLE_SALES_METADATA_DICT)
         self.assertIsInstance(sales_metadata.incremental_data_append_feature(), str)
-        self.assertIn(
-            "partition", sales_metadata.incremental_data_append_feature().lower()
-        )
-        self.assertNotIn(
-            "sub", sales_metadata.incremental_data_append_feature().lower()
-        )
-        self.assertNotIn(
-            "predicate", sales_metadata.incremental_data_append_feature().lower()
-        )
+        self.assertIn("partition", sales_metadata.incremental_data_append_feature().lower())
+        self.assertNotIn("sub", sales_metadata.incremental_data_append_feature().lower())
+        self.assertNotIn("predicate", sales_metadata.incremental_data_append_feature().lower())
 
         # Offload by subpartition
-        goe_list_range_day_dt_metadata = OrchestrationMetadata(
-            EXAMPLE_GOE_LIST_RANGE_DAY_DT_METADATA_DICT
-        )
-        self.assertIsInstance(
-            goe_list_range_day_dt_metadata.incremental_data_append_feature(), str
-        )
+        goe_list_range_day_dt_metadata = OrchestrationMetadata(EXAMPLE_GOE_LIST_RANGE_DAY_DT_METADATA_DICT)
+        self.assertIsInstance(goe_list_range_day_dt_metadata.incremental_data_append_feature(), str)
         self.assertIn(
             "partition",
             goe_list_range_day_dt_metadata.incremental_data_append_feature().lower(),
@@ -401,28 +366,16 @@ class TestOrchestrationMetadata(TestCase):
         # Offload by predicate
         pbo_metadata = OrchestrationMetadata(EXAMPLE_STORY_PBO_DIM_METADATA_DICT)
         self.assertIsInstance(pbo_metadata.incremental_data_append_feature(), str)
-        self.assertNotIn(
-            "partition", pbo_metadata.incremental_data_append_feature().lower()
-        )
+        self.assertNotIn("partition", pbo_metadata.incremental_data_append_feature().lower())
         self.assertNotIn("sub", pbo_metadata.incremental_data_append_feature().lower())
-        self.assertIn(
-            "predicate", pbo_metadata.incremental_data_append_feature().lower()
-        )
+        self.assertIn("predicate", pbo_metadata.incremental_data_append_feature().lower())
 
         # Offload by predicate and partition
-        intra_pbo_metadata = OrchestrationMetadata(
-            EXAMPLE_STORY_PBO_R_INTRA_METADATA_DICT
-        )
+        intra_pbo_metadata = OrchestrationMetadata(EXAMPLE_STORY_PBO_R_INTRA_METADATA_DICT)
         self.assertIsInstance(intra_pbo_metadata.incremental_data_append_feature(), str)
-        self.assertIn(
-            "partition", intra_pbo_metadata.incremental_data_append_feature().lower()
-        )
-        self.assertNotIn(
-            "sub", intra_pbo_metadata.incremental_data_append_feature().lower()
-        )
-        self.assertIn(
-            "predicate", intra_pbo_metadata.incremental_data_append_feature().lower()
-        )
+        self.assertIn("partition", intra_pbo_metadata.incremental_data_append_feature().lower())
+        self.assertNotIn("sub", intra_pbo_metadata.incremental_data_append_feature().lower())
+        self.assertIn("predicate", intra_pbo_metadata.incremental_data_append_feature().lower())
 
 
 if __name__ == "__main__":

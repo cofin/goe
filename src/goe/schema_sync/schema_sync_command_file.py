@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" SchemaSyncCommandFile: Library for managing Schema Sync command file
-"""
+"""SchemaSyncCommandFile: Library for managing Schema Sync command file"""
+
 import os
 import traceback
 from datetime import datetime
@@ -30,7 +30,7 @@ class SchemaSyncCommandFileException(Exception):
     pass
 
 
-class SchemaSyncCommandFile(object):
+class SchemaSyncCommandFile:
     """Class for managing the Schema Sync command file"""
 
     def __init__(self, command_file):
@@ -40,35 +40,31 @@ class SchemaSyncCommandFile(object):
         try:
             with open(self._command_file, "w") as cmd_file:
                 cmd_file.write("\n%s" % divider)
-                cmd_file.write("\Schema Sync v%s Command File" % version())
+                cmd_file.write(r"\Schema Sync v%s Command File" % version())
                 cmd_file.write(
-                    "\nCopyright % The GOE Authors. All rights reserved.}');"
-                    % datetime.now().strftime("%Y")
+                    "\nCopyright %s The GOE Authors. All rights reserved.}');" % datetime.now().strftime("%Y")
                 )
                 cmd_file.write("\n%s\n" % divider)
-        except IOError as exc:
+        except OSError:
             raise SchemaSyncCommandFileException(
-                'Unable to create command file "%s"\n%s'
-                % (self._command_file, traceback.format_exc())
+                'Unable to create command file "%s"\n%s' % (self._command_file, traceback.format_exc())
             )
 
     def write(self, msg):
         try:
             with open(self._command_file, "a") as cmd_file:
                 cmd_file.write("\n%s" % msg)
-        except IOError as exc:
+        except OSError:
             raise SchemaSyncCommandFileException(
-                'Unable to write to command file "%s"\n%s'
-                % (self._command_file, traceback.format_exc())
+                'Unable to write to command file "%s"\n%s' % (self._command_file, traceback.format_exc())
             )
 
     def remove(self):
         try:
             os.remove(self._command_file)
-        except OSError as exc:
+        except OSError:
             raise SchemaSyncCommandFileException(
-                'Unable to remove command file "%s"\n%s'
-                % (self._command_file, traceback.format_exc())
+                'Unable to remove command file "%s"\n%s' % (self._command_file, traceback.format_exc())
             )
 
     def write_table_header(self, source_table):
@@ -77,11 +73,7 @@ class SchemaSyncCommandFile(object):
         self.write(sub_divider)
 
     def write_command(self, command):
-        if (
-            command.lstrip()
-            .lower()
-            .startswith(("#", "echo", "hdfs", "${offload_home}", "bigquery", "missing"))
-        ):
+        if command.lstrip().lower().startswith(("#", "echo", "hdfs", "${offload_home}", "bigquery", "missing")):
             command_suffix = ""
         elif command.lstrip().lower().startswith("create or replace trigger"):
             command_suffix = "\n/"

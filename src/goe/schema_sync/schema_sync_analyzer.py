@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" SchemaSyncAnalyzer: Library for analyzing Schema Sync operations
-"""
+"""SchemaSyncAnalyzer: Library for analyzing Schema Sync operations"""
 
 import copy
 import datetime
@@ -23,17 +22,16 @@ import pprint
 import traceback
 from operator import itemgetter
 
-from goe.goe import log
 from goe.config.orchestration_config import OrchestrationConfig
-import goe.schema_sync.schema_sync_constants as schema_sync_constants
+from goe.goe import log
 from goe.offload.column_metadata import get_column_names
 from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_messages import VERBOSE
+from goe.schema_sync import schema_sync_constants
 from goe.util.misc_functions import double_quote_sandwich
-from goe.util.ora_query import OracleQuery
-from goe.util.ora_query import get_oracle_connection
+from goe.util.ora_query import OracleQuery, get_oracle_connection
 
 dense = pprint.PrettyPrinter(indent=2)
 normal, verbose, vverbose = list(range(3))
@@ -59,30 +57,20 @@ def ddl_compare(cursor, source_object, target_object):
             and the GOE ADM user does not possess these privileges.
     """
 
-    sql = """
+    sql = f"""
         SELECT  owner
         ,       object_name
         ,       object_type
         ,       last_ddl_time
         FROM    dba_objects
-        WHERE   (owner,object_name,object_type) IN ({source},{target})""".format(
-        source=source_object, target=target_object
-    )
+        WHERE   (owner,object_name,object_type) IN ({source_object},{target_object})"""
 
     result = cursor.execute(sql).fetchall()
 
-    source_exists = [
-        ddl[last_ddl_time]
-        for ddl in result
-        if ddl[object_name] == source_object[object_name].upper()
-    ]
+    source_exists = [ddl[last_ddl_time] for ddl in result if ddl[object_name] == source_object[object_name].upper()]
     source_last_ddl_time = source_exists[0] if source_exists else DATETIME_CONSTANT
 
-    target_exists = [
-        ddl[last_ddl_time]
-        for ddl in result
-        if ddl[object_name] == target_object[object_name].upper()
-    ]
+    target_exists = [ddl[last_ddl_time] for ddl in result if ddl[object_name] == target_object[object_name].upper()]
     target_last_ddl_time = target_exists[0] if target_exists else DATETIME_CONSTANT
 
     return bool(source_last_ddl_time > target_last_ddl_time or not target_exists)
@@ -92,7 +80,7 @@ class SchemaSyncAnalyzerException(Exception):
     pass
 
 
-class SchemaSyncAnalyzer(object):
+class SchemaSyncAnalyzer:
     """Class for comparing rdbms and backend structures"""
 
     def __init__(self, options, messages):
@@ -150,10 +138,7 @@ class SchemaSyncAnalyzer(object):
             return sql, binds
 
         def table_offload_objects_sql(owner, table_name):
-            sql = (
-                schema_offload_objects_sql(owner)[0]
-                + "    AND     offloaded_table LIKE UPPER(:TABLE_NAME)"
-            )
+            sql = schema_offload_objects_sql(owner)[0] + "    AND     offloaded_table LIKE UPPER(:TABLE_NAME)"
             binds = {"OWNER": owner, "TABLE_NAME": table_name}
             return sql, binds
 
@@ -178,9 +163,7 @@ class SchemaSyncAnalyzer(object):
                 owner = [include[:-1] + "%" if include[-1] == "*" else include][0]
                 sql, binds = schema_offload_objects_sql(owner)
 
-            result = self._ora_adm_conn.execute(
-                sql, binds=binds, cursor_fn=lambda c: c.fetchall(), as_dict=True
-            )
+            result = self._ora_adm_conn.execute(sql, binds=binds, cursor_fn=lambda c: c.fetchall(), as_dict=True)
             if result:
                 # convert dictionary keys returned above to lowercase (GOE-992)
                 expanded += [dict((k.lower(), v) for k, v in r.items()) for r in result]
@@ -201,9 +184,7 @@ class SchemaSyncAnalyzer(object):
             )
             return offload_source_table.columns
         except Exception:
-            self._messages.warning(
-                "Unable to retrieve details for RDBMS table %s.%s" % (owner, table_name)
-            )
+            self._messages.warning("Unable to retrieve details for RDBMS table %s.%s" % (owner, table_name))
             return None
 
     def normalize_backend_structure(self, owner, table_name):
@@ -215,34 +196,28 @@ class SchemaSyncAnalyzer(object):
                 % (owner, table_name, traceback.format_exc()),
                 detail=VERBOSE,
             )
-            self._messages.warning(
-                "Unable to retrieve details for backend table %s.%s"
-                % (owner, table_name)
-            )
+            self._messages.warning("Unable to retrieve details for backend table %s.%s" % (owner, table_name))
             return None
 
     def check_valid_rdbms_columns(self, owner, table_name, columns):
-        """
-        New column rules
+        """New column rules
 
-            We skip the table if these are not met:
+        We skip the table if these are not met:
 
-                Must be visible
-                Must have a datatype that is supported by offload
+            Must be visible
+            Must have a datatype that is supported by offload
 
-            We show a warning but continue if these are not met:
+        We show a warning but continue if these are not met:
 
-                Are assumed to be NULL
-                Default values are not considered
+            Are assumed to be NULL
+            Default values are not considered
 
-            Back-population is not considered
+        Back-population is not considered
 
-            If this is an incremental enabled table, then disallow INTERVAL YEAR TO MONTH (GOE-1002)
+        If this is an incremental enabled table, then disallow INTERVAL YEAR TO MONTH (GOE-1002)
         """
         is_valid = True
-        offload_source_table = OffloadSourceTable.create(
-            owner, table_name, self._orchestration_options, self._messages
-        )
+        offload_source_table = OffloadSourceTable.create(owner, table_name, self._orchestration_options, self._messages)
 
         for column in columns:
             if column.is_hidden():
@@ -274,8 +249,7 @@ class SchemaSyncAnalyzer(object):
         return is_valid
 
     def compare_table_columns(self, first_table, second_table):
-        """
-        Compare the columns in first_table with those in second_table, return differences only
+        """Compare the columns in first_table with those in second_table, return differences only
         if the first_table has columns not in the second_table.
 
         first_table, second_table params are tuples in the form (owner,table_name,source)
@@ -298,12 +272,10 @@ class SchemaSyncAnalyzer(object):
         """
         assert isinstance(first_table, tuple), "first_table parameter must be a tuple"
         assert isinstance(second_table, tuple), "second_table parameter must be a tuple"
-        assert (
-            len(first_table) == 3
-        ), "first_table parameter tuple must contain 3 elements: (owner, table_name, source)"
-        assert (
-            len(second_table) == 3
-        ), "second_table parameter tuple must contain 3 elements: (owner, table_name, source)"
+        assert len(first_table) == 3, "first_table parameter tuple must contain 3 elements: (owner, table_name, source)"
+        assert len(second_table) == 3, (
+            "second_table parameter tuple must contain 3 elements: (owner, table_name, source)"
+        )
 
         f_owner, f_table_name, f_source = first_table
         s_owner, s_table_name, s_source = second_table
@@ -333,28 +305,15 @@ class SchemaSyncAnalyzer(object):
         elif s_source == schema_sync_constants.SOURCE_TYPE_BACKEND:
             s_structure = self.normalize_backend_structure(s_owner, s_table_name)
 
-        comp_f_structure = (
-            set(get_column_names(f_structure, conv_fn=lambda x: x.upper()))
-            if f_structure
-            else None
-        )
-        comp_s_structure = (
-            set(get_column_names(s_structure, conv_fn=lambda x: x.upper()))
-            if s_structure
-            else None
-        )
+        comp_f_structure = set(get_column_names(f_structure, conv_fn=lambda x: x.upper())) if f_structure else None
+        comp_s_structure = set(get_column_names(s_structure, conv_fn=lambda x: x.upper())) if s_structure else None
 
         if not comp_f_structure or not comp_s_structure:
             delta_cols = None
+        elif comp_f_structure.difference(comp_s_structure):
+            delta_cols = [col for col in f_structure if col.name in comp_f_structure.difference(comp_s_structure)]
         else:
-            if comp_f_structure.difference(comp_s_structure):
-                delta_cols = [
-                    col
-                    for col in f_structure
-                    if col.name in comp_f_structure.difference(comp_s_structure)
-                ]
-            else:
-                delta_cols = None
+            delta_cols = None
 
         return delta_cols
 
@@ -425,9 +384,7 @@ class SchemaSyncAnalyzer(object):
         # TODO ss@2020-05-20 this check is in place due to GOE-1030
         if (
             rdbms_owner.lower() + rdbms_table_name.lower()
-            != backend_owner.lower().replace(
-                self._orchestration_options.db_name_pattern.lower() % "", ""
-            )
+            != backend_owner.lower().replace(self._orchestration_options.db_name_pattern.lower() % "", "")
             + backend_table_name.lower()
         ):
             source_name = "%s.%s" % (
@@ -468,9 +425,7 @@ class SchemaSyncAnalyzer(object):
             )
 
             if delta_base_oracle_cols:
-                if self.check_valid_rdbms_columns(
-                    rdbms_owner, rdbms_table_name, delta_base_oracle_cols
-                ):
+                if self.check_valid_rdbms_columns(rdbms_owner, rdbms_table_name, delta_base_oracle_cols):
                     vector = {
                         "type": schema_sync_constants.ADD_BACKEND_COLUMN,
                         "rdbms_owner": rdbms_owner,
@@ -544,9 +499,7 @@ class SchemaSyncAnalyzer(object):
 
             vector = {}
             if delta_hybrid_ext_cols:
-                if self.check_valid_rdbms_columns(
-                    rdbms_owner, rdbms_table_name, delta_hybrid_ext_cols
-                ):
+                if self.check_valid_rdbms_columns(rdbms_owner, rdbms_table_name, delta_hybrid_ext_cols):
                     vector["type"] = schema_sync_constants.PRESENT_TABLE
                     vector["rdbms_owner"] = rdbms_owner
                     vector["rdbms_table_name"] = rdbms_table_name
@@ -589,12 +542,9 @@ class SchemaSyncAnalyzer(object):
                 )
 
             if delta_hybrid_view_cols:
-                if self.check_valid_rdbms_columns(
-                    rdbms_owner, rdbms_table_name, delta_hybrid_view_cols
-                ):
+                if self.check_valid_rdbms_columns(rdbms_owner, rdbms_table_name, delta_hybrid_view_cols):
                     if (
-                        "type" in vector
-                        and schema_sync_constants.PRESENT_TABLE not in vector["type"]
+                        "type" in vector and schema_sync_constants.PRESENT_TABLE not in vector["type"]
                     ) or "type" not in vector:
                         vector["type"] = schema_sync_constants.PRESENT_TABLE
                         vector["rdbms_owner"] = rdbms_owner

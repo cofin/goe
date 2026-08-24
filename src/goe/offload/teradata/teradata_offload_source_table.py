@@ -16,55 +16,55 @@
 
 """TeradataSourceTable: Library for logic/interaction with Teradata source of an offload"""
 
-from datetime import date, datetime
 import logging
 import re
+from datetime import date, datetime
 from textwrap import dedent
-from typing import Optional, Union
 
 from numpy import datetime64
 
 from goe.offload import offload_constants
 from goe.offload.column_metadata import (
-    CanonicalColumn,
-    is_safe_mapping,
-    match_table_column,
+    ALL_CANONICAL_TYPES,
+    CANONICAL_CHAR_SEMANTICS_CHAR,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_VARIABLE_STRING,
+    DATE_CANONICAL_TYPES,
     GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_FLOAT,
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_DATE,
+    GOE_TYPE_INTERVAL_DS,
+    GOE_TYPE_INTERVAL_YM,
+    GOE_TYPE_LARGE_BINARY,
+    GOE_TYPE_LARGE_STRING,
     GOE_TYPE_TIME,
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    CANONICAL_CHAR_SEMANTICS_CHAR,
-    ALL_CANONICAL_TYPES,
-    DATE_CANONICAL_TYPES,
+    GOE_TYPE_VARIABLE_STRING,
     NUMERIC_CANONICAL_TYPES,
     STRING_CANONICAL_TYPES,
+    CanonicalColumn,
+    is_safe_mapping,
+    match_table_column,
 )
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.offload_messages import VVERBOSE
 from goe.offload.offload_source_table import (
-    OffloadSourceTableInterface,
+    OFFLOAD_PARTITION_TYPE_RANGE,
     OffloadSourceTableException,
+    OffloadSourceTableInterface,
     RdbmsPartition,
     convert_high_values_to_python,
-    OFFLOAD_PARTITION_TYPE_RANGE,
 )
+from goe.offload.teradata import teradata_predicate
 from goe.offload.teradata.teradata_column import (
-    TeradataColumn,
+    TERADATA_TIMESTAMP_RE,
     TERADATA_TYPE_BIGINT,
     TERADATA_TYPE_BLOB,
     TERADATA_TYPE_BYTE,
@@ -75,17 +75,17 @@ from goe.offload.teradata.teradata_column import (
     TERADATA_TYPE_DECIMAL,
     TERADATA_TYPE_DOUBLE,
     TERADATA_TYPE_INTEGER,
-    TERADATA_TYPE_INTERVAL_YM,
     TERADATA_TYPE_INTERVAL_DS,
+    TERADATA_TYPE_INTERVAL_YM,
     TERADATA_TYPE_NUMBER,
     TERADATA_TYPE_SMALLINT,
     TERADATA_TYPE_TIME,
-    TERADATA_TYPE_TIMESTAMP,
     TERADATA_TYPE_TIME_TZ,
+    TERADATA_TYPE_TIMESTAMP,
     TERADATA_TYPE_TIMESTAMP_TZ,
     TERADATA_TYPE_VARBYTE,
     TERADATA_TYPE_VARCHAR,
-    TERADATA_TIMESTAMP_RE,
+    TeradataColumn,
 )
 from goe.offload.teradata.teradata_frontend_api import (
     teradata_get_primary_partition_expression,
@@ -95,7 +95,6 @@ from goe.offload.teradata.teradata_partition_expression import (
     UnsupportedCaseNPartitionExpression,
     UnsupportedPartitionExpression,
 )
-from goe.offload.teradata import teradata_predicate
 from goe.util.misc_functions import chunk_list
 
 logger = logging.getLogger(__name__)
@@ -160,8 +159,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         )
 
         logger.info(
-            "TeradataSourceTable setup: (%s, %s, %s)"
-            % (schema_name, table_name, connection_options.ora_adm_user)
+            "TeradataSourceTable setup: (%s, %s, %s)" % (schema_name, table_name, connection_options.ora_adm_user)
         )
         if dry_run:
             logger.info("* Dry run *")
@@ -185,43 +183,33 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         """Convert partition high value to string"""
         if hv is None:
             return None
-        else:
-            return self._db_api.to_frontend_literal(hv, data_type)
+        return self._db_api.to_frontend_literal(hv, data_type)
 
     def _get_column_low_high_values(self, column_name, from_stats=True, sample_perc=1):
         """Return low/high values for a specific column either from stats or from sampling data in the table
         When using optimiser stats only certain data types are supported
         """
         logger.debug(
-            "get_column_low_high_values: %s, %s, %s, %s"
-            % (self.owner, self.table_name, column_name, from_stats)
+            "get_column_low_high_values: %s, %s, %s, %s" % (self.owner, self.table_name, column_name, from_stats)
         )
         assert column_name
         column_name = column_name.upper()
 
         if from_stats:
             # TODO Can't find a way to do this on Teradata but we should revisit and try harder than I did for MVP.
-            raise NotImplementedError(
-                f"Low/high value from statistics is not supported"
-            )
-        else:
-            q = (
-                dedent(
-                    """\
+            raise NotImplementedError("Low/high value from statistics is not supported")
+        q = dedent(
+            """\
                 SELECT MIN(%(col)s)
                 ,      MAX(%(col)s)
                 FROM   %(owner_table)s
                 SAMPLE %(perc)s"""
-                )
-                % {
-                    "owner_table": self._db_api.enclose_object_reference(
-                        self.owner, self.table_name
-                    ),
-                    "col": column_name,
-                    "perc": self._sample_data_types_data_sample_pct(sample_perc or 1),
-                }
-            )
-            row = self._db_api.execute_query_fetch_one(q)
+        ) % {
+            "owner_table": self._db_api.enclose_object_reference(self.owner, self.table_name),
+            "col": column_name,
+            "perc": self._sample_data_types_data_sample_pct(sample_perc or 1),
+        }
+        row = self._db_api.execute_query_fetch_one(q)
 
         return row
 
@@ -230,28 +218,22 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         Techniques may differ by frontend but in general we are looking for a column with high distinct values
         and low number of NULLs.
         """
-        logger.debug(
-            "_get_hash_bucket_candidate: %s, %s" % (self.owner, self.table_name)
-        )
+        logger.debug("_get_hash_bucket_candidate: %s, %s" % (self.owner, self.table_name))
         # TODO we could look for any unique indexes
         # TODO we can use stats like on Oracle but we need to have a proper look into summary vs more detailed stats.
-        raise NotImplementedError(
-            "_get_hash_bucket_candidate() pending implementation on Teradata"
-        )
+        raise NotImplementedError("_get_hash_bucket_candidate() pending implementation on Teradata")
 
     def _get_primary_partition_expression(
         self,
-    ) -> Optional[TeradataPartitionExpression]:
+    ) -> TeradataPartitionExpression | None:
         """Return a TeradataPartitionExpression object describing the first row partition expression we'll use
         to drive offloads.
         The result is cached in state because we'll need to decode this data for multiple reasons.
         """
         if self._primary_partition_expression is None:
             try:
-                self._primary_partition_expression = (
-                    teradata_get_primary_partition_expression(
-                        self.owner, self.table_name, self._db_api
-                    )
+                self._primary_partition_expression = teradata_get_primary_partition_expression(
+                    self.owner, self.table_name, self._db_api
                 )
             except (
                 UnsupportedCaseNPartitionExpression,
@@ -259,9 +241,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             ) as exc:
                 # Treat tables with unsupported partition expressions as non-partitioned.
                 self._log(
-                    "Cannot retrieve partition expression, treating table as not partitioned: {}".format(
-                        str(exc)
-                    ),
+                    f"Cannot retrieve partition expression, treating table as not partitioned: {exc!s}",
                     detail=VVERBOSE,
                 )
         return self._primary_partition_expression
@@ -276,29 +256,19 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         owner_table = self._db_api.enclose_object_reference(self.owner, self.table_name)
 
         if pe.partition_type != OFFLOAD_PARTITION_TYPE_RANGE:
-            raise NotImplementedError(
-                f"Partition type is not supported on Teradata: {pe.partition_type}"
-            )
+            raise NotImplementedError(f"Partition type is not supported on Teradata: {pe.partition_type}")
 
         if partition_column.data_type in (TERADATA_TYPE_DATE, TERADATA_TYPE_TIMESTAMP):
-            margin = (
-                "INTERVAL '1' DAY"
-                if partition_column.data_type == TERADATA_TYPE_TIMESTAMP
-                else "1"
-            )
+            margin = "INTERVAL '1' DAY" if partition_column.data_type == TERADATA_TYPE_TIMESTAMP else "1"
             range_n_periods_cte_template = """SELECT END(pd) AS period_end
             FROM   SYS_CALENDAR.CALENDAR
             WHERE  calendar_date = {start}
             EXPAND ON PERIOD( {start}, {end} + {end_margin} ) AS pd BY {interval}"""
             cte_branches = [
-                range_n_periods_cte_template.format(
-                    start=start, end=end, interval=interval, end_margin=margin
-                )
+                range_n_periods_cte_template.format(start=start, end=end, interval=interval, end_margin=margin)
                 for start, end, interval in pe.ranges
             ]
-            range_n_periods_cte = "\n            UNION ALL\n            ".join(
-                cte_branches
-            )
+            range_n_periods_cte = "\n            UNION ALL\n            ".join(cte_branches)
         elif partition_column.is_number_based():
             cte_branches = []
             for start, end, interval in pe.ranges:
@@ -312,9 +282,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
                 if len(interval_csv) > STRTOK_SPLIT_TO_TABLE_MAX_LENGTH:
                     # Split the CSV into sub-CSVs of no more than STRTOK_SPLIT_TO_TABLE_MAX_SUBCSV_ITEMS elements
                     # keeping each list well below the limit.
-                    sub_intervals = chunk_list(
-                        intervals, STRTOK_SPLIT_TO_TABLE_MAX_SUBCSV_ITEMS
-                    )
+                    sub_intervals = chunk_list(intervals, STRTOK_SPLIT_TO_TABLE_MAX_SUBCSV_ITEMS)
                     interval_csvs = [",".join(_) for _ in sub_intervals]
                 else:
                     interval_csvs = [interval_csv]
@@ -325,9 +293,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
                  RETURNS (outkey INTEGER, tokennum INTEGER, token VARCHAR(64) CHARACTER SET UNICODE)
             ) AS d"""
                     cte_branches.append(sql)
-            range_n_periods_cte = "\n            UNION ALL\n            ".join(
-                cte_branches
-            )
+            range_n_periods_cte = "\n            UNION ALL\n            ".join(cte_branches)
         else:
             raise NotImplementedError(
                 f'Teradata partition retrieval by "{partition_column.data_type}" has not been implemented'
@@ -367,9 +333,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         partitions = []
         # TODO Using avergae partition size is obviously flawed but have not found how to get this
         #      information on Teradata so this will suffice for MVP.
-        average_partition_size = (
-            int((self.size_in_bytes or 0) / len(rows)) if rows else None
-        )
+        average_partition_size = int((self.size_in_bytes or 0) / len(rows)) if rows else None
         for row in rows:
             partition_id, partition_high_value, out_of_range = row[0], row[1], row[2]
             if out_of_range:
@@ -377,9 +341,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
                     partition_high_value = offload_constants.PART_OUT_OF_RANGE
                 else:
                     partition_high_value = offload_constants.PART_OUT_OF_LIST
-            hv_literal = self._decode_partition_high_values_string(
-                partition_high_value, partition_column.data_type
-            )
+            hv_literal = self._decode_partition_high_values_string(partition_high_value, partition_column.data_type)
             hv_list = convert_high_values_to_python(
                 self.partition_columns,
                 [partition_high_value],
@@ -413,14 +375,10 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             AND    TableName = ?
             AND    IndexType IN ('P', 'Q')"""
         )
-        rows = self._db_api.execute_query_fetch_all(
-            q, query_params=[self.owner, self.table_name]
-        )
+        rows = self._db_api.execute_query_fetch_all(q, query_params=[self.owner, self.table_name])
         if rows:
-            assert (
-                len(set([_[0] for _ in rows])) == 1
-            ), "Multiple primary indexes unexpected: {}".format(
-                [set([_[0] for _ in rows])]
+            assert len(set([_[0] for _ in rows])) == 1, (
+                f"Multiple primary indexes unexpected: {[set([_[0] for _ in rows])]}"
             )
             for row in rows:
                 pi_columns.append(match_table_column(row[1], self.columns))
@@ -462,39 +420,31 @@ class TeradataSourceTable(OffloadSourceTableInterface):
 
     def _get_table_stats(self):
         # TODO pending implementation
-        raise NotImplementedError(
-            "_get_table_stats() pending implementation on Teradata"
-        )
+        raise NotImplementedError("_get_table_stats() pending implementation on Teradata")
         # return self._table_stats
 
     def _is_compression_enabled(self) -> bool:
-        raise NotImplementedError(
-            "_is_compression_enabled() pending implementation on Teradata"
-        )
+        raise NotImplementedError("_is_compression_enabled() pending implementation on Teradata")
 
     def _sample_data_types_compression_factor(self):
         return 0.25
 
     def _sample_data_types_data_sample_parallelism(self, data_sample_parallelism):
         """No sampling parallelism on Teradata"""
-        return None
+        return
 
     def _sample_data_types_data_sample_pct(self, data_sample_pct):
         if data_sample_pct is not None:
             if data_sample_pct < 0:
                 return self._sample_data_types_min_pct()
-            elif data_sample_pct >= 100:
+            if data_sample_pct >= 100:
                 return self._sample_data_types_max_pct()
-            else:
-                # Teradata SAMPLE expects a fraction > 0 and < 1
-                return data_sample_pct / 100
-        else:
-            return self._sample_data_types_max_pct()
+            # Teradata SAMPLE expects a fraction > 0 and < 1
+            return data_sample_pct / 100
+        return self._sample_data_types_max_pct()
 
     def _sample_data_types_date_as_string_column(self, column_name):
-        return TeradataColumn(
-            column_name, self._db_api.generic_string_data_type(), data_length=128
-        )
+        return TeradataColumn(column_name, self._db_api.generic_string_data_type(), data_length=128)
 
     def _sample_data_types_min_gb(self):
         """1GB seems like a good target"""
@@ -523,9 +473,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
     # PUBLIC METHODS
     ###########################################################################
 
-    def check_nanosecond_offload_allowed(
-        self, backend_max_datetime_scale, allow_nanosecond_timestamp_columns=None
-    ):
+    def check_nanosecond_offload_allowed(self, backend_max_datetime_scale, allow_nanosecond_timestamp_columns=None):
         """Do not expect to get this far because the frontend does not support nano so the backend is irrelevant"""
         return False
 
@@ -534,30 +482,25 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         """Return a string based date/timestamp literal we'll generate from partition high value"""
         if rdbms_literal == offload_constants.PART_OUT_OF_RANGE:
             return datetime64(datetime.max)
-        elif isinstance(rdbms_literal, date):
+        if isinstance(rdbms_literal, date):
             return datetime64(rdbms_literal)
-        elif rdbms_literal.startswith("DATE "):
+        if rdbms_literal.startswith("DATE "):
             # if decoding dba_tab_partitions.high_value then need to parse TO_DATE()
             _, dt, _ = rdbms_literal.split("'")
             return datetime64(dt)
-        elif rdbms_literal.startswith("TIMESTAMP "):
+        if rdbms_literal.startswith("TIMESTAMP "):
             _, ts, _ = rdbms_literal.split("'")
             return datetime64(ts)
-        elif not strict:
+        if not strict:
             return None
-        else:
-            raise NotImplementedError(
-                "Teradata date/time literal not implemented: %s" % rdbms_literal
-            )
+        raise NotImplementedError("Teradata date/time literal not implemented: %s" % rdbms_literal)
 
     def decode_partition_high_values(self, hv_csv, strict=True) -> tuple:
         logger.debug("decode_partition_high_values: %s, %s" % (hv_csv, strict))
         if not hv_csv or not self.partition_columns:
             return tuple()
 
-        hv_literal = self._decode_partition_high_values_string(
-            hv_csv, self.partition_columns[0].data_type
-        )
+        hv_literal = self._decode_partition_high_values_string(hv_csv, self.partition_columns[0].data_type)
         hv_list = convert_high_values_to_python(
             self.partition_columns,
             [hv_literal],
@@ -568,9 +511,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         return tuple(hv_list), (hv_literal,)
 
     def enable_offload_by_subpartition(self, desired_state=True):
-        raise NotImplementedError(
-            "Subpartition Offloads are not supported for Teradata"
-        )
+        raise NotImplementedError("Subpartition Offloads are not supported for Teradata")
 
     def from_canonical_column(self, column):
         """Translate an internal GOE column to a Teradata column.
@@ -609,8 +550,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             # TODO Don't know 32000 is just for UNICODE or if CHAR as well
             max_length = (
                 32000
-                if column.char_semantics
-                in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
+                if column.char_semantics in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
                 else 64000
             )
             if column.data_length or column.char_length:
@@ -620,26 +560,23 @@ class TeradataSourceTable(OffloadSourceTableInterface):
                 data_length = char_length = max_length
             if (
                 char_length
-                if column.char_semantics
-                in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
+                if column.char_semantics in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
                 else data_length
             ) > max_length:
                 return new_column(column, TERADATA_TYPE_CLOB)
-            else:
-                return new_column(
-                    column,
-                    TERADATA_TYPE_CHAR,
-                    data_length=data_length,
-                    char_length=char_length,
-                )
-        elif column.data_type == GOE_TYPE_LARGE_STRING:
+            return new_column(
+                column,
+                TERADATA_TYPE_CHAR,
+                data_length=data_length,
+                char_length=char_length,
+            )
+        if column.data_type == GOE_TYPE_LARGE_STRING:
             return new_column(column, TERADATA_TYPE_CLOB)
-        elif column.data_type == GOE_TYPE_VARIABLE_STRING:
+        if column.data_type == GOE_TYPE_VARIABLE_STRING:
             # TODO Don't know 32000 is just for UNICODE or if CHAR as well
             max_length = (
                 32000
-                if column.char_semantics
-                in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
+                if column.char_semantics in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
                 else 64000
             )
             if column.data_length or column.char_length:
@@ -649,35 +586,32 @@ class TeradataSourceTable(OffloadSourceTableInterface):
                 data_length = char_length = max_length
             if (
                 char_length
-                if column.char_semantics
-                in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
+                if column.char_semantics in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
                 else data_length
             ) > max_length:
                 return new_column(column, TERADATA_TYPE_CLOB)
-            else:
-                return new_column(
-                    column,
-                    TERADATA_TYPE_VARCHAR,
-                    data_length=data_length,
-                    char_length=char_length,
-                )
-        elif column.data_type == GOE_TYPE_BINARY:
+            return new_column(
+                column,
+                TERADATA_TYPE_VARCHAR,
+                data_length=data_length,
+                char_length=char_length,
+            )
+        if column.data_type == GOE_TYPE_BINARY:
             data_length = column.data_length or 64000
             if data_length > 64000:
                 return new_column(column, TERADATA_TYPE_BLOB)
-            else:
-                return new_column(column, TERADATA_TYPE_BYTE, data_length=data_length)
-        elif column.data_type == GOE_TYPE_LARGE_BINARY:
+            return new_column(column, TERADATA_TYPE_BYTE, data_length=data_length)
+        if column.data_type == GOE_TYPE_LARGE_BINARY:
             return new_column(column, TERADATA_TYPE_BLOB)
-        elif column.data_type == GOE_TYPE_INTEGER_1:
+        if column.data_type == GOE_TYPE_INTEGER_1:
             return new_column(column, TERADATA_TYPE_BYTEINT, data_length=1)
-        elif column.data_type == GOE_TYPE_INTEGER_2:
+        if column.data_type == GOE_TYPE_INTEGER_2:
             return new_column(column, TERADATA_TYPE_SMALLINT, data_length=2)
-        elif column.data_type == GOE_TYPE_INTEGER_4:
+        if column.data_type == GOE_TYPE_INTEGER_4:
             return new_column(column, TERADATA_TYPE_INTEGER, data_length=4)
-        elif column.data_type == GOE_TYPE_INTEGER_8:
+        if column.data_type == GOE_TYPE_INTEGER_8:
             return new_column(column, TERADATA_TYPE_BIGINT, data_length=8)
-        elif column.data_type == GOE_TYPE_INTEGER_38:
+        if column.data_type == GOE_TYPE_INTEGER_38:
             return new_column(
                 column,
                 TERADATA_TYPE_NUMBER,
@@ -685,7 +619,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
                 data_scale=0,
                 data_length=18,
             )
-        elif column.data_type == GOE_TYPE_DECIMAL:
+        if column.data_type == GOE_TYPE_DECIMAL:
             data_length = column.data_length or 18
             data_precision, data_scale = column.data_precision, column.data_scale
             if column.data_precision and column.data_precision > 38:
@@ -697,38 +631,25 @@ class TeradataSourceTable(OffloadSourceTableInterface):
                 data_scale=data_scale,
                 data_length=data_length,
             )
-        elif column.data_type in [GOE_TYPE_FLOAT, GOE_TYPE_DOUBLE]:
+        if column.data_type in [GOE_TYPE_FLOAT, GOE_TYPE_DOUBLE]:
             # Teradata REAL, FLOAT and DOUBLE are all the same thing, a 64 bit double.
             return new_column(column, TERADATA_TYPE_DOUBLE, data_length=8)
-        elif column.data_type == GOE_TYPE_DATE:
+        if column.data_type == GOE_TYPE_DATE:
             return new_column(column, TERADATA_TYPE_DATE, data_length=4)
-        elif column.data_type == GOE_TYPE_TIME:
+        if column.data_type == GOE_TYPE_TIME:
             return new_column(column, TERADATA_TYPE_TIME, data_length=6)
-        elif column.data_type == GOE_TYPE_TIMESTAMP:
-            data_scale = (
-                column.data_scale
-                if column.data_scale is not None
-                else self.max_datetime_scale()
-            )
-            return new_column(
-                column, TERADATA_TYPE_TIMESTAMP, data_scale=data_scale, data_length=10
-            )
-        elif column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            data_scale = (
-                column.data_scale
-                if column.data_scale is not None
-                else self.max_datetime_scale()
-            )
+        if column.data_type == GOE_TYPE_TIMESTAMP:
+            data_scale = column.data_scale if column.data_scale is not None else self.max_datetime_scale()
+            return new_column(column, TERADATA_TYPE_TIMESTAMP, data_scale=data_scale, data_length=10)
+        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
+            data_scale = column.data_scale if column.data_scale is not None else self.max_datetime_scale()
             return new_column(
                 column,
                 TERADATA_TYPE_TIMESTAMP_TZ,
                 data_scale=data_scale,
                 data_length=12,
             )
-        else:
-            raise NotImplementedError(
-                "Unsupported GOE data type: %s" % column.data_type
-            )
+        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
 
     def gen_column(
         self,
@@ -772,22 +693,15 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             # TODO Using avergae partition size is obviously flawed but have not found how to get this
             #      information on Teradata so this will suffice for MVP.
             partitions = self.get_partitions()
-            average_partition_size = (
-                int((self.size_in_bytes or 0) / len(partitions)) if partitions else None
-            )
+            average_partition_size = int((self.size_in_bytes or 0) / len(partitions)) if partitions else None
             return average_partition_size
         return None
 
     def get_minimum_partition_key_data(self):
         """Returns lowest point of data stored in source table"""
         assert self.partition_columns
-        assert (
-            len(self.partition_columns) <= 1
-        ), "Teradata RANGE partition columns should not be greater than 1"
-        min_sql = "SELECT MIN({}) FROM {}".format(
-            self.enclose_identifier(self.partition_columns[0].name),
-            self._db_api.enclose_object_reference(self.owner, self.table_name),
-        )
+        assert len(self.partition_columns) <= 1, "Teradata RANGE partition columns should not be greater than 1"
+        min_sql = f"SELECT MIN({self.enclose_identifier(self.partition_columns[0].name)}) FROM {self._db_api.enclose_object_reference(self.owner, self.table_name)}"
         row = self._db_api.execute_query_fetch_one(min_sql)
         if row and row[0] is None:
             # Tuple (None, ) is True, catch that here and return None instead
@@ -823,14 +737,11 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         """Return a string based numeric literal as a Python value"""
         if rdbms_literal == offload_constants.PART_OUT_OF_RANGE:
             return float("inf")
-        elif isinstance(rdbms_literal, int):
+        if isinstance(rdbms_literal, int):
             return rdbms_literal
-        elif re.match(r"^-?\d+$", rdbms_literal):
+        if re.match(r"^-?\d+$", rdbms_literal):
             return int(rdbms_literal)
-        else:
-            raise NotImplementedError(
-                "Teradata numeric literal not implemented: %s" % rdbms_literal
-            )
+        raise NotImplementedError("Teradata numeric literal not implemented: %s" % rdbms_literal)
 
     def offload_by_subpartition_capable(self, valid_for_auto_enable=False):
         """Teradata does support subpartitioning but for now we are only considering level 1 partition schemes"""
@@ -842,7 +753,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         return False
 
     @property
-    def offload_partition_level(self) -> Union[int, None]:
+    def offload_partition_level(self) -> int | None:
         # TODO we need to get the actual partition level from the partition expression
         return 1 if self.is_partitioned() else None
 
@@ -861,9 +772,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         return self._partition_type
 
     def predicate_has_rows(self, predicate):
-        where_clause = teradata_predicate.predicate_to_where_clause(
-            self.columns, predicate
-        )
+        where_clause = teradata_predicate.predicate_to_where_clause(self.columns, predicate)
         self._debug(f"Converted predicate: {where_clause}")
         owner_table = self._db_api.enclose_object_reference(self.owner, self.table_name)
         sql = f"SELECT TOP 1 1 FROM {owner_table} WHERE ({where_clause})"
@@ -873,41 +782,30 @@ class TeradataSourceTable(OffloadSourceTableInterface):
     def predicate_to_where_clause(self, predicate, columns_override=None):
         if not predicate:
             return None
-        return teradata_predicate.predicate_to_where_clause(
-            columns_override or self.columns, predicate
-        )
+        return teradata_predicate.predicate_to_where_clause(columns_override or self.columns, predicate)
 
     def predicate_to_where_clause_with_binds(self, predicate):
         # TODO Ideally we should revisit this and implement predicate_to_where_clause_with_binds(), but not for MVP.
         return teradata_predicate.predicate_to_where_clause(self.columns, predicate), []
         # return teradata_predicate.predicate_to_where_clause_with_binds(self.columns, predicate), []
 
-    def rdbms_literal_to_python(
-        self, rdbms_column, rdbms_literal, partition_type, strict=True
-    ):
-        logger.debug(
-            "rdbms_literal_to_python: %s, %s, %s"
-            % (rdbms_column.name, rdbms_column.data_type, rdbms_literal)
-        )
+    def rdbms_literal_to_python(self, rdbms_column, rdbms_literal, partition_type, strict=True):
+        logger.debug("rdbms_literal_to_python: %s, %s, %s" % (rdbms_column.name, rdbms_column.data_type, rdbms_literal))
         converted_value = None
         if rdbms_literal == offload_constants.PART_OUT_OF_LIST:
             converted_value = rdbms_literal
         elif rdbms_column.is_date_based():
-            converted_value = self.datetime_literal_to_python(
-                rdbms_literal, strict=strict
-            )
+            converted_value = self.datetime_literal_to_python(rdbms_literal, strict=strict)
         elif rdbms_column.is_number_based():
             converted_value = self.numeric_literal_to_python(rdbms_literal)
         elif rdbms_column.is_string_based():
             converted_value = self.char_literal_to_python(rdbms_literal)
+        elif strict:
+            raise OffloadSourceTableException(
+                "Unsupported partition key type for %s: %s" % (rdbms_column.name, rdbms_column.data_type)
+            )
         else:
-            if strict:
-                raise OffloadSourceTableException(
-                    "Unsupported partition key type for %s: %s"
-                    % (rdbms_column.name, rdbms_column.data_type)
-                )
-            else:
-                converted_value = str(rdbms_literal)
+            converted_value = str(rdbms_literal)
         return converted_value
 
     @staticmethod
@@ -939,8 +837,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
     def supported_partition_data_types(self):
         if self.partition_type == OFFLOAD_PARTITION_TYPE_RANGE:
             return SUPPORTED_RANGE_DATA_TYPES
-        else:
-            return SUPPORTED_LIST_DATA_TYPES
+        return SUPPORTED_LIST_DATA_TYPES
 
     def supported_list_partition_data_type(self, data_type):
         return bool(data_type.upper() in SUPPORTED_LIST_DATA_TYPES)
@@ -977,9 +874,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             """
             safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
             # TODO Do we need to know column/table/database character set here in order to set char_semantics?
-            char_semantics = (
-                CANONICAL_CHAR_SEMANTICS_UNICODE if (123 == 456) else col.char_semantics
-            )
+            char_semantics = CANONICAL_CHAR_SEMANTICS_UNICODE if (123 == 456) else col.char_semantics
             return CanonicalColumn(
                 col.name,
                 data_type,
@@ -999,89 +894,71 @@ class TeradataSourceTable(OffloadSourceTableInterface):
 
         if column.data_type == TERADATA_TYPE_BIGINT:
             return new_column(column, GOE_TYPE_INTEGER_8, safe_mapping=True)
-        elif column.data_type == TERADATA_TYPE_BLOB:
+        if column.data_type == TERADATA_TYPE_BLOB:
             # TODO Teradata BLOB/CLOB return 2097088000 (2GB) as the data length which is too large for Snowflake BINARY
             # return new_column(column, GOE_TYPE_LARGE_BINARY, data_length=column.data_length)
             return new_column(column, GOE_TYPE_LARGE_BINARY, data_length=8388608)
-        elif column.data_type in [TERADATA_TYPE_BYTE, TERADATA_TYPE_VARBYTE]:
+        if column.data_type in [TERADATA_TYPE_BYTE, TERADATA_TYPE_VARBYTE]:
             return new_column(column, GOE_TYPE_BINARY, data_length=column.data_length)
-        elif column.data_type == TERADATA_TYPE_BYTEINT:
+        if column.data_type == TERADATA_TYPE_BYTEINT:
             return new_column(column, GOE_TYPE_INTEGER_1, safe_mapping=True)
-        elif column.data_type == TERADATA_TYPE_CHAR:
+        if column.data_type == TERADATA_TYPE_CHAR:
             return new_column(
                 column,
                 GOE_TYPE_FIXED_STRING,
                 data_length=column.data_length,
                 safe_mapping=True,
             )
-        elif column.data_type == TERADATA_TYPE_CLOB:
+        if column.data_type == TERADATA_TYPE_CLOB:
             # TODO Teradata BLOB/CLOB return 2097088000 (2GB) as the char length which is too large for Snowflake TEXT
             column.char_length = 16777216
-            return new_column(
-                column, GOE_TYPE_LARGE_STRING, data_length=column.data_length
-            )
-        elif column.data_type == TERADATA_TYPE_DATE:
+            return new_column(column, GOE_TYPE_LARGE_STRING, data_length=column.data_length)
+        if column.data_type == TERADATA_TYPE_DATE:
             return new_column(column, GOE_TYPE_DATE)
-        elif column.data_type in (TERADATA_TYPE_DECIMAL, TERADATA_TYPE_NUMBER):
+        if column.data_type in (TERADATA_TYPE_DECIMAL, TERADATA_TYPE_NUMBER):
             data_precision = column.data_precision
             data_scale = column.data_scale
-            integral_type = self._frontend_decimal_to_integral_type(
-                data_precision, data_scale
-            )
+            integral_type = self._frontend_decimal_to_integral_type(data_precision, data_scale)
             if integral_type:
-                return new_column(
-                    column, integral_type, data_precision=data_precision, data_scale=0
-                )
-            else:
-                # If precision & scale are None then this is unsafe, otherwise leave it None to let new_column() logic take over
-                safe_mapping = (
-                    False if data_precision is None and data_scale is None else None
-                )
-                return new_column(
-                    column,
-                    GOE_TYPE_DECIMAL,
-                    data_precision=data_precision,
-                    data_scale=data_scale,
-                    safe_mapping=safe_mapping,
-                )
-        elif column.data_type == TERADATA_TYPE_DOUBLE:
+                return new_column(column, integral_type, data_precision=data_precision, data_scale=0)
+            # If precision & scale are None then this is unsafe, otherwise leave it None to let new_column() logic take over
+            safe_mapping = False if data_precision is None and data_scale is None else None
+            return new_column(
+                column,
+                GOE_TYPE_DECIMAL,
+                data_precision=data_precision,
+                data_scale=data_scale,
+                safe_mapping=safe_mapping,
+            )
+        if column.data_type == TERADATA_TYPE_DOUBLE:
             return new_column(column, GOE_TYPE_DOUBLE, safe_mapping=True)
-        elif column.data_type == TERADATA_TYPE_INTEGER:
+        if column.data_type == TERADATA_TYPE_INTEGER:
             return new_column(column, GOE_TYPE_INTEGER_4, safe_mapping=True)
-        elif column.data_type == TERADATA_TYPE_INTERVAL_DS:
+        if column.data_type == TERADATA_TYPE_INTERVAL_DS:
             return new_column(
                 column,
                 GOE_TYPE_INTERVAL_DS,
                 data_precision=column.data_precision,
                 data_scale=column.data_scale,
             )
-        elif column.data_type == TERADATA_TYPE_INTERVAL_YM:
+        if column.data_type == TERADATA_TYPE_INTERVAL_YM:
             return new_column(
                 column,
                 GOE_TYPE_INTERVAL_YM,
                 data_precision=column.data_precision,
                 data_scale=column.data_scale,
             )
-        elif column.data_type == TERADATA_TYPE_SMALLINT:
+        if column.data_type == TERADATA_TYPE_SMALLINT:
             return new_column(column, GOE_TYPE_INTEGER_2, safe_mapping=True)
-        elif column.data_type == TERADATA_TYPE_TIME:
-            return new_column(
-                column, GOE_TYPE_TIME, data_scale=column.data_scale, safe_mapping=True
-            )
-        elif column.data_type == TERADATA_TYPE_TIMESTAMP:
+        if column.data_type == TERADATA_TYPE_TIME:
+            return new_column(column, GOE_TYPE_TIME, data_scale=column.data_scale, safe_mapping=True)
+        if column.data_type == TERADATA_TYPE_TIMESTAMP:
             return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=column.data_scale)
-        elif column.data_type == TERADATA_TYPE_TIMESTAMP_TZ:
-            return new_column(
-                column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale
-            )
-        elif column.data_type == TERADATA_TYPE_VARCHAR:
-            return new_column(
-                column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length
-            )
-        else:
-            raise NotImplementedError(
-                "Unsupported Teradata data type: %s" % column.data_type
-            )
+        if column.data_type == TERADATA_TYPE_TIMESTAMP_TZ:
+            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale)
+        if column.data_type == TERADATA_TYPE_VARCHAR:
+            return new_column(column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length)
+        raise NotImplementedError("Unsupported Teradata data type: %s" % column.data_type)
 
     def to_rdbms_literal_with_sql_conv_fn(self, py_val, rdbms_data_type):
         """Function takes a python variable and returns a variable that pyodbc can cope with along
@@ -1116,8 +993,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             # Unimplemented as we don't support timezones within the offload/present Python.
             # We can offload the data but not as a partition key or for use with this code.
             raise NotImplementedError(
-                "Teradata to_rdbms_literal_with_sql_conv_fn() data type %s not implemented."
-                % rdbms_data_type
+                "Teradata to_rdbms_literal_with_sql_conv_fn() data type %s not implemented." % rdbms_data_type
             )
 
         return py_val, sql_fn
@@ -1132,9 +1008,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
     def transform_tokenize_data_type(self):
         return TERADATA_TYPE_VARCHAR
 
-    def transform_regexp_replace_expression(
-        self, rdbms_column, regexp_replace_pattern, regexp_replace_string
-    ):
+    def transform_regexp_replace_expression(self, rdbms_column, regexp_replace_pattern, regexp_replace_string):
         return "REGEXP_REPLACE(%s, %s, %s)" % (
             self.enclose_identifier(rdbms_column.name),
             regexp_replace_pattern,
@@ -1142,9 +1016,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         )
 
     def transform_translate_expression(self, rdbms_column, from_string, to_string):
-        raise NotImplementedError(
-            "Teradata transform_translate_expression() not implemented"
-        )
+        raise NotImplementedError("Teradata transform_translate_expression() not implemented")
 
     def valid_canonical_override(self, column, canonical_override):
         assert isinstance(column, TeradataColumn)
@@ -1154,34 +1026,29 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             target_type = canonical_override
         if column.data_type == TERADATA_TYPE_BLOB:
             return bool(target_type == GOE_TYPE_LARGE_BINARY)
-        elif column.data_type in [TERADATA_TYPE_BYTE, TERADATA_TYPE_VARBYTE]:
+        if column.data_type in [TERADATA_TYPE_BYTE, TERADATA_TYPE_VARBYTE]:
             return bool(target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
-        elif column.data_type == TERADATA_TYPE_CHAR:
+        if column.data_type == TERADATA_TYPE_CHAR:
             return bool(target_type == GOE_TYPE_FIXED_STRING)
-        elif column.data_type == TERADATA_TYPE_VARCHAR:
+        if column.data_type == TERADATA_TYPE_VARCHAR:
             return bool(target_type == GOE_TYPE_VARIABLE_STRING)
-        elif column.data_type == TERADATA_TYPE_CLOB:
+        if column.data_type == TERADATA_TYPE_CLOB:
             return bool(target_type == GOE_TYPE_LARGE_STRING)
-        elif column.data_type == TERADATA_TYPE_DOUBLE:
+        if column.data_type == TERADATA_TYPE_DOUBLE:
             return bool(target_type == GOE_TYPE_DOUBLE)
-        elif column.is_number_based():
+        if column.is_number_based():
             return target_type in NUMERIC_CANONICAL_TYPES
-        elif column.is_date_based() and column.is_time_zone_based():
+        if column.is_date_based() and column.is_time_zone_based():
             return bool(target_type == GOE_TYPE_TIMESTAMP_TZ)
-        elif column.is_date_based():
-            return bool(
-                target_type in DATE_CANONICAL_TYPES
-                or target_type in STRING_CANONICAL_TYPES
-            )
-        elif column.data_type == TERADATA_TYPE_TIME:
+        if column.is_date_based():
+            return bool(target_type in DATE_CANONICAL_TYPES or target_type in STRING_CANONICAL_TYPES)
+        if column.data_type == TERADATA_TYPE_TIME:
             return bool(target_type == GOE_TYPE_TIME)
-        elif column.data_type == TERADATA_TYPE_INTERVAL_DS:
+        if column.data_type == TERADATA_TYPE_INTERVAL_DS:
             return bool(target_type == GOE_TYPE_INTERVAL_DS)
-        elif column.data_type == TERADATA_TYPE_INTERVAL_YM:
+        if column.data_type == TERADATA_TYPE_INTERVAL_YM:
             return bool(target_type == GOE_TYPE_INTERVAL_YM)
-        elif target_type not in ALL_CANONICAL_TYPES:
-            self._log(
-                "Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE
-            )
+        if target_type not in ALL_CANONICAL_TYPES:
+            self._log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
             return False
         return False

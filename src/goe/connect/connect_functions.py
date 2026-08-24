@@ -17,11 +17,12 @@ import random
 from goe.connect.connect_constants import (
     TEST_HDFS_DIRS_SERVICE_HDFS,
 )
-from goe.offload.offload_messages import VVERBOSE
 from goe.filesystem.goe_dfs import (
     OFFLOAD_WEBHDFS_COMPATIBLE_FS_SCHEMES,
 )
-from goe.goe import ansi, log as offload_log, normal
+from goe.goe import ansi, normal
+from goe.goe import log as offload_log
+from goe.offload.offload_messages import VVERBOSE
 
 
 class FatalTestFailure(Exception):
@@ -78,7 +79,7 @@ def debug(d):
 
 
 def get_one_host_from_option(option_host_value):
-    """simple function but there were at least 3 different techniques in play for this so
+    """Simple function but there were at least 3 different techniques in play for this so
     standardising here
     """
     return random.choice(option_host_value.split(",")) if option_host_value else None
@@ -90,7 +91,7 @@ def get_hdfs_dirs(
     service_name=TEST_HDFS_DIRS_SERVICE_HDFS,
     include_hdfs_home=True,
 ):
-    """return a list of HDFS directories but NOT as a set(), we want to retain the order so
+    """Return a list of HDFS directories but NOT as a set(), we want to retain the order so
     using an "if" to ensure no duplicate output
     """
     dirs = []
@@ -105,8 +106,7 @@ def get_hdfs_dirs(
     if offload_data_uri not in dirs:
         if (
             service_name == TEST_HDFS_DIRS_SERVICE_HDFS
-            or orchestration_config.offload_fs_scheme
-            in OFFLOAD_WEBHDFS_COMPATIBLE_FS_SCHEMES
+            or orchestration_config.offload_fs_scheme in OFFLOAD_WEBHDFS_COMPATIBLE_FS_SCHEMES
         ):
             dirs.append(offload_data_uri)
     return dirs

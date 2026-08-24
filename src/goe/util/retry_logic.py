@@ -14,12 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" retry_logic: Functions to support re-trying of unsuccessful calls
-"""
+"""retry_logic: Functions to support re-trying of unsuccessful calls"""
 
 import logging
 import time
-
 from functools import wraps
 
 
@@ -42,9 +40,7 @@ def uniform_backoff(retries=1, delay_seconds=1):
     return [delay_seconds for _ in range(retries)]
 
 
-def exponential_backoff(
-    retries=1, initial_delay_seconds=1, max_delay_seconds=64, multiplier=1.2
-):
+def exponential_backoff(retries=1, initial_delay_seconds=1, max_delay_seconds=64, multiplier=1.2):
     """Return "exponential backoff" sequence of "delays"
     Delays are capped at 'max_delay' so that not to become unreasonable
     """
@@ -80,8 +76,7 @@ def retry_call_base(retry_generator, retriable_exceptions=[Exception]):
                     if result:
                         logger.debug("Try: %d is SUCCESSFUL" % i)
                         return result
-                    else:
-                        logger.debug("Try: %d has FAILED" % i)
+                    logger.debug("Try: %d has FAILED" % i)
                 except Exception as e:
                     if any(isinstance(e, _) for _ in retriable_exceptions):
                         logger.debug(
@@ -99,10 +94,7 @@ def retry_call_base(retry_generator, retriable_exceptions=[Exception]):
                 time.sleep(delay)
 
             if not result:
-                raise RetryLogicException(
-                    "Function: %s is still unsuccessful after ALL retries"
-                    % func.__name__
-                )
+                raise RetryLogicException("Function: %s is still unsuccessful after ALL retries" % func.__name__)
 
         return wrapper
 
@@ -119,14 +111,11 @@ if __name__ == "__main__":
 
         if choice is None:
             raise RetryLogicException("Test exception")
-        else:
-            return choice
+        return choice
 
     class b:
         def __init__(self):
-            setattr(
-                self, "f", retry_call_base(exponential_backoff(3))(getattr(self, "f"))
-            )
+            setattr(self, "f", retry_call_base(exponential_backoff(3))(self.f))
 
         def f(self, p):
             return a(p)

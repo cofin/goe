@@ -28,14 +28,13 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP,
     ORACLE_TYPE_VARCHAR2,
 )
+from goe.persistence.factory.orchestration_repo_client_factory import (
+    orchestration_repo_client_factory,
+)
 from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
-
 from tests.integration.scenarios.assertion_functions import (
     sales_based_fact_assertion,
     synthetic_part_col_name,
@@ -59,7 +58,6 @@ from tests.testlib.test_framework.test_functions import (
     get_frontend_testing_api_ctx,
     get_test_messages_ctx,
 )
-
 
 LPA_FACT_TABLE_NUM = "STORY_LIST_RPA_NUM"
 LPA_FACT_TABLE_DATE = "STORY_LIST_RPA_DATE"
@@ -116,16 +114,12 @@ def offload_list_as_range_ipa_standard_story_tests(
         table_name = LPA_FACT_TABLE_NUM_UDF
         udf = data_db + "." + partition_function
         gl_part_column_check_name = synthetic_part_col_name("U0", "yrmon")
-        gl_part_column_check_name = convert_backend_identifier_case(
-            config, gl_part_column_check_name
-        )
+        gl_part_column_check_name = convert_backend_identifier_case(config, gl_part_column_check_name)
     elif table_name == LPA_FACT_TABLE_STR_UDF:
         table_name = LPA_FACT_TABLE_STR_UDF
         udf = data_db + "." + partition_function
         gl_part_column_check_name = synthetic_part_col_name("U0", "yrmon")
-        gl_part_column_check_name = convert_backend_identifier_case(
-            config, gl_part_column_check_name
-        )
+        gl_part_column_check_name = convert_backend_identifier_case(config, gl_part_column_check_name)
     elif table_name in [LPA_FACT_TABLE_TS, LPA_FACT_TABLE_DATE]:
         hv_1 = test_constants.SALES_BASED_FACT_HV_1
         hv_2 = test_constants.SALES_BASED_FACT_HV_2
@@ -246,9 +240,7 @@ def offload_list_as_range_ipa_standard_story_tests(
     # LIST_AS_RANGE offload with multiple partition names - expect exception.
     options = {
         "owner_table": schema + "." + table_name,
-        "partition_names_csv": test_constants.SALES_BASED_LIST_PNAME_4
-        + ","
-        + test_constants.SALES_BASED_LIST_PNAME_5,
+        "partition_names_csv": test_constants.SALES_BASED_LIST_PNAME_4 + "," + test_constants.SALES_BASED_LIST_PNAME_5,
         "execute": True,
     }
     run_offload(
@@ -313,9 +305,7 @@ def offload_list_as_range_ipa_standard_story_tests(
         ),
     )
 
-    assert not sales_based_fact_partition_exists(
-        schema, table_name, [hv_1], frontend_api
-    )
+    assert not sales_based_fact_partition_exists(schema, table_name, [hv_1], frontend_api)
 
     # Offloads next partition from fact table after the oldest partition was dropped. The verification step should still succeed.
     options = {
@@ -348,13 +338,12 @@ def offload_list_as_range_ipa_standard_story_tests(
 
 def test_offload_list_rpa_num(config, schema, data_db):
     id = "test_offload_list_rpa_num"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -369,9 +358,7 @@ def test_offload_list_rpa_num(config, schema, data_db):
                 default_partition=True,
                 out_of_sequence=True,
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, LPA_FACT_TABLE_NUM
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_FACT_TABLE_NUM),
         )
 
         offload_list_as_range_ipa_standard_story_tests(
@@ -389,13 +376,12 @@ def test_offload_list_rpa_num(config, schema, data_db):
 
 def test_offload_list_rpa_date(config, schema, data_db):
     id = "test_offload_list_rpa_date"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -410,9 +396,7 @@ def test_offload_list_rpa_date(config, schema, data_db):
                 default_partition=True,
                 out_of_sequence=True,
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, LPA_FACT_TABLE_DATE
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_FACT_TABLE_DATE),
         )
 
         offload_list_as_range_ipa_standard_story_tests(
@@ -430,13 +414,12 @@ def test_offload_list_rpa_date(config, schema, data_db):
 
 def test_offload_list_rpa_timestamp(config, schema, data_db):
     id = "test_offload_list_rpa_timestamp"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -451,9 +434,7 @@ def test_offload_list_rpa_timestamp(config, schema, data_db):
                 default_partition=True,
                 out_of_sequence=True,
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, LPA_FACT_TABLE_TS
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_FACT_TABLE_TS),
         )
 
         offload_list_as_range_ipa_standard_story_tests(
@@ -471,13 +452,12 @@ def test_offload_list_rpa_timestamp(config, schema, data_db):
 
 def test_offload_list_rpa_varchar(config, schema, data_db):
     id = "test_offload_list_rpa_varchar"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -492,9 +472,7 @@ def test_offload_list_rpa_varchar(config, schema, data_db):
                 default_partition=True,
                 out_of_sequence=True,
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, LPA_FACT_TABLE_STR
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_FACT_TABLE_STR),
         )
 
         offload_list_as_range_ipa_standard_story_tests(
@@ -512,13 +490,12 @@ def test_offload_list_rpa_varchar(config, schema, data_db):
 
 def test_offload_list_rpa_num_udf(config, schema, data_db):
     id = "test_offload_list_rpa_num_udf"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -533,9 +510,7 @@ def test_offload_list_rpa_num_udf(config, schema, data_db):
                 default_partition=True,
                 out_of_sequence=True,
             ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, LPA_FACT_TABLE_NUM_UDF
-            ),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, LPA_FACT_TABLE_NUM_UDF),
         )
 
         offload_list_as_range_ipa_standard_story_tests(
@@ -554,13 +529,12 @@ def test_offload_list_rpa_num_udf(config, schema, data_db):
 
 def test_offload_list_rpa_subpart(config, schema, data_db):
     id = "test_offload_list_rpa_subpart"
-    with get_test_messages_ctx(config, id) as messages, get_frontend_testing_api_ctx(
-        config, messages, trace_action=id
-    ) as frontend_api:
+    with (
+        get_test_messages_ctx(config, id) as messages,
+        get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
+    ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, trace_action=f"repo_client({id})"
-        )
+        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -568,12 +542,8 @@ def test_offload_list_rpa_subpart(config, schema, data_db):
             backend_api,
             config,
             messages,
-            frontend_sqls=frontend_api.sales_based_subpartitioned_fact_ddl(
-                schema, LIST_RANGE_TABLE
-            ),
-            python_fns=lambda: drop_backend_test_table(
-                config, backend_api, messages, data_db, LIST_RANGE_TABLE
-            ),
+            frontend_sqls=frontend_api.sales_based_subpartitioned_fact_ddl(schema, LIST_RANGE_TABLE),
+            python_fns=lambda: drop_backend_test_table(config, backend_api, messages, data_db, LIST_RANGE_TABLE),
         )
 
         # Offloads from a LIST/RANGE subpartitioned fact table with LIST_AS_RANGE proving we can use the IPA options on the top level.
