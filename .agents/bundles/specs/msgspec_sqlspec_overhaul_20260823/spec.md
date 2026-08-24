@@ -2,9 +2,9 @@
 type: Spec
 flow_id: msgspec_sqlspec_overhaul_20260823
 title: High-Performance Msgspec Serialization & SQLSpec Data Layer
-state: planned
+state: closed
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-24T21:45:00Z"
+updated_at: "2026-08-24T23:00:00Z"
 description: Complete elimination of orjson in favor of msgspec encoders/decoders and typed Struct models, alongside SQLSpec data abstraction integration.
 tags:
   - spec
@@ -91,14 +91,14 @@ flowchart TD
 ```
 
 ### Phase 1: Core Msgspec Engine
-- [ ] `json_tools_msgspec_migration`: Modernize `src/goe/util/json_tools.py` with `msgspec.json.Encoder(enc_hook=_default)`, decoder, and domain hook. Eliminate `orjson` in `goe.py`.
+- [x] `json_tools_msgspec_migration`: Modernize `src/goe/util/json_tools.py` with `msgspec.json.Encoder(enc_hook=_default)`, decoder, and domain hook. Eliminate `orjson` in `goe.py`.
 
 ### Phase 2: Persistence & Messaging Serialization
-- [ ] `orchestration_repo_msgspec_migration`: Migrate `src/goe/persistence/orchestration_repo_client.py` and Oracle/Teradata clients to `msgspec`.
-- [ ] `offload_messages_msgspec_migration`: Migrate `src/goe/offload/offload_messages.py` Redis publisher to `msgspec`.
+- [x] `orchestration_repo_msgspec_migration`: Migrate `src/goe/persistence/orchestration_repo_client.py` and Oracle/Teradata clients to `msgspec`.
+- [x] `offload_messages_msgspec_migration`: Migrate `src/goe/offload/offload_messages.py` Redis publisher to `msgspec`.
 
 ### Phase 3: SQLSpec Integration & Struct Schemas
-- [ ] `sqlspec_integration_and_struct_schemas`: Add `sqlspec` and `msgspec` dependencies to `pyproject.toml`, remove `orjson`, and create typed `msgspec.Struct` models in `src/goe/persistence/schemas.py`.
+- [x] `sqlspec_integration_and_struct_schemas`: Add `sqlspec` and `msgspec` dependencies to `pyproject.toml`, remove `orjson`, and create typed `msgspec.Struct` models in `src/goe/persistence/schemas.py`.
 
 ### Phase 4: Verification & Characterization Testing
-- [ ] `unit_tests_characterization_and_benchmarks`: Implement dedicated unit tests (`tests/unit/util/test_json_tools.py`, `tests/unit/persistence/test_schemas.py`) and verify 100% green test execution across `tests/unit/`.\n
+- [x] `unit_tests_characterization_and_benchmarks`: Implement dedicated unit tests (`tests/unit/util/test_json_tools.py`, `tests/unit/persistence/test_schemas.py`) and verify 100% green test execution across `tests/unit/`.\n

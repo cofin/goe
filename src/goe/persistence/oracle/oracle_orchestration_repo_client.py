@@ -16,12 +16,9 @@
 
 """OracleOrchestrationRepoClient: Oracle implementation of API for get/put of orchestration metadata."""
 
-# Standard Library
-import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-# Third Party Libraries
 import oracledb
 
 # GOE
@@ -60,6 +57,7 @@ from goe.persistence.orchestration_metadata import (
 from goe.persistence.orchestration_repo_client import (
     OrchestrationRepoClientInterface,
 )
+from goe.util.json_tools import deserialize_object, serialize_object
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -194,7 +192,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             INCREMENTAL_RANGE: metadata_obj.OFFLOAD_RANGE_TYPE or None,
             INCREMENTAL_PREDICATE_TYPE: metadata_obj.OFFLOAD_PREDICATE_TYPE or None,
             INCREMENTAL_PREDICATE_VALUE: (
-                json.loads(metadata_obj.OFFLOAD_PREDICATE_VALUE.read())
+                deserialize_object(metadata_obj.OFFLOAD_PREDICATE_VALUE.read())
                 if metadata_obj.OFFLOAD_PREDICATE_VALUE
                 else None
             ),
@@ -344,7 +342,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             detail=VVERBOSE,
         )
         self._assert_valid_end_step_inputs(command_step_id, status, step_details)
-        step_details_str = json.dumps(step_details) if step_details is not None else None
+        step_details_str = serialize_object(step_details) if step_details is not None else None
         self._frontend_api.execute_function(
             "offload_repo.end_command_execution_step",
             arg_list=[command_step_id, step_details_str, status],

@@ -12,43 +12,72 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Standard Library
 import datetime
+import uuid
+from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
-# Third Party Libraries
-import orjson
+import msgspec
 
 
-# orjson.dumps returns bytearray, so you'll can't pass it directly as json_serializer
-def serialize_object(obj) -> str:
-    """Encodes json with the optimized ORJSON package
+def _default(obj: Any) -> Any:
+    """Fallback serialization hook for msgspec encoder handling custom domain types."""
+    if isinstance(obj, Decimal):
+        return str(obj)
+    if isinstance(obj, datetime.datetime):
+        if obj.tzinfo is None:
+            obj = obj.replace(tzinfo=datetime.UTC)
+        return obj.isoformat().replace("+00:00", "Z")
+    if isinstance(obj, datetime.date):
+        return obj.isoformat()
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, (set, frozenset)):
+        return list(obj)
+    if isinstance(obj, Exception):
+        return str(obj)
+    if hasattr(obj, "dsl"):
+        return obj.dsl
+    if hasattr(obj, "tolist") and callable(obj.tolist):
+        return obj.tolist()
+    if hasattr(obj, "item") and callable(obj.item):
+        return obj.item()
+    if hasattr(obj, "id"):
+        return str(obj.id)
+    return str(obj)
 
-    orjson.dumps returns bytearray, so you can't pass it directly as json_serializer
-    """
-    return orjson.dumps(
-        obj,
-        option=orjson.OPT_NAIVE_UTC | orjson.OPT_SERIALIZE_NUMPY,
-    ).decode()
+
+_msgspec_json_encoder = msgspec.json.Encoder(enc_hook=_default)
+_msgspec_json_decoder = msgspec.json.Decoder()
+
+
+def serialize_object(obj: Any) -> str:
+    """Encodes an object to a JSON string using msgspec."""
+    return _msgspec_json_encoder.encode(obj).decode()
+
+
+def serialize_object_bytes(obj: Any) -> bytes:
+    """Encodes an object to JSON bytes using msgspec."""
+    return _msgspec_json_encoder.encode(obj)
 
 
 def deserialize_object(obj: bytes | bytearray | memoryview | str) -> Any:
-    """Decodes to an object with the optimized ORJSON package
-
-    orjson.dumps returns bytearray, so you can't pass it directly as json_serializer
-    """
-    return orjson.loads(obj)
+    """Decodes a JSON payload to a Python object using msgspec."""
+    if isinstance(obj, str):
+        return _msgspec_json_decoder.decode(obj.encode())
+    return _msgspec_json_decoder.decode(obj)
 
 
 def encode_datetime_object(dt: datetime.datetime) -> str:
-    """Handles datetime serialization for nested timestamps in models/dataclasses"""
-    return dt.replace(tzinfo=datetime.UTC).isoformat().replace("+00:00", "Z")
+    """Handles datetime serialization for nested timestamps in models/dataclasses."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.UTC)
+    return dt.isoformat().replace("+00:00", "Z")
 
 
 def convert_field_to_camel_case(string: str) -> str:
-    """Cameilize field name
-
-    most frontend ui frameworks use camel case
-    this camelizes fields
-    """
+    """Convert snake_case string to camelCase."""
     return "".join(word if index == 0 else word.capitalize() for index, word in enumerate(string.split("_")))

@@ -3,9 +3,9 @@ type: Task
 id: msgspec_sqlspec_overhaul_20260823:json_tools_msgspec_migration
 title: Modernize json_tools with msgspec Encoder/Decoder and Custom enc_hook
 description: Modernize json_tools serialization utility with msgspec encoder, decoder, and custom domain encoding hook.
-state: open
+state: closed
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-24T21:45:00Z"
+updated_at: "2026-08-24T22:47:00Z"
 tags:
   - migration
   - serialization

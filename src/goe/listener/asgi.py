@@ -18,7 +18,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 # Third Party Libraries
@@ -77,7 +77,7 @@ def get_app() -> FastAPI:
         description="GOE Listener",
         terms_of_service="https://goe.com/terms-of-service/",  # TODO: update this/embed a page/add text?
         version=strict_version_ready(version()),
-        default_response_class=ORJSONResponse,
+        default_response_class=JSONResponse,
         on_startup=[events.on_startup],
         on_shutdown=[events.on_shutdown],
         logger=logger,

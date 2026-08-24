@@ -24,8 +24,6 @@ from datetime import datetime, timedelta
 from optparse import SUPPRESS_HELP, Option, OptionParser, OptionValueError
 from typing import TYPE_CHECKING
 
-import orjson
-
 from goe.config import option_descriptions, orchestration_defaults
 from goe.config.config_validation_functions import normalise_size_option
 from goe.exceptions import OffloadException, OffloadOptionError
@@ -136,6 +134,7 @@ from goe.persistence.orchestration_metadata import (
     OrchestrationMetadata,
 )
 from goe.util.goe_log_fh import GOELogFileHandle
+from goe.util.json_tools import serialize_object
 from goe.util.misc_functions import (
     all_int_chars,
     csv_split,
@@ -263,17 +262,6 @@ redis_in_error = False
 
 def ansi(line, ansi_code):
     return OffloadMessages.ansi_wrap(line, ansi_code, options.ansi)
-
-
-def serialize_object(obj) -> str:
-    """Encodes json with the optimized ORJSON package
-
-    orjson.dumps returns bytearray, so you can't pass it directly as json_serializer
-    """
-    return orjson.dumps(
-        obj,
-        option=orjson.OPT_NAIVE_UTC | orjson.OPT_SERIALIZE_NUMPY,
-    ).decode()
 
 
 def log(line, detail=normal, ansi_code=None, redis_publish=True):

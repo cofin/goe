@@ -20,9 +20,6 @@ API over orchestration code that fetches information based on a hybrid view
 # Standard Library
 import logging
 
-# Third Party Libraries
-import orjson as json
-
 # GOE
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.offload.factory.backend_api_factory import backend_api_factory
@@ -40,6 +37,7 @@ from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_RANGE,
     OrchestrationMetadata,
 )
+from goe.util.json_tools import serialize_object
 from goe.util.simple_timer import SimpleTimer
 
 ###############################################################################
@@ -252,8 +250,7 @@ class HybridViewService:
 
     def _format_payload(self, payload, as_json):
         if as_json:
-            json_payload = json.dumps(payload)
-            return json_payload
+            return serialize_object(payload)
         return payload
 
     def _get_backend_api(self):
