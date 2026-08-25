@@ -1041,8 +1041,18 @@ def verify_json_option(option_name, option_value):
 
 
 def version():
-    with open(os.path.join(os.environ.get("OFFLOAD_HOME"), "version_build")) as version_file:
-        return version_file.read().strip()
+    offload_home = os.environ.get("OFFLOAD_HOME")
+    if offload_home:
+        version_file_path = os.path.join(offload_home, "version_build")
+        if os.path.exists(version_file_path):
+            with open(version_file_path) as version_file:
+                return version_file.read().strip()
+    try:
+        import importlib.metadata
+
+        return importlib.metadata.version("goe-framework")
+    except Exception:
+        return "1.1.1.dev0"
 
 
 def comp_ver_check(frontend_api):

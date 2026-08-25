@@ -4,6 +4,12 @@ This file records significant lifecycle operations, structural additions, and ma
 
 ## 2026-08-24
 
+- **Rich-Click CLI Overhaul (Chapter 3)**:
+  - Established a centralized, modern CLI suite powered by `rich-click` under `src/goe/cli/` with a single authoritative entrypoint registered in `pyproject.toml` (`[project.scripts] goe = "goe.cli.main:cli"`).
+  - Implemented modular subcommands under `src/goe/cli/commands/`: `goe offload` (with 5 structured option groups), `goe connect` (pre-flight checks), `goe validate` (aggregate comparisons), `goe sync` (schema drift detection), `goe report` (status reporting), `goe logmgr` (cross-platform log retention), and `goe listener` (ASGI server runner with Granian/Uvicorn runtime support).
+  - Modernized all legacy entrypoint scripts in `bin/` (`bin/offload`, `bin/connect`, `bin/agg_validate`, `bin/schema_sync`, `bin/logmgr`, `bin/listener`, `bin/offload_status_report`) into lightweight Python delegators that emit `DeprecationWarning` notices and execute `goe <subcommand>` in-process.
+  - Authored comprehensive `CliRunner` unit test suite in `tests/unit/cli/` (21 tests); verified 100% green test pass and CI workflow checks across all Python versions.
+
 - **Msgspec & SQLSpec Modernization (Chapter 2)**:
   - Added `sqlspec[performance,mypyc,oracledb,adbc,duckdb]>=0.61.0` and `msgspec>=0.19.0` to core dependencies and completely removed `orjson` across the entire codebase.
   - Rebuilt utility ecosystem under `src/goe/util/` to cleanly re-export `sqlspec.utils` (matching DMA accelerator conventions): `serialization.py` (`to_json`, `from_json`, `schema_dump`), `sync_tools.py` (`async_`, `await_`, `ensure_async_`, `Portal`), `text.py` (`camelize`, `pascalize`, `snake_case`, `slugify`), `env.py` (`get_env`, `get_config_val`), and `uuids.py` (`uuid4`, `uuid7`, `nanoid`).

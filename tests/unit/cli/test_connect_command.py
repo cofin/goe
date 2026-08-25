@@ -1,5 +1,3 @@
-#! /usr/bin/env python3
-
 # Copyright 2016 The GOE Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,18 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Backward-compatible wrapper delegating to 'goe sync'."""
+from unittest.mock import patch
 
-import sys
-import warnings
+from click.testing import CliRunner
 
 from goe.cli.main import cli
 
-if __name__ == "__main__":
-    warnings.warn(
-        "Invoking 'bin/schema_sync' is deprecated. Please use 'goe sync' instead.",
-        DeprecationWarning,
-        stacklevel=1,
-    )
-    sys.argv.insert(1, "sync")
-    cli()
+
+def test_connect_help():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["connect", "--help"])
+    assert result.exit_code == 0
+    assert "--upgrade-environment-file" in result.output
+
+
+@patch("goe.cli.commands.connect.check_config_path")
+@patch("goe.cli.commands.connect.run_connect")
+def test_connect_dispatch(mock_connect, mock_check):
+    runner = CliRunner()
+    result = runner.invoke(cli, ["connect"])
+    assert result.exit_code == 0
+    assert mock_check.called
+    assert mock_connect.called

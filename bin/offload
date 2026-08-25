@@ -14,29 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Backward-compatible wrapper delegating to 'goe offload'."""
+
 import sys
+import warnings
 
-from goe.config import config_file
-from goe.exceptions import OffloadOptionError
-from goe.goe import (
-    get_options,
-    OFFLOAD_OP_NAME,
-)
-from goe.offload.offload import get_offload_options
-from goe.orchestration.cli_entry_points import offload_by_cli
-
+from goe.cli.main import cli
 
 if __name__ == "__main__":
-    config_file.check_config_path()
-    options = None
-    try:
-        config_file.load_env()
-        opt = get_options(operation_name=OFFLOAD_OP_NAME)
-        get_offload_options(opt)
-        options, _ = opt.parse_args()
-        offload_by_cli(options)
-
-    except OffloadOptionError as exc:
-        print("Option error: %s\n" % exc)
-        opt.print_help()
-        sys.exit(1)
+    warnings.warn(
+        "Invoking 'bin/offload' is deprecated. Please use 'goe offload' instead.",
+        DeprecationWarning,
+        stacklevel=1,
+    )
+    sys.argv.insert(1, "offload")
+    cli()

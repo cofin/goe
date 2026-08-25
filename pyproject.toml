@@ -64,8 +64,12 @@ dependencies = [
     "google-cloud-bigquery",
     "google-cloud-kms",
 
-    # Env loading
     "python-dotenv",
+
+    # CLI & Terminal UX
+    "click>=8.1.7",
+    "rich>=13.7.1",
+    "rich-click>=1.8.0",
 
     # GOE Listener packages
     "fastapi==0.77.0",
@@ -77,6 +81,9 @@ dependencies = [
     "uvloop",
     "httptools",
 ]
+
+[project.scripts]
+goe = "goe.cli.main:cli"
 
 [project.urls]
 Homepage = "https://github.com/gluent/goe"
@@ -212,6 +219,7 @@ src = ["src", "tests", "tools"]
 target-version = "py312"
 
 [tool.ruff.lint]
+allowed-confusables = ["ℹ", "✔", "⚠", "✗"]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 fixable = ["ALL"]
 select = [
