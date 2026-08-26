@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-License-Identifier: Apache-2.0
+
 # /// script
 # dependencies = [
 #   "rich-click",

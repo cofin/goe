@@ -146,3 +146,8 @@ cd bin
 # Tests
 
 See [Tests](tests/README.md)
+
+# License
+
+This project is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+Source files follow the [SPDX (Software Package Data Exchange)](https://spdx.dev/) specification for concise and machine-readable copyright and license notice headers.

@@ -24,6 +24,7 @@ You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)
   - Always place all imports at the top of the file, rather than within function scopes.
   - Adhere to PEP 257 docstrings (one-line summary, blank line, and detailed description for multi-line docstrings).
   - Use PEP 585 built-in collection types (`list`, `dict`, etc.) and PEP 604 union syntax (`str | None`).
+  - **Copyright & License Headers**: All source files must start with the standard 2-line SPDX header (`# SPDX-FileCopyrightText: <year> The GOE Authors` and `# SPDX-License-Identifier: Apache-2.0`), automatically enforced via Ruff `CPY001`.
   - **Never** use in-line comments in Python functions; place explanations in docstrings.
 - **Testing Requirements**:
   - New features and bug fixes must be covered by corresponding unit tests in `tests/unit/`.
