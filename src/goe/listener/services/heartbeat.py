@@ -19,12 +19,11 @@ import signal
 import threading
 from multiprocessing.util import _exit_function
 from typing import Optional
+from uuid import UUID
 
 # Third Party Libraries
 import anyio
-from anyio import create_task_group, open_signal_receiver
-from anyio.abc import CancelScope
-from pydantic import UUID3
+from anyio import CancelScope, create_task_group, open_signal_receiver
 from redis.exceptions import RedisError
 
 # GOE
@@ -61,8 +60,8 @@ class ListenerHeartbeat:
     _running: bool = True
     logger: logging.Logger = logging.getLogger(__name__)
     local_ip: str = utils.system.get_ip_address()
-    group_id: UUID3 = system.generate_listener_group_id()
-    endpoint_id: UUID3 = system.generate_listener_endpoint_id()
+    group_id: UUID = system.generate_listener_group_id()
+    endpoint_id: UUID = system.generate_listener_endpoint_id()
 
     def __new__(cls):
         """Singleton loader"""

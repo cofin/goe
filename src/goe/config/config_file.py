@@ -29,11 +29,14 @@ def check_config_path():
         sys.exit(1)
 
 
-def get_environment_file_path():
-    return os.path.join(os.environ.get("OFFLOAD_HOME"), "conf", CONFIG_FILE_NAME)
+def get_environment_file_path() -> str | None:
+    offload_home = os.environ.get("OFFLOAD_HOME")
+    if not offload_home:
+        return None
+    return os.path.join(offload_home, "conf", CONFIG_FILE_NAME)
 
 
-def load_env(path: str = None):
+def load_env(path: str | None = None):
     """Load GOE environment from a configuration file.
 
     By default this is a fixed location: $OFFLOAD_HOME/conf/offload.env.
@@ -42,7 +45,8 @@ def load_env(path: str = None):
     if not path:
         path = get_environment_file_path()
 
-    load_dotenv(path)
+    if path and os.path.exists(path):
+        load_dotenv(path)
 
 
 def env_key_value_pair(line_from_file: str) -> tuple | None:

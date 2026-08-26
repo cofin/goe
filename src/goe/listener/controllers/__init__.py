@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GOE Listener configuration package."""
+"""Controller package for Litestar GOE Listener."""
 
-from goe.listener.config.application import ListenerSettings, settings
+from goe.listener.controllers.orchestration import OrchestrationController
+from goe.listener.controllers.system import SystemController
 
-__all__ = (
-    "ListenerSettings",
-    "settings",
-)
+__all__ = ("OrchestrationController", "SystemController")

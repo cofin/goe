@@ -12,11 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GOE Listener configuration package."""
+"""Base library utilities and structs for GOE."""
 
-from goe.listener.config.application import ListenerSettings, settings
+from goe.lib.schemas import (
+    BaseStruct,
+    CamelizedBaseStruct,
+    CamelizedFrozenStruct,
+    FrozenBaseStruct,
+    Message,
+)
 
 __all__ = (
-    "ListenerSettings",
-    "settings",
+    "BaseStruct",
+    "CamelizedBaseStruct",
+    "CamelizedFrozenStruct",
+    "FrozenBaseStruct",
+    "Message",
 )

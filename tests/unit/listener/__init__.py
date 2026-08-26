@@ -12,11 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GOE Listener configuration package."""
-
-from goe.listener.config.application import ListenerSettings, settings
-
-__all__ = (
-    "ListenerSettings",
-    "settings",
-)
+"""Unit tests for GOE Listener subsystem."""

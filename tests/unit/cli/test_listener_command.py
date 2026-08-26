@@ -36,10 +36,10 @@ def test_listener_start_help():
     assert "--workers" in result.output
 
 
-@patch("goe.cli.commands.listener.uvicorn.run")
-def test_listener_start_dispatch(mock_uvicorn):
+@patch("goe.cli.commands.listener.Granian")
+def test_listener_start_dispatch(mock_granian):
     runner = CliRunner()
     result = runner.invoke(cli, ["listener", "start", "--port", "9000"])
     assert result.exit_code == 0
-    assert mock_uvicorn.called
-    assert mock_uvicorn.call_args[1]["port"] == 9000
+    assert mock_granian.called
+    assert mock_granian.call_args[1]["port"] == 9000

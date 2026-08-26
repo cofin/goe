@@ -21,12 +21,6 @@ from typing import TYPE_CHECKING, Any
 
 import oracledb
 
-# GOE
-from goe.listener.schemas.system import (
-    ColumnDetail,
-    PartitionDetail,
-    SubPartitionDetail,
-)
 from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_constants import (
     BACKEND_DISTRO_CDH,
@@ -56,6 +50,11 @@ from goe.persistence.orchestration_metadata import (
 )
 from goe.persistence.orchestration_repo_client import (
     OrchestrationRepoClientInterface,
+)
+from goe.persistence.schemas import (
+    ColumnDetail,
+    PartitionDetail,
+    SubPartitionDetail,
 )
 from goe.util.json_tools import deserialize_object, serialize_object
 
@@ -929,7 +928,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             logger.error(f"Table partition type is not supported: {exc.__class__.__qualname__}{exc.args}")
         else:
             if table_partitions:
-                return [PartitionDetail.from_orm(table_partition).dict() for table_partition in table_partitions]
+                return [PartitionDetail.from_orm(table_partition).to_dict() for table_partition in table_partitions]
 
         return []
 

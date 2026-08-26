@@ -49,37 +49,34 @@ dependencies = [
     "requests",
     "termcolor",
     "urllib3",
-
     # For Cloud storage
     "fsspec[gcs]",
     "google-cloud-storage",
     "boto3",
     "azure-common",
     "azure-storage-blob",
-
     # For Oracle frontend
     "oracledb",
-
     # For BigQuery backend
     "google-cloud-bigquery",
     "google-cloud-kms",
-
     "python-dotenv",
-
     # CLI & Terminal UX
     "click>=8.1.7",
     "rich>=13.7.1",
     "rich-click>=1.8.0",
-
     # GOE Listener packages
-    "fastapi==0.77.0",
-    "uvicorn==0.17.6",
-    "redis==4.4.4",
-    "gunicorn==20.1.0",
-    "brotli==1.0.9",
-    "tenacity==8.0.1",
+    "redis>=4.4.4",
+    "brotli>=1.0.9",
+    "tenacity>=8.0.1",
     "uvloop",
     "httptools",
+    "litestar>=2.8.0",
+    "litestar-granian>=0.4.0",
+    "litestar-security>=0.1.0",
+    "litestar-autowire>=0.1.0",
+    "litestar-mcp>=0.1.0",
+    "litestar-queues>=0.1.0",
 ]
 
 [project.scripts]

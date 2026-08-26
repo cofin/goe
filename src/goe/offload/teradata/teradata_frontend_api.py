@@ -23,11 +23,11 @@ import logging
 from datetime import datetime
 from sys import getsizeof
 from textwrap import dedent
+from uuid import UUID
 
 # Third Party Libraries
 import pyodbc
 from numpy import datetime64
-from pydantic import UUID4
 
 # GOE
 from goe.offload.column_metadata import match_table_column
@@ -657,13 +657,13 @@ class TeradataFrontendApi(FrontendApiInterface):
     def get_command_step_codes(self) -> list:
         raise NotImplementedError("Teradata get_command_step_codes is not implemented.")
 
-    def get_command_executions(self) -> list[dict[str, str | UUID4]]:
+    def get_command_executions(self) -> list[dict[str, str | UUID]]:
         raise NotImplementedError("Teradata get_command_executions is not implemented.")
 
-    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | UUID4]:
+    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | UUID]:
         raise NotImplementedError("Teradata get_command_execution_status is not implemented.")
 
-    def get_command_execution_steps(self, execution_id: ExecutionId) -> list[dict[str, str | UUID4]]:
+    def get_command_execution_steps(self, execution_id: ExecutionId) -> list[dict[str, str | UUID]]:
         raise NotImplementedError("Teradata get_command_execution_steps is not implemented.")
 
     def get_current_scn(self) -> int:

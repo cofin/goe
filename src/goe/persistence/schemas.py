@@ -76,6 +76,65 @@ class PartitionMetadataSchema(msgspec.Struct, kw_only=True):
     position: int | None = None
 
 
+class ColumnDetail(msgspec.Struct, kw_only=True):
+    """Column detail metadata struct."""
+
+    column_name: str
+    data_type: str
+    data_scale: int | None = None
+    is_nullable: bool = True
+    partition_position: int | None = None
+    subpartition_position: int | None = None
+
+
+class PartitionDetail(msgspec.Struct, kw_only=True):
+    """Partition detail metadata struct."""
+
+    partition_name: str
+    partition_position: int = 0
+    high_value: str = ""
+    subpartitions: list[dict[str, Any]] = []
+
+    @classmethod
+    def from_orm(cls, obj: Any) -> "PartitionDetail":
+        return cls(
+            partition_name=getattr(obj, "partition_name", str(obj)),
+            partition_position=getattr(obj, "partition_position", 0),
+            high_value=getattr(obj, "high_value", ""),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "partition_name": self.partition_name,
+            "partition_position": self.partition_position,
+            "high_value": self.high_value,
+            "subpartitions": self.subpartitions,
+        }
+
+
+class SubPartitionDetail(msgspec.Struct, kw_only=True):
+    """Subpartition detail metadata struct."""
+
+    subpartition_name: str
+    subpartition_position: int = 0
+    high_value: str = ""
+
+    @classmethod
+    def from_orm(cls, obj: Any) -> "SubPartitionDetail":
+        return cls(
+            subpartition_name=getattr(obj, "subpartition_name", str(obj)),
+            subpartition_position=getattr(obj, "subpartition_position", 0),
+            high_value=getattr(obj, "high_value", ""),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "subpartition_name": self.subpartition_name,
+            "subpartition_position": self.subpartition_position,
+            "high_value": self.high_value,
+        }
+
+
 def encode_schema(struct: msgspec.Struct) -> str:
     """Encode a msgspec Struct to a JSON string."""
     return to_json(struct)
