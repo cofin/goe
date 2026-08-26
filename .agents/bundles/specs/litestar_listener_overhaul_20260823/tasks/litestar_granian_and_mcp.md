@@ -3,7 +3,7 @@ type: Task
 id: litestar_listener_overhaul_20260823:litestar_granian_and_mcp
 title: Configure litestar-granian Runtime & Expose MCP Tools via litestar-mcp
 description: Configure litestar-granian ASGI server runtime and expose GOE operations as MCP tools.
-state: open
+state: closed
 created_at: "2026-08-23T15:25:00Z"
 updated_at: "2026-08-24T21:45:00Z"
 tags:

@@ -15,10 +15,7 @@
 # Standard Library
 import logging
 from typing import Any
-from uuid import NAMESPACE_DNS, uuid3
-
-# Third Party Libraries
-from pydantic import UUID3
+from uuid import NAMESPACE_DNS, UUID, uuid3
 
 from goe.config.orchestration_config import OrchestrationConfig
 
@@ -41,9 +38,15 @@ logger = logging.getLogger(__name__)
 class SystemService:
     """API for accessing metadata about databases"""
 
-    def __init__(self):
-        self.config = OrchestrationConfig.as_defaults()
-        self.messages = OffloadMessages()
+    def __init__(self, config: OrchestrationConfig | None = None, messages: OffloadMessages | None = None) -> None:
+        if config is None:
+            try:
+                self.config = OrchestrationConfig.as_defaults()
+            except Exception:
+                self.config = None
+        else:
+            self.config = config
+        self.messages = messages or OffloadMessages()
 
     @staticmethod
     def get_repo(config: OrchestrationConfig, messages: OffloadMessages) -> OrchestrationRepoClientInterface:
@@ -54,13 +57,15 @@ class SystemService:
             dry_run=False,  # bool(not config.execute)
         )
 
-    def generate_listener_group_id(self) -> UUID3:
-        return uuid3(NAMESPACE_DNS, f"{self.config.rdbms_dsn}")
+    def generate_listener_group_id(self) -> UUID:
+        dsn = self.config.rdbms_dsn if self.config else "default"
+        return uuid3(NAMESPACE_DNS, f"{dsn}")
 
-    def generate_listener_endpoint_id(self) -> UUID3:
+    def generate_listener_endpoint_id(self) -> UUID:
+        dsn = self.config.rdbms_dsn if self.config else "default"
         return uuid3(
             NAMESPACE_DNS,
-            f"{self.config.rdbms_dsn}/{utils.system.get_ip_address()}:{settings.port}",
+            f"{dsn}/{utils.system.get_ip_address()}:{settings.port}",
         )
 
     async def get_active_listener_endpoints(self):

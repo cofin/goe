@@ -12,33 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Standard Library
+"""Periodic background tasks for schema synchronization and caching."""
+
 import logging
+from uuid import UUID
 
-# Third Party Libraries
 import anyio
-from goelib_contrib.asyncer import asyncify
-from goelib_contrib.worker import monitored_job
-from pydantic import UUID3
+import msgspec
 
-# GOE
 from goe.listener import schemas, utils
 from goe.listener.config import settings
-from goe.listener.services.system import system
+from goe.listener.services.system import SystemService
 from goe.orchestration.execution_id import ExecutionId
+from goe.util.sync_tools import async_
 
-group_id: UUID3 = system.generate_listener_group_id()
-endpoint_id: UUID3 = system.generate_listener_endpoint_id()
+system = SystemService()
+group_id: UUID = system.generate_listener_group_id()
+endpoint_id: UUID = system.generate_listener_endpoint_id()
 
 logger = logging.getLogger()
 
 
 async def publish_heartbeat(context) -> None:
-    listener_group_id: UUID3 = context["listener_group_id"]
-    endpoint_id: UUID3 = context["endpoint_id"]
+    listener_group_id: UUID = context["listener_group_id"]
+    endpoint_id_val: UUID = context["endpoint_id"]
     local_ip: str = utils.system.get_ip_address()
     await utils.cache.set(
-        f"goe:listener:endpoints:{listener_group_id}:{endpoint_id}",
+        f"goe:listener:endpoints:{listener_group_id}:{endpoint_id_val}",
         f"{'https' if settings.ssl_enabled else 'http'}://{local_ip}:{settings.port}",
         settings.heartbeat_interval * 2,
     )
@@ -46,24 +46,16 @@ async def publish_heartbeat(context) -> None:
 
 
 async def publish_schemas(context) -> None:
-    """Offload the environment to the GOE Listener.
+    """Publish offloadable schemas."""
+    listener_group_id: UUID = context["listener_group_id"]
+    offloadable_schemas = await async_(system.get_schemas)()
 
-    Args:
-        environment_id (int): The id of the environment to offload.
-        options (dict): The options to pass to the offload command.
-        db: The database connection.
-
-    Returns:
-        dict: The result of the offload command.
-    """
-    listener_group_id: UUID3 = context["listener_group_id"]
-    offloadable_schemas = await asyncify(system.get_schemas)()
-
+    payload = msgspec.json.encode(
+        schemas.OffloadableSchemas(count=len(offloadable_schemas), results=offloadable_schemas)
+    ).decode()
     await utils.cache.set(
         f"goe:listener:metadata:{listener_group_id}:schemas",
-        schemas.OffloadableSchemas.parse_obj(
-            {"count": len(offloadable_schemas), "results": offloadable_schemas}
-        ).json(),
+        payload,
         ttl=10000,
     )
     concurrency_limit = anyio.Semaphore(4)
@@ -74,116 +66,62 @@ async def publish_schemas(context) -> None:
                 tg.start_soon(_publish_schema, listener_group_id, schema_name, concurrency_limit)
 
 
-# all functions take in context dict and kwargs
-@monitored_job
 async def publish_schema_tables(context) -> None:
-    """Offload the environment to the GOE Listener.
+    """Publish schema tables."""
+    listener_group_id: UUID = context["listener_group_id"]
+    offloadable_schemas = await async_(system.get_schemas)()
 
-    Args:
-        environment_id (int): The id of the environment to offload.
-        options (dict): The options to pass to the offload command.
-        db: The database connection.
-
-    Returns:
-        dict: The result of the offload command.
-    """
-    listener_group_id: UUID3 = context["listener_group_id"]
-    offloadable_schemas = await asyncify(system.get_schemas)()
-
+    payload = msgspec.json.encode(
+        schemas.OffloadableSchemas(count=len(offloadable_schemas), results=offloadable_schemas)
+    ).decode()
     await utils.cache.set(
         f"goe:listener:metadata:{listener_group_id}:schemas",
-        schemas.OffloadableSchemas.parse_obj(
-            {"count": len(offloadable_schemas), "results": offloadable_schemas}
-        ).json(),
+        payload,
         ttl=10000,
     )
-    concurrency_limit = anyio.Semaphore(4)
-    async with anyio.create_task_group() as tg:
-        for schema in offloadable_schemas:
-            schema_name = schema.get("schema_name", None)
-            if schema_name:
-                tg.start_soon(
-                    _publish_schema_tables,
-                    listener_group_id,
-                    schema_name,
-                    concurrency_limit,
-                )
 
 
 async def publish_command_executions(context) -> None:
-    """Offload the environment to the GOE Listener.
-
-    Args:
-        environment_id (int): The id of the environment to offload.
-        options (dict): The options to pass to the offload command.
-        db: The database connection.
-
-    Returns:
-        dict: The result of the offload command.
-    """
-    listener_group_id: UUID3 = context["listener_group_id"]
-    command_executions = await asyncify(system.get_command_executions)()
-    all_steps = await asyncify(system.get_command_execution_steps)(
-        execution_id=None
-    )  # fetch for multiple execution ID`s
+    """Publish command execution metadata."""
+    listener_group_id: UUID = context["listener_group_id"]
+    command_executions = await async_(system.get_command_executions)()
+    all_steps = await async_(system.get_command_execution_steps)(execution_id=None)
     steps_by_execution_id = utils.groupby(
-        lambda pair: ExecutionId.from_bytes(pair.get("execution_id")).as_str(),
+        lambda pair: (
+            ExecutionId.from_bytes(pair.get("execution_id")).as_str()
+            if isinstance(pair.get("execution_id"), bytes)
+            else str(pair.get("execution_id"))
+        ),
         all_steps,
     )
     for command_execution in command_executions:
-        command_execution.update(
-            {
-                "steps": steps_by_execution_id.get(
-                    ExecutionId.from_bytes(command_execution["execution_id"]).as_str(),
-                    [],
-                )
-            }
+        exec_key = (
+            ExecutionId.from_bytes(command_execution["execution_id"]).as_str()
+            if isinstance(command_execution["execution_id"], bytes)
+            else str(command_execution["execution_id"])
         )
+        command_execution["steps"] = steps_by_execution_id.get(exec_key, [])
+
+    payload = msgspec.json.encode(
+        schemas.CommandExecutions(count=len(command_executions), results=command_executions)
+    ).decode()
     await utils.cache.set(
         f"goe:listener:metadata:{listener_group_id}:command-executions",
-        schemas.CommandExecutions.parse_obj({"count": len(command_executions), "results": command_executions}).json(),
+        payload,
         ttl=10000,
     )
 
 
 async def _publish_schema(
-    listener_group_id,
-    schema_name,
+    listener_group_id: UUID,
+    schema_name: str,
     concurrency_limit: anyio.Semaphore,
 ) -> None:
     async with concurrency_limit:
-        schema_tables = await asyncify(system.get_schema_tables)(schema_name)
+        schema_tables = await async_(system.get_schema_tables)(schema_name)
+        payload = msgspec.json.encode(schemas.TableDetails(count=len(schema_tables), results=schema_tables)).decode()
         await utils.cache.set(
             f"goe:listener:metadata:{listener_group_id}:schemas:{schema_name}",
-            schemas.TableDetails.parse_obj({"count": len(schema_tables), "results": schema_tables}).json(),
-            ttl=86400,
-        )
-
-
-async def _publish_schema_tables(
-    listener_group_id,
-    schema_name,
-    table_name,
-    concurrency_limit: anyio.Semaphore,
-) -> None:
-    async with concurrency_limit:
-        schema_table_columns = await asyncify(system.get_table_columns)(schema_name, table_name)
-
-        await utils.cache.set(
-            f"goe:listener:metadata:{listener_group_id}:schemas:{schema_name}:{table_name}:columns",
-            schemas.ColumnDetails.parse_obj(
-                {"count": len(schema_table_columns), "results": schema_table_columns}
-            ).json(),
-            ttl=86400,
-        )
-        schema_table_partitions = await asyncify(system.get_table_partitions)(schema_name, table_name)
-        await utils.cache.set(
-            f"goe:listener:metadata:{listener_group_id}:schemas:{schema_name}:{table_name}:partitions",
-            schemas.PartitionDetails.parse_obj(
-                {
-                    "count": len(schema_table_partitions),
-                    "results": schema_table_partitions,
-                }
-            ).json(),
+            payload,
             ttl=86400,
         )

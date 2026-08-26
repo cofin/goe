@@ -12,13 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Standard Library
-import logging
+"""Orchestration runner service for GOE Listener."""
 
-# GOE
+import logging
+from typing import Any
+
 from goe.orchestration.orchestration_runner import OrchestrationRunner
 
 logger = logging.getLogger(__name__)
 
+_runner: OrchestrationRunner | None = None
 
-orchestration_runner = OrchestrationRunner(suppress_stdout=True)
+
+def get_orchestration_runner() -> OrchestrationRunner:
+    """Lazily get or initialize OrchestrationRunner."""
+    global _runner
+    if _runner is None:
+        _runner = OrchestrationRunner(suppress_stdout=True)
+    return _runner
+
+
+class LazyOrchestrationRunner:
+    """Proxy object delegating to lazily initialized OrchestrationRunner."""
+
+    def offload(self, *args: Any, **kwargs: Any) -> Any:
+        return get_orchestration_runner().offload(*args, **kwargs)
+
+
+orchestration_runner = LazyOrchestrationRunner()

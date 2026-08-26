@@ -2,9 +2,9 @@
 type: Spec
 flow_id: litestar_listener_overhaul_20260823
 title: Next-Generation Litestar Listener Service & Ecosystem
-state: planned
+state: implemented
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-24T21:45:00Z"
+updated_at: "2026-08-26T15:25:00Z"
 description: Complete rebuild of the GOE Listener service with Litestar 2.8+, Granian ASGI runtime, litestar-queues, litestar-security, litestar-autowire, and litestar-mcp.
 tags:
   - spec
@@ -41,7 +41,7 @@ This specification rebuilds the service on **Litestar (>= 2.8.0)** and its first
 3. **`litestar-security`**: Constant-time API key verification for `x-goe-console-key`.
 4. **`litestar-autowire`**: Declarative DI for configuration, repository clients, and Redis connections.
 5. **`litestar-mcp`**: Exposing GOE operations as tools and resources for Model Context Protocol agents.
-6. **`MsgspecDTO`**: Zero-overhead request/response validation and automated OpenAPI UI generation.
+6. **`BaseStruct` Schemas**: Zero-overhead request/response validation and automated OpenAPI UI generation.
 
 ### 1.2 Requirements
 
@@ -55,7 +55,7 @@ This specification rebuilds the service on **Litestar (>= 2.8.0)** and its first
 7. Configure `litestar-granian` server runner (`src/goe/listener/server.py`).
 8. Expose GOE tools and resources via `litestar-mcp`.
 9. Maintain 100% JSON contract compatibility with legacy REST endpoints.
-10. Author end-to-end Listener API tests using Litestar's `AsyncTestClient`.
+10. Author end-to-end Listener API tests using Litestar's `TestClient` / `AsyncTestClient`.
 
 ---
 
@@ -63,24 +63,24 @@ This specification rebuilds the service on **Litestar (>= 2.8.0)** and its first
 
 ```mermaid
 flowchart TD
-    T1["Task 1: litestar_app_and_dtos\n(Litestar app factory, controllers, MsgspecDTOs)"] --> T2["Task 2: litestar_security_and_autowire\n(API key guard, autowire DI)"]
+    T1["Task 1: litestar_app_and_dtos\n(Litestar app factory, controllers, schemas)"] --> T2["Task 2: litestar_security_and_autowire\n(API key guard, autowire DI)"]
     T1 --> T3["Task 3: litestar_queues_and_workers\n(litestar-queues cron tasks, worker runner)"]
     T2 --> T4["Task 4: litestar_granian_and_mcp\n(Granian server, litestar-mcp tools)"]
     T3 --> T4
-    T4 --> T5["Task 5: listener_api_verification_tests\n(AsyncTestClient test suite)"]
+    T4 --> T5["Task 5: listener_api_verification_tests\n(TestClient test suite)"]
 ```
 
-### Phase 1: Application Factory & DTOs
-- [ ] `litestar_app_and_dtos`: Create Litestar application factory, controllers, and `MsgspecDTO` schemas matching existing REST endpoints.
+### Phase 1: Application Factory & Schemas
+- [x] `litestar_app_and_dtos`: Create Litestar application factory, controllers, and `BaseStruct` schemas matching existing REST endpoints.
 
 ### Phase 2: Security & Dependency Injection
-- [ ] `litestar_security_and_autowire`: Implement `litestar-security` authentication guard for `x-goe-console-key` and configure `litestar-autowire`.
+- [x] `litestar_security_and_autowire`: Implement `litestar-security` authentication guard for `x-goe-console-key` and configure `litestar-autowire`.
 
 ### Phase 3: Task Queues & Workers
-- [ ] `litestar_queues_and_workers`: Migrate periodic Redis jobs and background tasks to `litestar-queues[sqlspec]`.
+- [x] `litestar_queues_and_workers`: Migrate periodic background tasks to `litestar-queues[sqlspec]`.
 
 ### Phase 4: Server Runtime & MCP
-- [ ] `litestar_granian_and_mcp`: Configure `litestar-granian` server CLI runner and expose MCP tools via `litestar-mcp`.
+- [x] `litestar_granian_and_mcp`: Configure `litestar-granian` server CLI runner and expose MCP tools via `litestar-mcp`.
 
 ### Phase 5: Integration Testing
-- [ ] `listener_api_verification_tests`: Implement comprehensive API tests with `AsyncTestClient` validating all routes, auth guards, and error handlers.\n
+- [x] `listener_api_verification_tests`: Implement comprehensive API tests with `TestClient` validating all routes, background queues, and error handlers.
