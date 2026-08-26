@@ -272,3 +272,69 @@ def test_cli_write(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "Updated:" in result.output
     assert test_file.read_text(encoding="utf-8") == EXPECTED_SPDX_PYTHON
+
+
+def test_migrate_crlf_endings() -> None:
+    """Verify Windows CRLF line endings are parsed and transformed correctly."""
+    crlf_legacy = LEGACY_PYTHON_HEADER.replace("\n", "\r\n")
+    new_content, changed = migrate_content(crlf_legacy, Path("test.py"))
+    assert changed is True
+    assert "SPDX-FileCopyrightText: 2016 The GOE Authors" in new_content
+    assert "SPDX-License-Identifier: Apache-2.0" in new_content
+
+
+def test_migrate_xml_declaration_preservation() -> None:
+    """Verify XML declaration is retained as line 1 above SPDX comments."""
+    xml_content = """<?xml version="1.0"?>
+<!--
+# Copyright 2016 The GOE Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+-->
+<configuration>
+</configuration>
+"""
+    new_content, changed = migrate_content(xml_content, Path("hive-site.xml"))
+    assert changed is True
+    assert new_content.startswith('<?xml version="1.0"?>\n<!--\nSPDX-FileCopyrightText: 2016 The GOE Authors')
+
+
+def test_cli_check_flag(tmp_path: Path) -> None:
+    """Verify CLI --check returns non-zero exit code when unmigrated files exist."""
+    runner = CliRunner()
+    test_file = tmp_path / "unmigrated.py"
+    test_file.write_text(LEGACY_PYTHON_HEADER, encoding="utf-8")
+
+    result = runner.invoke(cli, ["--path", str(tmp_path), "--check"])
+    assert result.exit_code == 1
+    assert "Unmigrated:" in result.output
+    assert "Found 1 unmigrated file(s)." in result.output
+
+    runner.invoke(cli, ["--path", str(tmp_path)])
+    check_clean = runner.invoke(cli, ["--path", str(tmp_path), "--check"])
+    assert check_clean.exit_code == 0
+
+
+def test_cli_extension_filter(tmp_path: Path) -> None:
+    """Verify CLI selective extension filtering."""
+    runner = CliRunner()
+    py_file = tmp_path / "sample.py"
+    sql_file = tmp_path / "sample.sql"
+    py_file.write_text(LEGACY_PYTHON_HEADER, encoding="utf-8")
+    sql_file.write_text(LEGACY_SQL_BLOCK_HEADER, encoding="utf-8")
+
+    result = runner.invoke(cli, ["--path", str(tmp_path), "--ext", ".sql"])
+    assert result.exit_code == 0
+    assert "Updated:" in result.output
+    assert str(sql_file) in result.output
+    assert str(py_file) not in result.output
