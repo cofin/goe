@@ -17,6 +17,7 @@ tags:
 - Format all Python files with `ruff` (`line-length = 120`), run `mypy`, and adhere to PEP 257 docstrings with PEP 585 built-in collections (`dict`, `list`) and PEP 604 union types (`str | None`).
 - **Never** use in-line comments in Python functions; place explanations in PEP 257 docstrings.
 - Run unit tests with `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false`.
+- **Copyright & License Headers**: All source files must start with the standard 2-line SPDX header (`# SPDX-FileCopyrightText: <year> The GOE Authors` and `# SPDX-License-Identifier: Apache-2.0`), automatically enforced via Ruff `CPY001`.
 - Always use `OrchestrationRunner` and `OrchestrationLockInterface` to ensure table-level mutex.
 - Keep RDBMS queries snapshot-consistent using SCN / Flashback to prevent locks or phantom reads.
 

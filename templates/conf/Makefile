@@ -5,7 +5,7 @@
 
 .PHONY: clean install
 
-LICENCE_LENGTH = 14
+LICENCE_LENGTH = 4
 
 TARGET_DIR = ../../target/offload
 TARGET_CONF_DIR = $(TARGET_DIR)/conf

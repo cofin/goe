@@ -75,7 +75,7 @@ upgrade: setup-env                                  ## Upgrade all dependencies 
 .PHONY: lint
 lint:                                               ## Run Ruff linter and Mypy static typecheck
 	@echo "${INFO} Running Ruff linting..."
-	@uv run ruff check src tests tools
+	@uv run ruff check .
 	@echo "${INFO} Running Mypy typecheck..."
 	@uv run mypy src/goe
 	@echo "${OK} Linting and typechecks passed ✓"
@@ -83,8 +83,8 @@ lint:                                               ## Run Ruff linter and Mypy 
 .PHONY: format
 format:                                             ## Run Ruff formatter and auto-fix lint issues
 	@echo "${INFO} Formatting codebase with Ruff..."
-	@uv run ruff format src tests tools
-	@uv run ruff check --fix src tests tools
+	@uv run ruff format .
+	@uv run ruff check --fix .
 	@echo "${OK} Code formatted ✓"
 
 .PHONY: test

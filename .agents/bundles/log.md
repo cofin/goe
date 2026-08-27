@@ -2,6 +2,14 @@
 
 This file records significant lifecycle operations, structural additions, and major evolutions to the GOE knowledge bundle.
 
+## 2026-08-26
+
+- **SPDX Copyright & License Header Migration (Master PRD `spdx_copyright_migration_20260826`)**:
+  - Replaced verbose legacy Apache 2.0 headers across 470+ source files (Python, Shell, Makefiles, SQL, HTML/Jinja templates, CSS, JS, and Scala) with standardized, concise 2-line SPDX headers (`# SPDX-FileCopyrightText: <year> The GOE Authors` and `# SPDX-License-Identifier: Apache-2.0`), preserving historical copyright provenance years and leading shebangs.
+  - Configured Ruff's `CPY001` (`flake8-copyright`) rule in `pyproject.toml` (`notice-rgx`) to continuously enforce copyright header presence across the entire Python codebase.
+  - Implemented automated multi-format migration CLI tool `tools/migrate_spdx_headers.py` and accompanying 16-test suite in `tests/unit/test_migrate_spdx_headers.py` supporting dry-run execution, comment style detection, and CRLF normalization.
+  - Updated developer guidelines in `AGENTS.md`, `README.md`, and knowledge bundle standards; broadened CI Ruff checks in `.github/workflows/test.yaml` and `Makefile` to check all repository root Python files.
+
 ## 2026-08-24
 
 - **Rich-Click CLI Overhaul (Chapter 3)**:
