@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-License-Identifier: Apache-2.0
+
 """Core Utliity methods occationally needed for GOE Listener Service"""
 
 # GOE

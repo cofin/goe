@@ -1,16 +1,5 @@
-# Copyright 2016 The GOE Authors. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-License-Identifier: Apache-2.0
 
 """Listener Configuration Settings."""
 
@@ -63,27 +52,27 @@ class ListenerSettings:
 
     def __post_init__(self) -> None:
         if self.global_config:
-            if self.global_config.listener_host:
+            if getattr(self.global_config, "listener_host", None):
                 self.host = self.global_config.listener_host
-            if self.global_config.listener_port:
+            if getattr(self.global_config, "listener_port", None):
                 self.port = self.global_config.listener_port
-            if self.global_config.listener_shared_token:
+            if getattr(self.global_config, "listener_shared_token", None):
                 self.shared_token = str(self.global_config.listener_shared_token)
-            if self.global_config.listener_heartbeat_interval:
+            if getattr(self.global_config, "listener_heartbeat_interval", None):
                 self.heartbeat_interval = self.global_config.listener_heartbeat_interval
-            if self.global_config.listener_redis_host:
+            if getattr(self.global_config, "listener_redis_host", None):
                 self.redis_host = self.global_config.listener_redis_host
-            if self.global_config.listener_redis_port:
+            if getattr(self.global_config, "listener_redis_port", None):
                 self.redis_port = self.global_config.listener_redis_port
-            if self.global_config.listener_redis_db:
+            if getattr(self.global_config, "listener_redis_db", None):
                 self.redis_db = self.global_config.listener_redis_db
-            if self.global_config.listener_redis_username:
+            if getattr(self.global_config, "listener_redis_username", None):
                 self.redis_username = self.global_config.listener_redis_username
-            if self.global_config.listener_redis_password:
+            if getattr(self.global_config, "listener_redis_password", None):
                 self.redis_password = str(self.global_config.listener_redis_password)
-            if self.global_config.listener_redis_use_ssl:
+            if getattr(self.global_config, "listener_redis_use_ssl", None):
                 self.redis_ssl = bool(self.global_config.listener_redis_use_ssl)
-            if self.global_config.listener_redis_ssl_cert:
+            if getattr(self.global_config, "listener_redis_ssl_cert", None):
                 self.redis_ssl_cert = self.global_config.listener_redis_ssl_cert
 
         if self.static_path is None:
@@ -91,22 +80,31 @@ class ListenerSettings:
 
     @property
     def redis_url(self) -> str:
-        """Returns a redis url to connect to."""
+        """Returns a redis/valkey url to connect to."""
         proto = "rediss" if self.redis_ssl else "redis"
         if not self.redis_password:
-            return f"{proto}://{self.redis_host}:{self.redis_port}/{self.redis_db}"
-        return f"{proto}://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+            return f"{proto}://{self.redis_host or '127.0.0.1'}:{self.redis_port}/{self.redis_db}"
+        return f"{proto}://:{self.redis_password}@{self.redis_host or '127.0.0.1'}:{self.redis_port}/{self.redis_db}"
 
     @property
-    def cache_enabled(self) -> bool:
-        """Returns if redis is enabled."""
-        return bool(self.redis_host)
+    def db_config(self) -> dict:
+        return {
+            "host": self.redis_host,
+            "port": self.redis_port,
+            "db": self.redis_db,
+            "username": self.redis_username,
+            "password": self.redis_password,
+            "ssl": self.redis_ssl,
+            "ssl_cert": self.redis_ssl_cert,
+            "use_sentinel": self.redis_use_sentinel,
+            "sentinel_master": self.redis_sentinel_master,
+        }
 
 
-@lru_cache(maxsize=1)
-def get_app_settings() -> ListenerSettings:
-    """Cache app settings."""
+@lru_cache
+def get_listener_settings() -> ListenerSettings:
+    """Get cached ListenerSettings."""
     return ListenerSettings()
 
 
-settings = get_app_settings()
+settings: ListenerSettings = get_listener_settings()
