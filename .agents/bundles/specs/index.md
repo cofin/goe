@@ -15,7 +15,6 @@ This directory contains specifications and task worksheets for active, planned, 
 ## Master Roadmaps (PRDs)
 
 - [GOE Modernization Master Roadmap (`modernization_overhaul_20260823`)](modernization_overhaul_20260823/spec.md) - [State: Planned] Master architectural roadmap overhauling packaging/CI, serialization with msgspec & sqlspec, unified rich-click CLI, and Litestar listener ecosystem.
-- [SPDX Copyright & License Header Migration (`spdx_copyright_migration_20260826`)](spdx_copyright_migration_20260826/spec.md) - [State: Completed] Master roadmap migrating repository copyright/license headers to concise SPDX format with Ruff CPY001 automated enforcement.
 
 ## Active & Planned Child Flows
 
