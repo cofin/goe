@@ -220,3 +220,40 @@ def test_load_env_not_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         mock.patch("os.path.isfile", return_value=False),
     ):
         assert load_env() is False
+
+
+def test_autoload_guard_pytest_isolation(monkeypatch: pytest.MonkeyPatch):
+    """_autoload_environment does not load environment when running under pytest."""
+    from goe import _autoload_environment
+
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "test_autoload_guard_pytest_isolation")
+    monkeypatch.delenv("GOE_NO_AUTOLOAD_ENV", raising=False)
+
+    with mock.patch("goe.load_env") as mock_load:
+        _autoload_environment()
+        mock_load.assert_not_called()
+
+
+@pytest.mark.parametrize("opt_out_value", ["1", "true", "TRUE"])
+def test_autoload_guard_opt_out(monkeypatch: pytest.MonkeyPatch, opt_out_value: str):
+    """_autoload_environment skips loading when GOE_NO_AUTOLOAD_ENV is set."""
+    from goe import _autoload_environment
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("GOE_NO_AUTOLOAD_ENV", opt_out_value)
+
+    with mock.patch("goe.load_env") as mock_load:
+        _autoload_environment()
+        mock_load.assert_not_called()
+
+
+def test_autoload_invokes_load_env_when_not_guarded(monkeypatch: pytest.MonkeyPatch):
+    """_autoload_environment calls load_env when neither pytest nor opt-out guards are present."""
+    from goe import _autoload_environment
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("GOE_NO_AUTOLOAD_ENV", raising=False)
+
+    with mock.patch("goe.load_env") as mock_load:
+        _autoload_environment()
+        mock_load.assert_called_once_with()
