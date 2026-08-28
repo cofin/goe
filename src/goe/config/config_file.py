@@ -68,17 +68,34 @@ def get_environment_file_path() -> str | None:
     return find_environment_file()
 
 
-def load_env(path: str | None = None):
-    """Load GOE environment from a configuration file.
+def load_env(path: str | None = None, override: bool = False) -> bool:
+    """Load GOE environment variables from an offload.env configuration file.
 
-    By default this is a fixed location: $OFFLOAD_HOME/conf/offload.env.
-    In time this will become a parameter and support cloud storage locations.
+    Discovers the configuration file if path is not specified, performs POSIX
+    variable interpolation, respects pre-existing environment variables when
+    override is False, and automatically sets OFFLOAD_HOME when the configuration
+    file resides inside a standard conf/ directory.
+
+    Args:
+        path: Explicit path to the configuration file, or None to auto-discover.
+        override: Whether variables in the file overwrite existing environment variables.
+
+    Returns:
+        True if a configuration file was found and loaded, False otherwise.
     """
-    if not path:
-        path = get_environment_file_path()
+    target_path = path or find_environment_file()
+    if not target_path or not os.path.isfile(target_path):
+        return False
 
-    if path and os.path.exists(path):
-        load_dotenv(path)
+    load_dotenv(dotenv_path=target_path, override=override, interpolate=True)
+
+    if not os.environ.get("OFFLOAD_HOME"):
+        abs_target = os.path.abspath(target_path)
+        parent_dir = os.path.dirname(abs_target)
+        if os.path.basename(parent_dir) == "conf":
+            os.environ["OFFLOAD_HOME"] = os.path.dirname(parent_dir)
+
+    return True
 
 
 def env_key_value_pair(line_from_file: str) -> tuple | None:
