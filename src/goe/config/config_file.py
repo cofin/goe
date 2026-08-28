@@ -5,10 +5,14 @@ import os
 import re
 import sys
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 CONFIG_FILE_NAME = "offload.env"
 KEY_VALUE_PATTERN = re.compile(r"#?[ ]*([A-Z_0-9]+)=(.*)")
+STANDARD_CONFIG_PATHS = (
+    "/opt/goe/offload/conf/offload.env",
+    "/u01/app/goe/offload/conf/offload.env",
+)
 
 
 def check_config_path():
@@ -18,11 +22,50 @@ def check_config_path():
         sys.exit(1)
 
 
-def get_environment_file_path() -> str | None:
+def find_environment_file() -> str | None:
+    """Discover the path to the GOE environment configuration file.
+
+    Resolves the configuration file using a 4-tier precedence:
+    1. Explicit path via GOE_CONFIG_FILE or OFFLOAD_ENV_FILE environment variables.
+    2. Configured OFFLOAD_HOME directory ($OFFLOAD_HOME/conf/offload.env).
+    3. Dynamic search upward from the current working directory for conf/offload.env
+       or offload.env via dotenv.find_dotenv(..., usecwd=True).
+    4. Standard system locations (/opt/goe/offload/... and /u01/app/goe/offload/...).
+
+    Returns:
+        The absolute path to the configuration file if found, otherwise None.
+    """
+    explicit_file = os.environ.get("GOE_CONFIG_FILE") or os.environ.get("OFFLOAD_ENV_FILE")
+    if explicit_file and os.path.isfile(explicit_file):
+        return os.path.abspath(explicit_file)
+
     offload_home = os.environ.get("OFFLOAD_HOME")
-    if not offload_home:
-        return None
-    return os.path.join(offload_home, "conf", CONFIG_FILE_NAME)
+    if offload_home:
+        home_config = os.path.join(offload_home, "conf", CONFIG_FILE_NAME)
+        if os.path.isfile(home_config):
+            return os.path.abspath(home_config)
+
+    conf_dotenv = find_dotenv(filename=f"conf/{CONFIG_FILE_NAME}", usecwd=True)
+    if conf_dotenv and os.path.isfile(conf_dotenv):
+        return os.path.abspath(conf_dotenv)
+
+    root_dotenv = find_dotenv(filename=CONFIG_FILE_NAME, usecwd=True)
+    if root_dotenv and os.path.isfile(root_dotenv):
+        return os.path.abspath(root_dotenv)
+
+    for system_path in STANDARD_CONFIG_PATHS:
+        if os.path.isfile(system_path):
+            return os.path.abspath(system_path)
+
+    return None
+
+
+def get_environment_file_path() -> str | None:
+    """Return the resolved environment file path or None if not found.
+
+    Delegates to find_environment_file() for backward compatibility.
+    """
+    return find_environment_file()
 
 
 def load_env(path: str | None = None):
