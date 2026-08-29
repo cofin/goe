@@ -2,16 +2,17 @@
 type: Spec
 flow_id: python_dotenv_autoload_20260826
 title: "Automatic offload.env Loading via python-dotenv & Modernized Environment Discovery"
-state: planned
+state: active
 plan_revision: 1
 plan_commit: null
-state_revision: 0
-current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+state_revision: 8
+current_task: "2.2"
+last_operation: 20260828T021300Z-flow-executor-claim-2-2-00
+operation_targets:
+  - "2.2"
+last_verified_checkpoint: db6fe320b0a8ba935fa6ee42f8f30b7ecdb6a95e
 created_at: "2026-08-26T15:48:00Z"
-updated_at: "2026-08-26T15:48:00Z"
+updated_at: "2026-08-28T02:13:00Z"
 description: Architecture and implementation plan for multi-stage configuration discovery, POSIX variable expansion, and automatic environment loading across CLI and Python entrypoints via python-dotenv.
 tags:
   - spec
@@ -91,10 +92,22 @@ flowchart TD
 ```
 
 ### Tasks
-- [ ] 1.1 `config_file_multi_stage_discovery`: Implement `find_environment_file()` supporting 4-tier discovery in `src/goe/config/config_file.py`.
-- [ ] 1.2 `config_file_load_env_modernization`: Enhance `load_env()` to perform POSIX variable expansion (`interpolate=True`), respect `override=False`, and auto-export `OFFLOAD_HOME`.
-- [ ] 2.1 `package_init_autoload_hook`: Implement `_autoload_environment()` in `src/goe/__init__.py` with `PYTEST_CURRENT_TEST` and `GOE_NO_AUTOLOAD_ENV` guards.
-- [ ] 2.2 `cli_and_listener_startup_hooks`: Wire early environment auto-loading into `src/goe/cli/main.py`, `src/goe/listener/asgi.py`, and `src/goe/listener/app.py`.
+- [x] 1.1 `config_file_multi_stage_discovery`: Implement `find_environment_file()` supporting 4-tier discovery in `src/goe/config/config_file.py` ([a64b7ce](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/commit/a64b7ce4b216a09c2bd2d8dd4c0b5a6e8576dc9a)).
+- [x] 1.2 `config_file_load_env_modernization`: Enhance `load_env()` to perform POSIX variable expansion (`interpolate=True`), respect `override=False`, and auto-export `OFFLOAD_HOME` ([23a642a](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/commit/23a642a840af4149b734e628bdf394b300ea986e)).
+- [x] 2.1 `package_init_autoload_hook`: Implement `_autoload_environment()` in `src/goe/__init__.py` with `PYTEST_CURRENT_TEST` and `GOE_NO_AUTOLOAD_ENV` guards ([db6fe32](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/commit/db6fe320b0a8ba935fa6ee42f8f30b7ecdb6a95e)).
+- [~] 2.2 `cli_and_listener_startup_hooks`: Wire early environment auto-loading into `src/goe/cli/main.py`, `src/goe/listener/asgi.py`, and `src/goe/listener/app.py`.
 - [ ] 3.1 `unit_tests_config_file`: Author unit tests covering 4-tier path discovery, POSIX interpolation, JSON literal parsing, and test isolation in `tests/unit/config/test_config_file.py`.
 - [ ] 3.2 `cli_option_defaults_verification`: Author characterization tests in `tests/unit/cli/` verifying `goe` CLI commands evaluate option defaults against auto-loaded environment variables.
 - [ ] 4.1 `docs_and_patterns_update`: Document environment configuration discovery, `GOE_CONFIG_FILE`, `OFFLOAD_ENV_FILE`, and `GOE_NO_AUTOLOAD_ENV` in user documentation and knowledge bundles.
+
+---
+
+## 3. Continuity Snapshot
+
+- **Active Flow:** `python_dotenv_autoload_20260826`
+- **Current Task:** `2.2`
+- **Claimant:** `flow-executor`
+- **Last Verified Checkpoint:** `db6fe320b0a8ba935fa6ee42f8f30b7ecdb6a95e`
+- **Next Exact Step:** Wire load_env() into src/goe/cli/main.py, src/goe/listener/asgi.py, and src/goe/listener/app.py
+- **Plan Identity:** Revision 1 (Commit: `null`)
+- **State Identity:** Revision 8 (Last Operation: `20260828T021300Z-flow-executor-claim-2-2-00`, Targets: `["2.2"]`)
