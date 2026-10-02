@@ -4,12 +4,27 @@ id: embedded_listener_and_task_execution_20260826:pyproject_dependency_reduction
 title: Remove Redis/Valkey and litestar-queues Dependencies from pyproject.toml
 description: Remove external broker dependencies (valkey, redis, hiredis, libvalkey, litestar-queues) from pyproject.toml and lock dependencies with uv.
 state: open
+priority: P1
+plan_revision: 1
+plan_commit: null
+state_revision: 0
+claimed_by: null
+claimed_at: null
+blocked_reason: null
+unblock_condition: null
+next_step: null
+last_operation: null
+operation_targets: []
+last_verified_at: null
+last_verified_commit: null
+verification_evidence: null
+commit: null
 created_at: "2026-08-26T21:20:00Z"
-updated_at: "2026-08-26T21:23:00Z"
+updated_at: "2026-10-02T19:25:00Z"
 tags:
+  - refactor
   - dependencies
   - pyproject
-  - cleanup
   - uv
 depends_on: []
 files:
@@ -26,7 +41,7 @@ verification_strategy: behavior_tdd
 ## Objective
 Clean up `pyproject.toml` by removing `valkey[libvalkey]>=6.1.1` and `litestar-queues>=0.1.0` dependencies. Synchronize `uv.lock` to guarantee that no external caching server or queue broker packages are pulled into the environment.
 
-## Target Changes
+## Context
 - **File:** `pyproject.toml` (lines 68-80)
 - **Modifications:**
   Remove:
@@ -47,16 +62,20 @@ Clean up `pyproject.toml` by removing `valkey[libvalkey]>=6.1.1` and `litestar-q
   "litestar-mcp>=0.1.0",
   ```
 
-## Implementation Checklist
+## Steps
 - [ ] Remove `"valkey[libvalkey]>=6.1.1"` from `dependencies` in `pyproject.toml`.
 - [ ] Remove `"litestar-queues>=0.1.0"` from `dependencies` in `pyproject.toml`.
 - [ ] Verify `[project.optional-dependencies]` does not contain dangling references to valkey/redis/litestar-queues.
 - [ ] Run `uv lock` to update `uv.lock`.
 - [ ] Verify `uv.lock` no longer contains `valkey`, `redis`, `hiredis`, `libvalkey`, or `litestar-queues`.
 
-## Verification Strategy
-- **Command:**
-  ```bash
-  export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv lock --check && uv run pytest tests/unit/listener
-  ```
-- **Success Criteria:** `uv.lock` is consistent and valid; all existing unit tests pass or skip safely during dependency transition.
+## Verification
+```bash
+export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv lock --check && uv run pytest tests/unit/listener
+```
+
+## Acceptance Criteria
+- [ ] `uv.lock` is consistent and valid; all existing unit tests pass or skip safely during dependency transition.
+
+## Notes & Discoveries
+- Pending implementation.

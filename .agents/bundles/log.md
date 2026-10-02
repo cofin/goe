@@ -1,6 +1,25 @@
+---
+type: Reference
+description: Append-only operational and structural change log for the GOE OKF knowledge bundle.
+tags:
+  - changelog
+  - okf
+  - flow
+updated_at: "2026-10-02T19:30:00Z"
+---
+
 # Change Log
 
 This file records significant lifecycle operations, structural additions, and major evolutions to the GOE knowledge bundle.
+
+## 2026-10-02
+
+- **Flow Setup Alignment & OKF v0.2 Resynthesis**:
+  - Decomposed monolithic `.agents/bundles/knowledge/patterns.md` into topic-scoped pattern chapters under `.agents/bundles/knowledge/patterns/` (`index.md`, `serialization-and-utils.md`, `cli-architecture.md`, `offload-and-typing.md`) and updated all inbound links across `AGENTS.md`, `.agents/skills/flow-memory-keeper/SKILL.md`, and bundle indexes.
+  - Resynthesized `.agents/bundles/product/product.md`, `.agents/bundles/product/tech-stack.md`, `.agents/bundles/knowledge/listener/` (`index.md`, `rest-api.md`, `worker-and-redis.md`), and `.agents/bundles/knowledge/operations/cli-tools.md` to reflect the Litestar 2.8+ / Granian / Python 3.12+ / `rich-click` `goe` CLI architecture (replacing stale FastAPI, Python 3.8, `orjson`, and `passlib` descriptions).
+  - Synced `.agents/bundles/knowledge/workflow.md` with the `flow-template-v2` template (`templates/agent/workflow.md`) while preserving the `<!-- truth -->` block and GOE canonical commands, and wrapped `## Project Nuances` in `.agents/skills/flow-memory-keeper/SKILL.md` with `<!-- project-customization: start/end -->` markers.
+  - Backfilled normative Spec and Task frontmatter (`plan_revision`, `state_revision`, Work Kind tags, `verification_strategy` enums, and required section headings) across `.agents/bundles/specs/` (`modernization_overhaul_20260823`, `litestar_listener_overhaul_20260823`, `embedded_listener_and_task_execution_20260826`, `python_dotenv_autoload_20260826`), removed duplicate unpromoted research under `.agents/bundles/research/python_dotenv_autoload_install_lifecycle/`, and swept terminal transaction journals from `.agents/transactions/`.
+  - Updated `.agents/setup-state.json` canonical commands (`make install`, `make test-unit`, `make test-integration`, `make format`, `make lint`, `goe connect`) and `project_install` metadata.
 
 ## 2026-08-26
 
@@ -20,7 +39,7 @@ This file records significant lifecycle operations, structural additions, and ma
 
 - **Msgspec & SQLSpec Modernization (Chapter 2)**:
   - Added `sqlspec[performance,mypyc,oracledb,adbc,duckdb]>=0.61.0` and `msgspec>=0.19.0` to core dependencies and completely removed `orjson` across the entire codebase.
-  - Rebuilt utility ecosystem under `src/goe/util/` to cleanly re-export `sqlspec.utils` (matching DMA accelerator conventions): `serialization.py` (`to_json`, `from_json`, `schema_dump`), `sync_tools.py` (`async_`, `await_`, `ensure_async_`, `Portal`), `text.py` (`camelize`, `pascalize`, `snake_case`, `slugify`), `env.py` (`get_env`, `get_config_val`), and `uuids.py` (`uuid4`, `uuid7`, `nanoid`).
+  - Rebuilt utility ecosystem under `src/goe/util/` to cleanly re-export `sqlspec.utils`: `serialization.py` (`to_json`, `from_json`, `schema_dump`), `sync_tools.py` (`async_`, `await_`, `ensure_async_`, `Portal`), `text.py` (`camelize`, `pascalize`, `snake_case`, `slugify`), `env.py` (`get_env`, `get_config_val`), and `uuids.py` (`uuid4`, `uuid7`, `nanoid`).
   - Defined typed `msgspec.Struct` persistence schemas in `src/goe/persistence/schemas.py` (`StepDetailSchema`, `CommandExecutionSchema`, `OffloadMetadataSchema`, `LogEventSchema`, `PartitionMetadataSchema`).
   - Refactored `src/goe/persistence/orchestration_repo_client.py`, Oracle/Teradata repo clients, offload messaging, and Listener routes to use `msgspec` and `sqlspec`.
   - Added unit test characterization in `tests/unit/util/test_json_tools.py` and `tests/unit/persistence/test_schemas.py`; verified all 499 unit tests passing green.
@@ -28,7 +47,7 @@ This file records significant lifecycle operations, structural additions, and ma
   - Migrated build backend from `setuptools` to `hatchling.build` with explicit wheel package mapping (`packages = ["src/goe"]`).
   - Structured PEP 735 `[dependency-groups]` (`dev`, `test`, `lint`, `docs`, `build`) and preserved multi-cloud connector extras (`hadoop`, `snowflake`, `sql_server`, `synapse`, `teradata`, `sqlspec`, `all`).
   - Automated formatting and linting pass with `ruff` (`line-length = 120`), resolving legacy style discrepancies across 360 files.
-  - Modernized top-level `Makefile` with DMA developer lifecycle standards (`setup-env`, `install`, `upgrade`, `lint`, `format`, `test-unit`, `test-integration`, `build`, `clean`, `destroy`) and kernel-aware `uv.toml` sourcing.
+  - Modernized top-level `Makefile` with standard developer lifecycle targets (`setup-env`, `install`, `upgrade`, `lint`, `format`, `test-unit`, `test-integration`, `build`, `clean`, `destroy`) and kernel-aware `uv.toml` sourcing.
   - Re-scaffolded GitHub Actions CI/CD workflows (`ci.yaml`, `test.yaml`, `release.yaml`) with `actions/checkout@v4`, `astral-sh/setup-uv@v5`, and standalone PyApp distribution bundling via `tools/bundle_python.py`.
 - **Flow Alignment & OKF Validation**: Revalidated bundle structure, verified link integrity across 84 cross-document links, backfilled complete OKF v0.2 frontmatter across all 20 task worksheets, and linked child specs to `modernization_overhaul_20260823`.
 - **Research Promotion**: Promoted `modernization_overhaul_20260822` research document to `.agents/bundles/specs/modernization_overhaul_20260823/research/` matching the master PRD roadmap.
@@ -39,4 +58,3 @@ This file records significant lifecycle operations, structural additions, and ma
 - **Initial Flow Setup**: Initialized OKF v0.2 knowledge bundle for Next-GOE framework.
 - **Deep Codebase Ingestion**: Scaffolding complete knowledge hierarchy covering Architecture, Frontends (Oracle, SQL Server, Teradata), Backends (BigQuery, Snowflake, Synapse, Hadoop), Storage (GCS, S3, Azure Blob, HDFS), Transport (Spark, Dataproc, Avro/Parquet staging), Listener REST service, CLI tooling, and Development standards.
 - **Operational Skills**: Installed project-local `flow-memory-keeper` consumer skill.
-

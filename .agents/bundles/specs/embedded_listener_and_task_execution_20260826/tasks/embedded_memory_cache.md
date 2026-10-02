@@ -4,9 +4,25 @@ id: embedded_listener_and_task_execution_20260826:embedded_memory_cache
 title: Implement Thread-Safe Embedded In-Memory TTL Cache
 description: Implement MemoryCache with TTL expiration, pattern matching (keys, scan), ping, get, set, delete, mget in src/goe/listener/utils/cache.py, and update periodic_tasks.py and heartbeat.py.
 state: open
+priority: P1
+plan_revision: 1
+plan_commit: null
+state_revision: 0
+claimed_by: null
+claimed_at: null
+blocked_reason: null
+unblock_condition: null
+next_step: null
+last_operation: null
+operation_targets: []
+last_verified_at: null
+last_verified_commit: null
+verification_evidence: null
+commit: null
 created_at: "2026-08-26T21:20:00Z"
-updated_at: "2026-08-26T21:23:00Z"
+updated_at: "2026-10-02T19:25:00Z"
 tags:
+  - refactor
   - cache
   - in-memory
   - ttl
@@ -28,18 +44,17 @@ verification_strategy: behavior_tdd
 ## Objective
 Replace the Valkey/Redis network client in `src/goe/listener/utils/cache.py` with an embedded, thread-safe asynchronous `MemoryCache` supporting key-value storage with TTL expiration, wildcard pattern matching (`keys`, `scan`, `delete_keys`), and compatibility methods. Update `src/goe/listener/services/periodic_tasks.py` and `src/goe/listener/services/heartbeat.py`.
 
-## Implementation Details
+## Context
 
 ### 1. `src/goe/listener/utils/cache.py`
 Implement `MemoryCache` with an internal dictionary storing `(value, epoch_expiration)` tuples, protected by `threading.RLock()` for thread safety:
 ```python
-# Standard Library
 import fnmatch
 import logging
 import time
 from datetime import timedelta
 from threading import RLock
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +66,7 @@ class MemoryCache:
     without requiring an external broker daemon.
     """
 
-    _instance: Optional["MemoryCache"] = None
+    _instance: "MemoryCache | None" = None
     _lock: RLock = RLock()
 
     def __init__(self) -> None:
@@ -192,16 +207,20 @@ cache = MemoryCache()
 ### 3. `src/goe/listener/services/periodic_tasks.py`
 - Verify metadata publishers (`publish_heartbeat`, `publish_schemas`, `publish_command_executions`) interact directly with `utils.cache.set()` and `utils.cache.get()`.
 
-## Implementation Checklist
+## Steps
 - [ ] Implement thread-safe `MemoryCache` singleton in `src/goe/listener/utils/cache.py`.
 - [ ] Support `get`, `set`, `mget`, `delete`, `delete_keys`, `keys`, `scan`, `ping`, `exists`, `expire`, `close_client`.
 - [ ] Export `cache = MemoryCache()` in `src/goe/listener/utils/cache.py`.
 - [ ] Update `src/goe/listener/services/heartbeat.py` to remove `valkey` imports.
 - [ ] Author `tests/unit/listener/test_cache.py` validating TTL expiration, pattern matching, and concurrent access.
 
-## Verification Strategy
-- **Command:**
-  ```bash
-  export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/listener/test_cache.py
-  ```
-- **Success Criteria:** `MemoryCache` passes 100% of unit tests with zero external connection requirements.
+## Verification
+```bash
+export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/listener/test_cache.py
+```
+
+## Acceptance Criteria
+- [ ] `MemoryCache` passes 100% of unit tests with zero external connection requirements.
+
+## Notes & Discoveries
+- Pending implementation.

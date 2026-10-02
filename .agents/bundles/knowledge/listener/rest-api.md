@@ -1,32 +1,34 @@
 ---
 type: Reference
 title: Listener REST API Architecture
-description: FastAPI application factory, middleware, authentication, error mapping, and endpoint catalog
+description: Litestar application factory, Granian ASGI runtime, authentication guards, MCP tools, and endpoint catalog
 tags:
   - reference
   - listener
   - api
-  - endpoints
+  - litestar
   - security
+updated_at: "2026-10-02T19:33:00Z"
 ---
 
 # Listener REST API Architecture
 
-The GOE Listener (`src/goe/listener/`) exposes metadata, execution status, and asynchronous job dispatching via a high-performance REST API.
+The GOE Listener (`src/goe/listener/`) exposes metadata, execution status, MCP tools, and asynchronous job dispatching via a Litestar REST API.
 
 ## Application Architecture
 
-- **Framework**: FastAPI with `msgspec` serialization and standard `JSONResponse`.
-- **Master Arbiter**: Gunicorn with custom `UvicornWorker` (`uvloop` event loop, `httptools` parser).
-- **Middleware**:
-  - `CompressionMiddleware`: Streaming Brotli (`br`) and gzip compression.
-  - `SecurityHeaderMiddleware`: Injects HSTS headers.
-  - `CORSMiddleware`: Restricts `/api/*` endpoints.
+- **Framework**: Litestar (`>=2.8.0`) in [`src/goe/listener/app.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/app.py) with `msgspec.Struct` request/response schemas (`src/goe/listener/schemas/`).
+- **ASGI Runtime**: `litestar-granian` (`GranianPlugin`, [`src/goe/listener/asgi.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/asgi.py), and [`src/goe/cli/commands/listener.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/cli/commands/listener.py)) running on `uvloop`.
+- **Plugins & Middleware**:
+  - `CompressionConfig`: Gzip/Brotli response compression.
+  - `CORSConfig`: Cross-origin policies across `/api/*` endpoints.
+  - `AutowirePlugin` (`litestar-autowire`): Declarative dependency injection for `SystemService` and repository clients.
+  - `LitestarMCP` (`litestar-mcp`): Exposes GOE orchestration operations as MCP tools and resources (`src/goe/listener/mcp.py`).
 
 ## Authentication & Security
 
-- **API Key Header**: `x-goe-console-key`.
-- **Validation**: Compares incoming token against `OFFLOAD_LISTENER_SHARED_TOKEN` (decryptable via `PASSWORD_KEY_FILE`).
+- **API Key Header**: `x-goe-console-key` validated via `console_key_guard` (`src/goe/listener/security.py`).
+- **Validation**: Constant-time comparison (`secrets.compare_digest`) against `OFFLOAD_LISTENER_SHARED_TOKEN`.
 - **Authorization**: Invalid or missing keys return `HTTP 401 Unauthorized`.
 
 ## Endpoint Catalog

@@ -14,12 +14,12 @@ This directory contains specifications and task worksheets for active, planned, 
 
 ## Master Roadmaps (PRDs)
 
-- [GOE Modernization Master Roadmap (`modernization_overhaul_20260823`)](modernization_overhaul_20260823/spec.md) - [State: Planned] Master architectural roadmap overhauling packaging/CI, serialization with msgspec & sqlspec, unified rich-click CLI, and Litestar listener ecosystem.
+- [GOE Modernization Master Roadmap (`modernization_overhaul_20260823`)](modernization_overhaul_20260823/spec.md) - [State: Active] Master architectural roadmap overhauling packaging/CI, serialization with msgspec & sqlspec, unified rich-click CLI, and Litestar listener ecosystem.
 
 ## Active & Planned Child Flows
 
-- [Embedded Self-Contained Listener & Native Task Execution (`embedded_listener_and_task_execution_20260826`)](embedded_listener_and_task_execution_20260826/spec.md) - [State: Planned] Rebuild the GOE Listener with an embedded architecture (in-memory TTL cache, accelerator-pattern WorkerPlugin & Task runner, deprecation shims for Redis and bin wrappers, zero external daemon dependencies).
-- [Automatic offload.env Loading via python-dotenv (`python_dotenv_autoload_20260826`)](python_dotenv_autoload_20260826/spec.md) - [State: Planned] Multi-stage configuration discovery, POSIX variable expansion, and automatic environment loading across CLI and Python entrypoints via python-dotenv.
+- [Automatic offload.env Loading via python-dotenv (`python_dotenv_autoload_20260826`)](python_dotenv_autoload_20260826/spec.md) - [State: Active] Multi-stage configuration discovery, POSIX variable expansion, and automatic environment loading across CLI and Python entrypoints via python-dotenv.
+- [Embedded Self-Contained Listener & Native Task Execution (`embedded_listener_and_task_execution_20260826`)](embedded_listener_and_task_execution_20260826/spec.md) - [State: Planned] Rebuild the GOE Listener with an embedded architecture (in-memory TTL cache, native WorkerPlugin & Task runner, deprecation shims for Redis and bin wrappers, zero external daemon dependencies).
 
 ## Completed & Archived Flows
 
@@ -28,8 +28,8 @@ This directory contains specifications and task worksheets for active, planned, 
   - Chapter 2 (`spdx_python_files_migration_20260826`): Core Python source, tests, tools, and root scripts migration.
   - Chapter 3 (`spdx_non_python_files_migration_20260826`): SQL, Shell, Makefiles, templates, HTML, CSS, JS, and Scala migration.
   - Chapter 4 (`spdx_ci_precommit_verification_20260826`): CI workflows and developer documentation updates.
-- **Chapter 1 (`build_ci_overhaul_20260823`)**: Build Tooling, Ruff, UV Dependency Groups & GitHub Actions CI Overhaul. Synthesized into [Patterns](../knowledge/patterns.md) and [Workflow](../knowledge/workflow.md); recorded in [Change Log](../log.md).
-- **Chapter 2 (`msgspec_sqlspec_overhaul_20260823`)**: High-Performance Msgspec Serialization & SQLSpec Data Layer. Synthesized into [Patterns](../knowledge/patterns.md); recorded in [Change Log](../log.md).
-- **Chapter 3 (`rich_click_cli_overhaul_20260823`)**: Unified Rich-Click CLI Suite & Interactive Terminal UX. Synthesized into [Patterns](../knowledge/patterns.md); recorded in [Change Log](../log.md).
-- **Chapter 4 (`litestar_listener_overhaul_20260823`)**: Next-Generation Litestar Listener Service, Granian ASGI, litestar-queues, and MCP Tools.
+- **Chapter 1 (`build_ci_overhaul_20260823`)**: Build Tooling, Ruff, UV Dependency Groups & GitHub Actions CI Overhaul. Synthesized into [Patterns](../knowledge/patterns/index.md) and [Workflow](../knowledge/workflow.md); recorded in [Change Log](../log.md).
+- **Chapter 2 (`msgspec_sqlspec_overhaul_20260823`)**: High-Performance Msgspec Serialization & SQLSpec Data Layer. Synthesized into [Serialization & Utility Re-Export Patterns](../knowledge/patterns/serialization-and-utils.md); recorded in [Change Log](../log.md).
+- **Chapter 3 (`rich_click_cli_overhaul_20260823`)**: Unified Rich-Click CLI Suite & Interactive Terminal UX. Synthesized into [Centralized Rich-Click CLI & Legacy Delegators](../knowledge/patterns/cli-architecture.md); recorded in [Change Log](../log.md).
+- [Chapter 4 (`litestar_listener_overhaul_20260823`)](litestar_listener_overhaul_20260823/spec.md) - [State: Completed] Next-Generation Litestar Listener Service, Granian ASGI, litestar-queues, and MCP Tools.
 

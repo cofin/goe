@@ -15,7 +15,7 @@ created_at: "2026-08-26T15:48:00Z"
 updated_at: "2026-08-28T02:13:00Z"
 description: Architecture and implementation plan for multi-stage configuration discovery, POSIX variable expansion, and automatic environment loading across CLI and Python entrypoints via python-dotenv.
 tags:
-  - spec
+  - feature
   - configuration
   - python-dotenv
   - cli
@@ -86,7 +86,7 @@ flowchart TD
     end
 
     subgraph Phase4["Phase 4: Documentation & Knowledge Sync"]
-        T41["Task 4.1: Documentation & durable pattern update\n(user_guide.md, README.md, AGENTS.md, patterns.md)"]
+        T41["Task 4.1: Documentation & durable pattern update\n(user_guide.md, README.md, AGENTS.md, patterns/index.md)"]
         T32 --> T41
     end
 ```

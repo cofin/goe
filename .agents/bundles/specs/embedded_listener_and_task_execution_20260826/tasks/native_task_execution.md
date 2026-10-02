@@ -1,15 +1,30 @@
 ---
 type: Task
 id: embedded_listener_and_task_execution_20260826:native_task_execution
-title: Implement Accelerator-Pattern WorkerPlugin, Jobs Registry & Continuous Worker Runner
-description: Implement WorkerPlugin (CLIPlugin, InitPluginProtocol), in-process @task decorator, CronParser, task registry, and continuous worker loop modeled on dma/accelerator, replacing QueuePlugin and litestar-queues.
+title: Implement Native WorkerPlugin, Jobs Registry & Continuous Worker Runner
+description: Implement WorkerPlugin (CLIPlugin, InitPluginProtocol), in-process @task decorator, CronParser, task registry, and continuous worker loop, replacing QueuePlugin and litestar-queues.
 state: open
+priority: P1
+plan_revision: 1
+plan_commit: null
+state_revision: 0
+claimed_by: null
+claimed_at: null
+blocked_reason: null
+unblock_condition: null
+next_step: null
+last_operation: null
+operation_targets: []
+last_verified_at: null
+last_verified_commit: null
+verification_evidence: null
+commit: null
 created_at: "2026-08-26T21:20:00Z"
-updated_at: "2026-08-26T21:23:00Z"
+updated_at: "2026-10-02T19:25:00Z"
 tags:
+  - refactor
   - litestar
   - worker
-  - accelerator-pattern
   - jobs
   - background-tasks
 depends_on:
@@ -25,30 +40,29 @@ tests:
 verification_strategy: behavior_tdd
 ---
 
-# Task: Implement Accelerator-Pattern WorkerPlugin, Jobs Registry & Continuous Worker Runner
+# Task: Implement Native WorkerPlugin, Jobs Registry & Continuous Worker Runner
 
 ## Objective
-Model the GOE Listener's worker and task execution architecture directly on `~/code/dma/accelerator` (`src/py/dma/utils/worker/` and `src/py/dma/lib/jobs.py`):
+Implement the GOE Listener's native in-process worker and task execution architecture:
 1. **`WorkerPlugin(CLIPlugin, InitPluginProtocol)`**: Hooks into Granian's `server_lifespan` in `src/goe/listener/app.py` to own and supervise the worker child process when `goe listener start` runs, and supports standalone execution via `goe listener start --worker-only`.
 2. **`goe.listener.jobs`**: `@task` decorator, `Task` wrapper, `CronParser`, in-process registry `_job_registry`, and progress beat tracking (`beat()`).
 3. **Continuous Worker Loop**: `run_continuous_worker` in `src/goe/listener/worker.py` polling and executing registered tasks (offload operations, heartbeats, schema syncs).
 4. **`OrchestrationController`**: Dispatches offload tasks into the native task runner and returns `Response[schemas.CommandScheduled]`.
 
-## Implementation Details
+## Context
 
 ### 1. `src/goe/listener/jobs.py`
 Implement `Task`, `@task` decorator, `CronParser`, and progress `beat()` sink:
 ```python
-"""Job function registry for background tasks (DMA Accelerator Pattern)."""
+"""Job function registry for background tasks."""
 
 from collections.abc import Callable
 import contextlib
 import contextvars
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 import inspect
-from typing import Any, Literal
-from uuid import UUID
+from typing import Any
 
 from goe.listener.services.orchestrate import orchestration_runner
 from goe.orchestration.execution_id import ExecutionId
@@ -129,7 +143,6 @@ def get_job_registry() -> dict[str, Task]:
     return _job_registry
 
 
-# Built-in background jobs
 @task("orchestration.offload", queue="orchestration", timeout=86400)
 async def run_offload_job(params: dict[str, Any], execution_id: str) -> dict[str, Any]:
     """Execute an offload operation asynchronously in background."""
@@ -154,13 +167,14 @@ async def sync_schemas_job() -> dict[str, str]:
 
 ### 2. `src/goe/listener/worker.py` (WorkerPlugin & Runner)
 ```python
-"""WorkerPlugin and continuous background worker runner (DMA Accelerator Pattern)."""
+"""WorkerPlugin and continuous background worker runner."""
 
 import asyncio
+from collections.abc import Iterator
 from contextlib import contextmanager
 import logging
 import multiprocessing
-from typing import TYPE_CHECKING, Iterator, Literal
+from typing import TYPE_CHECKING, Literal
 
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 
@@ -245,7 +259,6 @@ async def execute_offload_command(
     execution_identifier = ExecutionId()
     params = {k: v for k, v in msgspec.structs.asdict(data).items() if v is not None}
 
-    # Dispatch background execution natively via Litestar BackgroundTask
     return Response(
         schemas.CommandScheduled(execution_id=str(execution_identifier.id)),
         background=BackgroundTask(
@@ -267,16 +280,20 @@ plugins=[
 ]
 ```
 
-## Implementation Checklist
+## Steps
 - [ ] Implement `Task`, `@task`, `CronParser`, `beat()` and `_job_registry` in `src/goe/listener/jobs.py`.
 - [ ] Implement `WorkerPlugin(CLIPlugin, InitPluginProtocol)` and `run_continuous_worker` in `src/goe/listener/worker.py`.
 - [ ] Update `OrchestrationController.execute_offload_command` in `src/goe/listener/controllers/orchestration.py`.
 - [ ] Register `WorkerPlugin` and remove `QueuePlugin` in `src/goe/listener/app.py`.
 - [ ] Author unit tests in `tests/unit/listener/test_jobs.py` testing job registration, cron parsing, and task execution.
 
-## Verification Strategy
-- **Command:**
-  ```bash
-  export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/listener/test_jobs.py tests/unit/listener/test_orchestration_controllers.py
-  ```
-- **Success Criteria:** `POST /api/orchestration/offload/` returns 200/201, schedules background execution, and completes without external queue daemons.
+## Verification
+```bash
+export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/listener/test_jobs.py tests/unit/listener/test_orchestration_controllers.py
+```
+
+## Acceptance Criteria
+- [ ] `POST /api/orchestration/offload/` returns 200/201, schedules background execution, and completes without external queue daemons.
+
+## Notes & Discoveries
+- Pending implementation.

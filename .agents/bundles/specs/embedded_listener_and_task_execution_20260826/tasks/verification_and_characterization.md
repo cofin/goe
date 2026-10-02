@@ -4,11 +4,26 @@ id: embedded_listener_and_task_execution_20260826:verification_and_characterizat
 title: Comprehensive Unit Testing, Characterization, and Zero-External-Dependency Validation
 description: Author and run comprehensive unit tests validating that all listener endpoints, background tasks, WorkerPlugin, and MCP routes execute with zero external service dependencies.
 state: open
+priority: P1
+plan_revision: 1
+plan_commit: null
+state_revision: 0
+claimed_by: null
+claimed_at: null
+blocked_reason: null
+unblock_condition: null
+next_step: null
+last_operation: null
+operation_targets: []
+last_verified_at: null
+last_verified_commit: null
+verification_evidence: null
+commit: null
 created_at: "2026-08-26T21:20:00Z"
-updated_at: "2026-08-26T21:23:00Z"
+updated_at: "2026-10-02T19:25:00Z"
 tags:
+  - test
   - verification
-  - testing
   - listener
   - characterization
   - mcp
@@ -28,7 +43,7 @@ tests:
   - tests/unit/listener/test_system_controllers.py
   - tests/unit/listener/test_mcp.py
   - tests/unit/listener/test_deprecation_shims.py
-verification_strategy: behavior_tdd
+verification_strategy: characterization
 ---
 
 # Task: Comprehensive Unit Testing, Characterization, and Zero-External-Dependency Validation
@@ -36,7 +51,7 @@ verification_strategy: behavior_tdd
 ## Objective
 Author comprehensive unit and characterization test suites verifying that the entire GOE Listener REST API, MCP agent discovery routes, `WorkerPlugin` lifecycle, background task dispatcher, and in-memory cache operate with 100% test pass rate with zero external daemon dependencies (no Redis server, no external queue broker).
 
-## Implementation Details
+## Context
 
 ### Test Suite Structure
 1. `tests/unit/listener/test_cache.py`:
@@ -74,15 +89,19 @@ Author comprehensive unit and characterization test suites verifying that the en
    - `test_cache_redis_client_alias_deprecation_warning()`
    - `test_bin_wrappers_deprecation_warning()`
 
-## Implementation Checklist
+## Steps
 - [ ] Author all unit test files in `tests/unit/listener/`.
 - [ ] Execute full listener test suite with `uv run pytest`.
 - [ ] Confirm no external networking or daemons are contacted during test execution.
 - [ ] Verify test suite passes 100% green.
 
-## Verification Strategy
-- **Command:**
-  ```bash
-  export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/listener -v
-  ```
-- **Success Criteria:** All tests in `tests/unit/listener` pass green without warning suppressions or connection errors.
+## Verification
+```bash
+export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/listener -v
+```
+
+## Acceptance Criteria
+- [ ] All tests in `tests/unit/listener` pass green without warning suppressions or connection errors.
+
+## Notes & Discoveries
+- Pending implementation.

@@ -9,7 +9,7 @@ You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)
 - **Product Overview**: [Product Definition](.agents/bundles/product/product.md) & [Product Guidelines](.agents/bundles/product/product-guidelines.md)
 - **Technology Stack**: [Tech Stack](.agents/bundles/product/tech-stack.md)
 - **Workflow & Commands**: [Workflow](.agents/bundles/knowledge/workflow.md)
-- **Patterns & Gotchas**: [Patterns](.agents/bundles/knowledge/patterns.md)
+- **Patterns & Gotchas**: [Patterns](.agents/bundles/knowledge/patterns/index.md)
 
 ## 2. Core Operational Invariants
 - **Language**: Python >= 3.12.

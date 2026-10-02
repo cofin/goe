@@ -1,17 +1,23 @@
 ---
 type: PRD
+flow_id: modernization_overhaul_20260823
 prd_id: modernization_overhaul_20260823
 title: GOE Modernization Master Roadmap (Build, Msgspec/SQLSpec, Rich-Click, Litestar)
-state: in_progress
+state: active
+plan_revision: 1
+plan_commit: 6479ad6
+state_revision: 4
+current_task: null
+last_operation: null
+operation_targets: []
+last_verified_checkpoint: 57f84ab
 created_at: "2026-08-23T15:25:00Z"
-updated_at: "2026-08-24T22:26:00Z"
+updated_at: "2026-08-28T02:13:00Z"
 description: Master architectural modernization roadmap overhauling packaging/CI, serialization with msgspec & sqlspec, unified rich-click CLI, and Litestar listener ecosystem.
 tags:
-  - prd
-  - roadmap
+  - refactor
   - build
   - msgspec
-  - sqlspec
   - cli
   - litestar
 research:
@@ -24,7 +30,7 @@ research:
 
 ## Executive Summary
 
-The GOE (Gluent Offload Engine) framework is undergoing a complete architectural modernization. Aligning with standards established across Cody's DMA ecosystem (`collector`, `beekeeper`, `db-skus`, `accelerator`), this roadmap decomposes the modernization into 4 sequential child flows:
+The GOE (Gluent Offload Engine) framework is undergoing a complete architectural modernization, decomposed into sequential child flows:
 
 ```mermaid
 flowchart TD
@@ -44,7 +50,7 @@ flowchart TD
   - Structure dependencies using PEP 735 `[dependency-groups]` (`dev`, `test`, `lint`, `docs`, `build`).
   - Preserve multi-cloud connector extras (`hadoop`, `snowflake`, `sql_server`, `synapse`, `teradata`) in `[project.optional-dependencies]`.
   - Configure `ruff` (linter & formatter, line-length 120, Google docstrings) and strict `mypy`/`pyright`.
-  - Re-engineer `Makefile` with DMA targets and preserved sub-make packaging targets (`target`, `spark-listener`, `offload-env`, `package`).
+  - Re-engineer `Makefile` with standard developer lifecycle targets and preserved sub-make packaging targets (`target`, `spark-listener`, `offload-env`, `package`).
   - Scaffold `.github/workflows/` (`ci.yaml`, `test.yaml`, `release.yaml`) with `actions/checkout@v4` and `astral-sh/setup-uv@v5`.
   - Provide `tools/bundle_python.py` for cross-compiled standalone PyApp binaries.
 

@@ -1,12 +1,12 @@
 ---
 type: Reference
 title: GOE Listener REST Service
-description: Asynchronous REST API, FastAPI application factory, Gunicorn/Uvicorn workers, and Redis queues
+description: Asynchronous REST and MCP service powered by Litestar, Granian ASGI runtime, litestar-queues, and Valkey/Redis
 tags:
   - reference
   - listener
   - api
-  - fastapi
+  - litestar
   - index
 ---
 
@@ -16,5 +16,5 @@ This section documents the architecture, endpoints, background worker queues, an
 
 ## Chapters
 
-- [REST API Architecture](rest-api.md) - FastAPI core, Gunicorn/Uvicorn ASGI runner, security tokens, endpoints, and middleware.
-- [Workers & Redis Caching](worker-and-redis.md) - Redis connection pool, cluster node heartbeats, background cron workers, and real-time event streaming.
+- [REST API Architecture](rest-api.md) - Litestar application factory, Granian ASGI runner, `litestar-security` guards, `litestar-autowire` DI, `litestar-mcp` tools, and endpoint catalog.
+- [Workers & Redis Caching](worker-and-redis.md) - `litestar-queues` background tasks, cluster node heartbeats, scheduled cron workers, and Valkey/Redis caching.

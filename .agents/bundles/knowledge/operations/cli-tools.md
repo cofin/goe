@@ -11,9 +11,9 @@ tags:
 
 # CLI Utilities Reference
 
-The GOE framework provides a suite of CLI tools in `bin/`:
+The GOE framework provides a unified `rich-click` CLI registered as `goe` (`src/goe/cli/main.py`), along with backward-compatible delegator scripts in `bin/`:
 
-## 1. `bin/offload`
+## 1. `goe offload` (`bin/offload`)
 Primary CLI for executing data offloading operations.
 
 ### Common Options
@@ -29,12 +29,12 @@ Primary CLI for executing data offloading operations.
 - `--preserve-load-table`: Keep intermediate staging files and tables for inspection.
 - `--no-ansi`: Disable terminal ANSI colors.
 
-## 2. `bin/connect`
+## 2. `goe connect` (`bin/connect`)
 Pre-flight environment and connectivity validation suite.
 
 ### Modes & Flags
-- `bin/connect`: Runs complete pre-flight check across OS, configuration permissions (`640`), frontend database, backend cloud platform, and Spark loopback networking.
-- `bin/connect --upgrade-environment-file`: Inspects `offload.env` against reference template and appends missing variables.
+- `goe connect` / `bin/connect`: Runs complete pre-flight check across OS, configuration permissions (`640`), frontend database, backend cloud platform, and Spark loopback networking.
+- `goe connect --upgrade-environment-file`: Inspects `offload.env` against reference template and appends missing variables.
 
 ### Exit Codes
 - `0`: Success (all checks passed).
@@ -42,7 +42,7 @@ Pre-flight environment and connectivity validation suite.
 - `2`: Verification failure.
 - `3`: Non-fatal warning.
 
-## 3. `bin/agg_validate`
+## 3. `goe validate` (`bin/agg_validate`)
 Cross-database data consistency and aggregation validator.
 
 ### Options
@@ -51,11 +51,15 @@ Cross-database data consistency and aggregation validator.
 - `--as-of-scn <scn>`: Flashback SCN on Oracle source.
 - `-F, --filter-clause <where>`: Custom filter predicate.
 
-## 4. `bin/logmgr`
-Log rotation and archiving shell script designed for cron execution.
+## 4. `goe sync` (`bin/schema_sync`) & `goe report` (`bin/offload_status_report`)
+- `goe sync`: Detects upstream RDBMS column/type changes and synchronizes target cloud DW schemas.
+- `goe report`: Generates HTML/console status reports summarizing offloaded tables and hybrid views.
+
+## 5. `goe logmgr` (`bin/logmgr`)
+Log rotation and retention utility designed for scheduled execution.
 - Scans `$OFFLOAD_HOME/log` for log files older than `LOG_MV_MINS` (default 60m).
 - Archives into `$OFFLOAD_HOME/log/archive/YYYY.MM.DD/`.
 
-## 5. `bin/listener`
-Multi-process supervisor for the GOE Listener REST service.
-- Spawns heartbeat publisher, background task workers, and Gunicorn/Uvicorn HTTP servers.
+## 6. `goe listener` (`bin/listener`)
+ASGI server and worker runner for the GOE Listener REST and MCP service.
+- Runs the Litestar application (`goe.listener.app:create_app`) via the `litestar-granian` Rust ASGI runtime (`uvloop`) and manages background queue workers.

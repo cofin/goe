@@ -3,17 +3,24 @@ type: Spec
 flow_id: embedded_listener_and_task_execution_20260826
 title: Embedded Self-Contained Listener & Native Task Execution
 state: planned
+plan_revision: 1
+plan_commit: null
+state_revision: 0
+current_task: null
+last_operation: null
+operation_targets: []
+last_verified_checkpoint: null
 created_at: "2026-08-26T21:20:00Z"
-updated_at: "2026-08-26T21:20:00Z"
+updated_at: "2026-10-02T19:25:00Z"
 description: Rebuild the GOE Listener with an embedded, self-contained architecture (in-memory TTL cache, native Litestar background task runner, deprecation shims for Redis and bin wrappers, zero external daemon dependencies).
 tags:
-  - spec
+  - refactor
   - listener
   - embedded
   - cache
   - oracle
-  - deprecations
 parent_prd: modernization_overhaul_20260823
+research: []
 ---
 
 # Flow: Embedded Self-Contained Listener & Native Task Execution
@@ -51,3 +58,11 @@ flowchart TD
 - [ ] `native_task_execution`: Update `src/goe/listener/jobs.py`, `src/goe/listener/app.py`, and `src/goe/listener/controllers/orchestration.py` using Litestar's native task dispatching.
 - [ ] `deprecation_shims`: Add `DeprecationWarning` shims to `goe.util.redis_tools` and `bin/` wrapper scripts.
 - [ ] `verification_and_characterization`: Author and run unit tests validating full suite passes with zero external service dependencies.
+
+## 3. Continuity Snapshot
+
+- **Current Task**: `null`
+- **Active Blockers**: None
+- **Last Verified Checkpoint**: `null`
+- **Next Action**: Start `pyproject_dependency_reduction` when scheduled for implementation.
+- **Recent Decisions / Deviations**: None.
