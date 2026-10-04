@@ -3,11 +3,15 @@
 
 """'goe sync' subcommand for schema drift detection and DDL synchronization."""
 
+import sys
 from optparse import Values
+from typing import Any
 
 import rich_click as click
 
+from goe.cli.common import common_options, extract_common_options
 from goe.config.orchestration_config import OrchestrationConfig
+from goe.goe import get_log_fh, init, init_log, log_close
 from goe.offload.offload_messages import OffloadMessages
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.factory.orchestration_repo_client_factory import (
@@ -42,21 +46,15 @@ from goe.schema_sync.schema_sync import (
     "--command-file",
     help="File path to record generated/applied evolution DDL commands.",
 )
+@common_options
 @click.pass_context
-def sync(ctx: click.Context, **kwargs) -> None:
+def sync(ctx: click.Context, **kwargs: Any) -> None:
     """Execute schema drift analysis and target evolution."""
+    common_opts = extract_common_options(ctx, kwargs)
     parser = get_schema_sync_opts()
     defaults = parser.get_default_values()
     options_dict = defaults.__dict__.copy()
-
-    if ctx.obj:
-        options_dict.update(
-            {
-                "verbose": ctx.obj.get("verbose", False),
-                "vverbose": ctx.obj.get("vverbose", False),
-                "quiet": ctx.obj.get("quiet", False),
-            }
-        )
+    options_dict.update(common_opts)
 
     for k, v in kwargs.items():
         if v is not None:
@@ -65,13 +63,22 @@ def sync(ctx: click.Context, **kwargs) -> None:
     options = Values(options_dict)
     normalise_schema_sync_options(options)
 
+    init(options)
+    init_log("schema_sync")
     config = OrchestrationConfig.from_dict({"verbose": options.verbose, "vverbose": options.vverbose})
-    messages = OffloadMessages()
     execution_id = ExecutionId()
+    messages = OffloadMessages.from_options(options, log_fh=get_log_fh(), execution_id=execution_id)
     repo_client = orchestration_repo_client_factory(
-        config.target_dbtype,
         config,
         messages,
-        dry_run=not options.execute,
+        dry_run=bool(not options.execute),
+        trace_action="repo_client(schema_sync)",
     )
-    run_schema_sync(options, messages, repo_client, config, execution_id)
+    try:
+        return_code = run_schema_sync(options, messages, execution_id, repo_client)
+    finally:
+        repo_client.close()
+        log_close()
+
+    if return_code:
+        sys.exit(return_code)
