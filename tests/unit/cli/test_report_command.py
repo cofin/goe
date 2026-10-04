@@ -28,3 +28,27 @@ def test_report_dispatch(mock_osr):
     assert options.schema == "SH"
     assert options.table == "SALES"
     assert options.output_format == "JSON"
+
+
+@patch("goe.cli.commands.report.offload_status_report_run")
+def test_report_defaults_to_text_and_summary(mock_osr):
+    """Verify goe report defaults output_format to 'text', output_level to 'summary', and ansi to True."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["report", "-s", "SH", "-t", "SALES"])
+    assert result.exit_code == 0
+    options = mock_osr.call_args[0][0]
+    assert options.output_format == "text"
+    assert options.output_level == "summary"
+    assert options.ansi is True
+
+
+@patch("goe.cli.commands.report.offload_status_report_run")
+def test_report_demo_mode_and_common_options(mock_osr):
+    """Verify goe report accepts hidden -d/--demo and trailing common options."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["report", "--demo", "--no-ansi", "-v"])
+    assert result.exit_code == 0
+    options = mock_osr.call_args[0][0]
+    assert options.demo_mode is True
+    assert options.ansi is False
+    assert options.verbose is True
