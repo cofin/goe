@@ -10,6 +10,7 @@ from typing import Any
 import rich_click as click
 
 from goe.cli.console import console, heading_console
+from goe.config import orchestration_defaults
 from goe.util.goe_version import goe_version
 
 COMMON_OPTION_KEYS: tuple[str, ...] = (
@@ -153,11 +154,11 @@ def extract_common_options(ctx: click.Context | None, kwargs: dict[str, Any]) ->
 
     log_path = popped["log_path"] if popped["log_path"] is not None else parent_obj.get("log_path")
     if log_path is None:
-        log_path = os.environ.get("OFFLOAD_LOGFILE")
+        log_path = os.environ.get("OFFLOAD_LOGFILE") or orchestration_defaults.log_path_default()
 
     log_level = popped["log_level"] if popped["log_level"] is not None else parent_obj.get("log_level")
     if log_level is None:
-        log_level = "info"
+        log_level = orchestration_defaults.log_level_default() or "info"
 
     if popped["ver_check"] is not None:
         ver_check = bool(popped["ver_check"])

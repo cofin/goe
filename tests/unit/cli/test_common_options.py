@@ -70,6 +70,9 @@ def test_extract_common_options_defaults() -> None:
     """Verify extract_common_options returns canonical default values when unset."""
     with patch.dict(os.environ, {}, clear=False):
         os.environ.pop("OFFLOAD_LOGFILE", None)
+        os.environ.pop("OFFLOAD_LOGDIR", None)
+        os.environ.pop("OFFLOAD_HOME", None)
+        os.environ.pop("LOG_LEVEL", None)
         kwargs = {
             "verbose": None,
             "vverbose": None,
@@ -89,7 +92,7 @@ def test_extract_common_options_defaults() -> None:
             "vverbose": False,
             "quiet": False,
             "ansi": True,
-            "log_path": None,
+            "log_path": ".",
             "log_level": "info",
             "ver_check": True,
             "error_before_step": None,

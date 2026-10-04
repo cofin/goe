@@ -55,6 +55,7 @@ def test_sync_dispatch(
     assert options.include == "SH.*"
     assert options.execute is True
     assert options.verbose is True
+    assert isinstance(options.log_path, str) and options.log_path
     assert mock_run_sync.call_args[0][1] is mock_from_options.return_value
     assert mock_run_sync.call_args[0][3] is mock_factory.return_value
     assert mock_factory.return_value.close.called
@@ -84,4 +85,21 @@ def test_sync_nonzero_exit_code(
     result = runner.invoke(cli, ["sync", "--include", "SH.*"])
     assert result.exit_code == 1
     assert mock_factory.return_value.close.called
+    assert mock_log_close.called
+
+
+@patch("goe.cli.commands.sync.log_close", create=True)
+@patch("goe.cli.commands.sync.init_log", create=True)
+@patch("goe.cli.commands.sync.init", create=True)
+@patch("goe.cli.commands.sync.OrchestrationConfig.from_dict", side_effect=RuntimeError("bad config"))
+def test_sync_closes_log_when_config_fails(
+    mock_config,
+    mock_init,
+    mock_init_log,
+    mock_log_close,
+) -> None:
+    """Verify goe sync calls log_close even if OrchestrationConfig.from_dict raises before repo_client is created."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["sync", "--include", "SH.*"])
+    assert result.exit_code != 0
     assert mock_log_close.called

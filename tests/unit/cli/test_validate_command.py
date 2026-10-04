@@ -42,6 +42,7 @@ def test_validate_dispatch(mock_validate) -> None:
     assert options.owner_table == "SH.SALES"
     assert options.selects == ["AMOUNT_SOLD"]
     assert options.execute is False
+    assert isinstance(options.log_path, str) and options.log_path
 
 
 @patch("goe.cli.commands.validate.run_agg_validate")

@@ -60,3 +60,13 @@ def test_listener_bare_invocation_starts_server(mock_granian):
     assert result.exit_code == 0
     assert mock_granian.called
     assert mock_granian.call_args[1]["port"] == 9090
+
+
+@patch("goe.cli.commands.listener.Granian")
+def test_listener_group_options_forwarded_to_start(mock_granian):
+    """Verify server options placed before start subcommand are forwarded to start."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["listener", "--port", "9091", "start"])
+    assert result.exit_code == 0
+    assert mock_granian.called
+    assert mock_granian.call_args[1]["port"] == 9091

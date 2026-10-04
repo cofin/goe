@@ -91,6 +91,12 @@ def listener(
 ) -> None:
     """Listener service control group."""
     extract_common_options(ctx, kwargs)
+    ctx.ensure_object(dict)
+    ctx.obj["listener_host"] = host
+    ctx.obj["listener_port"] = port
+    ctx.obj["listener_workers"] = workers
+    ctx.obj["listener_reload"] = reload
+    ctx.obj["listener_worker_only"] = worker_only
     if ctx.invoked_subcommand is None:
         _start_listener_server(
             host=host,
@@ -148,12 +154,13 @@ def start(
 ) -> None:
     """Start listener HTTP server or background worker."""
     extract_common_options(ctx, kwargs)
+    parent_obj = ctx.obj if isinstance(ctx.obj, dict) else {}
     _start_listener_server(
-        host=host,
-        port=port,
-        workers=workers,
-        reload=reload,
-        worker_only=worker_only,
+        host=host if host is not None else parent_obj.get("listener_host"),
+        port=port if port is not None else parent_obj.get("listener_port"),
+        workers=workers if workers is not None else parent_obj.get("listener_workers"),
+        reload=bool(reload or parent_obj.get("listener_reload", False)),
+        worker_only=bool(worker_only or parent_obj.get("listener_worker_only", False)),
     )
 
 

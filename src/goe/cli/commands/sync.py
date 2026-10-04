@@ -65,19 +65,21 @@ def sync(ctx: click.Context, **kwargs: Any) -> None:
 
     init(options)
     init_log("schema_sync")
-    config = OrchestrationConfig.from_dict({"verbose": options.verbose, "vverbose": options.vverbose})
-    execution_id = ExecutionId()
-    messages = OffloadMessages.from_options(options, log_fh=get_log_fh(), execution_id=execution_id)
-    repo_client = orchestration_repo_client_factory(
-        config,
-        messages,
-        dry_run=bool(not options.execute),
-        trace_action="repo_client(schema_sync)",
-    )
+    repo_client = None
     try:
+        config = OrchestrationConfig.from_dict({"verbose": options.verbose, "vverbose": options.vverbose})
+        execution_id = ExecutionId()
+        messages = OffloadMessages.from_options(options, log_fh=get_log_fh(), execution_id=execution_id)
+        repo_client = orchestration_repo_client_factory(
+            config,
+            messages,
+            dry_run=bool(not options.execute),
+            trace_action="repo_client(schema_sync)",
+        )
         return_code = run_schema_sync(options, messages, execution_id, repo_client)
     finally:
-        repo_client.close()
+        if repo_client is not None:
+            repo_client.close()
         log_close()
 
     if return_code:
