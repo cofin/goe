@@ -4,12 +4,13 @@
 """Orchestration controller for Litestar GOE Listener."""
 
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any, ClassVar
 
-import msgspec
-from litestar import Controller, get, post
-from litestar.params import Dependency, Parameter
+from litestar import get, post
+from litestar.di import NamedDependency
+from litestar.params import FromPath, FromQuery, JSONBody
 from litestar_queues import QueueService
+from litestar_security import AuthenticationPolicy, SecureController, required
 
 from goe.listener import exceptions, jobs, schemas, utils
 from goe.listener.services.system import SystemService
@@ -17,17 +18,18 @@ from goe.orchestration.execution_id import ExecutionId
 from goe.util.sync_tools import async_
 
 
-class OrchestrationController(Controller):
+class OrchestrationController(SecureController):
     """Controller for /api/orchestration endpoints."""
 
     path = "/api/orchestration"
-    tags = ["Orchestration"]
+    tags: ClassVar[list[str]] = ["Orchestration"]
+    auth: ClassVar[AuthenticationPolicy] = required("console-key")
 
-    @get("/executions/")
+    @get("/executions/", mcp_tool="get_command_executions")
     async def get_command_executions(
         self,
-        system_service: Annotated[SystemService, Dependency(skip_validation=True)],
-        include_steps: Annotated[bool, Parameter(query="include_steps", default=False)] = False,
+        system_service: NamedDependency[SystemService],
+        include_steps: FromQuery[bool] = False,
     ) -> schemas.CommandExecutions:
         """Fetch command executions from repo."""
         executions = await async_(system_service.get_command_executions)()
@@ -50,12 +52,12 @@ class OrchestrationController(Controller):
                 item["steps"] = grouped.get(exec_key, [])
         return schemas.CommandExecutions(count=len(executions), results=executions)
 
-    @get("/executions/{execution_id:str}/")
+    @get("/executions/{execution_id:str}/", mcp_tool="get_command_execution")
     async def get_command_execution(
         self,
-        system_service: Annotated[SystemService, Dependency(skip_validation=True)],
-        execution_id: Annotated[str, Parameter(title="Execution ID")],
-        include_steps: Annotated[bool, Parameter(query="include_steps", default=False)] = False,
+        system_service: NamedDependency[SystemService],
+        execution_id: FromPath[str],
+        include_steps: FromQuery[bool] = False,
     ) -> dict[str, Any]:
         """Fetch details of a specific command execution."""
         execution_identifier = ExecutionId.from_str(execution_id)
@@ -69,11 +71,11 @@ class OrchestrationController(Controller):
                 execution["steps"] = steps
         return execution
 
-    @get("/executions/{execution_id:str}/execution-log/")
+    @get("/executions/{execution_id:str}/execution-log/", mcp_tool="get_command_execution_log")
     async def get_command_execution_log(
         self,
-        system_service: Annotated[SystemService, Dependency(skip_validation=True)],
-        execution_id: Annotated[str, Parameter(title="Execution ID")],
+        system_service: NamedDependency[SystemService],
+        execution_id: FromPath[str],
     ) -> schemas.CommandExecutionLog:
         """Fetch log contents of a specific command execution."""
         execution_identifier = ExecutionId.from_str(execution_id)
@@ -93,18 +95,17 @@ class OrchestrationController(Controller):
             message=f"Log file for execution {execution_identifier.id} not found.",
         )
 
-    @post("/offload/")
+    @post("/offload/", mcp_tool="execute_offload")
     async def execute_offload_command(
         self,
-        data: schemas.OffloadOptions,
-        queue_service: Annotated[QueueService, Dependency(skip_validation=True)],
+        data: JSONBody[schemas.OffloadOptions],
+        queue_service: NamedDependency[QueueService],
     ) -> schemas.CommandScheduled:
         """Submit a background offload operation."""
         utils.orchestrate.check_for_running_command(data.owner_table)
         execution_identifier = ExecutionId()
-        params = {k: v for k, v in msgspec.structs.asdict(data).items() if v is not None}
+        params = data.to_params_dict()
 
-        # Enqueue background task
         await queue_service.enqueue(
             jobs.run_offload_job,
             params=params,
