@@ -137,8 +137,15 @@ click.rich_click.OPTION_GROUPS = {
                 "--offload-fs-scheme",
                 "--offload-fs-prefix",
                 "--offload-fs-container",
+                "--bucket-hash-column",
                 "--sort-columns",
                 "--offload-distribute-enabled",
+                "--hive-column-stats",
+                "--offload-stats",
+                "--offload-chunk-impala-insert-hint",
+                "--sqoop-additional-options",
+                "--sqoop-mapreduce-map-memory-mb",
+                "--sqoop-mapreduce-map-java-opts",
                 "--verify",
                 "--no-verify",
                 "--verify-parallelism",
@@ -146,3 +153,8 @@ click.rich_click.OPTION_GROUPS = {
         },
     ]
 }
+
+
+def configure_cli() -> None:
+    """Ensure rich-click configuration and option groups are loaded."""
+    return None
