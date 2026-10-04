@@ -70,6 +70,7 @@ class ColumnDetail(msgspec.Struct, kw_only=True):
 
     column_name: str
     data_type: str
+    data_precision: int | None = None
     data_scale: int | None = None
     is_nullable: bool = True
     partition_position: int | None = None
@@ -82,7 +83,7 @@ class PartitionDetail(msgspec.Struct, kw_only=True):
     partition_name: str
     partition_position: int = 0
     high_value: str = ""
-    subpartitions: list[dict[str, Any]] = []
+    subpartitions: list[dict[str, Any]] = msgspec.field(default_factory=list)
 
     @classmethod
     def from_orm(cls, obj: Any) -> "PartitionDetail":
@@ -104,6 +105,8 @@ class PartitionDetail(msgspec.Struct, kw_only=True):
 class SubPartitionDetail(msgspec.Struct, kw_only=True):
     """Subpartition detail metadata struct."""
 
+    partition_name: str = ""
+    partition_position: int = 0
     subpartition_name: str
     subpartition_position: int = 0
     high_value: str = ""
@@ -111,6 +114,8 @@ class SubPartitionDetail(msgspec.Struct, kw_only=True):
     @classmethod
     def from_orm(cls, obj: Any) -> "SubPartitionDetail":
         return cls(
+            partition_name=getattr(obj, "partition_name", ""),
+            partition_position=getattr(obj, "partition_position", 0),
             subpartition_name=getattr(obj, "subpartition_name", str(obj)),
             subpartition_position=getattr(obj, "subpartition_position", 0),
             high_value=getattr(obj, "high_value", ""),
@@ -118,6 +123,8 @@ class SubPartitionDetail(msgspec.Struct, kw_only=True):
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "partition_name": self.partition_name,
+            "partition_position": self.partition_position,
             "subpartition_name": self.subpartition_name,
             "subpartition_position": self.subpartition_position,
             "high_value": self.high_value,

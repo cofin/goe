@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from goe.orchestration.execution_id import ExecutionId
 from goe.util.json_tools import (
     convert_field_to_camel_case,
     deserialize_object,
@@ -16,7 +17,15 @@ from goe.util.json_tools import (
     serialize_object,
     serialize_object_bytes,
 )
-from goe.util.serialization import DEFAULT_TYPE_ENCODERS
+from goe.util.serialization import (
+    DEFAULT_TYPE_ENCODERS,
+)
+from goe.util.serialization import (
+    serialize_object as serialization_serialize_object,
+)
+from goe.util.serialization import (
+    serialize_object_bytes as serialization_serialize_object_bytes,
+)
 
 
 class MockExecutionId:
@@ -112,3 +121,21 @@ def test_convert_field_to_camel_case():
     assert convert_field_to_camel_case("user_name") == "userName"
     assert convert_field_to_camel_case("offload_execution_id") == "offloadExecutionId"
     assert convert_field_to_camel_case("alreadyCamel") == "alreadyCamel"
+
+
+def test_serialization_module_domain_fallback():
+    """Verify goe.util.serialization.serialize_object and serialize_object_bytes support unregistered .id and .dsl objects."""
+
+    class UnregisteredIdObject:
+        def __init__(self, val: str):
+            self.id = val
+
+    class UnregisteredDslObject:
+        def __init__(self, dsl: str):
+            self.dsl = dsl
+
+    payload = {"exec_id": UnregisteredIdObject("exec-99"), "pred": UnregisteredDslObject("COL_B = 42")}
+    json_str = serialization_serialize_object(payload)
+    json_bytes = serialization_serialize_object_bytes(payload)
+    assert deserialize_object(json_str) == {"exec_id": "exec-99", "pred": "COL_B = 42"}
+    assert deserialize_object(json_bytes) == {"exec_id": "exec-99", "pred": "COL_B = 42"}

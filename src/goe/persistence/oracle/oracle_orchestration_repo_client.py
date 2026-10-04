@@ -883,7 +883,8 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             ColumnDetail(
                 column_name=one_col.name,
                 data_type=one_col.data_type,
-                data_scale=one_col.data_precision,
+                data_precision=one_col.data_precision,
+                data_scale=one_col.data_scale,
                 is_nullable=one_col.nullable,
                 partition_position=None,
             )

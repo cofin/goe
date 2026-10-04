@@ -13,15 +13,22 @@ from sqlspec.utils.serializers import (
     to_json,
 )
 
+from goe.util.json_tools import (
+    serialize_object as _json_tools_serialize_object,
+)
+from goe.util.json_tools import (
+    serialize_object_bytes as _json_tools_serialize_object_bytes,
+)
+
 
 def serialize_object(obj: Any) -> str:
-    """Encodes an object to a JSON string using sqlspec."""
-    return to_json(obj)
+    """Encodes an object to a JSON string using sqlspec/msgspec with domain object fallback."""
+    return _json_tools_serialize_object(obj)
 
 
 def serialize_object_bytes(obj: Any) -> bytes:
-    """Encodes an object to JSON bytes using sqlspec."""
-    return to_json(obj, as_bytes=True)
+    """Encodes an object to JSON bytes using sqlspec/msgspec with domain object fallback."""
+    return _json_tools_serialize_object_bytes(obj)
 
 
 def deserialize_object(obj: bytes | bytearray | memoryview | str) -> Any:
