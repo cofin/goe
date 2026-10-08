@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
+from goe.config.config_file import load_env
 from goe.config.orchestration_config import OrchestrationConfig
 
 BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
@@ -17,6 +18,7 @@ FRONTEND_DIR: Path = Path(APP_DIR / "web")
 
 def _get_default_global_config() -> OrchestrationConfig | None:
     try:
+        load_env()
         return OrchestrationConfig.as_defaults(do_not_connect=True)
     except Exception:
         return None

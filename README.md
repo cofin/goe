@@ -38,7 +38,7 @@ python3 -m pip install lib/${GOE_WHEEL}
 ```
 
 ## Configuration File
-Create `offload.env` in the Offload Home. This file contains the necessary configuration specific to your environment:
+Create `offload.env` in the Offload Home (or a local `.env` file in your working directory). GOE automatically discovers and loads environment variables from `${OFFLOAD_HOME}/conf/offload.env` and `.env` at startup without requiring manual `source` commands:
 ```
 cp ${OFFLOAD_HOME}/conf/oracle-bigquery-offload.env.template ${OFFLOAD_HOME}/conf/offload.env
 vi ${OFFLOAD_HOME}/conf/offload.env
@@ -133,14 +133,17 @@ source ./.venv/bin/activate
 
 Checking connectivity:
 ```
-cd bin
-./connect
+goe connect
 ```
 
 Running an Offload:
 ```
-cd bin
-./offload -t my.table -x
+goe offload -t my.table -x
+```
+
+Starting the GOE Listener REST & MCP service:
+```
+goe listener start
 ```
 
 # Tests

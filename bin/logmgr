@@ -12,7 +12,7 @@ from goe.cli.main import cli
 
 if __name__ == "__main__":
     warnings.warn(
-        "Invoking 'bin/logmgr' is deprecated. Please use 'goe logmgr' instead.",
+        "Invoking 'bin/logmgr' is deprecated and will be removed in GOE 2.0.0. Please use 'goe logmgr' instead.",
         DeprecationWarning,
         stacklevel=1,
     )

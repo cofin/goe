@@ -16,6 +16,7 @@ tags:
 - Start all source files with the standard 2-line SPDX header (`# SPDX-FileCopyrightText: <year> The GOE Authors` and `# SPDX-License-Identifier: Apache-2.0`), enforced via Ruff `CPY001`.
 - Export `GOOGLE_API_USE_CLIENT_CERTIFICATE=false` prior to running unit or integration test suites.
 - Acquire table-level execution mutexes via `OrchestrationRunner` and `OrchestrationLockInterface`, and keep RDBMS extraction snapshot-consistent using SCN / Flashback.
+- Resolve environment configuration via `find_environment_file()` and `load_env()` (`src/goe/config/config_file.py`) across 4 tiers (`GOE_CONFIG_FILE` / `OFFLOAD_ENV_FILE`, `$OFFLOAD_HOME/conf/offload.env`, upward `dotenv.find_dotenv()`, and `/opt/goe/offload/conf/offload.env` / `/u01/app/goe/offload/conf/offload.env`) with `interpolate=True, override=False`, auto-exporting `OFFLOAD_HOME` and guarding auto-load with `PYTEST_CURRENT_TEST` and `GOE_NO_AUTOLOAD_ENV`.
 <!-- truth: end -->
 
 ## Pattern Chapters

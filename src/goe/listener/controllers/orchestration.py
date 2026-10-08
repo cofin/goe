@@ -18,6 +18,13 @@ from goe.orchestration.execution_id import ExecutionId
 from goe.util.sync_tools import async_
 
 
+def _normalize_execution_id(raw_id: Any) -> str:
+    """Convert raw bytes or UUID execution_id values into canonical string form."""
+    if isinstance(raw_id, bytes):
+        return ExecutionId.from_bytes(raw_id).as_str()
+    return str(raw_id)
+
+
 class OrchestrationController(SecureController):
     """Controller for /api/orchestration endpoints."""
 
@@ -33,22 +40,20 @@ class OrchestrationController(SecureController):
     ) -> schemas.CommandExecutions:
         """Fetch command executions from repo."""
         executions = await async_(system_service.get_command_executions)()
+        for item in executions:
+            if "execution_id" in item and item["execution_id"] is not None:
+                item["execution_id"] = _normalize_execution_id(item["execution_id"])
         if include_steps:
             all_steps = await async_(system_service.get_command_execution_steps)(execution_id=None)
+            for step in all_steps:
+                if "execution_id" in step and step["execution_id"] is not None:
+                    step["execution_id"] = _normalize_execution_id(step["execution_id"])
             grouped = utils.groupby(
-                lambda s: (
-                    ExecutionId.from_bytes(s.get("execution_id")).as_str()
-                    if isinstance(s.get("execution_id"), bytes)
-                    else str(s.get("execution_id"))
-                ),
+                lambda s: _normalize_execution_id(s.get("execution_id")),
                 all_steps,
             )
             for item in executions:
-                exec_key = (
-                    ExecutionId.from_bytes(item["execution_id"]).as_str()
-                    if isinstance(item["execution_id"], bytes)
-                    else str(item["execution_id"])
-                )
+                exec_key = _normalize_execution_id(item["execution_id"])
                 item["steps"] = grouped.get(exec_key, [])
         return schemas.CommandExecutions(count=len(executions), results=executions)
 
@@ -65,9 +70,15 @@ class OrchestrationController(SecureController):
         if not execution:
             raise exceptions.CommandExecutionNotFound(execution_id)
 
+        if "execution_id" in execution and execution["execution_id"] is not None:
+            execution["execution_id"] = _normalize_execution_id(execution["execution_id"])
+
         if include_steps:
             steps = await async_(system_service.get_command_execution_steps)(execution_identifier)
             if steps:
+                for step in steps:
+                    if "execution_id" in step and step["execution_id"] is not None:
+                        step["execution_id"] = _normalize_execution_id(step["execution_id"])
                 execution["steps"] = steps
         return execution
 
@@ -83,9 +94,10 @@ class OrchestrationController(SecureController):
         if not execution:
             raise exceptions.CommandExecutionNotFound(execution_id)
 
-        log_path = Path(execution.get("command_log_path", ""))
-        file_name = log_path.stem
-        if log_path.exists():
+        raw_log_path = execution.get("command_log_path") or ""
+        log_path = Path(raw_log_path) if raw_log_path else None
+        file_name = log_path.stem if log_path else ""
+        if log_path is not None and log_path.is_file():
             contents = log_path.read_text(errors="replace")
             return schemas.CommandExecutionLog(name=file_name, is_file=True, message=contents)
 

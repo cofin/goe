@@ -4,6 +4,7 @@
 from litestar.testing import TestClient
 
 from goe.listener.app import create_app
+from goe.listener.mcp import build_mcp_config, build_mcp_plugin
 
 
 def test_mcp_agent_card():
@@ -23,3 +24,10 @@ def test_mcp_oauth_protected_resource():
         assert response.status_code == 200
         data = response.json()
         assert "resource" in data
+
+
+def test_mcp_plugin_builder():
+    cfg = build_mcp_config()
+    assert cfg.name == "GOE Listener MCP"
+    plugin = build_mcp_plugin()
+    assert plugin is not None

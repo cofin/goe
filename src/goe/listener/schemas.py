@@ -3,13 +3,12 @@
 
 """Message schemas for the GOE Listener service."""
 
-from typing import Any, Literal
-from uuid import UUID
+from typing import Any
 
 import msgspec
 from msgspec import field
 
-from goe.lib.schemas import BaseStruct, CamelizedBaseStruct
+from goe.lib.schemas import BaseStruct
 
 __all__ = (
     "ColumnDetail",

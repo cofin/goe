@@ -7,11 +7,13 @@ from unittest import mock
 
 import pytest
 
+from goe import _autoload_environment
 from goe.config.config_file import (
     CONFIG_FILE_NAME,
     STANDARD_CONFIG_PATHS,
     find_environment_file,
     get_environment_file_path,
+    load_env,
 )
 
 
@@ -133,8 +135,6 @@ def test_load_env_posix_interpolation(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.delenv("DERIVED_VAR", raising=False)
     monkeypatch.delenv("NESTED_VAR", raising=False)
 
-    from goe.config.config_file import load_env
-
     assert load_env(str(env_file)) is True
     assert os.environ.get("BASE_VAR") == "hello"
     assert os.environ.get("DERIVED_VAR") == "hello_world"
@@ -148,8 +148,6 @@ def test_load_env_override_precedence(tmp_path: Path, monkeypatch: pytest.Monkey
 
     monkeypatch.setenv("EXISTING_KEY", "initial_val")
     monkeypatch.delenv("NEW_KEY", raising=False)
-
-    from goe.config.config_file import load_env
 
     assert load_env(str(env_file), override=False) is True
     assert os.environ.get("EXISTING_KEY") == "initial_val"
@@ -169,8 +167,6 @@ def test_load_env_auto_export_offload_home(tmp_path: Path, monkeypatch: pytest.M
 
     monkeypatch.delenv("OFFLOAD_HOME", raising=False)
 
-    from goe.config.config_file import load_env
-
     assert load_env(str(env_file)) is True
     assert os.environ.get("OFFLOAD_HOME") == str(home_dir.resolve())
 
@@ -183,8 +179,6 @@ def test_load_env_no_auto_export_outside_conf(tmp_path: Path, monkeypatch: pytes
     env_file.write_text("FOO=BAR\n")
 
     monkeypatch.delenv("OFFLOAD_HOME", raising=False)
-
-    from goe.config.config_file import load_env
 
     assert load_env(str(env_file)) is True
     assert "OFFLOAD_HOME" not in os.environ
@@ -199,8 +193,6 @@ def test_load_env_json_and_quotes(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.delenv("OFFLOAD_TRANSPORT_SPARK_PROPERTIES", raising=False)
     monkeypatch.delenv("SIMPLE_QUOTE", raising=False)
 
-    from goe.config.config_file import load_env
-
     assert load_env(str(env_file)) is True
     assert os.environ.get("OFFLOAD_TRANSPORT_SPARK_PROPERTIES") == '{"spark.executor.memory": "4g"}'
     assert os.environ.get("SIMPLE_QUOTE") == "double quoted string"
@@ -213,8 +205,6 @@ def test_load_env_not_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("OFFLOAD_HOME", raising=False)
     monkeypatch.chdir(tmp_path)
 
-    from goe.config.config_file import load_env
-
     with (
         mock.patch("goe.config.config_file.find_dotenv", return_value=""),
         mock.patch("os.path.isfile", return_value=False),
@@ -224,8 +214,6 @@ def test_load_env_not_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_autoload_guard_pytest_isolation(monkeypatch: pytest.MonkeyPatch):
     """_autoload_environment does not load environment when running under pytest."""
-    from goe import _autoload_environment
-
     monkeypatch.setenv("PYTEST_CURRENT_TEST", "test_autoload_guard_pytest_isolation")
     monkeypatch.delenv("GOE_NO_AUTOLOAD_ENV", raising=False)
 
@@ -237,8 +225,6 @@ def test_autoload_guard_pytest_isolation(monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.parametrize("opt_out_value", ["1", "true", "TRUE"])
 def test_autoload_guard_opt_out(monkeypatch: pytest.MonkeyPatch, opt_out_value: str):
     """_autoload_environment skips loading when GOE_NO_AUTOLOAD_ENV is set."""
-    from goe import _autoload_environment
-
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setenv("GOE_NO_AUTOLOAD_ENV", opt_out_value)
 
@@ -249,8 +235,6 @@ def test_autoload_guard_opt_out(monkeypatch: pytest.MonkeyPatch, opt_out_value: 
 
 def test_autoload_invokes_load_env_when_not_guarded(monkeypatch: pytest.MonkeyPatch):
     """_autoload_environment calls load_env when neither pytest nor opt-out guards are present."""
-    from goe import _autoload_environment
-
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.delenv("GOE_NO_AUTOLOAD_ENV", raising=False)
 

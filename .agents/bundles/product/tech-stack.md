@@ -18,7 +18,7 @@ tags:
 - **Storage Systems**: Google Cloud Storage (`google-cloud-storage`, `fsspec[gcs]`), AWS S3 (`boto3`), Azure Blob / ADLS Gen2 (`azure-storage-blob`), HDFS (`hdfs`).
 - **Compute & Transport**: PySpark, Google Cloud Dataproc (Serverless Batches & Clusters), Apache Livy, Scala 2.12/2.13 (`GOETaskListener`).
 - **Data Serialization**: Apache Avro (`avro`, custom `AvroEncoder`), Apache Parquet (`pyarrow`, `ParquetEncoder`), `msgspec`, `sqlspec`.
-- **Listener & Services**: Litestar (`>=2.8.0`), Granian (`litestar-granian`), `litestar-queues`, `litestar-security`, `litestar-autowire`, `litestar-mcp`, Valkey (`valkey[libvalkey]`), Brotli.
+- **Listener & Services**: Litestar (`>=2.8.0`), Granian (`litestar-granian`), `litestar-queues` (in-memory ASGI queue backend), `litestar-security`, `litestar-autowire`, `litestar-mcp`, embedded `MemoryCache` / `MemorySyncCache`, Brotli.
 <!-- truth: end -->
 
 ## Subsystem Details

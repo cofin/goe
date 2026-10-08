@@ -1,406 +1,350 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Redis client class utility."""
+"""Embedded in-process memory cache utility."""
 
-# Standard Library
+import fnmatch
 import logging
+import threading
+import time
+import warnings
 from datetime import timedelta
-from typing import Optional
-
-# Third Party Libraries
-from valkey import asyncio as aioredis
-from valkey.asyncio import sentinel as aioredis_sentinel
-from valkey.exceptions import ValkeyError as RedisError
-
-# GOE
-from goe.listener.config import settings
+from typing import Any, ClassVar
 
 
-class RedisClient:
-    """Redis client utility.
+def _resolve_expiry(ttl: int | float | timedelta | None) -> float | None:
+    """Resolve a TTL value in seconds or timedelta to a monotonic expiration timestamp."""
+    if ttl is None:
+        return None
+    seconds = ttl.total_seconds() if isinstance(ttl, timedelta) else float(ttl)
+    return time.monotonic() + seconds
 
-    Utility class for handling Redis database connection and operations.
 
-    Attributes:
-        redis_client (aioredis.Redis, optional): Redis client object instance.
-        log (logging.Logger): Logging handler for this class.
-        base_redis_init_kwargs (dict): Common kwargs for Redis configuration
-        connection_kwargs (dict, optional): Extra kwargs for Redis object init.
+class MemoryCache:
+    """Thread-safe async in-process memory cache with TTL and pattern matching."""
 
-    """
+    _instance: ClassVar["MemoryCache | None"] = None
+    _store: ClassVar[dict[str, tuple[Any, float | None]]] = {}
+    _lock: ClassVar[threading.RLock] = threading.RLock()
+    logger: ClassVar[logging.Logger] = logging.getLogger(__name__)
 
-    _instance: Optional["RedisClient"] = None
-    redis_client: aioredis.Redis | None = None
-    logger: logging.Logger = logging.getLogger(__name__)
-    base_redis_init_kwargs: dict = {
-        "encoding": "utf-8",
-        "port": settings.redis_port,
-        "decode_responses": True,
-        "socket_connect_timeout": 2,
-        # "socket_timeout": 1,
-        "socket_keepalive": 5,
-        "health_check_interval": 5,
-    }
-    connection_kwargs: dict = {}
-
-    def __new__(cls):
-        """Singleton loader"""
-        if cls._instance is not None:
-            return cls._instance
-
-        cls._instance = super().__new__(cls)
-        cls.get_client()
+    def __new__(cls) -> "MemoryCache":
+        """Return singleton MemoryCache instance."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     @classmethod
-    def get_client(cls):
-        """Create Redis client session object instance.
-
-        Based on configuration create either Redis client or Redis Sentinel.
-
-        Returns:
-            Redis: Redis object instance.
-
-        """
-        if cls.redis_client is None:
-            cls.logger.debug("Initializing Redis connection pool.")
-            if settings.redis_username and settings.redis_password:
-                cls.connection_kwargs = {
-                    "username": settings.redis_username,
-                    "password": settings.redis_password,
-                }
-            if not settings.redis_username and settings.redis_password:
-                cls.connection_kwargs = {
-                    "password": settings.redis_password,
-                }
-
-            if settings.redis_use_sentinel:
-                sentinel = aioredis_sentinel.Sentinel(
-                    [(settings.redis_host, settings.redis_port)],
-                    sentinel_kwargs=cls.connection_kwargs,
-                )
-                cls.redis_client = sentinel.master_for(settings.redis_sentinel_master)
-            else:
-                cls.base_redis_init_kwargs.update(cls.connection_kwargs)
-                cls.redis_client = aioredis.from_url(
-                    settings.redis_url,
-                    **cls.base_redis_init_kwargs,
-                )
-
-        return cls.redis_client
+    def _purge_expired(cls) -> None:
+        """Remove all expired entries from the backing store."""
+        now = time.monotonic()
+        with cls._lock:
+            expired_keys = [
+                k for k, (_, expires_at) in cls._store.items() if expires_at is not None and now >= expires_at
+            ]
+            for k in expired_keys:
+                cls._store.pop(k, None)
 
     @classmethod
-    async def close_client(cls):
-        """Close Redis client."""
-        if cls.redis_client:
-            cls.logger.debug("Closing Redis connection pool")
-            try:
-                await cls.redis_client.close()
-            except RedisError as exc:
-                cls.logger.error(f"Redis error closing  - {exc.__class__.__qualname__}")
+    def _get_entry(cls, key: str) -> tuple[bool, Any, float | None]:
+        """Retrieve a live entry from the store, evicting it if expired."""
+        with cls._lock:
+            entry = cls._store.get(key)
+            if entry is None:
+                return False, None, None
+            value, expires_at = entry
+            if expires_at is not None and time.monotonic() >= expires_at:
+                cls._store.pop(key, None)
+                return False, None, None
+            return True, value, expires_at
 
     @classmethod
-    async def ping(cls):
-        """Execute Redis PING command.
-
-        Ping the Redis server.
-
-        Returns:
-            response: Boolean, whether Redis client could ping Redis server.
-
-        Raises:
-            RedisError: If Redis client failed while executing command.
-
-        """
-        # Note: Not sure if this shouldn't be deep copy instead?
-        redis_client = cls.redis_client
-
-        cls.logger.debug("Executing Redis PING command")
-        try:
-            return await redis_client.ping()
-        except RedisError as exc:
-            cls.logger.error(f"Redis PING command finished with exception  - {exc.__class__.__qualname__}")
-            return False
+    def get_client(cls) -> type["MemoryCache"]:
+        """Return the active cache class for compatibility."""
+        return cls
 
     @classmethod
-    async def set(cls, key: str, value: str, ttl: int | timedelta | None = None):
-        """Execute Redis SET command.
-
-        Set key to hold the string value. If key already holds a value, it is
-        overwritten, regardless of its type.
-
-        Args:
-            key (str): Redis db key.
-            value (str): Value to be set.
-            ttl (int): Time to live in seconds
-        Returns:
-            response: Redis SET command response, for more info
-                look: https://redis.io/commands/set#return-value
-
-        Raises:
-            RedisError: If Redis client failed while executing command.
-
-        """
-        redis_client = cls.redis_client
-
-        cls.logger.debug(f"Executing Redis SET command, key: {key} with TTL: {ttl}")
-        try:
-            await redis_client.set(key, value, ex=ttl)
-        except RedisError as exc:
-            cls.logger.error(f"Redis SET command finished with exception - {exc.__class__.__qualname__}")
-            raise exc
+    async def close_client(cls) -> None:
+        """Close the cache client."""
+        cls.logger.debug("Closing MemoryCache client.")
 
     @classmethod
-    async def scan(cls, match: str = None, count: int = None):
-        """Execute Redis SCAN command with pattern matching.
-
-        Scan the keyspace for keys.
-
-        Args:
-            match (str, optional): Pattern to match.
-            count (int, optional): Number of keys to return.
-
-        Returns:
-            response: Redis SCAN command response, for more info
-                look: https://redis.io/commands/scan
-        """
-        redis_client = cls.redis_client
-
-        cls.logger.debug(f"Executing Redis SCAN command, match: {match}, count: {count}")
-        try:
-            return await redis_client.scan(match=match, count=count)
-        except RedisError as exc:
-            cls.logger.error(f"Redis SCAN command finished with exception  - {exc.__class__.__qualname__}")
-            raise exc
+    async def ping(cls) -> bool:
+        """Verify cache availability."""
+        return True
 
     @classmethod
-    async def keys(cls, pattern: str):
-        """Execute Redis KEYS command.
-
-        Get the value of keys. If the keys do not exist the special value None
-        is returned. An error is returned if the value stored at key is not a
-        string, because GET only handles string values.
-
-        Args:
-            key (pattern): Redis db keys to lookup.
-
-        Returns:
-            response: Value of key.
-
-        Raises:
-            RedisError: If Redis client failed while executing command.
-
-        """
-        redis_client = cls.redis_client
-
-        cls.logger.debug(f"Executing Redis KEY command, pattern: {pattern}")
-        try:
-            return await redis_client.keys(pattern)
-        except RedisError as exc:
-            cls.logger.error(f"Redis KEYS command finished with exception  - {exc.__class__.__qualname__}")
-            raise exc
+    async def set(cls, key: str, value: Any, ttl: int | float | timedelta | None = None) -> bool:
+        """Store a value under key with an optional TTL."""
+        expires_at = _resolve_expiry(ttl)
+        with cls._lock:
+            cls._store[key] = (value, expires_at)
+        return True
 
     @classmethod
-    async def rpush(cls, key: str, value: str, ttl: int | timedelta | None = None):
-        """Execute Redis RPUSH command.
-
-        Insert all the specified values at the tail of the list stored at key.
-        If key does not exist, it is created as empty list before performing
-        the push operation. When key holds a value that is not a list, an
-        error is returned.
-
-        Args:
-            key (str): Redis db key.
-            value (str, list): Single or multiple values to append.
-            ttl (int): TTL for message
-
-
-        Returns:
-            response: Length of the list after the push operation.
-
-        Raises:
-            RedisError: If Redis client failed while executing command.
-
-        """
-        redis_client = cls.redis_client
-
-        cls.logger.debug(f"Execute Redis RPUSH command, key: {key}")
-        try:
-            if ttl:
-                async with redis_client.pipeline(transaction=True) as pipe:
-                    await pipe.rpush(key, value)
-                    await pipe.expire(key, ttl).execute()
-            else:
-                await redis_client.rpush(key, value)
-        except RedisError as exc:
-            cls.logger.error(f"Redis RPUSH command finished with exception  - {exc.__class__.__qualname__}")
-            raise exc
+    async def get(cls, key: str) -> Any | None:
+        """Retrieve a value by key, returning None when missing or expired."""
+        found, value, _ = cls._get_entry(key)
+        return value if found else None
 
     @classmethod
-    async def expire(cls, key: str, ttl: int | timedelta):
-        """Execute Redis EXPIRE command.
-
-        Sets the TTL for a key.
-
-        Args:
-            key (str): Redis db key.
-            ttl (int|timedelta): Time till expiration for a key
-
-        Returns:
-            response: TTL for the key.
-
-        Raises:
-            RedisError: If Redis client failed while executing command.
-
-        """
-        redis_client = cls.redis_client
-
-        cls.logger.debug(f"Execute Redis EXPIRE command, key: {key}, value: {ttl}")
-        try:
-            await redis_client.expire(key, ttl)
-        except RedisError as exc:
-            cls.logger.error(f"Redis EXPIRE command finished with exception  - {exc.__class__.__qualname__}")
-            raise exc
+    async def mget(cls, keys: list[str]) -> list[Any | None]:
+        """Retrieve values for multiple keys in order."""
+        return [await cls.get(k) for k in keys]
 
     @classmethod
-    async def exists(cls, key: str):
-        """Execute Redis EXISTS command.
-
-        Returns if key exists.
-
-        Args:
-            key (str): Redis db key.
-
-        Returns:
-            response: Boolean whether key exists in Redis db.
-
-        Raises:
-            RedisError: If Redis client failed while executing command.
-
-        """
-        redis_client = cls.redis_client
-
-        cls.logger.debug(f"Executing Redis EXISTS command, key: {key}, exists")
-        try:
-            return await redis_client.exists(key)
-        except RedisError as exc:
-            cls.logger.error(f"Redis EXISTS command finished with exception  - {exc.__class__.__qualname__}")
-            raise exc
+    async def delete(cls, *keys: str) -> int:
+        """Delete one or more keys and return the number of removed keys."""
+        removed = 0
+        with cls._lock:
+            for key in keys:
+                found, _, _ = cls._get_entry(key)
+                if found:
+                    cls._store.pop(key, None)
+                    removed += 1
+        return removed
 
     @classmethod
-    async def get(cls, key: str):
-        """Execute Redis GET command.
-
-        Get the value of key. If the key does not exist the special value None
-        is returned. An error is returned if the value stored at key is not a
-        string, because GET only handles string values.
-
-        Args:
-            key (str): Redis db key.
-
-        Returns:
-            response: Value of key.
-
-        Raises:
-            RedisError: If Redis client failed while executing command.
-
-        """
-        redis_client = cls.redis_client
-
-        cls.logger.debug(f"Executing Redis GET command, key: {key}")
-        try:
-            return await redis_client.get(key)
-        except RedisError as exc:
-            cls.logger.error(f"Redis GET command finished with exception  - {exc.__class__.__qualname__}")
-            raise exc
+    async def keys(cls, pattern: str = "*") -> list[str]:
+        """Return all non-expired keys matching a glob pattern."""
+        cls._purge_expired()
+        with cls._lock:
+            return [k for k in cls._store if fnmatch.fnmatchcase(k, pattern)]
 
     @classmethod
-    async def mget(cls, keys: list[str]):
-        """Execute Redis MGET command.
-
-        Get the value of keys. If the keys do not exist the special value None
-        is returned. An error is returned if the value stored at key is not a
-        string, because GET only handles string values.
-
-        Args:
-            key (list[str]): Redis db keys to lookup.
-
-        Returns:
-            response: Value of key.
-
-        Raises:
-            RedisError: If Redis client failed while executing command.
-
-        """
-        redis_client = cls.redis_client
-
-        cls.logger.debug(f"Executing Redis MGET command, keys: {keys}")
-        try:
-            return await redis_client.mget(keys)
-        except RedisError as exc:
-            cls.logger.error(f"Redis MGET command finished with exception  - {exc.__class__.__qualname__}")
-            raise exc
-
-    @classmethod
-    async def lrange(cls, key: str, start: int, end: int):
-        """Execute Redis LRANGE command.
-
-        Returns the specified elements of the list stored at key. The offsets
-        start and stop are zero-based indexes, with 0 being the first element
-        of the list (the head of the list), 1 being the next element and so on.
-        These offsets can also be negative numbers indicating offsets starting
-        at the end of the list. For example, -1 is the last element of the
-        list, -2 the penultimate, and so on.
-
-        Args:
-            key (str): Redis db key.
-            start (int): Start offset value.
-            end (int): End offset value.
-
-        Returns:
-            response: Returns the specified elements of the list stored at key.
-
-        Raises:
-            RedisError: If Redis client failed while executing command.
-
-        """
-        redis_client = cls.redis_client
-
-        cls.logger.debug(
-            f"Executing Redis LRANGE command, key: {key}, start: {start}, end: {end}",
-        )
-        try:
-            return await redis_client.lrange(key, start, end)
-        except RedisError as exc:
-            cls.logger.error(f"Redis LRANGE command finished with exception  - {exc.__class__.__qualname__}")
-            raise exc
+    async def scan(cls, match: str | None = None, count: int | None = None) -> tuple[int, list[str]]:
+        """Scan keyspace for non-expired keys matching an optional glob pattern."""
+        matching = await cls.keys(match or "*")
+        if count is not None:
+            matching = matching[:count]
+        return 0, matching
 
     @classmethod
     async def delete_keys(cls, pattern: str) -> int:
-        """Delete keys matching a pattern.
-
-        Args:
-            pattern (str): Pattern to match.
-
-        Returns:
-            response: Number of keys deleted.
-
-        """
-        redis_client = cls.redis_client
-
-        cls.logger.debug(f"Executing Redis KEYS command, pattern: {pattern}")
-        try:
-            keys = await redis_client.keys(pattern)
-        except RedisError as exc:
-            cls.logger.error(
-                f"Redis KEYS (DELETE_KEYS) command finished with exception  - {exc.__class__.__qualname__}",
-            )
-            raise exc
-        if keys:
-            cls.logger.debug(f"Found {len(keys)} keys matching pattern: {pattern}")
-            return await redis_client.delete(*keys)
+        """Delete all non-expired keys matching a glob pattern."""
+        matching = await cls.keys(pattern)
+        if matching:
+            return await cls.delete(*matching)
         return 0
 
+    @classmethod
+    async def exists(cls, key: str) -> int:
+        """Return 1 if key exists and is not expired, otherwise 0."""
+        found, _, _ = cls._get_entry(key)
+        return 1 if found else 0
 
-cache = RedisClient()
+    @classmethod
+    async def expire(cls, key: str, ttl: int | float | timedelta) -> bool:
+        """Update the TTL on an existing non-expired key."""
+        with cls._lock:
+            found, value, _ = cls._get_entry(key)
+            if not found:
+                return False
+            cls._store[key] = (value, _resolve_expiry(ttl))
+            return True
+
+    @classmethod
+    async def rpush(cls, key: str, value: Any, ttl: int | float | timedelta | None = None) -> int:
+        """Append one or more values to a list stored at key."""
+        with cls._lock:
+            found, current, existing_expiry = cls._get_entry(key)
+            if not found:
+                items: list[Any] = []
+            elif isinstance(current, list):
+                items = current
+            else:
+                raise TypeError("WRONGTYPE Operation against a key holding the wrong kind of value")
+
+            if isinstance(value, list):
+                items.extend(value)
+            else:
+                items.append(value)
+
+            expires_at = _resolve_expiry(ttl) if ttl is not None else existing_expiry
+            cls._store[key] = (items, expires_at)
+            return len(items)
+
+    @classmethod
+    async def lrange(cls, key: str, start: int, end: int) -> list[Any]:
+        """Return an inclusive slice of elements from a list stored at key."""
+        with cls._lock:
+            found, current, _ = cls._get_entry(key)
+            if not found or not isinstance(current, list):
+                return []
+            length = len(current)
+            if end == -1:
+                stop: int | None = None
+            elif end < 0:
+                stop = max(0, length + end + 1)
+            else:
+                stop = end + 1
+            return list(current[start:stop])
+
+    @classmethod
+    async def clear(cls) -> None:
+        """Clear all keys from the in-memory store."""
+        with cls._lock:
+            cls._store.clear()
+
+    def __getattr__(self, name: str) -> Any:
+        """Support attribute lookups when goe.listener.utils.cache is bound to the singleton instance."""
+        if name == "RedisClient":
+            warnings.warn(
+                "goe.listener.utils.cache.RedisClient is deprecated and will be removed in GOE 2.0.0; "
+                "use MemoryCache instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return MemoryCache
+        if name == "MemoryCache":
+            return MemoryCache
+        if name == "MemorySyncCache":
+            return MemorySyncCache
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+
+class MemorySyncCache:
+    """Thread-safe synchronous interface over MemoryCache storage."""
+
+    logger: ClassVar[logging.Logger] = logging.getLogger(__name__)
+
+    @classmethod
+    def connect(cls, redis_connection_kwargs: dict[str, Any] | None = None) -> type["MemorySyncCache"]:
+        """Return the synchronous cache interface."""
+        return cls
+
+    @classmethod
+    def get_client(cls, redis_connection_kwargs: dict[str, Any] | None = None) -> type["MemorySyncCache"]:
+        """Return the synchronous cache interface."""
+        return cls
+
+    @classmethod
+    def close_client(cls) -> None:
+        """Close the synchronous cache client."""
+        cls.logger.debug("Closing MemorySyncCache client.")
+
+    @classmethod
+    def ping(cls) -> bool:
+        """Verify cache availability."""
+        return True
+
+    @classmethod
+    def set(cls, key: str, value: Any, ttl: int | float | timedelta | None = None) -> bool:
+        """Store a value under key with an optional TTL."""
+        with MemoryCache._lock:
+            MemoryCache._store[key] = (value, _resolve_expiry(ttl))
+        return True
+
+    @classmethod
+    def get(cls, key: str) -> Any | None:
+        """Retrieve a value by key, returning None when missing or expired."""
+        found, value, _ = MemoryCache._get_entry(key)
+        return value if found else None
+
+    @classmethod
+    def mget(cls, keys: list[str]) -> list[Any | None]:
+        """Retrieve values for multiple keys in order."""
+        return [cls.get(k) for k in keys]
+
+    @classmethod
+    def delete(cls, *keys: str) -> int:
+        """Delete one or more keys and return the number of removed keys."""
+        removed = 0
+        with MemoryCache._lock:
+            for key in keys:
+                found, _, _ = MemoryCache._get_entry(key)
+                if found:
+                    MemoryCache._store.pop(key, None)
+                    removed += 1
+        return removed
+
+    @classmethod
+    def keys(cls, pattern: str = "*") -> list[str]:
+        """Return all non-expired keys matching a glob pattern."""
+        MemoryCache._purge_expired()
+        with MemoryCache._lock:
+            return [k for k in MemoryCache._store if fnmatch.fnmatchcase(k, pattern)]
+
+    @classmethod
+    def scan(cls, match: str | None = None, count: int | None = None) -> tuple[int, list[str]]:
+        """Scan keyspace for non-expired keys matching an optional glob pattern."""
+        matching = cls.keys(match or "*")
+        if count is not None:
+            matching = matching[:count]
+        return 0, matching
+
+    @classmethod
+    def exists(cls, key: str) -> int:
+        """Return 1 if key exists and is not expired, otherwise 0."""
+        found, _, _ = MemoryCache._get_entry(key)
+        return 1 if found else 0
+
+    @classmethod
+    def expire(cls, key: str, ttl: int | float | timedelta) -> bool:
+        """Update the TTL on an existing non-expired key."""
+        with MemoryCache._lock:
+            found, value, _ = MemoryCache._get_entry(key)
+            if not found:
+                return False
+            MemoryCache._store[key] = (value, _resolve_expiry(ttl))
+            return True
+
+    @classmethod
+    def rpush(cls, key: str, value: Any, ttl: int | float | timedelta | None = None) -> int:
+        """Append one or more values to a list stored at key."""
+        with MemoryCache._lock:
+            found, current, existing_expiry = MemoryCache._get_entry(key)
+            if not found:
+                items: list[Any] = []
+            elif isinstance(current, list):
+                items = current
+            else:
+                raise TypeError("WRONGTYPE Operation against a key holding the wrong kind of value")
+
+            if isinstance(value, list):
+                items.extend(value)
+            else:
+                items.append(value)
+
+            expires_at = _resolve_expiry(ttl) if ttl is not None else existing_expiry
+            MemoryCache._store[key] = (items, expires_at)
+            return len(items)
+
+    @classmethod
+    def lrange(cls, key: str, start: int, end: int) -> list[Any]:
+        """Return an inclusive slice of elements from a list stored at key."""
+        with MemoryCache._lock:
+            found, current, _ = MemoryCache._get_entry(key)
+            if not found or not isinstance(current, list):
+                return []
+            length = len(current)
+            if end == -1:
+                stop: int | None = None
+            elif end < 0:
+                stop = max(0, length + end + 1)
+            else:
+                stop = end + 1
+            return list(current[start:stop])
+
+    @classmethod
+    def clear(cls) -> None:
+        """Clear all keys from the in-memory store."""
+        with MemoryCache._lock:
+            MemoryCache._store.clear()
+
+
+cache = MemoryCache()
+sync_cache = MemorySyncCache()
+
+
+def __getattr__(name: str) -> Any:
+    """Emit a DeprecationWarning when legacy RedisClient symbol is accessed."""
+    if name == "RedisClient":
+        warnings.warn(
+            "goe.listener.utils.cache.RedisClient is deprecated and will be removed in GOE 2.0.0; "
+            "use MemoryCache instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return MemoryCache
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

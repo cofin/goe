@@ -21,6 +21,7 @@ from goe.filesystem.goe_dfs import (
     get_scheme_from_location_uri,
 )
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
+from goe.listener.utils.cache import MemorySyncCache as RedisClient
 from goe.offload import offload_constants
 from goe.offload.backend_api import IMPALA_NOSHUFFLE_HINT, IMPALA_SHUFFLE_HINT
 from goe.offload.column_metadata import (
@@ -130,7 +131,6 @@ from goe.util.misc_functions import (
     standard_log_name,
 )
 from goe.util.ora_query import get_oracle_connection
-from goe.util.redis_tools import RedisClient
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig

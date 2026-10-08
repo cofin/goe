@@ -4,6 +4,7 @@
 """Exception classes for GOE Listener."""
 
 from goe.listener.exceptions.handlers import (
+    ApplicationError,
     CommandExecutionNotFound,
     CredentialValidationError,
     DatabaseConnectivityError,
@@ -14,6 +15,7 @@ from goe.listener.exceptions.handlers import (
 )
 
 __all__ = (
+    "ApplicationError",
     "CommandExecutionNotFound",
     "CredentialValidationError",
     "DatabaseConnectivityError",

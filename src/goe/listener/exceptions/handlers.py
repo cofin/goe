@@ -9,6 +9,24 @@ from litestar.response import Response
 from goe.listener.schemas import ErrorMessage
 
 
+class ApplicationError(HTTPException):
+    """General listener application error."""
+
+    status_code = 500
+    detail = "An unexpected application error occurred."
+
+    def __init__(
+        self,
+        status_code: int = 500,
+        message: str = "",
+        detail: str | None = None,
+    ) -> None:
+        super().__init__(
+            detail=detail or message or self.detail,
+            status_code=status_code,
+        )
+
+
 class DatabaseConnectivityError(HTTPException):
     """Database connectivity error."""
 

@@ -49,12 +49,12 @@ from goe.goe import (
     verbose,
     version,
 )
+from goe.listener.utils.cache import MemorySyncCache as RedisClient
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_transport_functions import ssh_cmd_prefix
 from goe.orchestration import orchestration_constants
 from goe.util.goe_log import log_exception
 from goe.util.misc_functions import unsurround
-from goe.util.redis_tools import RedisClient
 
 OS_RELEASE_FILE_REDHAT = "/etc/redhat-release"
 OS_RELEASE_FILE_SUSE = "/etc/SuSE-release"
@@ -461,12 +461,15 @@ def get_connect_opts():
     return opt
 
 
-def connect():
+def connect(options_override=None):
     options = None
     try:
         config_file.load_env()
-        opt = get_connect_opts()
-        options, args = opt.parse_args()
+        if options_override is not None:
+            options = options_override
+        else:
+            opt = get_connect_opts()
+            options, args = opt.parse_args()
 
         init(options)
         init_log("connect")
