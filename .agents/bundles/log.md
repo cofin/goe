@@ -5,12 +5,20 @@ tags:
   - changelog
   - okf
   - flow
-updated_at: "2026-10-04T18:30:00Z"
+updated_at: "2026-10-08T16:39:00Z"
 ---
 
 # Change Log
 
 This file records significant lifecycle operations, structural additions, and major evolutions to the GOE knowledge bundle.
+
+## 2026-10-08
+
+- **Modern Borderless CLI Styling & Zero-Type-Loss Import Performance (`cli_import_performance_20261008`)**:
+  - Updated [`src/goe/cli/config.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/cli/config.py) to apply `click.RichHelpConfiguration(theme="slim", text_markup="rich", style_options_panel_box="BLANK", style_commands_panel_box="BLANK", command_groups=COMMAND_GROUPS, option_groups=OPTION_GROUPS, ...).dump_to_globals()` so `rich-click` 1.9+ renders borderless modern sections, parses Rich markup tags, and removes emojis from command group headings.
+  - Updated [`src/goe/cli/main.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/cli/main.py) so bare `goe` invocation returns immediately after displaying help without duplicating `print_heading()` or importing `orchestration_defaults`.
+  - Created [`src/goe/cli/_lazy.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/cli/_lazy.py) (`resolve_lazy_attribute`, `bind_lazy_imports`) and converted [`src/goe/cli/common.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/cli/common.py) and [`src/goe/cli/commands/`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/cli/commands/) (`connect.py`, `listener.py`, `offload.py`, `report.py`, `sync.py`, `validate.py`) to `if TYPE_CHECKING:` + PEP 562 `__getattr__` + `bind_lazy_imports(__name__, _LAZY_IMPORTS)`, reducing `.venv/bin/goe --help` latency from **1,476 ms to 168.7 ms (8.75x faster)** and bare `.venv/bin/goe` from **1,573 ms to 170.9 ms (9.2x faster)** while preserving 100% of static type hints (`mypy src/goe`) and `@patch` test seams.
+  - Decoupled transitive imports in [`src/goe/listener/utils/__init__.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/utils/__init__.py) (lazy `orchestrate` and `ping`) and [`src/goe/util/goe_log_fh.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/util/goe_log_fh.py) (lazy `gcsfs.core.GCS_MIN_BLOCK_SIZE` on `gs://` paths), eliminating `litestar`, `numpy`, and `gcsfs` from non-Listener CLI command startups.
 
 ## 2026-10-04
 

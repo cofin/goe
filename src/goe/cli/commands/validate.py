@@ -5,16 +5,25 @@
 
 import sys
 from optparse import Values
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import rich_click as click
 
+from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
 from goe.cli.common import common_options, extract_common_options
-from goe.scripts.agg_validate import (
-    get_agg_validate_options,
-    post_process_args,
-    run_agg_validate,
-)
+
+if TYPE_CHECKING:
+    from goe.scripts.agg_validate import (
+        get_agg_validate_options,
+        post_process_args,
+        run_agg_validate,
+    )
+
+_LAZY_IMPORTS: LazyImportMap = {
+    "get_agg_validate_options": ("goe.scripts.agg_validate", "get_agg_validate_options"),
+    "post_process_args": ("goe.scripts.agg_validate", "post_process_args"),
+    "run_agg_validate": ("goe.scripts.agg_validate", "run_agg_validate"),
+}
 
 
 @click.command(
@@ -89,6 +98,7 @@ from goe.scripts.agg_validate import (
 @click.pass_context
 def validate(ctx: click.Context, **kwargs: Any) -> None:
     """Execute aggregate validation across databases."""
+    bind_lazy_imports(__name__, _LAZY_IMPORTS)
     common_opts = extract_common_options(ctx, kwargs)
     parser = get_agg_validate_options()
     defaults = parser.get_default_values()
@@ -103,3 +113,8 @@ def validate(ctx: click.Context, **kwargs: Any) -> None:
     post_process_args(options)
     ret = run_agg_validate(options)
     sys.exit(0 if ret else 1)
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily import agg_validate dependencies on first attribute access."""
+    return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)

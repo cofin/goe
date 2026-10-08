@@ -4,51 +4,27 @@
 """CLI configuration and rich-click styling rules for GOE."""
 
 import rich_click as click
+from rich_click.utils import CommandGroupDict, OptionGroupDict
 
 ERROR_COLOR = "#EA4335"
 WARNING_COLOR = "#FBBC04"
 SUCCESS_COLOR = "#34A853"
 INFO_COLOR = "#4285F4"
 
-click.rich_click.rich_config = click.RichHelpConfiguration(
-    text_markup="rich",
-    style_command="bold #4285F4",
-    style_option="bold #34A853",
-    style_switch="bold #34A853",
-    style_argument="bold cyan",
-    style_metavar="#FBBC04",
-    style_usage="bold",
-    style_usage_command="bold #4285F4",
-    style_helptext="dim",
-    style_helptext_first_line="",
-    style_option_help="",
-    style_errors_suggestion="italic #FBBC04",
-    style_required_short="#EA4335",
-    style_required_long="dim #EA4335",
-    style_errors_panel_border="#EA4335",
-    style_aborted="#EA4335",
-    style_options_panel_border="none",
-    style_commands_panel_border="none",
-    width=120,
-    max_width=120,
-    show_arguments=True,
-    group_arguments_options=True,
-)
-
-click.rich_click.COMMAND_GROUPS = {
+COMMAND_GROUPS: dict[str, list[CommandGroupDict]] = {
     "goe": [
         {
-            "name": "🚀 Core Orchestration Commands",
+            "name": "Core Orchestration Commands",
             "commands": ["offload", "connect", "validate", "sync", "report"],
         },
         {
-            "name": "⚙️ Service & Maintenance Commands",
+            "name": "Service & Maintenance Commands",
             "commands": ["listener", "logmgr"],
         },
     ]
 }
 
-click.rich_click.OPTION_GROUPS = {
+OPTION_GROUPS: dict[str, list[OptionGroupDict]] = {
     "goe offload": [
         {
             "name": "Target & Source Selection",
@@ -156,5 +132,45 @@ click.rich_click.OPTION_GROUPS = {
 
 
 def configure_cli() -> None:
-    """Ensure rich-click configuration and option groups are loaded."""
-    return None
+    """Configure rich-click with a borderless modern theme and structured command/option groups."""
+    help_config = click.RichHelpConfiguration(
+        theme="slim",
+        text_markup="rich",
+        style_command="bold #4285F4",
+        style_option="bold #34A853",
+        style_switch="bold #34A853",
+        style_argument="bold cyan",
+        style_metavar="#FBBC04",
+        style_usage="bold #FBBC04",
+        style_usage_command="bold #4285F4",
+        style_helptext="",
+        style_helptext_first_line="bold",
+        style_option_help="",
+        style_errors_suggestion="italic #FBBC04",
+        style_required_short="#EA4335",
+        style_required_long="dim #EA4335",
+        style_errors_panel_border="#EA4335",
+        style_aborted="#EA4335",
+        style_options_panel_box="BLANK",
+        style_commands_panel_box="BLANK",
+        style_options_table_box=None,
+        style_commands_table_box=None,
+        style_options_panel_border="none",
+        style_commands_panel_border="none",
+        style_options_panel_title_style="bold #4285F4",
+        style_commands_panel_title_style="bold #4285F4",
+        panel_title_string="{}",
+        panel_title_padding=0,
+        style_options_panel_padding=(0, 0, 0, 2),
+        style_commands_panel_padding=(0, 0, 0, 2),
+        width=120,
+        max_width=120,
+        show_arguments=True,
+        group_arguments_options=True,
+        command_groups=COMMAND_GROUPS,
+        option_groups=OPTION_GROUPS,
+    )
+    help_config.dump_to_globals()
+
+
+configure_cli()

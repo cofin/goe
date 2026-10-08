@@ -25,7 +25,7 @@ configure_cli()
 
 @click.group(
     name="goe",
-    help="[bold blue]Gluent Offload Engine (GOE)[/bold blue]\n\n"
+    help="[bold #4285F4]Gluent[/bold #4285F4] [bold]Offload Engine[/bold] [dim](GOE)[/dim]\n\n"
     "High-performance offloading, schema synchronization, and data validation between RDBMS and cloud data warehouses.\n\n"
     "[dim]Documentation: https://github.com/gluent/goe[/dim]",
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -36,13 +36,12 @@ configure_cli()
 def cli(ctx: click.Context, **kwargs: Any) -> None:
     """Main GOE CLI entry point."""
     load_env()
-    extract_common_options(ctx, kwargs)
-
-    if ctx.invoked_subcommand is not None:
-        print_heading(ctx.invoked_subcommand)
-    else:
-        print_heading()
+    if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
+        return
+
+    extract_common_options(ctx, kwargs)
+    print_heading(ctx.invoked_subcommand)
 
 
 cli.add_command(offload)

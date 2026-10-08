@@ -4,15 +4,23 @@
 """'goe report' subcommand for generating offload status reports."""
 
 from optparse import Values
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import rich_click as click
 
+from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
 from goe.cli.common import common_options, extract_common_options
-from goe.offload.offload_status_report import (
-    get_offload_status_report_opts,
-    offload_status_report_run,
-)
+
+if TYPE_CHECKING:
+    from goe.offload.offload_status_report import (
+        get_offload_status_report_opts,
+        offload_status_report_run,
+    )
+
+_LAZY_IMPORTS: LazyImportMap = {
+    "get_offload_status_report_opts": ("goe.offload.offload_status_report", "get_offload_status_report_opts"),
+    "offload_status_report_run": ("goe.offload.offload_status_report", "offload_status_report_run"),
+}
 
 
 @click.command(
@@ -54,6 +62,7 @@ from goe.offload.offload_status_report import (
 @click.pass_context
 def report(ctx: click.Context, **kwargs: Any) -> None:
     """Generate offload status report."""
+    bind_lazy_imports(__name__, _LAZY_IMPORTS)
     common_opts = extract_common_options(ctx, kwargs)
     parser = get_offload_status_report_opts()
     defaults = parser.get_default_values()
@@ -69,3 +78,8 @@ def report(ctx: click.Context, **kwargs: Any) -> None:
 
     options = Values(options_dict)
     offload_status_report_run(options)
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily import offload_status_report dependencies on first attribute access."""
+    return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)

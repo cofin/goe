@@ -4,14 +4,24 @@
 """'goe offload' subcommand for high-performance data offloading."""
 
 from optparse import Values
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import rich_click as click
 
+from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
 from goe.cli.common import common_options, extract_common_options
-from goe.goe import OFFLOAD_OP_NAME, get_options
-from goe.offload.offload import get_offload_options
-from goe.orchestration.cli_entry_points import offload_by_cli
+
+if TYPE_CHECKING:
+    from goe.goe import OFFLOAD_OP_NAME, get_options
+    from goe.offload.offload import get_offload_options
+    from goe.orchestration.cli_entry_points import offload_by_cli
+
+_LAZY_IMPORTS: LazyImportMap = {
+    "OFFLOAD_OP_NAME": ("goe.goe", "OFFLOAD_OP_NAME"),
+    "get_offload_options": ("goe.offload.offload", "get_offload_options"),
+    "get_options": ("goe.goe", "get_options"),
+    "offload_by_cli": ("goe.orchestration.cli_entry_points", "offload_by_cli"),
+}
 
 
 @click.command(
@@ -507,6 +517,7 @@ from goe.orchestration.cli_entry_points import offload_by_cli
 @click.pass_context
 def offload(ctx: click.Context, **kwargs: Any) -> None:
     """Execute offload operation with provided options."""
+    bind_lazy_imports(__name__, _LAZY_IMPORTS)
     common_opts = extract_common_options(ctx, kwargs)
     parser = get_options(operation_name=OFFLOAD_OP_NAME)
     get_offload_options(parser)
@@ -534,3 +545,8 @@ def offload(ctx: click.Context, **kwargs: Any) -> None:
 
     options = Values(options_dict)
     offload_by_cli(options)
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily import offload orchestration dependencies on first attribute access."""
+    return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)

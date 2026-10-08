@@ -5,13 +5,20 @@
 
 import os
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import rich_click as click
 
+from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
 from goe.cli.console import console, heading_console
-from goe.config import orchestration_defaults
 from goe.util.goe_version import goe_version
+
+if TYPE_CHECKING:
+    from goe.config import orchestration_defaults
+
+_LAZY_IMPORTS: LazyImportMap = {
+    "orchestration_defaults": ("goe.config.orchestration_defaults", None),
+}
 
 COMMON_OPTION_KEYS: tuple[str, ...] = (
     "verbose",
@@ -154,10 +161,12 @@ def extract_common_options(ctx: click.Context | None, kwargs: dict[str, Any]) ->
 
     log_path = popped["log_path"] if popped["log_path"] is not None else parent_obj.get("log_path")
     if log_path is None:
+        bind_lazy_imports(__name__, _LAZY_IMPORTS)
         log_path = os.environ.get("OFFLOAD_LOGFILE") or orchestration_defaults.log_path_default()
 
     log_level = popped["log_level"] if popped["log_level"] is not None else parent_obj.get("log_level")
     if log_level is None:
+        bind_lazy_imports(__name__, _LAZY_IMPORTS)
         log_level = orchestration_defaults.log_level_default() or "info"
 
     if popped["ver_check"] is not None:
@@ -210,3 +219,8 @@ def extract_common_options(ctx: click.Context | None, kwargs: dict[str, Any]) ->
         "error_on_token": error_on_token,
         "suppress_stdout": suppress_stdout,
     }
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily import orchestration_defaults on first attribute access."""
+    return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)

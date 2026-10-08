@@ -3,20 +3,33 @@
 
 """Unit tests for the root goe CLI group and environment initialization."""
 
+import json
+import subprocess
+import sys
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
 
+import goe.cli.commands.connect as connect_cmd_module
+import goe.cli.common as common_module
 from goe.cli.main import cli
 from goe.util.goe_version import goe_version
 
 
 def test_cli_help() -> None:
-    """Verify goe --help renders all subcommands."""
+    """Verify goe --help renders all subcommands in borderless modern format without raw Rich tags."""
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "Gluent Offload Engine (GOE)" in result.output
+    assert "Core Orchestration Commands" in result.output
+    assert "Service & Maintenance Commands" in result.output
+    assert "[bold" not in result.output
+    assert "[dim]" not in result.output
+    assert "╭" not in result.output
+    assert "╰" not in result.output
+    assert "│" not in result.output
     assert "offload" in result.output
     assert "connect" in result.output
     assert "validate" in result.output
@@ -51,3 +64,42 @@ def test_cli_quiet_short_flag() -> None:
     assert result.exit_code == 0
     assert "-q" in result.output
     assert "--quiet" in result.output
+
+
+def test_cli_help_does_not_import_heavy_backends() -> None:
+    """Verify importing goe.cli.main and rendering help does not eagerly load heavy backend modules."""
+    probe = (
+        "import json, sys; "
+        "from click.testing import CliRunner; "
+        "from goe.cli.main import cli; "
+        "CliRunner().invoke(cli, ['--help']); "
+        "CliRunner().invoke(cli, ['offload', '--help']); "
+        "forbidden = ['goe.goe', 'goe.connect.connect', 'granian', 'httpx', 'oracledb', 'litestar', 'gcsfs']; "
+        "loaded = [m for m in forbidden if m in sys.modules]; "
+        "print(json.dumps(loaded))"
+    )
+    proc = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
+    loaded = json.loads(proc.stdout.strip())
+    assert loaded == [], f"Heavy modules eagerly imported during CLI help rendering: {loaded}"
+
+
+def test_cli_lazy_attribute_resolution() -> None:
+    """Verify PEP 562 lazy attribute resolution caches resolved symbols and raises AttributeError for unknown names."""
+    assert callable(connect_cmd_module.check_config_path)
+    assert hasattr(common_module.orchestration_defaults, "log_path_default")
+    with pytest.raises(AttributeError):
+        _ = connect_cmd_module.nonexistent_cli_symbol
+
+
+def test_offload_messages_import_does_not_load_litestar_or_gcsfs() -> None:
+    """Verify importing goe.offload.offload_messages does not eagerly import litestar or gcsfs."""
+    probe = (
+        "import json, sys; "
+        "import goe.offload.offload_messages; "
+        "forbidden = ['litestar', 'gcsfs', 'gcsfs.core']; "
+        "loaded = [m for m in forbidden if m in sys.modules]; "
+        "print(json.dumps(loaded))"
+    )
+    proc = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
+    loaded = json.loads(proc.stdout.strip())
+    assert loaded == [], f"Transitive heavy modules eagerly imported by offload_messages: {loaded}"

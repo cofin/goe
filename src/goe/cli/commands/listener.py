@@ -3,16 +3,27 @@
 
 """'goe listener' subcommand group for REST API and background worker management."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import httpx
 import rich_click as click
-from granian import Granian
-from granian.constants import Interfaces
 
+from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
 from goe.cli.common import common_options, extract_common_options
 from goe.cli.console import print_info, print_success, print_warning
-from goe.listener.config import settings
+
+if TYPE_CHECKING:
+    import httpx
+    from granian import Granian
+    from granian.constants import Interfaces
+
+    from goe.listener.config import settings
+
+_LAZY_IMPORTS: LazyImportMap = {
+    "Granian": ("granian", "Granian"),
+    "Interfaces": ("granian.constants", "Interfaces"),
+    "httpx": ("httpx", None),
+    "settings": ("goe.listener.config", "settings"),
+}
 
 
 def _start_listener_server(
@@ -23,6 +34,7 @@ def _start_listener_server(
     worker_only: bool = False,
 ) -> None:
     """Start the Granian ASGI server or background worker process."""
+    bind_lazy_imports(__name__, _LAZY_IMPORTS)
     resolved_host = host if host is not None else settings.host
     resolved_port = port if port is not None else int(settings.port)
     resolved_workers = workers if workers is not None else int(settings.http_workers)
@@ -173,6 +185,7 @@ def start(
 @click.pass_context
 def status(ctx: click.Context, **kwargs: Any) -> None:
     """Check listener operational status via the health endpoint."""
+    bind_lazy_imports(__name__, _LAZY_IMPORTS)
     extract_common_options(ctx, kwargs)
     url = f"http://{settings.host}:{settings.port}/api/system/status/"
     print_info(f"Checking GOE Listener status at {url}...")
@@ -184,3 +197,8 @@ def status(ctx: click.Context, **kwargs: Any) -> None:
             print_warning(f"GOE Listener returned status {response.status_code}.")
     except Exception:
         print_warning("GOE Listener is not reachable.")
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily import Granian, httpx, and listener settings on first attribute access."""
+    return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)

@@ -4,14 +4,23 @@
 """'goe connect' subcommand for pre-flight connectivity and environment validation."""
 
 from optparse import Values
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import rich_click as click
 
+from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
 from goe.cli.common import common_options, extract_common_options
-from goe.config.config_file import check_config_path
-from goe.connect.connect import connect as run_connect
-from goe.connect.connect import get_connect_opts
+
+if TYPE_CHECKING:
+    from goe.config.config_file import check_config_path
+    from goe.connect.connect import connect as run_connect
+    from goe.connect.connect import get_connect_opts
+
+_LAZY_IMPORTS: LazyImportMap = {
+    "check_config_path": ("goe.config.config_file", "check_config_path"),
+    "get_connect_opts": ("goe.connect.connect", "get_connect_opts"),
+    "run_connect": ("goe.connect.connect", "connect"),
+}
 
 
 @click.command(
@@ -43,6 +52,7 @@ def connect(
     **kwargs: Any,
 ) -> None:
     """Run pre-flight connectivity tests and display status report."""
+    bind_lazy_imports(__name__, _LAZY_IMPORTS)
     common_opts = extract_common_options(ctx, kwargs)
     check_config_path()
     parser = get_connect_opts()
@@ -54,3 +64,8 @@ def connect(
     if create_backend_db is not None:
         options_dict["create_backend_db"] = create_backend_db
     run_connect(Values(options_dict))
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily import heavy connect runtime dependencies on first attribute access."""
+    return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)
