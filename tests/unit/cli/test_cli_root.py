@@ -8,6 +8,7 @@ import subprocess
 import sys
 from unittest.mock import patch
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -22,20 +23,21 @@ def test_cli_help() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
-    assert "Gluent Offload Engine (GOE)" in result.output
-    assert "Core Orchestration Commands" in result.output
-    assert "Service & Maintenance Commands" in result.output
-    assert "[bold" not in result.output
-    assert "[dim]" not in result.output
-    assert "╭" not in result.output
-    assert "╰" not in result.output
-    assert "│" not in result.output
-    assert "offload" in result.output
-    assert "connect" in result.output
-    assert "validate" in result.output
-    assert "sync" in result.output
-    assert "listener" in result.output
-    assert "logmgr" in result.output
+    plain_output = click.unstyle(result.output)
+    assert "Gluent Offload Engine (GOE)" in plain_output
+    assert "Core Orchestration Commands" in plain_output
+    assert "Service & Maintenance Commands" in plain_output
+    assert "[bold" not in plain_output
+    assert "[dim]" not in plain_output
+    assert "╭" not in plain_output
+    assert "╰" not in plain_output
+    assert "│" not in plain_output
+    assert "offload" in plain_output
+    assert "connect" in plain_output
+    assert "validate" in plain_output
+    assert "sync" in plain_output
+    assert "listener" in plain_output
+    assert "logmgr" in plain_output
 
 
 def test_cli_version() -> None:
