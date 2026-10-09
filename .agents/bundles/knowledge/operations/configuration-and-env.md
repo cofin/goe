@@ -11,7 +11,19 @@ tags:
 
 # Configuration & Environment Variables
 
-GOE loads environment variables from `$OFFLOAD_HOME/conf/offload.env` using `python-dotenv`, merged and validated by `OrchestrationConfig`.
+GOE loads environment variables using a 4-tier discovery architecture via `python-dotenv` ([`src/goe/config/config_file.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/config/config_file.py)), merged and validated by `OrchestrationConfig`.
+
+## Multi-Tier Configuration Discovery (`src/goe/config/config_file.py`)
+
+1. **Tier 1 (Explicit Environment Override)**: Paths specified in `GOE_CONFIG_FILE` or `OFFLOAD_ENV_FILE`.
+2. **Tier 2 (Configured Installation Root)**: `$OFFLOAD_HOME/conf/offload.env`.
+3. **Tier 3 (Dynamic Workspace Hierarchy)**: Upward directory tree discovery using `find_dotenv("conf/offload.env", usecwd=True)` followed by `find_dotenv("offload.env", usecwd=True)`.
+4. **Tier 4 (Standard Production System Paths)**: `/opt/goe/offload/conf/offload.env` and `/u01/app/goe/offload/conf/offload.env`.
+
+### Variable Interpolation & Precedence Rules
+- `load_env(override=False, interpolate=True)` preserves ambient container/shell environment variables while resolving `${VAR}` POSIX parameter expansions in definition order.
+- **Auto-Export `OFFLOAD_HOME`**: When `OFFLOAD_HOME` is unset and the discovered configuration resides in a `conf/` directory, `load_env()` automatically exports `OFFLOAD_HOME` pointing to the parent installation root.
+- **Test Isolation Guard**: Automatic discovery is skipped when `PYTEST_CURRENT_TEST` is present or `GOE_NO_AUTOLOAD_ENV` is set to `"1"`, `"true"`, or `"TRUE"`.
 
 ## Core Configuration Parameters
 
@@ -53,7 +65,8 @@ GOE loads environment variables from `$OFFLOAD_HOME/conf/offload.env` using `pyt
 - `GOOGLE_DATAPROC_BATCHES_VERSION`: Dataproc Serverless runtime version (e.g. `2.0`, `2.1`).
 - `GOOGLE_DATAPROC_BATCHES_SUBNET`: Subnet URI with Private Google Access enabled.
 
-### Listener & Redis Settings
+### Listener Settings (Embedded Architecture)
 - `OFFLOAD_LISTENER_HOST` / `PORT`: Bind host and port (default `0.0.0.0:8085`).
-- `OFFLOAD_LISTENER_SHARED_TOKEN`: API key required in `x-goe-console-key` header.
-- `OFFLOAD_LISTENER_REDIS_HOST` / `PORT`: Redis host and port for caching and worker queues.
+- `OFFLOAD_LISTENER_SHARED_TOKEN`: API key required in `x-goe-console-key` header (when unset, allows unauthenticated local access).
+- `OFFLOAD_LISTENER_HEARTBEAT_INTERVAL`: Periodic endpoint registration interval in seconds (default `30`).
+- `OFFLOAD_LISTENER_WORKERS`: Number of Granian ASGI worker processes (default `1`).

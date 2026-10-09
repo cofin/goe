@@ -30,11 +30,12 @@ The Listener uses an embedded thread-safe in-process TTL cache (`MemoryCache` an
 
 - **Queue Plugin**: Configured via `QueuePlugin(QueueConfig(queue_backend="memory", worker=WorkerConfig(placement="asgi")))` and auto-discovered via `AutowirePlugin(AutowireConfig(domain_packages=["goe.listener"], integrations=["queues"]))`.
 - **Registered `@task` Jobs**:
-  - `system_heartbeat_job` (`interval=30`): Invokes `periodic_tasks.publish_heartbeat()`.
-  - `sync_schemas_job` (`cron="*/5 * * * *"`): Invokes `periodic_tasks.publish_schemas()`.
-  - `sync_command_executions_job` (`interval=60`): Invokes `periodic_tasks.publish_command_executions()`.
-  - `run_offload_job`: Executes asynchronous offload commands scheduled via `POST /api/orchestration/offload/` inside a worker thread (`anyio.to_thread.run_sync`).
+  - `system_heartbeat_job` (`interval=timedelta(seconds=30)`): Invokes `periodic_tasks.publish_heartbeat()`.
+  - `sync_schemas_job` (`interval=timedelta(minutes=15)`): Invokes `periodic_tasks.publish_schemas()`.
+  - `sync_command_executions_job` (`interval=timedelta(minutes=5)`): Invokes `periodic_tasks.publish_command_executions()`.
+  - `run_offload_job` (`queue="orchestration", timeout=86400`): Executes asynchronous offload commands scheduled via `POST /api/orchestration/offload/` inside a worker pool (`async_(orchestration_runner.offload)`).
 
 ## Real-Time Event Buffering
 
 - During offload execution, log events from `OffloadMessages` are serialized via `msgspec` and appended (`rpush`) to `MemorySyncCache` key `goe:run:<execution_id>` with a 48-hour TTL.
+- Both synchronous CLI processes and asynchronous Litestar routes read and write to the same thread-safe `_store` dictionary protected by `threading.RLock`.

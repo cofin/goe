@@ -5,12 +5,24 @@ tags:
   - changelog
   - okf
   - flow
-updated_at: "2026-10-08T16:39:00Z"
+updated_at: "2026-10-09T20:00:00Z"
 ---
 
 # Change Log
 
 This file records significant lifecycle operations, structural additions, and major evolutions to the GOE knowledge bundle.
+
+## 2026-10-09
+
+- **Flow Completion & Rigorous Knowledge Archive**:
+  - Validated and archived all 9 completed specs across Master PRDs and child feature flows (`modernization_overhaul_20260823`, `v2_main_alignment_remediation_20261004`, `cli_execution_and_common_options_parity_20261004`, `cli_import_performance_20261008`, `cli_subcommand_options_and_defaults_parity_20261004`, `embedded_listener_and_task_execution_20260826`, `listener_and_persistence_schema_alignment_20261004`, `litestar_listener_overhaul_20260823`, `python_dotenv_autoload_20260826`).
+  - Synthesized durable knowledge chapters across 5 dimensions:
+    - [Centralized Rich-Click CLI & Legacy Delegators](knowledge/patterns/cli-architecture.md): Zero-type-loss lazy binding via `src/goe/cli/_lazy.py`, argument pre-processing, Click choice case preservation, option group reflection tests, and CI ANSI sequence handling.
+    - [Serialization & Utility Re-Export Patterns](knowledge/patterns/serialization-and-utils.md): Heterogeneous `msgspec.Struct` traversal, parameter whitelisting against `EXPECTED_OFFLOAD_ARGS`, and domain object fallback serialization for `ExecutionId` and `.dsl` predicates.
+    - [Listener Workers & Embedded Caching](knowledge/listener/worker-and-redis.md): Embedded in-process cache with dual async/sync facades, `litestar-queues` in-memory workers and periodic cron tasks, and removal of external Redis/Valkey footprint.
+    - [Listener REST API Architecture](knowledge/listener/rest-api.md): `litestar-security` API key authentication (`x-goe-console-key`), constant-time token verification, OpenAPI security scheme wiring, and Litestar 2.24 native dependency injection.
+    - [Configuration & Environment Variables](knowledge/operations/configuration-and-env.md): 4-tier configuration discovery, upward directory search via `find_dotenv(..., usecwd=True)`, POSIX variable expansion, automatic `OFFLOAD_HOME` export, and test isolation guards.
+  - Contracted `.agents/bundles/specs/` by removing completed spec trees; full verification gate confirmed clean (620 passed unit tests, 0 Ruff lint errors, 0 Mypy type errors across 231 files).
 
 ## 2026-10-08
 

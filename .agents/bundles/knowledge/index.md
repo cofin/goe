@@ -52,7 +52,7 @@ Canonical setup, development, testing, packaging, and validation workflows with 
 
 ### 8. [GOE Listener Service](listener/index.md)
 - [REST API Architecture](listener/rest-api.md) - Litestar application factory, Granian ASGI runtime, `litestar-security` guards, `litestar-autowire` DI, and `litestar-mcp` tools.
-- [Workers & Redis Cache](listener/worker-and-redis.md) - `litestar-queues` background tasks, node heartbeats, scheduled cron jobs, and Valkey/Redis caching.
+- [Listener Workers & Embedded Caching](listener/worker-and-redis.md) - `litestar-queues` background tasks, node heartbeats, scheduled cron jobs, and embedded in-process TTL caching.
 
 ### 9. [Operations & Tooling](operations/index.md)
 - [CLI Utilities](operations/cli-tools.md) - `offload`, `connect`, `logmgr`, `agg_validate`, and `listener` commands.
