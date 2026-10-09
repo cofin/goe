@@ -9,7 +9,7 @@ You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)
 - **Product Overview**: [Product Definition](.agents/bundles/product/product.md) & [Product Guidelines](.agents/bundles/product/product-guidelines.md)
 - **Technology Stack**: [Tech Stack](.agents/bundles/product/tech-stack.md)
 - **Workflow & Commands**: [Workflow](.agents/bundles/knowledge/workflow.md)
-- **Patterns & Gotchas**: [Patterns](.agents/bundles/knowledge/patterns.md)
+- **Patterns & Gotchas**: [Patterns](.agents/bundles/knowledge/patterns/index.md)
 
 ## 2. Core Operational Invariants
 - **Language**: Python >= 3.12.
@@ -18,7 +18,7 @@ You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)
   - Initialize and sync dependencies via `make install` (uses `uv sync --all-extras --dev`).
   - Run commands with `uv run` where applicable (`uv run pytest tests/unit`).
   - Build backend is `hatchling.build` and dependencies are managed via PEP 735 `[dependency-groups]` in `pyproject.toml` with lockfile `uv.lock`.
-  - Runtime configuration relies on the `OFFLOAD_HOME` environment variable and `offload.env` configuration file (constructed from `templates/conf/offload.env.template`).
+  - Runtime configuration (`src/goe/config/config_file.py`) automatically discovers and loads `offload.env` (`interpolate=True`, `override=False`) across 4 tiers: `GOE_CONFIG_FILE` / `OFFLOAD_ENV_FILE`, `$OFFLOAD_HOME/conf/offload.env`, upward `dotenv.find_dotenv()`, and `/opt/goe/offload/conf/offload.env` / `/u01/app/goe/offload/conf/offload.env`, auto-exporting `OFFLOAD_HOME` when unset and bypassing auto-load when `PYTEST_CURRENT_TEST` or `GOE_NO_AUTOLOAD_ENV=1` is present.
 - **Code Style & Formatting**:
   - Format all code with `ruff` (`line-length = 120`). Run `make format` (`uv run ruff format` and `uv run ruff check --fix`) and `make lint` (`uv run ruff check` and `uv run mypy src/goe`).
   - Always place all imports at the top of the file, rather than within function scopes.

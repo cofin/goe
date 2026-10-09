@@ -19,7 +19,8 @@ tags:
 
 ## Code Style & Formatting
 
-- **Formatter & Linter**: Code must be formatted and linted with `ruff` (`line-length = 120`). Run `make format` or `uv run ruff format src tests tools` and `uv run ruff check src tests tools` before submitting changes.
+- **Formatter & Linter**: Code must be formatted and linted with `ruff` (`line-length = 120`). Run `make format` or `uv run ruff format .` and `uv run ruff check .` before submitting changes.
+- **Copyright & License Headers**: All source files must start with the standard 2-line SPDX header (`# SPDX-FileCopyrightText: <year> The GOE Authors` and `# SPDX-License-Identifier: Apache-2.0`), automatically enforced via Ruff `CPY001`.
 - **Imports**: All imports must be placed at the top of the file, organized into standard library, third-party packages, and internal `goe` modules. Never use deferred imports within function scopes unless breaking an unavoidable circular dependency.
 - **Comments & Docstrings**:
   - Never use in-line comments inside functions.

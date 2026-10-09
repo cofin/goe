@@ -258,8 +258,8 @@ def run_agg_validate(args):
 
 def main():
     """MAIN ROUTINE"""
-    config_file.check_config_path()
     config_file.load_env()
+    config_file.check_config_path()
 
     args = parse_args()
     ret = run_agg_validate(args)

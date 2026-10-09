@@ -1,5 +1,6 @@
 Offload supports several scenarios for offloading data from the RDBMS:
 
+- [Environment Configuration & Auto-Discovery](#environment-configuration--auto-discovery)
 - [Full Offload](#full-offload)
 - [Partition-Based Offload](#partition-based-offload)
 - [Subpartition-Based Offload](#subpartition-based-offload)
@@ -8,6 +9,17 @@ Offload supports several scenarios for offloading data from the RDBMS:
 - [Offload Transport](#offload-transport)
 - [Backend Data Sorting/Clustering](#backend-data-sortingclustering)
 - [Resetting an Offloaded Table](#resetting-an-offloaded-table)
+
+# Environment Configuration & Auto-Discovery
+
+The `goe` CLI (`goe offload`, `goe connect`, `goe validate`, `goe sync`, `goe listener`) and Python package automatically discover and load `offload.env` using a 4-tier resolution hierarchy (`interpolate=True`, `override=False`):
+
+1. **Explicit Path Override**: `GOE_CONFIG_FILE` or `OFFLOAD_ENV_FILE` environment variable pointing to a file.
+2. **Configured Home**: `$OFFLOAD_HOME/conf/offload.env` when `OFFLOAD_HOME` is set.
+3. **Dynamic Workspace Hierarchy**: Upward directory search from the current working directory for `conf/offload.env` or `offload.env`.
+4. **Standard System Paths**: `/opt/goe/offload/conf/offload.env` and `/u01/app/goe/offload/conf/offload.env`.
+
+When `conf/offload.env` is discovered and `OFFLOAD_HOME` is not set, GOE automatically exports `OFFLOAD_HOME` to the parent directory of `conf/`. To disable automatic environment loading in strictly controlled environments, set `GOE_NO_AUTOLOAD_ENV=1`.
 
 # Full Offload
 

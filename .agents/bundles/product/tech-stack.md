@@ -12,20 +12,20 @@ tags:
 # Technology Stack
 
 <!-- truth: start -->
-- **Language**: Python >= 3.8 (CPython) with type annotations.
+- **Language**: Python >= 3.12 (CPython) with PEP 585/604 type annotations.
 - **Frontend Databases**: Oracle (`oracledb`), MS SQL Server (`pymssql`), Teradata (`pyodbc`).
 - **Cloud DW Backends**: Google BigQuery (`google-cloud-bigquery`), Snowflake (`snowflake-connector-python`), Azure Synapse (`pyodbc`), Apache Hadoop (`better_impyla`).
 - **Storage Systems**: Google Cloud Storage (`google-cloud-storage`, `fsspec[gcs]`), AWS S3 (`boto3`), Azure Blob / ADLS Gen2 (`azure-storage-blob`), HDFS (`hdfs`).
 - **Compute & Transport**: PySpark, Google Cloud Dataproc (Serverless Batches & Clusters), Apache Livy, Scala 2.12/2.13 (`GOETaskListener`).
-- **Data Serialization**: Apache Avro (`avro`, custom `AvroEncoder`), Apache Parquet (`pyarrow`, `ParquetEncoder`).
-- **Listener & Services**: FastAPI, Uvicorn, Gunicorn, Redis (`redis-py`), Pydantic, msgspec, Brotli.
+- **Data Serialization**: Apache Avro (`avro`, custom `AvroEncoder`), Apache Parquet (`pyarrow`, `ParquetEncoder`), `msgspec`, `sqlspec`.
+- **Listener & Services**: Litestar (`>=2.8.0`), Granian (`litestar-granian`), `litestar-queues` (in-memory ASGI queue backend), `litestar-security`, `litestar-autowire`, `litestar-mcp`, embedded `MemoryCache` / `MemorySyncCache`, Brotli.
 <!-- truth: end -->
 
 ## Subsystem Details
 
 ### 1. Python Runtime & Core Libraries
-- **Base Environment**: Python >= 3.12 managed with `uv` virtual environments.
-- **CLI & Parsing**: Standard library `optparse` / `argparse` wrapped by `goe.orchestration.cli_entry_points`, `lark-parser` for AST predicate grammar parsing.
+- **Base Environment**: Python >= 3.12 managed with `uv` virtual environments and `hatchling.build`.
+- **CLI & Parsing**: Unified `rich-click` CLI (`goe` entrypoint in `src/goe/cli/main.py`) wrapping `goe.orchestration.cli_entry_points`, and `lark-parser` for AST predicate grammar parsing.
 - **Concurrency & Locking**: `filelock` for process mutual exclusion, `threading` for asynchronous telemetry scrapers.
 - **Data Serialization**: `pyarrow` (columnar memory buffers), `avro` (schema validation and row serialization), `msgspec` (high-performance JSON serialization and typed Struct models), `sqlspec` (database abstraction layer).
 

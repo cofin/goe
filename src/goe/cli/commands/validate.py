@@ -3,11 +3,27 @@
 
 """'goe validate' subcommand for cross-database aggregation validation."""
 
+import sys
 from optparse import Values
+from typing import TYPE_CHECKING, Any
 
 import rich_click as click
 
-from goe.scripts.agg_validate import get_agg_validate_options, run_agg_validate
+from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
+from goe.cli.common import common_options, extract_common_options
+
+if TYPE_CHECKING:
+    from goe.scripts.agg_validate import (
+        get_agg_validate_options,
+        post_process_args,
+        run_agg_validate,
+    )
+
+_LAZY_IMPORTS: LazyImportMap = {
+    "get_agg_validate_options": ("goe.scripts.agg_validate", "get_agg_validate_options"),
+    "post_process_args": ("goe.scripts.agg_validate", "post_process_args"),
+    "run_agg_validate": ("goe.scripts.agg_validate", "run_agg_validate"),
+}
 
 
 @click.command(
@@ -23,10 +39,16 @@ from goe.scripts.agg_validate import get_agg_validate_options, run_agg_validate
     help="Required. Source schema and table name in OWNER.TABLE format.",
 )
 @click.option(
+    "--target-name",
+    "target_owner_name",
+    default=None,
+    help="Override target schema and table name in OWNER.TABLE format.",
+)
+@click.option(
     "-x",
-    "--execute",
+    "--execute/--no-execute",
     is_flag=True,
-    default=True,
+    default=False,
     help="Execute comparison queries, rather than dry-run SQL preview.",
 )
 @click.option(
@@ -51,6 +73,7 @@ from goe.scripts.agg_validate import get_agg_validate_options, run_agg_validate
 )
 @click.option(
     "--as-of-scn",
+    type=int,
     help="Oracle System Change Number (SCN) for snapshot-consistent validation.",
 )
 @click.option(
@@ -61,27 +84,37 @@ from goe.scripts.agg_validate import get_agg_validate_options, run_agg_validate
 @click.option(
     "--skip-boundary-check",
     is_flag=True,
-    help="Skip partition boundary boundary checks during validation.",
+    default=None,
+    help="Skip partition boundary checks during validation.",
 )
+@click.option(
+    "--dev-log-level",
+    "dev_log_level",
+    default=None,
+    hidden=True,
+    help="Development log level (info, debug).",
+)
+@common_options
 @click.pass_context
-def validate(ctx: click.Context, **kwargs) -> None:
+def validate(ctx: click.Context, **kwargs: Any) -> None:
     """Execute aggregate validation across databases."""
+    bind_lazy_imports(__name__, _LAZY_IMPORTS)
+    common_opts = extract_common_options(ctx, kwargs)
     parser = get_agg_validate_options()
     defaults = parser.get_default_values()
     options_dict = defaults.__dict__.copy()
-
-    if ctx.obj:
-        options_dict.update(
-            {
-                "verbose": ctx.obj.get("verbose", False),
-                "vverbose": ctx.obj.get("vverbose", False),
-                "quiet": ctx.obj.get("quiet", False),
-            }
-        )
+    options_dict.update(common_opts)
 
     for k, v in kwargs.items():
         if v is not None:
             options_dict[k] = v
 
     options = Values(options_dict)
-    run_agg_validate(options)
+    post_process_args(options)
+    ret = run_agg_validate(options)
+    sys.exit(0 if ret else 1)
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily import agg_validate dependencies on first attribute access."""
+    return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)

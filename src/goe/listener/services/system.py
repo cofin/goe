@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-# Standard Library
+"""System metadata service for GOE Listener."""
+
 import logging
 from typing import Any
 from uuid import NAMESPACE_DNS, UUID, uuid3
 
 from goe.config.orchestration_config import OrchestrationConfig
-
-# GOE
 from goe.goe import version as goe_version
 from goe.listener import utils
 from goe.listener.config import settings
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class SystemService:
-    """API for accessing metadata about databases"""
+    """API for accessing metadata about databases and listener endpoints."""
 
     def __init__(self, config: OrchestrationConfig | None = None, messages: OffloadMessages | None = None) -> None:
         if config is None:
@@ -39,11 +38,11 @@ class SystemService:
 
     @staticmethod
     def get_repo(config: OrchestrationConfig, messages: OffloadMessages) -> OrchestrationRepoClientInterface:
-        # TODO We need to find another way of setting dry_run below.
+        """Instantiate an orchestration repository client for metadata queries."""
         return orchestration_repo_client_factory(
             config,
             messages,
-            dry_run=False,  # bool(not config.execute)
+            dry_run=False,
         )
 
     def generate_listener_group_id(self) -> UUID:
@@ -57,7 +56,7 @@ class SystemService:
             f"{dsn}/{utils.system.get_ip_address()}:{settings.port}",
         )
 
-    async def get_active_listener_endpoints(self):
+    async def get_active_listener_endpoints(self) -> list[Any | None]:
         _, keys = await utils.cache.scan("goe:listener:endpoints:*")
         return await utils.cache.mget(keys)
 
@@ -98,4 +97,19 @@ class SystemService:
         return self.get_repo(self.config, self.messages).get_command_execution_steps(execution_id)
 
 
-system = SystemService()
+_default_service: SystemService | None = None
+
+
+def get_system_service() -> SystemService:
+    """Return a lazily initialized default SystemService instance."""
+    global _default_service
+    if _default_service is None:
+        _default_service = SystemService()
+    return _default_service
+
+
+def __getattr__(name: str) -> Any:
+    """Provide lazy module-level access to the default system service."""
+    if name == "system":
+        return get_system_service()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

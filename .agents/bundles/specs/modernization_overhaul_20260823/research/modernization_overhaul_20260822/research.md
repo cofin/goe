@@ -2,25 +2,26 @@
 type: Research
 research_id: modernization_overhaul_20260822
 title: GOE Modernization & Architectural Overhaul (Build, Msgspec, Rich-Click, Litestar)
+scope: architecture
+status: stable
 state: promoted
+promoted_to: modernization_overhaul_20260823
 created_at: "2026-08-22T22:45:00Z"
 updated_at: "2026-08-24T21:40:00Z"
 description: Architectural research and phased blueprint for overhauling build tooling, CI, msgspec serialization, rich-click CLI entrypoints, and Litestar listener services.
 tags:
-  - research
   - build
   - msgspec
   - cli
   - litestar
   - ci
-promoted_to: modernization_overhaul_20260823
 ---
 
 # GOE Modernization & Architectural Overhaul
 
 ## 1. Executive Summary
 
-This research document defines the comprehensive strategy for modernizing the **GOE (Gluent Offload Engine)** repository. By synthesizing best practices and battle-tested patterns from Cody's **DMA ecosystem** (`dma/collector`, `dma/beekeeper`, `dma/framework`, `dma/assistant`) and analyzing the existing migration branches (`origin/msgspec` and `origin/litestar`), we establish an ordered 4-pillar architectural roadmap:
+This research document defines the comprehensive strategy for modernizing the **GOE (Gluent Offload Engine)** repository. By synthesizing modern Python packaging, serialization, CLI, and ASGI server best practices and analyzing the existing migration branches (`origin/msgspec` and `origin/litestar`), we establish an ordered 4-pillar architectural roadmap:
 
 1. **Pillar 1: Modern Build System, Tooling & CI/CD Pipeline**
    - Migrate packaging from legacy `setuptools`/`setup.py` to `hatchling.build` with PEP 621 metadata and PEP 735 `[dependency-groups]`.
@@ -67,9 +68,9 @@ This research document defines the comprehensive strategy for modernizing the **
 
 ---
 
-## 3. Prior Art & Reference Patterns from DMA Ecosystem
+## 3. Prior Art & Reference Patterns from Modern Python Ecosystem
 
-### 3.1 Build & Packaging Configuration (`dma/collector/pyproject.toml`)
+### 3.1 Build & Packaging Configuration (`pyproject.toml`)
 - **Build Backend**:
   ```toml
   [build-system]
@@ -95,7 +96,7 @@ This research document defines the comprehensive strategy for modernizing the **
   - `target-version = "py310"`, `line-length = 120`, Google docstring convention.
   - Comprehensive rule selection (`lint.select = ["ALL"]`) with pragmatic ignores for CLI/test ergonomics.
 
-### 3.2 Serialization Patterns (`origin/msgspec` branch & `dma/collector`)
+### 3.2 Serialization Patterns (`origin/msgspec` branch)
 - Custom encoding hook for domain objects:
   ```python
   import decimal, datetime, msgspec
@@ -120,7 +121,7 @@ This research document defines the comprehensive strategy for modernizing the **
       return msgspec.json.decode(payload)
   ```
 
-### 3.3 CLI Application Patterns (`dma/beekeeper/manage.py`)
+### 3.3 CLI Application Patterns (`src/goe/cli/main.py`)
 - Rich-Click styling and group structure:
   ```python
   import rich_click as click
@@ -138,7 +139,7 @@ This research document defines the comprehensive strategy for modernizing the **
       """GOE - Gluent Offload Engine CLI."""
   ```
 
-### 3.4 Litestar Application & Ecosystem Services (`dma/beekeeper/pyproject.toml`)
+### 3.4 Litestar Application & Ecosystem Services (`pyproject.toml`)
 - Dependencies & Ecosystem:
   - `litestar[jinja,jwt,structlog]>=2.8.0`
   - `litestar-granian[uvloop]` (Rust-based Granian runtime)
@@ -162,7 +163,7 @@ This research document defines the comprehensive strategy for modernizing the **
    - Add strict type checking configuration (`[tool.mypy]` and `[tool.pyright]`).
    - Add `bump-my-version` configuration for semantic versioning.
 3. **Makefile Modernization**:
-   - Re-architect `Makefile` using DMA standards: `install`, `upgrade`, `lint`, `format`, `test`, `test-unit`, `test-integration`, `build`, `package`, `clean`.
+   - Re-architect `Makefile` using standard developer lifecycle targets: `install`, `upgrade`, `lint`, `format`, `test`, `test-unit`, `test-integration`, `build`, `package`, `clean`.
 4. **GitHub Actions CI Modernization**:
    - Scaffolding `.github/workflows/ci.yaml`, `test.yaml`, `release.yaml` using Astral `setup-uv@v7`.
    - Multi-matrix testing across Python 3.10, 3.11, 3.12, 3.13 on Linux, macOS, and Windows.

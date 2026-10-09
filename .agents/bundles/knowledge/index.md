@@ -17,8 +17,10 @@ The GOE Knowledge Base is organized into focused sub-domains containing comprehe
 ### 1. [Workflow & Operational Commands](workflow.md)
 Canonical setup, development, testing, packaging, and validation workflows with repository-native commands.
 
-### 2. [Patterns & Conventions](patterns.md)
-Consolidated architectural patterns, coding conventions, gotchas, and specialized skill associations.
+### 2. [Patterns & Conventions](patterns/index.md)
+- [Serialization & Utility Re-Export Patterns](patterns/serialization-and-utils.md) - `sqlspec.utils` re-exports in `src/goe/util/` and `msgspec.Struct` schemas.
+- [Centralized Rich-Click CLI & Legacy Delegators](patterns/cli-architecture.md) - Unified `goe` CLI (`src/goe/cli/`) and `bin/` deprecation delegators.
+- [Data Offload, Canonical Typing & Storage Gotchas](patterns/offload-and-typing.md) - Three-tier column mapping, snapshot-consistent reads, staged ingestion, and Oracle sampling gotchas.
 
 ### 3. [Architecture & Orchestration](architecture/index.md)
 - [Orchestration Core](architecture/orchestration.md) - `OrchestrationRunner`, locking, execution IDs, and command steps.
@@ -49,8 +51,8 @@ Consolidated architectural patterns, coding conventions, gotchas, and specialize
 - [Staging & Serialization](transport/staging-serialization.md) - Avro and Parquet encoding, Base64 binary handling, and chunk buffers.
 
 ### 8. [GOE Listener Service](listener/index.md)
-- [REST API Architecture](listener/rest-api.md) - FastAPI application factory, endpoints, security middleware, and compression.
-- [Workers & Redis Cache](listener/worker-and-redis.md) - Task queues, node heartbeats, scheduled cron jobs, and event streaming.
+- [REST API Architecture](listener/rest-api.md) - Litestar application factory, Granian ASGI runtime, `litestar-security` guards, `litestar-autowire` DI, and `litestar-mcp` tools.
+- [Workers & Redis Cache](listener/worker-and-redis.md) - `litestar-queues` background tasks, node heartbeats, scheduled cron jobs, and Valkey/Redis caching.
 
 ### 9. [Operations & Tooling](operations/index.md)
 - [CLI Utilities](operations/cli-tools.md) - `offload`, `connect`, `logmgr`, `agg_validate`, and `listener` commands.

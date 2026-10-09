@@ -13,12 +13,12 @@ from datetime import datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from goe.listener.utils.cache import MemorySyncCache as cache
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.command_steps import STEP_TITLES, step_title
 from goe.util.goe_log_fh import GOELogFileHandle
 from goe.util.json_tools import serialize_object
 from goe.util.misc_functions import standard_log_name
-from goe.util.redis_tools import cache
 
 if TYPE_CHECKING:
     # GOE

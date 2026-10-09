@@ -4,11 +4,13 @@
 import pytest
 
 from goe.persistence.schemas import (
+    ColumnDetail,
     CommandExecutionSchema,
     LogEventSchema,
     OffloadMetadataSchema,
     PartitionMetadataSchema,
     StepDetailSchema,
+    SubPartitionDetail,
     decode_schema,
     encode_schema,
     encode_schema_bytes,
@@ -71,3 +73,39 @@ def test_log_event_schema():
     decoded = decode_schema(LogEventSchema, encoded)
     assert decoded.message == "Offload process started"
     assert decoded.level == "INFO"
+
+
+def test_column_detail_with_data_precision():
+    """Verify ColumnDetail supports both data_precision and data_scale."""
+    col = ColumnDetail(
+        column_name="AMOUNT",
+        data_type="NUMBER",
+        data_precision=10,
+        data_scale=2,
+        is_nullable=False,
+    )
+    assert col.data_precision == 10
+    assert col.data_scale == 2
+    assert col.is_nullable is False
+
+
+def test_subpartition_detail_with_partition_name_and_position():
+    """Verify SubPartitionDetail.from_orm and to_dict preserve partition_name and partition_position."""
+
+    class DummyOrmSubpart:
+        partition_name = "P_2025"
+        partition_position = 1
+        subpartition_name = "SP_1"
+        subpartition_position = 1
+        high_value = "100"
+
+    subpart = SubPartitionDetail.from_orm(DummyOrmSubpart())
+    assert subpart.partition_name == "P_2025"
+    assert subpart.partition_position == 1
+    assert subpart.to_dict() == {
+        "partition_name": "P_2025",
+        "partition_position": 1,
+        "subpartition_name": "SP_1",
+        "subpartition_position": 1,
+        "high_value": "100",
+    }

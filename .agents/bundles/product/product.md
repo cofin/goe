@@ -16,7 +16,7 @@ tags:
 - Provides non-invasive data movement preserving RDBMS transactional snapshot consistency (via SCN / Flashback) without requiring source table downtime.
 - Supports Full Table Offload, Partition-Based Incremental Offload (Range, List, List-as-Range), and Predicate-Based Offload.
 - Employs a 3-tier canonical column typing abstraction to ensure lossless type conversion across disparate SQL dialects.
-- Includes a standalone REST Listener service (FastAPI, Redis) for remote execution and real-time event streaming.
+- Includes a REST Listener and MCP service (Litestar, Granian, `litestar-queues`, Valkey) for remote execution and real-time event streaming.
 <!-- truth: end -->
 
 ## Core Capabilities

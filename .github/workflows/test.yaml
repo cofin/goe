@@ -53,7 +53,7 @@ jobs:
         name: Run Ruff and Mypy checks
         run: |
           uv run ruff format --check src tests tools
-          uv run ruff check src tests tools
+          uv run ruff check .
           uv run mypy src/goe
 
       - if: ${{ inputs.coverage }}

@@ -7,9 +7,11 @@ import datetime
 import os
 import shutil
 from pathlib import Path
+from typing import Any
 
 import rich_click as click
 
+from goe.cli.common import common_options, extract_common_options
 from goe.cli.console import print_info, print_success
 
 
@@ -26,9 +28,8 @@ from goe.cli.console import print_info, print_success
 @click.option(
     "--min-age-minutes",
     type=int,
-    default=60,
-    show_default=True,
-    help="Minimum age (in minutes) of log files before being moved to archive.",
+    default=None,
+    help="Minimum age (in minutes) of log files before being moved to archive (defaults to $LOG_MV_MINS or 60).",
 )
 @click.option(
     "--archive-dir",
@@ -45,14 +46,20 @@ from goe.cli.console import print_info, print_success
     type=int,
     help="Purge archived logs older than N days.",
 )
+@common_options
+@click.pass_context
 def logmgr(
+    ctx: click.Context,
     log_dir: Path | None = None,
-    min_age_minutes: int = 60,
+    min_age_minutes: int | None = None,
     archive_dir: Path | None = None,
     dry_run: bool = False,
     purge_days: int | None = None,
+    **kwargs: Any,
 ) -> None:
     """Archive old logs into dated folders and prune expired logs."""
+    extract_common_options(ctx, kwargs)
+    resolved_min_age = min_age_minutes if min_age_minutes is not None else int(os.environ.get("LOG_MV_MINS", 60))
     if log_dir is None:
         offload_home = os.environ.get("OFFLOAD_HOME")
         if offload_home:
@@ -69,7 +76,7 @@ def logmgr(
         archive_dir = log_dir / "archive" / now.strftime("%Y.%m.%d")
 
     moved_count = 0
-    cutoff_time = now.timestamp() - (min_age_minutes * 60)
+    cutoff_time = now.timestamp() - (resolved_min_age * 60)
 
     for item in log_dir.iterdir():
         if item.is_file() and item.stat().st_mtime <= cutoff_time:

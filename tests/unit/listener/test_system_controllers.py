@@ -1,16 +1,20 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import MagicMock
+"""Unit tests for SystemController endpoints and console-key authentication."""
+
+from unittest.mock import MagicMock, patch
 
 from litestar.di import Provide
 from litestar.testing import TestClient
 
 from goe.listener.app import create_app
+from goe.listener.config import settings
 from goe.listener.services.system import SystemService
 
 
-def test_system_status():
+def test_system_status() -> None:
+    """Verify /api/system/status/ returns 200 OK."""
     app = create_app()
     with TestClient(app=app) as client:
         response = client.get("/api/system/status/")
@@ -18,7 +22,8 @@ def test_system_status():
         assert response.json() == {"status": "OK"}
 
 
-def test_system_config():
+def test_system_config() -> None:
+    """Verify /api/system/config/ returns listener and database metadata."""
     mock_service = MagicMock(spec=SystemService)
     mock_service.generate_listener_endpoint_id.return_value = "00000000-0000-0000-0000-000000000001"
     mock_service.generate_listener_group_id.return_value = "00000000-0000-0000-0000-000000000002"
@@ -27,7 +32,7 @@ def test_system_config():
     mock_service.get_frontend_type.return_value = "ORACLE"
     mock_service.get_backend_type.return_value = "BIGQUERY"
 
-    async def mock_active_endpoints():
+    async def mock_active_endpoints() -> list:
         return []
 
     mock_service.get_active_listener_endpoints = mock_active_endpoints
@@ -43,7 +48,8 @@ def test_system_config():
         assert data["frontend_type"] == "ORACLE"
 
 
-def test_system_schemas():
+def test_system_schemas() -> None:
+    """Verify /api/system/schemas/ returns offloadable schemas."""
     mock_service = MagicMock(spec=SystemService)
     mock_service.get_schemas.return_value = [
         {"schema_name": "SH", "hybrid_schema_exists": True, "table_count": 5, "schema_size_in_bytes": 1024.0}
@@ -57,3 +63,27 @@ def test_system_schemas():
         data = response.json()
         assert data["count"] == 1
         assert data["results"][0]["schema_name"] == "SH"
+
+
+def test_system_console_key_enforcement() -> None:
+    """Verify x-goe-console-key header enforcement when settings.shared_token is configured."""
+    mock_service = MagicMock(spec=SystemService)
+    mock_service.get_schemas.return_value = [
+        {"schema_name": "SH", "hybrid_schema_exists": True, "table_count": 5, "schema_size_in_bytes": 1024.0}
+    ]
+
+    app = create_app(dependencies={"system_service": Provide(lambda: mock_service, sync_to_thread=False)})
+
+    with patch.object(settings, "shared_token", "secret-token-123"), TestClient(app=app) as client:
+        status_resp = client.get("/api/system/status/")
+        assert status_resp.status_code == 200
+
+        unauth_resp = client.get("/api/system/schemas/")
+        assert unauth_resp.status_code == 401
+
+        invalid_resp = client.get("/api/system/schemas/", headers={"x-goe-console-key": "wrong-token"})
+        assert invalid_resp.status_code == 401
+
+        valid_resp = client.get("/api/system/schemas/", headers={"x-goe-console-key": "secret-token-123"})
+        assert valid_resp.status_code == 200
+        assert valid_resp.json()["count"] == 1

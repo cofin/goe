@@ -4,6 +4,7 @@
 import datetime
 from typing import Any
 
+from msgspec.json import Encoder
 from sqlspec.utils.serializers import (
     from_json,
     to_json,
@@ -25,8 +26,6 @@ def serialize_object(obj: Any) -> str:
     try:
         return to_json(obj)
     except Exception:
-        from msgspec.json import Encoder
-
         return Encoder(enc_hook=_default).encode(obj).decode()
 
 
@@ -35,8 +34,6 @@ def serialize_object_bytes(obj: Any) -> bytes:
     try:
         return to_json(obj, as_bytes=True)
     except Exception:
-        from msgspec.json import Encoder
-
         return Encoder(enc_hook=_default).encode(obj)
 
 

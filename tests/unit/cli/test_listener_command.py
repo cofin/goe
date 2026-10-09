@@ -32,3 +32,41 @@ def test_listener_start_dispatch(mock_granian):
     assert result.exit_code == 0
     assert mock_granian.called
     assert mock_granian.call_args[1]["port"] == 9000
+
+
+@patch("goe.cli.commands.listener.httpx.get")
+def test_listener_status_healthy(mock_get):
+    mock_get.return_value.status_code = 200
+    mock_get.return_value.text = '{"status":true}'
+    runner = CliRunner()
+    result = runner.invoke(cli, ["listener", "status"])
+    assert result.exit_code == 0
+    assert "healthy" in result.output.lower()
+
+
+@patch("goe.cli.commands.listener.httpx.get", side_effect=OSError("connection refused"))
+def test_listener_status_unreachable(mock_get):
+    runner = CliRunner()
+    result = runner.invoke(cli, ["listener", "status"])
+    assert result.exit_code == 0
+    assert "not reachable" in result.output.lower()
+
+
+@patch("goe.cli.commands.listener.Granian")
+def test_listener_bare_invocation_starts_server(mock_granian):
+    """Verify bare goe listener (and bin/listener) starts the server by default."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["listener", "--port", "9090", "-v"])
+    assert result.exit_code == 0
+    assert mock_granian.called
+    assert mock_granian.call_args[1]["port"] == 9090
+
+
+@patch("goe.cli.commands.listener.Granian")
+def test_listener_group_options_forwarded_to_start(mock_granian):
+    """Verify server options placed before start subcommand are forwarded to start."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["listener", "--port", "9091", "start"])
+    assert result.exit_code == 0
+    assert mock_granian.called
+    assert mock_granian.call_args[1]["port"] == 9091

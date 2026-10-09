@@ -12,7 +12,7 @@ from goe.cli.main import cli
 
 if __name__ == "__main__":
     warnings.warn(
-        "Invoking 'bin/listener' is deprecated. Please use 'goe listener' instead.",
+        "Invoking 'bin/listener' is deprecated and will be removed in GOE 2.0.0. Please use 'goe listener' instead.",
         DeprecationWarning,
         stacklevel=1,
     )

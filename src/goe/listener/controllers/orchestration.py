@@ -4,12 +4,13 @@
 """Orchestration controller for Litestar GOE Listener."""
 
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any, ClassVar
 
-import msgspec
-from litestar import Controller, get, post
-from litestar.params import Dependency, Parameter
+from litestar import get, post
+from litestar.di import NamedDependency
+from litestar.params import FromPath, FromQuery, JSONBody
 from litestar_queues import QueueService
+from litestar_security import AuthenticationPolicy, SecureController, required
 
 from goe.listener import exceptions, jobs, schemas, utils
 from goe.listener.services.system import SystemService
@@ -17,45 +18,51 @@ from goe.orchestration.execution_id import ExecutionId
 from goe.util.sync_tools import async_
 
 
-class OrchestrationController(Controller):
+def _normalize_execution_id(raw_id: Any) -> str:
+    """Convert raw bytes or UUID execution_id values into canonical string form."""
+    if isinstance(raw_id, bytes):
+        return ExecutionId.from_bytes(raw_id).as_str()
+    return str(raw_id)
+
+
+class OrchestrationController(SecureController):
     """Controller for /api/orchestration endpoints."""
 
     path = "/api/orchestration"
-    tags = ["Orchestration"]
+    tags: ClassVar[list[str]] = ["Orchestration"]
+    auth: ClassVar[AuthenticationPolicy] = required("console-key")
 
-    @get("/executions/")
+    @get("/executions/", mcp_tool="get_command_executions")
     async def get_command_executions(
         self,
-        system_service: Annotated[SystemService, Dependency(skip_validation=True)],
-        include_steps: Annotated[bool, Parameter(query="include_steps", default=False)] = False,
+        system_service: NamedDependency[SystemService],
+        include_steps: FromQuery[bool] = False,
     ) -> schemas.CommandExecutions:
         """Fetch command executions from repo."""
         executions = await async_(system_service.get_command_executions)()
+        for item in executions:
+            if "execution_id" in item and item["execution_id"] is not None:
+                item["execution_id"] = _normalize_execution_id(item["execution_id"])
         if include_steps:
             all_steps = await async_(system_service.get_command_execution_steps)(execution_id=None)
+            for step in all_steps:
+                if "execution_id" in step and step["execution_id"] is not None:
+                    step["execution_id"] = _normalize_execution_id(step["execution_id"])
             grouped = utils.groupby(
-                lambda s: (
-                    ExecutionId.from_bytes(s.get("execution_id")).as_str()
-                    if isinstance(s.get("execution_id"), bytes)
-                    else str(s.get("execution_id"))
-                ),
+                lambda s: _normalize_execution_id(s.get("execution_id")),
                 all_steps,
             )
             for item in executions:
-                exec_key = (
-                    ExecutionId.from_bytes(item["execution_id"]).as_str()
-                    if isinstance(item["execution_id"], bytes)
-                    else str(item["execution_id"])
-                )
+                exec_key = _normalize_execution_id(item["execution_id"])
                 item["steps"] = grouped.get(exec_key, [])
         return schemas.CommandExecutions(count=len(executions), results=executions)
 
-    @get("/executions/{execution_id:str}/")
+    @get("/executions/{execution_id:str}/", mcp_tool="get_command_execution")
     async def get_command_execution(
         self,
-        system_service: Annotated[SystemService, Dependency(skip_validation=True)],
-        execution_id: Annotated[str, Parameter(title="Execution ID")],
-        include_steps: Annotated[bool, Parameter(query="include_steps", default=False)] = False,
+        system_service: NamedDependency[SystemService],
+        execution_id: FromPath[str],
+        include_steps: FromQuery[bool] = False,
     ) -> dict[str, Any]:
         """Fetch details of a specific command execution."""
         execution_identifier = ExecutionId.from_str(execution_id)
@@ -63,17 +70,23 @@ class OrchestrationController(Controller):
         if not execution:
             raise exceptions.CommandExecutionNotFound(execution_id)
 
+        if "execution_id" in execution and execution["execution_id"] is not None:
+            execution["execution_id"] = _normalize_execution_id(execution["execution_id"])
+
         if include_steps:
             steps = await async_(system_service.get_command_execution_steps)(execution_identifier)
             if steps:
+                for step in steps:
+                    if "execution_id" in step and step["execution_id"] is not None:
+                        step["execution_id"] = _normalize_execution_id(step["execution_id"])
                 execution["steps"] = steps
         return execution
 
-    @get("/executions/{execution_id:str}/execution-log/")
+    @get("/executions/{execution_id:str}/execution-log/", mcp_tool="get_command_execution_log")
     async def get_command_execution_log(
         self,
-        system_service: Annotated[SystemService, Dependency(skip_validation=True)],
-        execution_id: Annotated[str, Parameter(title="Execution ID")],
+        system_service: NamedDependency[SystemService],
+        execution_id: FromPath[str],
     ) -> schemas.CommandExecutionLog:
         """Fetch log contents of a specific command execution."""
         execution_identifier = ExecutionId.from_str(execution_id)
@@ -81,9 +94,10 @@ class OrchestrationController(Controller):
         if not execution:
             raise exceptions.CommandExecutionNotFound(execution_id)
 
-        log_path = Path(execution.get("command_log_path", ""))
-        file_name = log_path.stem
-        if log_path.exists():
+        raw_log_path = execution.get("command_log_path") or ""
+        log_path = Path(raw_log_path) if raw_log_path else None
+        file_name = log_path.stem if log_path else ""
+        if log_path is not None and log_path.is_file():
             contents = log_path.read_text(errors="replace")
             return schemas.CommandExecutionLog(name=file_name, is_file=True, message=contents)
 
@@ -93,18 +107,17 @@ class OrchestrationController(Controller):
             message=f"Log file for execution {execution_identifier.id} not found.",
         )
 
-    @post("/offload/")
+    @post("/offload/", mcp_tool="execute_offload")
     async def execute_offload_command(
         self,
-        data: schemas.OffloadOptions,
-        queue_service: Annotated[QueueService, Dependency(skip_validation=True)],
+        data: JSONBody[schemas.OffloadOptions],
+        queue_service: NamedDependency[QueueService],
     ) -> schemas.CommandScheduled:
         """Submit a background offload operation."""
         utils.orchestrate.check_for_running_command(data.owner_table)
         execution_identifier = ExecutionId()
-        params = {k: v for k, v in msgspec.structs.asdict(data).items() if v is not None}
+        params = data.to_params_dict()
 
-        # Enqueue background task
         await queue_service.enqueue(
             jobs.run_offload_job,
             params=params,

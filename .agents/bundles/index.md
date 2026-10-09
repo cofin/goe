@@ -1,7 +1,13 @@
 ---
 okf_version: "0.2"
+type: Index
 title: GOE Knowledge Bundle
 description: Open Knowledge Format bundle for Next-GOE data orchestration framework
+tags:
+  - index
+  - okf
+  - goe
+updated_at: "2026-10-02T19:33:00Z"
 ---
 
 # GOE Knowledge Bundle
