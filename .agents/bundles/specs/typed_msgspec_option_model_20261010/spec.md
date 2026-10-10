@@ -3,16 +3,16 @@ type: Spec
 flow_id: typed_msgspec_option_model_20261010
 title: "Chapter 2.1: Typed msgspec Option Model & optparse Elimination"
 state: planned
-plan_revision: 1
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
 last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
-created_at: "2026-10-10T16:00:00Z"
-updated_at: "2026-10-10T16:26:00Z"
-description: "Replace legacy optparse.Values option bags and OptionParser builders with canonical msgspec.Struct option models across CLI, Listener, and core operations with 100% feature parity and complete deletion of superseded optparse code and duplicate schemas."
+created_at: 2026-10-10T16:00:00Z
+updated_at: 2026-10-10T22:30:00Z
+description: "Replace legacy optparse.OptionParser builders and optparse.Values option bags with typed msgspec.Struct option models in src/goe/config/options.py, delete every superseded builder and optparse import, and share canonical offload keys and listener alias tables from one module."
 tags:
   - refactor
   - options
@@ -20,221 +20,139 @@ tags:
   - cli
   - listener
   - typing
-parent_prd: prd_02_core_typing_options_and_decomposition_20261010
-research: []
+parent: prd_02_core_typing_options_and_decomposition_20261010
+depends_on:
+  - prd_01_foundation_adc_and_ci_harness_20261010
+research:
+  - .agents/bundles/specs/typed_msgspec_option_model_20261010/research/option_inventory.md
 ---
 
 # Chapter 2.1: Typed msgspec Option Model & optparse Elimination
 
 ## Specification
 
-### 1. Problem Statement & Current Inventory
+### 1. Context and baseline
 
-Across `src/goe/`, command-line and programmatic options are currently constructed by instantiating legacy `optparse.OptionParser` objects solely to extract their `.defaults` dictionary, mutating that dictionary, and wrapping it in an untyped `optparse.Values` object (`options.__dict__`). A repository-wide audit (`git grep -n optparse src/`) identifies **14 production files** importing `optparse`:
+- **Baseline commit**: every line number in this flow refers to `46890a8`. Files that an earlier chapter edits are cited by symbol name as well; locate them by symbol before editing.
+- **Earlier-chapter edits to files owned here** (PRD 1 executes first):
+  - `src/goe/goe.py`, `src/goe/connect/connect.py`, `src/goe/orchestration/orchestration_runner.py`: PRD 1 Chapter 1.1 Task 1.2 (`legacy_shim_removal_and_repo_hygiene_20261010:1.2`) deletes `RedisClient` imports, `redis_execution_id`/`redis_in_error`/`init_redis_execution_id`, the `redis_publish` parameter of `log()`, Redis-only imports (`goe.py` L12 `timedelta`, L113 `ExecutionId`), and in `connect.py` lines 52, 55, 227-277 (`test_listener`) and the call at 405. `connect.py` lines after 226 therefore shift up by 54 (`get_connect_opts` L441 becomes about L387; `connect` L464 becomes about L410).
+  - `src/goe/offload/predicate_offload.py`, `tests/unit/offload/test_predicate_offload.py`: PRD 1 Chapter 1.1 Task 1.5 (dependency migration to `lark>=1.1.9`) only re-runs these tests and changes no source in them; the `from optparse import OptionValueError` line (`predicate_offload.py:83`) is unchanged.
+  - `src/goe/config/orchestration_defaults.py`: PRD 1 Chapter 1.1 Task 1.2 removes `cache_enabled()`/`listener_redis_*`; Chapter 1.2 Task 1.1 adds GCP options. None of the default functions used by option structs are removed.
+- **Authoritative field inventory**: [research/option_inventory.md](research/option_inventory.md) lists every field, flag, default source, and annotation, extracted from source at `46890a8`. Struct field sets in this flow must match it exactly.
 
-1. `src/goe/cli/commands/connect.py:6` — imports `from optparse import Values`; lines `58-66` call `get_connect_opts()` (`OptionParser`) and return `Values(options_dict)`.
-2. `src/goe/cli/commands/offload.py:6` — imports `from optparse import Values`; lines `522-547` call `get_options(operation_name=OFFLOAD_OP_NAME)`, `get_offload_options(parser)`, and wrap merged defaults in `Values(options_dict)`.
-3. `src/goe/cli/commands/report.py:6` — imports `from optparse import Values`; lines `67-80` call `get_offload_status_report_opts()` and return `Values(options_dict)`.
-4. `src/goe/cli/commands/sync.py:7` — imports `from optparse import Values`; lines `75-85` call `get_schema_sync_opts()` and return `Values(options_dict)`.
-5. `src/goe/cli/commands/validate.py:7` — imports `from optparse import Values`; lines `103-113` call `get_agg_validate_options()` and return `Values(options_dict)`.
-6. `src/goe/connect/connect.py:10` — imports `from optparse import SUPPRESS_HELP`, imports `OptionValueError` from `goe.goe` at line `41`, builds `OptionParser` in `get_connect_opts()` at lines `441-461`, and sets `options.original_offload_transport_spark_thrift_host` and `options.original_hadoop_host` at lines `486-489`.
-7. `src/goe/goe.py:13` — imports `from optparse import SUPPRESS_HELP, Option, OptionParser, OptionValueError`; defines `EXPECTED_OFFLOAD_ARGS` at lines `154-240`, `normalise_options` at lines `906-1008`, `BaseOperation.__init__` at lines `1142-1224`, `OffloadOperation.from_options` at lines `1960-2058`, `OffloadOperation.from_dict` at lines `2060-2241`, `check_posint` at lines `2666-2671`, `GOEOptionTypes` (`Option` subclass) at lines `2674-2683`, `get_common_options` at lines `2685-2772`, `get_oracle_options` at lines `2775-2824`, `get_options` at lines `2827-3106`, and `get_options_from_list` at lines `3109-3127`.
-8. `src/goe/offload/offload.py:10` — imports `from optparse import SUPPRESS_HELP` and defines `get_offload_options(opt)` at lines `379-655`.
-9. `src/goe/offload/offload_status_report.py:11` — imports `from optparse import SUPPRESS_HELP, OptionGroup` and defines `get_offload_status_report_opts()` at lines `3602-3674` and `normalise_offload_status_report_options(options)` at lines `3676-3698`.
-10. `src/goe/offload/operation/partition_controls.py:7` — imports `from optparse import OptionValueError` (raised at line `219`).
-11. `src/goe/offload/option_validation.py:5` — imports `from optparse import OptionValueError` (used as default `exception_class=OptionValueError` in `check_opt_is_posint` at line `71`).
-12. `src/goe/offload/oracle/oracle_predicate.py:8` — imports `from optparse import OptionValueError` (raised at lines `52`, `65`, `79`, `91`).
-13. `src/goe/offload/predicate_offload.py:83` — imports `from optparse import OptionValueError` (raised at lines `174`, `176`, `339`, `343`, `346`).
-14. `src/goe/offload/teradata/teradata_predicate.py:8` — imports `from optparse import OptionValueError` (raised at lines `43`, `57`).
+### 2. Problem statement (verified against `46890a8`)
 
-Additionally:
-- `src/goe/schema_sync/schema_sync.py:29-59` builds `get_schema_sync_opts()` via `get_common_options()` (`OptionParser`) and normalizes options in `normalise_schema_sync_options(options)`.
-- `src/goe/scripts/agg_validate.py:64-235` builds `get_agg_validate_options()` via `get_options_from_list(GOE_OPTIONS)` (`OptionParser`), parses via `parse_args()`, and normalizes options in `post_process_args(args)`.
-- `src/goe/listener/schemas.py:160-303` duplicates a 96-field `OffloadOptions(BaseStruct)` definition and a custom `to_params_dict()` method because `goe.goe` could not be imported at top-level without triggering a circular import (`goe.goe` -> `config_validation_functions` -> `goe_dfs` -> `offload_messages` -> `listener.utils.cache` -> `listener.schemas`).
-- Note that `src/goe/conductor/hybrid_view_service.py` and `src/goe/listener/services/hybrid_view.py` are deleted as dead code in PRD 1 Chapter 1.1 and must not be touched or retained here.
+`git grep -n optparse src/` returns 14 production files plus one test file:
 
----
+| # | File:line | Import | Use |
+| :--- | :--- | :--- | :--- |
+| 1 | `src/goe/cli/commands/connect.py:6` | `Values` | `connect()` L58-66 builds defaults via `get_connect_opts()` |
+| 2 | `src/goe/cli/commands/offload.py:6` | `Values` | `offload()` L522-547 builds defaults via `get_options()` + `get_offload_options()` |
+| 3 | `src/goe/cli/commands/report.py:6` | `Values` | `report()` L67-80 via `get_offload_status_report_opts()` |
+| 4 | `src/goe/cli/commands/sync.py:7` | `Values` | `sync()` L75-84 via `get_schema_sync_opts()` |
+| 5 | `src/goe/cli/commands/validate.py:7` | `Values` | `validate()` L103-112 via `get_agg_validate_options()` |
+| 6 | `src/goe/connect/connect.py:10` | `SUPPRESS_HELP` | `get_connect_opts()` L441-461; `connect()` L464-506 parses `sys.argv` when `options_override is None`; imports `OptionValueError` from `goe.goe` (L41) |
+| 7 | `src/goe/goe.py:13` | `SUPPRESS_HELP, Option, OptionParser, OptionValueError` | `check_posint` L2666-2671, `GOEOptionTypes` L2674-2682, `get_common_options` L2685-2772, `get_oracle_options` L2775-2824 (zero callers), `get_options` L2827-3106, `get_options_from_list` L3109-3127 |
+| 8 | `src/goe/offload/offload.py:10` | `SUPPRESS_HELP` | `get_offload_options(opt)` L379-655 |
+| 9 | `src/goe/offload/offload_status_report.py:11` | `SUPPRESS_HELP, OptionGroup` | `get_offload_status_report_opts()` L3602-3673; `offload_status_report_run(options=None)` L3734-3794 parses `sys.argv` when `options is None` and calls `opt.print_help()` |
+| 10 | `src/goe/offload/operation/partition_controls.py:7` | `OptionValueError` | raised at L219 |
+| 11 | `src/goe/offload/option_validation.py:5` | `OptionValueError` | default `exception_class` of `check_opt_is_posint` L71 |
+| 12 | `src/goe/offload/oracle/oracle_predicate.py:8` | `OptionValueError` | raised |
+| 13 | `src/goe/offload/predicate_offload.py:83` | `OptionValueError` | raised |
+| 14 | `src/goe/offload/teradata/teradata_predicate.py:8` | `OptionValueError` | raised |
+| T | `tests/unit/offload/test_predicate_offload.py:8` | `OptionValueError` | `assertRaises` |
 
-### 2. Target Architecture: `src/goe/config/options.py` (100% Parity & Zero Dead Code)
+Additional builders without a direct `optparse` import: `get_schema_sync_opts()` (`src/goe/schema_sync/schema_sync.py:29-48`, via `get_common_options`) and `GOE_OPTIONS` (L64-78) / `get_agg_validate_options()` (L179-227) / `parse_args()` (L230-235) / `main()` (L259-266) plus the `#### MAIN PROGRAM BEGINS HERE` comment and `if __name__ == "__main__":` block (L269-271) in `src/goe/scripts/agg_validate.py` (via `get_options_from_list`). `src/goe/util/option_mixin.py` and `src/goe/logmgr.py` do not exist, and `src/goe/cli/commands/logmgr.py` has no `optparse` reference; they are out of scope.
 
-We introduce `src/goe/config/options.py` as the single, zero-circular-import source of truth for all GOE option schemas, defaults, and alias normalization, and we **delete** all superseded `optparse` parsers, builders, and duplicate schema bodies:
+Verified counts: `EXPECTED_OFFLOAD_ARGS` (`src/goe/goe.py:154-240`) has **85** keys. The listener `OffloadOptions` (`src/goe/listener/schemas.py:160-258`) declares **96** fields = 84 canonical keys (all `EXPECTED_OFFLOAD_ARGS` except `operation_name`) + 10 alias fields + `quiet`/`verbose`. The CLI `offload` command adds 3 derived flags (`--verify`, `--no-verify`, `--no-modify-hybrid-view`) that map onto canonical keys.
+
+### 3. Target architecture
+
+`src/goe/config/options.py` is an import leaf (stdlib, `msgspec`, `goe.lib.schemas`, `goe.config.orchestration_defaults`; verified at `46890a8` that importing `goe.config.orchestration_defaults` loads only `goe.config.config_file`, `goe.offload.offload_constants`, and `goe.util.misc_functions`). It never imports `goe.goe`, `goe.offload.offload_messages`, `goe.filesystem`, or `goe.listener`.
 
 ```mermaid
 classDiagram
-    class BaseStruct {
-        <<msgspec.Struct>>
-    }
+    class BaseStruct
     class BaseOptionStruct {
-        <<msgspec.Struct, dict=True, kw_only=True>>
-        +from_mapping(mapping, **overrides) Self
-        +to_dict() dict[str, Any]
-        +get(key: str, default: Any = None) Any
-        +__getitem__(key: str) Any
-        +__setitem__(key: str, value: Any) None
-        +__contains__(key: str) bool
+        +from_mapping(mapping) Self
+        +to_dict() dict~str, Any~
     }
     class CommonOptions {
-        +ansi: bool
-        +quiet: bool
-        +verbose: bool
-        +vverbose: bool
-        +logfile: str | None
-        +log_path: str
-        +db_type: str
-        +backend_distribution: str | None
-        +ora_adm_user: str
-        +ora_adm_pass: str
-        +ora_app_user: str
-        +ora_app_pass: str
-        +ora_repo_user: str
-        +ora_use_wallet: bool
-        +ora_conn: str
-        +offload_backend_db: str
-        +error_on_token: str | None
-        +exception_on_token: str | None
-        +force_S3: bool
-        +hadoop_host: str | None
-        +hadoop_port: int | str | None
-        +hadoop_user: str | None
-        +hdfs_Attachment: str
-        +hdfs_data: str
-        +hdfs_home: str
-        +hdfs_host: str | None
-        +hdfs_port: int | None
-        +hdfs_load: str
-        +hiveserver_auth_mechanism: str
-        +kerberos_service: str | None
-        +ldap_user: str | None
-        +ldap_password: str | None
-        +ldap_ca_cert: str | None
-        +offload_fs_scheme: str | None
-        +offload_fs_container: str | None
-        +offload_fs_prefix: str | None
-        +offload_staging_format: str
-        +google_dataproc_cluster: str | None
-        +google_dataproc_project: str | None
-        +google_dataproc_region: str | None
-        +google_dataproc_service_account: str | None
-        +google_dataproc_batches_subnet: str | None
-        +google_dataproc_batches_ttl: int | None
-        +google_dataproc_batches_version: str | None
-        +google_kms_key_ring_location: str | None
-        +google_kms_key_ring_name: str | None
-        +google_kms_key_name: str | None
-        +suppress_stdout: bool
-        +version: bool
-        +dev_log_level: str
+        14 fields from get_common_options
+    }
+    class TableOperationOptions {
+        40 fields from get_options
+        7 derived owner/table fields
     }
     class OffloadOperationOptions {
-        +operation_name: str
-        +owner_table: str | None
-        +all 84 EXPECTED_OFFLOAD_ARGS + 12 CLI/API aliases
-        +to_operation_dict() dict[str, Any]
-        +to_params_dict() dict[str, Any]
-    }
-    class ConnectOptions {
-        +component: str
-        +include_Spark: list[str]
-        +spark_Diagnostics: bool
-        +skip: list[str]
-        +detail: str
-        +retry_count: int
-        +original_offload_transport_spark_thrift_host: str | None
-        +original_hadoop_host: str | None
-    }
-    class StatusReportOptions {
-        +report_fields: str
-        +output_format: str
-        +owner_filter: str
-        +table_filter: str
-        +Include: str
-        +Exclude: str
-        +hybrid_owner_filter: str
-        +hybrid_view_filter: str
-        +Hybrid_Include: str
-        +Hybrid_Exclude: str
-        +csv_delimiter: str
-        +csv_enclosure: str
-        +csv_escape: str
-        +suppress_header: bool
-        +list_report_fields: bool
-        +list_report_groups: bool
-    }
-    class SchemaSyncOptions {
-        +owner: str | None
-        +table_name: str | None
-        +include_objects: str | None
-        +exclude_objects: str | None
-        +execute: bool
-        +add_backend_columns: bool
-        +add_oracle_columns: bool
-        +present_new_columns: bool
-        +command_file: str | None
-        +auto_approve: bool
+        42 fields from get_offload_options
+        operation_name
     }
     class AggValidateOptions {
-        +owner_table: str | None
-        +db_name: str | None
-        +table_name: str | None
-        +hive_db_name: str | None
-        +hive_table_name: str | None
-        +Aggs: str
-        +filters: str
-        +sec_filters: str
-        +num_threads: str
-        +select_list_num: int
-        +Sample_pct: str | None
-        +Boundary_check: bool
-        +part_level: int
-        +ora_Needs_a_hint: bool
-        +json: bool
+        7 agg_validate fields
     }
-
+    class ConnectOptions {
+        2 connect fields + 2 derived host fields
+    }
+    class StatusReportOptions {
+        9 report fields
+    }
+    class SchemaSyncOptions {
+        2 schema sync fields
+    }
     BaseStruct <|-- BaseOptionStruct
     BaseOptionStruct <|-- CommonOptions
-    CommonOptions <|-- OffloadOperationOptions
+    CommonOptions <|-- TableOperationOptions
+    TableOperationOptions <|-- OffloadOperationOptions
+    TableOperationOptions <|-- AggValidateOptions
     CommonOptions <|-- ConnectOptions
     CommonOptions <|-- StatusReportOptions
     CommonOptions <|-- SchemaSyncOptions
-    CommonOptions <|-- AggValidateOptions
 ```
 
-#### Key Design Decisions & Dead-Code Deletion Rules
+#### Design rules
 
-1. **100% Parity Across All 84 `EXPECTED_OFFLOAD_ARGS`, 12 CLI Aliases, Environment Fallbacks & Normalization Rules**:
-   - Every single field in `EXPECTED_OFFLOAD_ARGS` (84 canonical keys previously in `src/goe/goe.py:154-240`), all 12 CLI/API option aliases (`verify` -> `verify_row_count` / `Verify`, `sort_columns` -> `sort_columns_csv`, `not_null_columns` -> `not_null_columns_csv`, `older_than_days` -> `offload_by_subpartition_age`, `equal_to_values` -> `offload_by_subpartition_values`, `less_than_value` -> `offload_by_subpartition_high_value`, `reset_hybrid_view` -> `reset_backend_table`, `impala_insert_hint` -> `hive_insert_hint`, `older_than_date` -> `less_than_value`, `offload_predicate_type` -> `offload_type`, `partition_names` -> `partition_names_csv`, `subpartition_names` -> `subpartition_names_csv`), all dynamic `os.environ` fallbacks in `src/goe/config/orchestration_defaults.py`, and all validation/normalization logic in `src/goe/offload/option_validation.py` (`normalise_options`, `normalise_offload_status_report_options`, `normalise_schema_sync_options`, `post_process_args`) are preserved 100%.
-2. **Delete Superseded `optparse` Functions & Duplicate Schemas (Zero Dead Wrappers)**:
-   - In `src/goe/goe.py`, delete `check_posint`, `GOEOptionTypes`, `get_common_options`, `get_oracle_options`, `get_options`, `get_options_from_list` (as well as any legacy `get_offload_option_parser`, `init_common_options`, `offload_options` helpers).
-   - In `src/goe/offload/offload.py`, delete `get_offload_options`.
-   - In `src/goe/connect/connect.py`, delete `get_connect_opts`.
-   - In `src/goe/offload/offload_status_report.py`, delete `get_offload_status_report_opts`.
-   - In `src/goe/schema_sync/schema_sync.py`, delete `get_schema_sync_opts`.
-   - In `src/goe/scripts/agg_validate.py`, delete `GOE_OPTIONS`, `get_agg_validate_options`, and `parse_args`.
-   - Delete any remaining `optparse` glue in `src/goe/util/option_mixin.py` or `src/goe/logmgr.py` / `src/goe/cli/commands/logmgr.py` if present.
-   - In `src/goe/listener/schemas.py`, **delete the duplicate 96-field `OffloadOptions` struct body** and replace it by subclassing/aliasing `OffloadOperationOptions` from `src/goe/config/options.py` so there is a single source of truth for offload options across CLI, Listener, and Core!
-3. **`dict=True` on `BaseOptionStruct` & Dynamic Environment Evaluation**:
-   - Setting `dict=True` on `BaseOptionStruct` keeps `options.__dict__` and struct attributes synchronized (`__post_init__` and `__setattr__`), supporting dynamic runtime attributes set by orchestration classes (`options.target_owner_name`, `options.original_hadoop_host`, etc.) and `copy.deepcopy(options)`.
-   - Fields backed by `src/goe/config/orchestration_defaults.py` use `msgspec.field(default_factory=...)` so patching `os.environ` in tests dynamically affects newly instantiated option structs.
-4. **`OffloadOptionError` & `OptionValueError` Unification**:
-   - `src/goe/exceptions.py` defines `OffloadOptionError(Exception)` and aliases `OptionValueError = OffloadOptionError`. All 7 modules that previously imported `OptionValueError` from `optparse` import `OffloadOptionError` / `OptionValueError` from `goe.exceptions`.
+1. **Field parity**: each struct's field set equals the key set of the legacy `parser.get_default_values().__dict__` for its builder (removed options keep their defaults in `optparse`, so removed keys stay as inherited fields) plus the derived attributes listed in the research file. Defaults are produced by `msgspec.field(default_factory=orchestration_defaults.<name>_default)` for every default backed by `orchestration_defaults`, so environment changes are honoured per instantiation.
+2. **Strictness instead of `__dict__` emulation**: msgspec stores fields in slots; `dict=True` only adds a side `__dict__` for undeclared attributes, and `copy.copy`/`copy.deepcopy` drop those attributes (verified with msgspec 0.21.1). Therefore no struct uses `dict=True`; every attribute any normaliser assigns is a declared field, and assigning an undeclared attribute raises `AttributeError`. `from_mapping` raises `TypeError` for unknown keys. No caller reads `options.__dict__`/`vars(options)` on CLI option objects (verified by `git grep`).
+3. **`kw_only=True` on every class**: msgspec applies `kw_only` per class definition, not by inheritance (verified empirically).
+4. **Exception unification**: `src/goe/exceptions.py` exports `OptionValueError = OffloadOptionError`. `str()` of these errors becomes `repr(detail)` (current `OffloadOptionError.__str__`); no test asserts the old message text.
+5. **Shared offload keys**: `EXPECTED_OFFLOAD_ARGS` (a `tuple[str, ...]` preserving baseline order, used by `OffloadOperation._vars`) and the listener alias tables move to `options.py`; `goe.goe` and `goe.listener.schemas` import them.
+6. **Listener REST schema (`D-2.1-A` — RESOLVED)**: the listener `OffloadOptions` keeps its REST wire defaults (`execute: bool = True` so API/MCP calls execute by default, and `None` unset sentinels for optional fields so `to_params_dict()` preserves alias precedence and records only caller-supplied parameters in `COMMAND_EXECUTION.COMMAND_INPUT`), while adding `to_operation_options(self) -> OffloadOperationOptions` (`OffloadOperationOptions.from_mapping(self.to_params_dict())`) to hydrate all omitted fields from the single canonical `OffloadOperationOptions` default set (`orchestration_defaults.*_default()` and safe `False` destructive flags). Duplication is removed by importing `EXPECTED_OFFLOAD_ARGS` and the alias tables from `options.py` and by a drift test that asserts the REST field set equals `EXPECTED_OFFLOAD_ARGS - {operation_name}` plus the alias and verbosity fields.
+7. **Entry-point signatures**: `goe` is the single CLI entrypoint after PRD 1 deletes `bin/*`, so `connect()`, `offload_status_report_run()`, and agg-validate no longer parse `sys.argv`. `connect(options: ConnectOptions)` and `offload_status_report_run(options: StatusReportOptions)` require an options struct; `agg_validate.parse_args()` and `agg_validate.main()` are deleted.
 
----
+### 4. Requirement traceability
 
-### 3. File Ownership & Task Breakdown
+| Requirement (PRD 2 §1, §3) | Task | Verification |
+| :--- | :--- | :--- |
+| R1 Typed option structs with field/default parity | 1.1 | `tests/unit/config/test_options_model.py`; parity heredoc in 1.1 Verification |
+| R2 `OptionValueError = OffloadOptionError`; predicate/validation modules off `optparse` | 1.1 | `tests/unit/offload/test_predicate_offload.py`, `tests/unit/offload/test_option_validation.py` |
+| R3 connect/report/sync/validate entrypoints use structs; their builders deleted | 1.2 | `tests/unit/cli/test_{connect,report,sync,validate}_command.py`, `tests/unit/connect/test_connect.py` |
+| R4 offload entrypoint uses structs; `goe.py`/`offload.py` builders deleted; zero `optparse` in `src/goe` | 1.3 | `tests/unit/cli/test_offload_command.py`, `! git grep -n optparse src/goe` |
+| R5 Listener schema shares canonical keys/aliases and hydrates canonical defaults via `to_operation_options()` (`D-2.1-A`) | 1.3 | `tests/unit/listener/test_offload_options_schema.py` |
 
-| Task ID | Title | Owned Files | Depends On |
-| :--- | :--- | :--- | :--- |
-| **1.1** | Core `msgspec.Struct` Option Hierarchy & Exception Unification | `src/goe/exceptions.py`, `src/goe/config/options.py`, `src/goe/offload/option_validation.py`, `src/goe/offload/operation/partition_controls.py`, `src/goe/offload/oracle/oracle_predicate.py`, `src/goe/offload/predicate_offload.py`, `src/goe/offload/teradata/teradata_predicate.py`, `tests/unit/config/test_options_model.py`, `tests/unit/offload/test_predicate_offload.py` | — |
-| **1.2** | Delete Legacy `optparse` Parsers in Core Operations (`goe.py`, `offload.py`, `connect.py`, `offload_status_report.py`, `schema_sync.py`, `agg_validate.py`) | `src/goe/goe.py`, `src/goe/offload/offload.py`, `src/goe/connect/connect.py`, `src/goe/offload/offload_status_report.py`, `src/goe/schema_sync/schema_sync.py`, `src/goe/scripts/agg_validate.py`, `tests/unit/test_goe.py` | `1.1` |
-| **1.3** | Migrate Rich-Click CLI Commands & Deduplicate Listener `OffloadOptions` Schema | `src/goe/cli/commands/offload.py`, `src/goe/cli/commands/connect.py`, `src/goe/cli/commands/report.py`, `src/goe/cli/commands/sync.py`, `src/goe/cli/commands/validate.py`, `src/goe/cli/commands/logmgr.py`, `src/goe/listener/schemas.py`, `tests/unit/cli/test_cli_options_parity.py`, `tests/unit/listener/test_schemas.py` | `1.1`, `1.2` |
+### 5. File ownership
+
+| Task | Owned files | Depends on |
+| :--- | :--- | :--- |
+| 1.1 | `src/goe/exceptions.py`, `src/goe/config/options.py`, `src/goe/offload/option_validation.py`, `src/goe/offload/operation/partition_controls.py`, `src/goe/offload/oracle/oracle_predicate.py`, `src/goe/offload/predicate_offload.py`, `src/goe/offload/teradata/teradata_predicate.py`, `tests/unit/config/test_options_model.py`, `tests/unit/offload/test_predicate_offload.py` | — |
+| 1.2 | `src/goe/cli/commands/connect.py`, `src/goe/cli/commands/report.py`, `src/goe/cli/commands/sync.py`, `src/goe/cli/commands/validate.py`, `src/goe/connect/connect.py`, `src/goe/offload/offload_status_report.py`, `src/goe/schema_sync/schema_sync.py`, `src/goe/scripts/agg_validate.py`, `tests/unit/cli/test_validate_command.py` | 1.1 |
+| 1.3 | `src/goe/cli/commands/offload.py`, `src/goe/goe.py`, `src/goe/offload/offload.py`, `src/goe/listener/schemas.py`, `tests/unit/listener/test_offload_options_schema.py` | 1.2 |
 
 ## Implementation Plan
 
-- [ ] 1.1 [Core msgspec.Struct Option Hierarchy & Exception Unification](tasks/1.1.md) — Create `src/goe/config/options.py` with `BaseOptionStruct` and all 6 domain option structs (preserving all 84 `EXPECTED_OFFLOAD_ARGS`, 12 CLI aliases, and environment variable defaults), unify `OptionValueError = OffloadOptionError` in `src/goe/exceptions.py`, and migrate predicate/validation modules off `optparse`.
-- [ ] 1.2 [Delete Legacy optparse Parsers in Core Operations](tasks/1.2.md) — Delete all `OptionParser`/`OptionGroup`/`Option` builders (`get_common_options`, `get_oracle_options`, `get_options`, `get_options_from_list`, `GOEOptionTypes`, `check_posint`, `get_offload_options`, `get_connect_opts`, `get_offload_status_report_opts`, `get_schema_sync_opts`, `get_agg_validate_options`, `parse_args`) across `goe.py`, `offload.py`, `connect.py`, `offload_status_report.py`, `schema_sync.py`, and `agg_validate.py`, replacing all call sites with direct `msgspec.Struct` option instantiation.
-- [ ] 1.3 [Migrate Rich-Click CLI Commands & Deduplicate Listener OffloadOptions Schema](tasks/1.3.md) — Remove `from optparse import Values` from all CLI command modules, delete any remaining `option_mixin.py` / `logmgr.py` `optparse` glue, delete the duplicate 96-field `OffloadOptions` body in `src/goe/listener/schemas.py` by subclassing/aliasing `OffloadOperationOptions`, and verify zero `optparse` imports or dead option wrappers remain in `src/goe/`.
+- [ ] 1.1 [Typed option structs, shared offload constants & exception unification](tasks/1.1.md) — create `src/goe/config/options.py`, alias `OptionValueError`, migrate five modules and one test off `optparse.OptionValueError`.
+- [ ] 1.2 [Migrate connect/report/sync/validate entrypoints and delete their builders](tasks/1.2.md) — construct `ConnectOptions`/`StatusReportOptions`/`SchemaSyncOptions`/`AggValidateOptions` and delete `get_connect_opts`, `get_offload_status_report_opts`, `get_schema_sync_opts`, `GOE_OPTIONS`, `get_agg_validate_options`, `parse_args`, `main`.
+- [ ] 1.3 [Migrate offload entrypoint, delete core builders, share listener constants](tasks/1.3.md) — construct `OffloadOperationOptions`, delete `check_posint`, `GOEOptionTypes`, `get_common_options`, `get_oracle_options`, `get_options`, `get_options_from_list`, `get_offload_options`, and reach zero `optparse` imports.
 
 ## Continuity Snapshot
 
-- **Current State**: Specification and 3 task worksheets (`1.1`, `1.2`, `1.3`) defined and ready for execution.
-- **Next Action**: Execute Task `1.1` (`tasks/1.1.md`).
+- **Flow / lifecycle**: `typed_msgspec_option_model_20261010` (`state: planned`).
+- **Current task / claimant**: `current_task: null` / `claimed_by: null`.
+- **Last verified checkpoint**: `none`.
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`.
+- **State identity**: `state_revision: 0`.
+- **Decisions**: `D-2.1-A` resolved (keep REST wire defaults `execute=True` + `None` unset sentinels on `OffloadOptions`, share canonical keys/aliases from `goe.config.options`, add `to_operation_options()` to hydrate canonical `OffloadOperationOptions` defaults, and enforce field parity via drift test).
+- **Recent discoveries**: All 85 `EXPECTED_OFFLOAD_ARGS` keys, 40 + 7 `TableOperationOptions` fields, and 42 + 1 `OffloadOperationOptions` fields are written out in full in Task 1.1 with widened normaliser annotations so Chapter 2.3 strict mypy passes cleanly.
+- **Blockers**: PRD 1 must be complete (Chapter 1.1 deletes `bin/*`, Redis shims and code, and 10 dead modules; Chapter 1.3 adds the golden characterization suite).
+- **Next exact step**: claim Task 1.1 and run its Step 1 failing test.
+- **Relevant knowledge**: `.agents/bundles/knowledge/patterns/cli-architecture.md` (lazy CLI imports), `.agents/bundles/knowledge/patterns/serialization-and-utils.md` (msgspec conventions), `research/option_inventory.md`.

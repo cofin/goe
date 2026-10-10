@@ -1,9 +1,9 @@
 ---
 type: Spec
 flow_id: duckdb_oracle_offload_transport_20261010
-title: Opt-In DuckDB + duckdb-oracle + duckdb-gcs Offload Transport
+title: "Chapter 3.4: Opt-In DuckDB Oracle Offload Transport (duckdb-oracle + community gcs)"
 state: planned
-plan_revision: 1
+plan_revision: 2
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,117 +11,85 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T16:26:00Z
-description: Implement an opt-in DUCKDB offload transport (OffloadTransportDuckDB) for the Oracle -> DuckDB C++ gcss:// streaming Parquet -> BigQuery load path using cofin/duckdb-oracle and the community northpolesec/duckdb-gcs extension with dual-mode ADC secret provisioning, SCN consistency, and per-worker resource bounds.
+updated_at: 2026-10-10T18:50:00Z
+description: Add an opt-in DUCKDB offload transport that runs one SCN-pinned oracle_query per GOE transport batch through cofin/duckdb-oracle and writes Parquet directly to gcss:// with the community gcs extension using GOE's central ADC credentials, for Oracle-to-BigQuery offloads.
 tags: [feature, duckdb, oracle, gcs, bigquery, transport, parquet]
 parent_prd: prd_03_sqlspec_bigquery_and_duckdb_engine_20261010
+depends_on:
+  - sqlspec_oracle_data_layer_migration_20261010
+  - sqlglot_ast_and_predicate_engine_20261010
+  - bigquery_first_backend_modernization_20261010
 research: [research/duckdb_integration.md]
 ---
 
-# Opt-In DuckDB + `duckdb-oracle` + `duckdb-gcs` Offload Transport
+# Chapter 3.4: Opt-In DuckDB Oracle Offload Transport
 
 ## Specification
 
-## Problem & Goal
+### Context & Baseline
 
-GOE's existing small-table transport (`OffloadTransportQueryImport` at [`src/goe/offload/offload_transport.py:2366-2512`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/offload/offload_transport.py#L2366-L2512)) extracts rows from Oracle using a single Python thread (`offload_transport_parallelism = 1` at `L2388`), ignores `--offload-transport-consistent-read` (`L2421-L2425`), and encodes rows one-by-one in Python into a local file before uploading to GCS. Conversely, large-table offloads require external Apache Spark / Cloud Dataproc infrastructure.
+- Citations use baseline commit `46890a8`. Transport code moves into `src/goe/offload/transport/` (`constants.py`, `base.py`, `query_import.py`, `factory.py`, ...) in `core_god_module_decomposition_20261010:1.4`; every task names the post-PRD-2 module plus the baseline symbol/line.
+- Earlier chapters this flow builds on:
+  - `gcp_adc_credential_unification_20261010:1.1` — `goe.util.gcp_credentials.resolve_gcp_credentials(config, scopes)`; PRD 1 requires every GCP client to use it.
+  - `sqlglot_ast_and_predicate_engine_20261010:1.2` — Oracle row-source/SCN SQL is produced by `OracleSqlEngine` behind unchanged `OracleOffloadTransportRdbmsApi` signatures; output still contains literal `AS OF SCN <n>`.
+  - `bigquery_first_backend_modernization_20261010:1.1` — Parquet is the default BigQuery staging format; `:1.3` — native BigQuery load of `part*` files; `:1.5` — GCP `AUTO` order in `factory.py`.
+- Verified upstream facts (full matrix and URLs in `research/duckdb_integration.md`):
+  - `cofin/duckdb-oracle` v0.2.2 is built only for DuckDB 1.5.5, unsigned, installed from `https://cofin.github.io/duckdb-oracle`, not a community extension; `oracle_query(conn_ref, sql)` takes an ATTACH alias (bare secret names rejected); oracle secrets accept `HOST/PORT/SERVICE/USER/PASSWORD`; SQL passes through verbatim (literal `AS OF SCN` works); auth is `OCI_CRED_RDBMS` only; 30 s OCI call timeout and 64 KiB value buffers are hard-coded; no session-init, timeout, LOB or time-zone settings exist.
+  - Community `gcs` (`northpolesec/duckdb-gcs`, v0.0.8, signed): `INSTALL gcs FROM community`; claims `gs://`, `gcs://`, `gcss://` (use `gcss://` because core `httpfs` also claims `gs://` and only supports HMAC keys); secrets `TYPE gcp` with `PROVIDER credential_chain|service_account|access_token`; supports `COPY ... TO` writes; caches its storage client per connection.
+  - GOE locks `duckdb==1.5.5` transitively (`uv.lock:886-887`); PyPI latest is 1.5.6.
 
-GOE already locks `duckdb==1.5.5` transitively (`pyproject.toml:35`, `uv.lock:886-887`), which matches the exact DuckDB binary version targeted by `cofin/duckdb-oracle` (`v0.2.2`) and the community `northpolesec/duckdb-gcs` extension (`v0.0.8`). By combining:
-1. GOE's existing Oracle split planning (`_get_transport_split_type`, `_get_transport_row_source_query` with `AS OF SCN`),
-2. Oracle-side `TO_CHAR` projection expressions (`_build_offload_query_lists(convert_expressions_on_rdbms_side=True, for_qi=True)`),
-3. DuckDB's `oracle_query('<secret>', '<sql>')` passthrough, and
-4. The high-performance community **`gcs` DuckDB extension (`northpolesec/duckdb-gcs`)** powered by `google-cloud-cpp` native C++ storage threads (`COPY (...) TO 'gcss://<bucket>/<staging_prefix>/part-0000N.parquet' (FORMAT PARQUET, COMPRESSION SNAPPY)`),
+### Problem & Goal
 
-GOE can stream split Oracle batches in parallel directly from OCI through DuckDB's C++ worker threads into GCS Parquet objects without serializing under the Python GIL or staging Parquet files to local disk first.
+`OffloadTransportQueryImport` (baseline `offload_transport.py:2366-2511`) extracts with one Python thread, ignores `--offload-transport-consistent-read` (`L2421-2425`) and encodes rows in Python before uploading; larger tables need Spark/Dataproc. An opt-in DuckDB transport reuses GOE split planning (`_get_transport_split_type`, `_get_transport_row_source_query` with `AS OF SCN`) and Oracle-side `TO_CHAR` casts (`_build_offload_query_lists(convert_expressions_on_rdbms_side=True, for_qi=True)`) to run one `oracle_query` per batch in parallel, writing `part-NNNNN.parquet` objects straight to GCS for the existing BigQuery load.
 
-### Upstream Prerequisite Gate (Phase 0 — `cofin/duckdb-oracle`)
+### Requirements
 
-Before enabling `DUCKDB` transport on workloads requiring long single-fetch waits, SEPS wallets, or >64 KiB LOBs, the upstream `cofin/duckdb-oracle` extension provides:
-- **U1 (`oracle_call_timeout_ms`):** Configurable `UBIGINT` setting (default `30000`, `0` disables) replacing the hardcoded 30s `OCI_ATTR_CALL_TIMEOUT` in `oracle_scan.cpp` and `oracle_connection_manager.cpp`.
-- **U2 (`oracle_session_init_sql`):** Configurable `VARCHAR` setting (`;`-separated SQL statements executed per pooled OCI session after NLS initialization) so GOE can set `TIME_ZONE='UTC'`, NLS formats, `DBMS_APPLICATION_INFO.SET_MODULE`, and `TRACEFILE_IDENTIFIER`.
-- **U3 (`EXTERNAL true` Secret Mode):** Support `OCI_CRED_EXT` in `CREATE SECRET ... (TYPE oracle, EXTERNAL true, ...)` for Oracle SEPS wallet authentication.
-- **U4 (>64 KiB LOB Read Support):** Piecewise or LOB-locator fetch in `oracle_scan.cpp` lifting the 65,535-byte (`ub2`) per-value buffer ceiling, or raising an explicit column-named error instead of truncating.
-- **U5 (Apache-2.0 License & Checksums):** Align `LICENSE` with `description.yml` (`Apache-2.0`) and publish SHA-256 checksums for release binaries.
+- **REQ-1 Configuration:** `OFFLOAD_TRANSPORT_DUCKDB_{VERSION, EXTENSION_PATH, EXTENSION_DIR, EXTENSION_REPOSITORY, THREADS, MEMORY_LIMIT, TEMP_DIRECTORY, MAX_BYTES}` on `OrchestrationConfig`. → Task 1.1
+- **REQ-2 Engine helpers:** bounded batch connections, `oracle`/`gcs` LOAD-then-INSTALL, temporary escaped secrets, ATTACH alias, `gcss://` rewriting, Parquet cast projection, SCN invariant, `COPY` SQL. → Task 1.2
+- **REQ-3 Transport:** `OffloadTransportDuckDB` with SCN-pinned per-batch queries for PARTITION/SUBPARTITION/EXTENT/MOD/ID_RANGE splits, `ORA_SDTZ=UTC`, one ADC access token per run, fresh connection per batch, row/byte context, `post_transport_tasks`, secret-free logging, spill cleanup, dry-run parity. → Task 1.3
+- **REQ-4 Registration:** `DUCKDB` method and `OFFLOAD_TRANSPORT=DUCKDB` rule set, offline availability gate, factory branch, CLI help; never in `AUTO`. → Task 1.4
 
-The GOE transport implementation (`OffloadTransportDuckDB` and `is_duckdb_available()`) enforces these prerequisites dynamically via runtime capability probes (`duckdb_settings()`) so any missing upstream capability cleanly causes `is_duckdb_available()` to return `False` (with a `VVERBOSE` diagnostic log).
+### Non-Goals & Limits
 
-## Native DuckDB Community `gcs` Extension Architecture (`northpolesec/duckdb-gcs`)
+- No DuckDB cross-engine validation and no DuckDB dev/test backend (research §1).
+- No local-file fallback: DuckDB is gated to BigQuery, whose staging is always `gs://`.
+- Ineligible (gate returns False with a logged reason): non-BigQuery targets, non-`gs` filesystems, Avro staging, DuckDB version drift, Oracle Wallet auth, non-EZConnect DSNs, tables above `OFFLOAD_TRANSPORT_DUCKDB_MAX_BYTES`, CLOB/NCLOB/BLOB/LONG/LONG RAW/RAW/XMLTYPE columns.
+- Known runtime limits documented to operators: 30 s per OCI round trip; one access token per run (a batch must finish within the token lifetime, default 3600 s); `ORA_SDTZ=UTC` is process-global; extension INSTALL needs network unless `OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_DIR`/`EXTENSION_PATH` is pre-seeded.
+- **`DUCK-D1` (RESOLVED)**: `DUCKDB` is strictly opt-in (`--offload-transport-method=DUCKDB` / `OFFLOAD_TRANSPORT=DUCKDB`) and excluded from `AUTO`, and adds no DuckDB verification engine because `cofin/duckdb-oracle` is unsigned, has hard-coded timeouts/buffers and password-only auth, and `CrossDbValidator` already pushes validation to Oracle and BigQuery. If `AUTO` is chosen later, the hook is `GCP_AUTO_TRANSPORT_METHODS` in `src/goe/offload/transport/factory.py`.
+- `Decision pending: DUCK-D2` — DuckDB version control: runtime gate (`OFFLOAD_TRANSPORT_DUCKDB_VERSION`, default `1.5.5`) versus pinning `duckdb==1.5.5` in `pyproject.toml`. This revision uses the runtime gate and does not edit `pyproject.toml`.
+- `Decision pending: DUCK-D3` — extension supply chain: the plan allows `INSTALL oracle FROM <repository>` with `allow_unsigned_extensions`; an alternative requires `OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_PATH` plus SHA-256 verification against upstream `SHA256SUMS.txt`.
 
-1. **Extension Loading (`LOAD gcs` Fast Path + Thread-Locked `INSTALL gcs FROM community` Fallback):**
-   - Configure `extension_directory` when `OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_DIR` is set.
-   - Try `connection.execute("LOAD gcs")` first (zero network call when pre-seeded in `OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_DIR` or `~/.duckdb/extensions`).
-   - If `LOAD gcs` raises, acquire the module-level thread lock (`_gcs_setup_lock`) and execute `connection.execute("INSTALL gcs FROM community")` followed by `connection.execute("LOAD gcs")`.
-2. **Performance Pragmas:**
-   Immediately after loading `gcs`, apply:
-   ```sql
-   SET gcs_enable_metadata_cache = true;
-   SET gcs_metadata_cache_ttl = 3600;
-   SET gcs_list_cache_ttl = 3600;
-   SET gcs_transfer_concurrency = <threads>;
-   ```
-3. **`gcss://` URI Scheme (`to_duckdb_gcs_uri`):**
-   - Built-in `httpfs` claims `gs://` and `gcs://` (which require S3 XML HMAC keys and fail with ADC).
-   - The community `gcs` extension registers the **`gcss://`** scheme (`gcss://<bucket>/<staging_prefix>/part-0000N.parquet`).
-   - Convert `gs://` and `gcs://` staging URIs to `gcss://` when executing `COPY (...) TO 'gcss://<bucket>/<staging_prefix>/part-{i:05d}.parquet' (FORMAT PARQUET, COMPRESSION SNAPPY)` so Parquet parts stream directly from DuckDB C++ threads to GCS.
-   - Retain local `temp_directory` + `self._dfs_client.copy_from_local` strictly as a fallback for non-GCS staging backends (Azure, S3, HDFS, local).
-4. **Dual-Mode ADC Secret Provisioning (`PROVIDER credential_chain` vs `PROVIDER access_token`):**
-   - Resolve credentials via `resolve_gcp_credentials(self._orchestration_config)` (`src/goe/util/gcp_credentials.py` from Chapter 1.2, falling back to `google.auth.default()` if `src/goe/util/gcp_credentials.py` has not yet been merged in the current branch).
-   - **GCP Compute / Direct Service Account (`GCECredentials`, Cloud Run `K_SERVICE`/`K_REVISION`, or `ServiceAccountCredentials` without impersonation):**
-     - Check `SELECT count(*) FROM duckdb_secrets() WHERE name = 'goe_gcs'` first; if already `> 0`, skip re-executing DDL to prevent optimistic catalog write-write conflicts.
-     - Otherwise execute parameterized DDL (always passing `PROJECT_ID` when known, because without `PROJECT_ID`, `google-cloud-cpp` fails to resolve billing/quotas and raises `IO Error`):
-       ```sql
-       CREATE OR REPLACE SECRET goe_gcs (TYPE gcp, PROVIDER credential_chain, PROJECT_ID ?)
-       ```
-   - **Developer Workstation User ADC (`authorized_user`) or Impersonated Service Account (`impersonated_credentials.Credentials` / `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`):**
-     - Because `google-cloud-cpp` `credential_chain` does not support `authorized_user` or Python-side impersonation, mint/refresh an OAuth2 access token (`https://www.googleapis.com/auth/devstorage.read_write` scope, refreshing when within a 10-minute / 600-second expiry margin) and provision:
-       ```sql
-       CREATE OR REPLACE SECRET goe_gcs (TYPE gcp, PROVIDER access_token, ACCESS_TOKEN ?)
-       ```
-   - **`registered_state` C++ Client Caching Invariant:**
-     - `northpolesec/duckdb-gcs` caches `google::cloud::storage::Client` in `client_context->registered_state` per connection and checks `registered_state` before `SecretManager`, so `OffloadTransportDuckDB` opens a fresh DuckDB connection per offload execution / batch worker (and refreshes/recycles connections if a multi-batch run approaches the 10-minute token expiry margin).
+### Task Breakdown & File Ownership
 
-## Scope & Architecture
-
-### Explicit Non-Goals (Out of Scope)
-- **No DuckDB cross-engine aggregate validation:** `CrossDbValidator` (`src/goe/offload/offload_validation.py:506-528`) already pushes aggregates down to Oracle (`AS OF SCN`) and BigQuery concurrently via native drivers.
-- **No DuckDB local dev/test backend:** Implementing `BackendApiInterface` (~1,830 LOC) and `BackendTableInterface` (~2,244 LOC) for DuckDB is out of scope.
-- **No `duckdb-bigquery` or `httpfs` extensions:** GCS writes use the community `gcs` extension (`gcss://`), and BigQuery loading uses `BackendBigQueryTable`.
-- **No Avro staging:** DuckDB writes Parquet only (`config.offload_staging_format == FILE_STORAGE_FORMAT_PARQUET`).
-- **Not in `AUTO` transport selection:** `OFFLOAD_TRANSPORT_METHOD_DUCKDB` is strictly opt-in via `--offload-transport-method=DUCKDB` or `OFFLOAD_TRANSPORT=DUCKDB` and is **not** added to `OFFLOAD_TRANSPORT_GOE_METHODS` or `choose_offload_transport_method`'s `AUTO` candidate lists.
-
-### End-to-End Execution Flow
-
-```mermaid
-flowchart LR
-  ORA["Oracle RDBMS (AS OF SCN + TO_CHAR casts)"] -->|"N parallel workers: oracle_query(secret, batch_sql)"| DUCK["DuckDB Worker Pool (threads=2, memory_limit=2GB)"]
-  DUCK -->|"COPY (...) TO 'gcss://bucket/stage/part-0000i.parquet' (google-cloud-cpp C++ threads)"| GCS["gs://bucket/stage/part-0000i.parquet"]
-  DUCK -.->|"Fallback only for non-GCS schemes"| LOCAL["$OFFLOAD_HOME/run/duckdb/<tx>/part-0000i.parquet"]
-  LOCAL -.->|"_dfs_client.copy_from_local"| GCS
-  GCS -->|"BackendBigQueryTable.post_transport_tasks"| BQ["BigQuery Staging -> Final Table"]
-```
+| Task | Title | Strategy | Priority | Depends On | Files | Tests |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 1.1 | `OFFLOAD_TRANSPORT_DUCKDB_*` options | `behavior_tdd` | P1 | — | `src/goe/config/orchestration_defaults.py`, `src/goe/config/orchestration_config.py`, `src/goe/config/config_validation_functions.py`, `templates/conf/offload.env.template.bigquery` | `tests/unit/config/test_duckdb_transport_config.py` |
+| 1.2 | Constants and engine helpers | `behavior_tdd` | P1 | — | `src/goe/offload/transport/duckdb_constants.py`, `src/goe/offload/transport/duckdb_engine.py`, `tests/unit/offload/transport/__init__.py` | `tests/unit/offload/transport/test_duckdb_engine.py` |
+| 1.3 | `OffloadTransportDuckDB` | `behavior_tdd` | P2 | 1.1, 1.2 | `src/goe/offload/transport/duckdb_transport.py` | `tests/unit/offload/transport/test_duckdb_transport.py` |
+| 1.4 | Registration, availability gate, factory, CLI help | `behavior_tdd` | P2 | 1.1, 1.3 | `src/goe/offload/offload_constants.py`, `src/goe/offload/transport/constants.py`, `src/goe/offload/transport/duckdb_availability.py`, `src/goe/offload/transport/factory.py`, `src/goe/cli/commands/offload.py` | `tests/unit/offload/transport/test_duckdb_registration.py` |
 
 ## Implementation Plan
 
-- [ ] 1.1 Register `OFFLOAD_TRANSPORT_METHOD_DUCKDB`, add `OFFLOAD_TRANSPORT_DUCKDB_*` configuration options (including `EXTENSION_DIR`), and implement the `is_duckdb_available()` availability gate
-- [ ] 1.2 Implement `OffloadTransportDuckDB` in `src/goe/offload/transport/duckdb_transport.py` with `northpolesec/duckdb-gcs` (`gcss://` streaming writes, pragmas, and dual-mode `goe_gcs` ADC secret provisioning) and wire `offload_transport_factory.py`
-- [ ] 1.3 Add comprehensive unit test suite in `tests/unit/offload/transport/test_duckdb_transport.py` covering split types, SCN enforcement, canonical Parquet cast projections, `gcss://` streaming writes, dual-mode `goe_gcs` secret provisioning, secret redaction, and resource cleanup
+- [ ] 1.1 Add `OFFLOAD_TRANSPORT_DUCKDB_*` orchestration options ([tasks/1.1.md](tasks/1.1.md))
+- [ ] 1.2 Implement DuckDB transport constants and engine helpers ([tasks/1.2.md](tasks/1.2.md))
+- [ ] 1.3 Implement `OffloadTransportDuckDB` (SCN-pinned batches to `gcss://` Parquet) ([tasks/1.3.md](tasks/1.3.md))
+- [ ] 1.4 Register the opt-in `DUCKDB` method, availability gate and factory branch ([tasks/1.4.md](tasks/1.4.md))
 
 ## Verification Commands
 
 ```bash
 export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
-uv run pytest tests/unit/offload/transport/ tests/unit/offload/test_offload_transport.py -q
-uv run ruff check src/goe/offload/transport/ src/goe/offload/offload_transport.py src/goe/offload/factory/offload_transport_factory.py src/goe/config/ src/goe/offload/option_validation.py src/goe/cli/commands/offload.py tests/unit/offload/transport/
-uv run mypy src/goe/offload/transport/ src/goe/offload/offload_transport.py src/goe/offload/factory/offload_transport_factory.py
+uv run pytest tests/unit/config/test_duckdb_transport_config.py tests/unit/offload/transport -q
+uv run pytest tests/unit -q
+uv run ruff check src/goe tests/unit
+uv run ruff format --check src/goe tests/unit
+uv run mypy src/goe
 ```
 
 ## Continuity Snapshot
 
-- **Current State:** `planned` (Revision 1).
-- **Task Sequence:** `1.1` -> `1.2` -> `1.3`.
-- **Key Invariants:**
-  - `os.environ["ORA_SDTZ"] = "UTC"` is set before `LOAD oracle` so `TIMESTAMP WITH LOCAL TIME ZONE` expressions evaluated inside Oracle sessions normalize to UTC.
-  - Every batch query asserts `AS OF SCN <snapshot>` when `offload_transport_consistent_read` is enabled.
-  - GCS staging uses the community `gcs` extension (`LOAD gcs`, `gcss://` URI scheme, `gcs_*` pragmas, and dual-mode `goe_gcs` secret provisioning with fresh connections per run to respect `registered_state` C++ client caching).
-  - DuckDB secrets (`goe_ora_secret` and `goe_gcs`) never interpolate or log raw passwords or OAuth2 tokens in `messages.log()`.
-  - Every temporary spill directory under `OFFLOAD_TRANSPORT_DUCKDB_TEMP_DIRECTORY` is removed in a `try ... finally` block.
+- **State:** `planned`; current task: none.
+- **Next exact step:** after `bigquery_first_backend_modernization_20261010` completes, claim Task `1.1` (`tasks/1.1.md`), then execute `1.2` → `1.3` → `1.4` sequentially.
+- **Plan identity:** `plan_revision: 2`, `plan_commit: null`.
+- **Decisions:** `DUCK-D1` (resolved — opt-in only, excluded from `AUTO`), `DUCK-D2` (pending — version pin), `DUCK-D3` (pending — extension supply chain).
+- **Knowledge:** `.agents/bundles/knowledge/patterns/index.md`, `.agents/bundles/product/tech-stack.md`, `research/duckdb_integration.md`.

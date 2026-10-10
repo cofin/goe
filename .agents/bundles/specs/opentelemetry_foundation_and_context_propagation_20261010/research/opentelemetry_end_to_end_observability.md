@@ -349,3 +349,17 @@ To deliver this architecture cleanly and incrementally with 100% unit and integr
    - Task 1.1: `sqlspec.observability.ObservabilityConfig` wiring, Oracle `V$SESSION.CLIENT_INFO` W3C `traceparent` tagging (`OracleFrontendApi` & `OracleOffloadTransportRdbmsApi`), and `SQLCommenter` (`/*traceparent='...'*/`) injection without altering `V$SQL` `MODULE`/`ACTION` filters.
    - Task 1.2: Offload transport spans (`goe.chunk`, `goe.transport.<method>`) across `transport_and_load_offload_chunk`, `OffloadTransport` (DuckDB, Query Import, Spark, Dataproc), subprocess `TRACEPARENT` propagation in `run_os_cmd`, and `goe.offload.rows_transported` / `goe.offload.bytes_staged` metrics.
    - Task 1.3: `GOEGcs` storage spans (`goe.storage.gcs.<op>`) and `BigQueryBackendApi` / `BigQueryBackendTable` job spans (`goe.backend.bigquery.<op>`), GCP job label attribution (`goe_execution_id`, `goe_trace_id`, `goe_step`), and BigQuery slot/bytes billed metrics (`goe.bigquery.bytes_billed`, `goe.bigquery.slot_ms`).
+
+---
+
+## Corrections (2026-10-10 spec review)
+
+The promoted specs supersede these research statements; sources verified 2026-10-10:
+
+- Package floors are `opentelemetry-*>=1.40.0` / `opentelemetry-instrumentation-asgi>=0.61b0` (first Python 3.14 releases), not `1.27.0`/`0.48b0`. https://pypi.org/pypi/opentelemetry-sdk/json
+- Google Cloud export uses the Telemetry (OTLP) API (`https://telemetry.googleapis.com/v1/traces`, `/v1/metrics`) via the OTLP HTTP exporter and an `AuthorizedSession` from `goe.util.gcp_credentials.resolve_gcp_credentials`; `opentelemetry-exporter-gcp-trace`/`-gcp-monitoring` are deprecated and `opentelemetry-resourcedetectors-gcp` does not exist. https://cloud.google.com/stackdriver/docs/reference/telemetry/overview
+- `litestar-queues` 0.9.0 already injects/extracts W3C context in job metadata (`_otel_context`) and starts `litestar_queues.publish`/`process` spans when `ObservabilityConfig(enable_otel=True)`; GOE adds no manual carrier to job params.
+- `litestar-mcp` 0.13.1 executes tools in-process inside the `/mcp` HTTP span; tool spans use `MCPConfig(before_tool_call=..., after_tool_call=...)`.
+- `sqlspec` 0.62.1 `TelemetryConfig` has `enable_spans`, `provider_factory`, `resource_attributes` (no `service_name`); `sqlspec.query` spans are not made current; drivers accept a runtime via `attach_observability()`.
+- `OffloadMessages.offload_step()` step functions return arbitrary values, not `(result, step_details)`; row/byte counts are recorded on `goe.chunk`/`goe.transport.*` spans instead.
+- Line references in this document predate PRD 1-3; the chapter specs cite current symbols and baseline `46890a8`.

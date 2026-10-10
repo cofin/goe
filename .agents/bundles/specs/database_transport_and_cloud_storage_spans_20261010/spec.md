@@ -3,7 +3,7 @@ type: Spec
 flow_id: database_transport_and_cloud_storage_spans_20261010
 title: "Chapter 4.3: Database (OracleGateway), Offload Transport, GCS & BigQuery Spans"
 state: planned
-plan_revision: 1
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,8 +11,8 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T17:15:00Z
-updated_at: 2026-10-10T17:25:00Z
-description: "Instrument OracleGateway database observability, Oracle V$SESSION.CLIENT_INFO and SQLCommenter trace tagging, OffloadTransport and subprocess spans/metrics, GOEGcs spans, and BigQuery job spans, labels, and slot/bytes metrics."
+updated_at: 2026-10-10T22:06:00Z
+description: "Instrument the data plane: Oracle CLIENT_INFO tagging and OracleGateway SQLSpec spans, chunk/transport/subprocess spans for every transport including DuckDB batches, GOEGcs storage spans, and BigQuery job spans, labels, and slot/bytes metrics."
 tags:
   - specification
   - opentelemetry
@@ -21,9 +21,10 @@ tags:
   - duckdb
   - gcs
   - bigquery
-parent_prd: prd_04_end_to_end_opentelemetry_observability_20261010
+parent: prd_04_end_to_end_opentelemetry_observability_20261010
 depends_on:
   - orchestration_step_and_listener_telemetry_20261010
+  - core_god_module_decomposition_20261010
   - sqlspec_oracle_data_layer_migration_20261010
   - bigquery_first_backend_modernization_20261010
   - duckdb_oracle_offload_transport_20261010
@@ -33,51 +34,62 @@ depends_on:
 
 ## Specification
 
-## 1. Overview & Goals
+### 1. Overview & Goals
 
-With command and step spans (`goe.command.*`, `goe.step.*`) active in Chapter 4.2, Chapter 4.3 instruments the data plane across Oracle RDBMS, multi-engine Offload Transport (DuckDB, Query Import, Spark, Dataproc), Google Cloud Storage (`GOEGcs`), and Google BigQuery (`BigQueryBackendApi` / `BigQueryBackendTable`):
-1. **Oracle Database Spans, `V$SESSION.CLIENT_INFO` & `SQLCommenter` Correlation**:
-   - Wire `build_db_observability_config()` and `db_statement_observer()` into `OracleGateway` (`src/goe/persistence/oracle_gateway.py` from PRD 3 Chapter 3.1) so all Oracle repository and metadata queries emit child spans under the active `goe.step.*` span with `db.system="oracle"`, `db.operation`, `sqlspec.statement.hash`, and `goe.execution.id`.
-   - Stamp W3C `traceparent` (55 bytes, within Oracle's 64-byte limit) onto `V$SESSION.CLIENT_INFO` (`self._db_conn.clientinfo = format_oracle_client_info()`) in `OracleFrontendApi._connect()` (`src/goe/offload/oracle/oracle_frontend_api.py:193-197`) and `DBMS_APPLICATION_INFO.SET_CLIENT_INFO(...)` in `OracleOffloadTransportRdbmsApi.get_rdbms_session_setup_commands()` (`src/goe/offload/oracle/oracle_offload_transport_rdbms_api.py:176-226`) while keeping `MODULE` (`"GOE"`) and `ACTION` 100% unchanged so `LOG_SQL_STATS_QUERY_TEXT` (`v$sql` filtering by `module` and `action` at `L66-77`) continues to match identically.
-   - Inject `format_sqlcommenter()` (`traceparent='00-...',goe_exec='...'`) into transport SQL comments when `GOE_OTEL_SQLCOMMENTER=true`.
-2. **Offload Transport Spans (`goe.chunk`, `goe.transport.<method>`) & Subprocess `TRACEPARENT` Propagation**:
-   - Instrument `transport_and_load_offload_chunk()` (`src/goe/offload/offload_transport_functions.py:275-352`) with a `goe.chunk` span (`goe.chunk.number`, `goe.chunk.rows_staged`, `goe.chunk.transport_bytes`, `goe.chunk.backend_bytes`) and record `goe.offload.bytes_loaded`.
-   - Instrument `OffloadTransport` implementations (`DuckDB`, `QueryImport`, `SparkSubmit`, `SparkThrift`, `SparkLivy`, `SparkDataprocGcloud`, `SparkBatchesGcloud`, `Sqoop`) with `goe.transport.<method_lower>` spans and record `goe.offload.rows_transported` and `goe.offload.bytes_staged` metrics.
-   - Propagate `TRACEPARENT`, `TRACESTATE`, `BAGGAGE`, and `GOE_EXECUTION_ID` into subprocess environments in `run_os_cmd()` (`src/goe/offload/offload_transport_functions.py:171-234`) and Spark driver/executor environment properties (`spark.driverEnv.TRACEPARENT`, `spark.executorEnv.TRACEPARENT`).
-3. **Cloud Storage (`GOEGcs`) & BigQuery (`BigQueryBackendApi` / `BigQueryBackendTable`) Spans, Job Labels & Metrics**:
-   - Instrument `GOEGcs` (`src/goe/filesystem/goe_gcs.py:97-308`) operations (`copy_from_local`, `copy_to_local`, `delete`, `list_dir`, `read`, `stat`, `write`) with `goe.storage.gcs.<op>` `SpanKind.CLIENT` spans.
-   - Instrument `BigQueryBackendApi` (`src/goe/offload/bigquery/bigquery_backend_api.py:282-433`) and `BigQueryBackendTable` (`src/goe/offload/bigquery/bigquery_backend_table.py:105-555`) with `goe.backend.bigquery.<op>` (`ddl_dml`, `query`, `load`) `SpanKind.CLIENT` spans capturing `job_id`, `location`, `project`, `statement_type`, `total_bytes_processed`, `total_bytes_billed`, `slot_millis`, `num_dml_affected_rows`, and `output_rows`.
-   - Inject GCP job labels (`goe_system`, `goe_execution_id`, `goe_command`, `goe_step`, `goe_trace_id`) into `_default_job_config()` (`bigquery_backend_api.py:282-287`) and `LoadJobConfig` (`bigquery_backend_table.py`) for BigQuery `INFORMATION_SCHEMA.JOBS_BY_PROJECT` attribution, and emit `goe.bigquery.bytes_billed` and `goe.bigquery.slot_ms` metrics.
+With `goe.command.*`/`goe.step.*` spans from Chapter 4.2:
 
----
+1. **Oracle**: `V$SESSION.CLIENT_INFO` carries the W3C `traceparent` (or `goe:<execution_id>`) on frontend connections and transport sessions while `MODULE`/`ACTION` stay unchanged (so `LOG_SQL_STATS_QUERY_TEXT` keeps matching); optional trace tokens in the Spark JDBC transport SQL comment; `OracleGateway` statements emit SQLSpec `sqlspec.query` CLIENT spans.
+2. **Transport**: `goe.chunk` -> `goe.transport.<method_lower>` spans at the single `OffloadTransport.transport()` call site (covers Query Import, Spark Submit/Thrift/Livy, Dataproc, Sqoop, DuckDB), `goe.os_cmd.<exe>` spans with `TRACEPARENT`/`GOE_EXECUTION_ID` in subprocess env, `spark.executorEnv.*` propagation, DuckDB per-batch spans across its thread pool, and `goe.offload.rows_transported`/`bytes_staged`/`bytes_loaded` metrics.
+3. **Cloud**: `goe.storage.gs.<op>` CLIENT spans for `GOEGcs`; `goe.backend.bigquery.{ddl_dml,query,load}` CLIENT spans with job statistics, `goe_step`/`goe_execution_id`/`goe_trace_id` job labels, and `goe.bigquery.bytes_billed`/`slot_ms` metrics.
 
-## 2. Task Breakdown
+### 2. Context
 
-| Task ID | Title | Target Files | Dependencies |
-| :--- | :--- | :--- | :--- |
-| **Task 1.1** | `OracleGateway` Observability, `V$SESSION.CLIENT_INFO` Tagging & `SQLCommenter` | `src/goe/observability/db.py`, `src/goe/persistence/oracle_gateway.py`, `src/goe/offload/oracle/oracle_frontend_api.py`, `src/goe/offload/oracle/oracle_offload_transport_rdbms_api.py`, `tests/unit/observability/test_oracle_db_telemetry.py` | Chapter 4.2 |
-| **Task 1.2** | Offload Transport Spans (`goe.chunk`, `goe.transport.*`), Subprocess `TRACEPARENT` & Transport Metrics | `src/goe/observability/transport.py`, `src/goe/offload/offload_transport_functions.py`, `src/goe/offload/offload_transport.py`, `tests/unit/observability/test_transport_telemetry.py` | Task 1.1 |
-| **Task 1.3** | `GOEGcs` Storage Spans & BigQuery Client Spans, GCP Job Labels & Slot/Bytes Metrics | `src/goe/observability/cloud.py`, `src/goe/filesystem/goe_gcs.py`, `src/goe/offload/bigquery/bigquery_backend_api.py`, `src/goe/offload/bigquery/bigquery_backend_table.py`, `tests/unit/observability/test_gcs_and_bigquery_telemetry.py` | Task 1.1, Task 1.2 |
+- Baseline commit `46890a8`. Post-PRD-3 targets and the chapters that create/change them:
+  - `src/goe/persistence/oracle_gateway.py` (`OracleGateway`) — created by `sqlspec_oracle_data_layer_migration_20261010` task 1.1; its spec defines no observability hook, so task 1.1 adds one.
+  - `src/goe/offload/transport/base.py` (`OffloadTransport`) — created by `core_god_module_decomposition_20261010` task 1.4; `src/goe/offload/offload_transport_functions.py` (`run_os_cmd`, `transport_and_load_offload_chunk`) is unchanged by PRD 1-3.
+  - `src/goe/offload/transport/duckdb_transport.py` (`OffloadTransportDuckDB`, `_run_batch`, `_run_batches`) — created by `duckdb_oracle_offload_transport_20261010` task 1.3.
+  - `src/goe/filesystem/goe_gcs.py` (`GOEGcs`) — changed by `gcp_adc_credential_unification_20261010` task 1.2 and `bigquery_first_backend_modernization_20261010` task 1.4 (`if_generation_match` uploads and single-pass `delete_blobs`).
+  - `src/goe/offload/bigquery/bigquery_backend_api.py` (`BackendBigQueryApi`, `job_labels`, `sanitize_bigquery_label_value`, `query_and_wait`) and `src/goe/offload/bigquery/bigquery_backend_table.py` (`BackendBigQueryTable._load_native_load_table`) — changed by `bigquery_first_backend_modernization_20261010` tasks 1.2-1.3.
+- Real class names: `OffloadTransportOracleApi` (not `OracleOffloadTransportRdbmsApi`), `BackendBigQueryApi`/`BackendBigQueryTable` (not `BigQueryBackendApi`/`BigQueryBackendTable`). `get_rdbms_session_setup_commands` is at `oracle_offload_transport_rdbms_api.py:399-444`; `LOG_SQL_STATS_QUERY_TEXT` (L66-77) queries `gv$sql`.
+- Verified library facts: python-oracledb 4.0.2 has no tracing hooks; `clientinfo` is write-only, 64 bytes. sqlspec 0.62.1 `TelemetryConfig(enable_spans, provider_factory, resource_attributes)`, driver `attach_observability(runtime)`; an attached runtime disables the driver statement cache, so it is attached only when telemetry is enabled. google-cloud-bigquery 3.44.0 job statistics attributes and built-in `BigQuery.*` REST spans on the global tracer. Spark executor env via `spark.executorEnv.[Name]` (https://spark.apache.org/docs/latest/configuration.html#runtime-environment). BigQuery label rules: https://cloud.google.com/bigquery/docs/labels-intro#requirements.
+- Zero-change when disabled: CLIENT_INFO, SQL comments, subprocess env, Spark properties, SQLSpec runtime, storage spans, and BigQuery spans are all gated on `get_observability_runtime().enabled`.
+- **`D-4.3-SQLCOMMENTER` (RESOLVED)**: SQLCommenter is emitted via `sqlspec.core.sqlcommenter` (`generate_comment`, `SQLCommenterContext`, and `StatementConfig.replace(enable_sqlcommenter=True, sqlcommenter_attributes={"db_driver": "oracledb", "framework": "goe"}, sqlcommenter_enable_traceparent=True, sqlcommenter_enable_context=True)`). For `OracleGateway`, `attach_db_observability(driver)` enables SQLSpec's native AST SQLCommenter transform when `settings.sqlcommenter` is `True`; for Spark JDBC transport queries (`_get_spark_jdbc_query_text`, which wraps `sql_comment` in `f" /* {sql_comment} */"` and passes `rdbms_source_query` through `_spark_sql_option_safe`, escaping `'` as `\'`), `format_sqlcommenter(**attributes)` calls `generate_comment(attrs)` and `build_transport_sql_comment(existing_comment)` strips the outer `/*` and `*/` before appending after `existing_comment` so `LOG_SQL_STATS_QUERY_TEXT` keeps matching.
 
----
+### 3. Requirement Traceability
 
-## 3. Verification Plan
+| Requirement (PRD 4) | Task | Verification |
+| :--- | :--- | :--- |
+| `OracleGateway` query spans; `CLIENT_INFO`; MODULE/ACTION invariant; SQLSpec SQLCommenter (`D-4.3-SQLCOMMENTER`) | 1.1 | `test_oracle_telemetry.py`, `test_offload_transport_rdbms_api.py` |
+| `goe.chunk`, `goe.transport.<method>`, `run_os_cmd` `TRACEPARENT`, Spark env, transport metrics | 1.2 | `test_transport_telemetry.py`, existing transport tests |
+| DuckDB transport coverage ("all transports") | 1.2 (call site), 1.3 (batches) | `test_duckdb_transport_telemetry.py` |
+| `GOEGcs` `goe.storage.gs.<op>` spans | 1.4 | `test_storage_telemetry.py` |
+| BigQuery spans, job labels, slot/bytes metrics | 1.5 | `test_bigquery_telemetry.py`, `tests/unit/offload/bigquery/` |
+
+### 4. Verification Plan
 
 ```bash
 export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
 uv run ruff format --check src/goe tests/unit/observability
 uv run ruff check src/goe tests/unit/observability
 uv run mypy src/goe
-uv run pytest tests/unit/observability/ -v
+uv run pytest tests/unit/observability/ tests/unit/offload/ tests/unit/filesystem/ tests/unit/persistence/ -v
 ```
 
 ## Implementation Plan
 
-- [ ] 1.1 Implement `src/goe/observability/db.py` (`build_db_observability_config`, `db_statement_observer`), wire into `OracleGateway`, `OracleFrontendApi`, and `OracleOffloadTransportRdbmsApi`, and verify in `tests/unit/observability/test_oracle_db_telemetry.py`.
-- [ ] 1.2 Implement `src/goe/observability/transport.py` (`traced_offload_chunk`, `traced_transport`), wire into `offload_transport_functions.py` (`run_os_cmd`, `transport_and_load_offload_chunk`) and `offload_transport.py`, and verify in `tests/unit/observability/test_transport_telemetry.py`.
-- [ ] 1.3 Implement `src/goe/observability/cloud.py` (`traced_gcs_operation`, `traced_bigquery_job`, `build_bigquery_job_labels`), wire into `GOEGcs`, `BigQueryBackendApi`, and `BigQueryBackendTable`, and verify in `tests/unit/observability/test_gcs_and_bigquery_telemetry.py`.
+- [ ] 1.1 Oracle session trace tagging, SQLCommenter helper, and `OracleGateway` SQLSpec spans ([tasks/1.1.md](tasks/1.1.md))
+- [ ] 1.2 Offload chunk, transport, and subprocess spans with `TRACEPARENT` propagation ([tasks/1.2.md](tasks/1.2.md))
+- [ ] 1.3 DuckDB transport per-batch spans with thread context propagation ([tasks/1.3.md](tasks/1.3.md))
+- [ ] 1.4 `GOEGcs` storage CLIENT spans ([tasks/1.4.md](tasks/1.4.md))
+- [ ] 1.5 BigQuery job spans, trace job labels, and slot/bytes metrics ([tasks/1.5.md](tasks/1.5.md))
 
 ## Continuity Snapshot
 
-- **Current State**: Planned (`plan_revision: 1`).
-- **Next Action**: Execute Task `1.1` (`database_transport_and_cloud_storage_spans_20261010:1.1`).
+- **Flow / lifecycle**: `database_transport_and_cloud_storage_spans_20261010`, `planned`.
+- **Current task / claimant**: none.
+- **Last verified checkpoint**: none.
+- **Decisions**: instrument the single transport call site instead of eight subclasses; telemetry gating on every data-plane hook; extend PRD 3 BigQuery labels (`job_labels` / `sanitize_bigquery_label_value`) rather than re-implementing them; `D-4.3-SQLCOMMENTER` resolved (emit spec-compliant SQLCommenter via `sqlspec.core.sqlcommenter`).
+- **Blockers**: Chapter 4.2 and PRD 3 chapters listed in `depends_on` must be complete.
+- **Next exact step**: execute task `1.1` (`database_transport_and_cloud_storage_spans_20261010:1.1`).
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Relevant knowledge**: `.agents/bundles/knowledge/frontends/oracle.md`, `.agents/bundles/knowledge/transport/`, `.agents/bundles/knowledge/storage/`, `.agents/bundles/knowledge/backends/bigquery.md`, `.agents/bundles/knowledge/standards/database-and-sql.md`.

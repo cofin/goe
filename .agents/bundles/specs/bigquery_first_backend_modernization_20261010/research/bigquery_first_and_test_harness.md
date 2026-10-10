@@ -193,3 +193,23 @@ Priorities: P1 = do first in the BigQuery-first track. P2 = next. P3 = opportuni
 | Connect | `src/goe/connect/connect_backend.py` (22 refs) | Per-backend health checks | Low | Add only the BigQuery co-location check (B.2 #19) |
 | Testlib | `tests/testlib/test_framework/{hadoop,snowflake,microsoft,teradata,spark}` (~7.3k LOC) | Factory-loaded | None at runtime | Exclude from CI. Keep in tree |
 | Optional deps | `pyproject.toml` `[project.optional-dependencies]` `hadoop`, `snowflake`, `synapse`, `teradata`, `sql_server` | Not installed by default (`uv sync --dev` without extras) | Good isolation already | Note that `azure-storage-blob`/`boto3` remain **core** deps and could move to extras later |
+
+---
+
+## Part C — Verified External Facts (spec review 2026-10-10T18:35:00Z)
+
+These facts supersede conflicting statements in Parts A/B and drive `plan_revision: 2`.
+
+| # | Fact | Source |
+|---|---|---|
+| C1 | `google-cloud-bigquery` locked `3.44.0` (`uv.lock:1346-1347`; PyPI latest `3.46.1`). `Client.query_and_wait(query, *, job_config, location, project, api_timeout, wait_timeout, retry, job_retry, page_size, max_results, query_results_format, compression_codec) -> RowIterator`, added in `3.14.0`; merges `default_query_job_config`. | https://cloud.google.com/python/docs/reference/bigquery/latest/google.cloud.bigquery.client.Client ; https://github.com/googleapis/python-bigquery/releases/tag/v3.14.0 ; local `inspect.signature` on 3.44.0 |
+| C2 | `Client(project, credentials, _http, location, default_query_job_config, default_load_job_config, client_info: google.api_core.client_info.ClientInfo, client_options, default_job_creation_mode)`. | same as C1 |
+| C3 | `LoadJobConfig` exposes `source_format`, `write_disposition`, `decimal_target_types`, `destination_encryption_configuration`, `labels`, `schema`, `parquet_options`; `DecimalTargetType.{NUMERIC,BIGNUMERIC,STRING}`. | https://cloud.google.com/python/docs/reference/bigquery/latest/google.cloud.bigquery.job.LoadJobConfig |
+| C4 | Python `Dataset` has `default_encryption_configuration` (no `default_kms_key_name` attribute); DDL `CREATE SCHEMA ... OPTIONS(default_kms_key_name=...)` is the SQL equivalent GOE uses. | https://cloud.google.com/python/docs/reference/bigquery/latest/google.cloud.bigquery.dataset.Dataset ; https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#schema_option_list |
+| C5 | Labels: keys/values lowercase letters, digits, `_`, `-`; max 63 chars; Storage Write API ingestion cannot carry labels. | https://cloud.google.com/bigquery/docs/labels-intro |
+| C6 | `INFORMATION_SCHEMA.PARTITIONS` is Preview, needs a dataset qualifier, `partition_id` is NULL for unpartitioned tables, `__UNPARTITIONED__` can appear twice (storage tiers). | https://cloud.google.com/bigquery/docs/information-schema-partitions |
+| C7 | `google-cloud-storage` locked `3.13.1`; `transfer_manager` public functions are upload/download only (no delete); `Bucket.delete_blobs` deletes per blob (not a batch) with `on_error` for NotFound; `ifGenerationMatch=0` returns HTTP 412 (`PreconditionFailed`) when a live object exists. | https://cloud.google.com/python/docs/reference/storage/latest/google.cloud.storage.transfer_manager ; https://cloud.google.com/python/docs/reference/storage/latest/google.cloud.storage.bucket.Bucket ; https://cloud.google.com/storage/docs/request-preconditions |
+| C8 | `google-cloud-bigquery-storage` is only the `bqstorage` extra of `google-cloud-bigquery`, not a GOE dependency. | https://pypi.org/pypi/google-cloud-bigquery/json |
+| C9 | `goccy/bigquery-emulator` (`ghcr.io/goccy/bigquery-emulator`, v0.8.1, beta): supports GoogleSQL queries and load jobs from GCS; does **not** implement external tables or copy jobs; no `--gcs-endpoint` flag; `INFORMATION_SCHEMA.PARTITIONS`, `dry_run` and Parquet load support unverified. | https://github.com/goccy/bigquery-emulator (README, `docs/feature-support.md`, `cmd/bigquery-emulator/main.go`) |
+| C10 | `pytest-databases` provides `pytest_databases.docker.bigquery` (emulator image above) and no GCS / `fake-gcs-server` fixture. | https://github.com/litestar-org/pytest-databases/tree/main/src/pytest_databases/docker |
+| C11 | `CAPABILITY_STAGING_FILE_FORMATS` does not exist; the staging default is `orchestration_defaults.offload_staging_format_default` (`L683-691`) and the template value. `BackendApiInterface.__del__` (`backend_api.py:229-230`) also calls `close()`. | repository @ `46890a8` |

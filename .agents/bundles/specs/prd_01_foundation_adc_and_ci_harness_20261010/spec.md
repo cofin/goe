@@ -1,9 +1,9 @@
 ---
 type: Spec
 flow_id: prd_01_foundation_adc_and_ci_harness_20261010
-title: "PRD 1: Foundation Cleanup, Unified GCP ADC Auth, and CI Test Harness"
+title: "Master PRD 1: Foundation, GCP Credential Unification & Automated Test Harness"
 state: planned
-plan_revision: 1
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,9 +11,17 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T16:26:00Z
-description: "Master roadmap specification for removing deprecated shims, dead modules, and legacy Redis config, merging upstream release-please and listener cleanup commits (#275 and #278), unifying GCP Application Default Credentials with service account impersonation, and establishing an automated Oracle 23ai Free and BigQuery CI test harness with golden dry-run characterization coverage."
-tags: [architecture, authentication, testing]
+updated_at: 2026-10-10T22:20:00Z
+description: "Master roadmap establishing Phase 1 foundation: remove deprecated bin/* and Redis shims, port upstream gluent/goe #275 and #278, purge 9 unimported dead modules, unify GCP authentication around keyless Application Default Credentials and service account impersonation, and stand up an automated Oracle 23ai Free CI pipeline and offline BigQuery golden dry-run characterization suite."
+tags:
+  - prd
+  - foundation
+  - gcp-adc
+  - oracle-23ai
+  - bigquery
+  - ci
+parent: null
+depends_on: []
 child_flows:
   - legacy_shim_removal_and_repo_hygiene_20261010
   - gcp_adc_credential_unification_20261010
@@ -22,120 +30,103 @@ research:
   - .agents/bundles/specs/gcp_adc_credential_unification_20261010/research/adc_credential_unification.md
 ---
 
-# PRD 1: Foundation Cleanup, Unified GCP ADC Auth, and CI Test Harness
+# Master PRD 1: Foundation, GCP Credential Unification & Automated Test Harness
 
 ## Specification
 
-## Executive Summary & Strategic Vision
+### 1. Executive Summary & Architectural Vision (Verified at `46890a8`)
 
-Before undertaking invasive structural refactoring of the GOE (Gluent Offload Engine) core—such as ratcheting strict `mypy` type checking, migrating options to `msgspec.Struct`, decomposing god modules, or modernizing the BigQuery/Oracle/DuckDB execution engines—the repository requires a clean, deterministic, and continuously verified foundation with zero unmerged upstream drift and zero dead code.
+This Master PRD establishes the Phase 1 foundation across three self-contained, sequentially ordered child flows (15 tasks total) before PRD 2's option/module/typing refactor, PRD 3's data-plane modernization, and PRD 4's OpenTelemetry observability rollout:
 
-Currently, three foundational gaps create unnecessary surface area and operational risk:
-
-1. **Residual Legacy Shims, Unmerged Upstream Commits (`#275` & `#278`), Stale Dependencies, & Dead Code**:
-   - Seven deprecated `bin/*` CLI wrapper scripts and the `goe.util.redis_tools` / `RedisClient` deprecation shims remain in the codebase alongside legacy dependencies (`configparser`, `lark-parser`, `termcolor`) and an outdated Python 3.11 Cloud Run `Dockerfile`.
-   - Two upstream `gluent/goe` commits landed after `next` branched and must be ported without losing our modernized Litestar Listener (`src/goe/listener/`):
-     - **Upstream `#275` (`e12a818`, `chore: Add release-please workflow`)**: Adds `release-please-config.json`, `.release-please-manifest.json`, and `release-please` + `pypi-publish` (`pypa/gh-action-pypi-publish@release/v1` with `attestations: true`) automation to `.github/workflows/release.yaml`.
-     - **Upstream `#278` (`dee61e8`, `chore: Remove Offload Listener code`)**: Removes legacy `listener_redis_*` config options and `cache_enabled()`, strips `redis_execution_id` / `redis_in_error` / `init_redis_execution_id()` / `redis_publish` / `cache.rpush` plumbing from core offload modules, removes dead `test_listener()` and `PRODUCT_NAME_GEL`, deletes legacy `tools/caller.py`, `tools/redis_subscribe.py`, `tools/goe-listener.service`, `tools/goe-listener.sh`, and `tools/migrate_spdx_headers.py`, ports `ExecutionId._uuid_as_uuid(u)` validation in `src/goe/orchestration/execution_id.py`, and removes dead `get_offloadable_schemas()` / `get_schema_tables()` stubs from Teradata and MSSQL frontend APIs while preserving `src/goe/listener/` and `OracleOrchestrationRepoClient` schema introspection methods.
-   - Nine confirmed unimported dead modules (`src/goe/conductor/`, `src/goe/listener/services/hybrid_view.py`, `src/goe/util/serialization.py`, `src/goe/util/env.py`, `src/goe/util/text.py`, `src/goe/util/uuids.py`, `src/goe/util/exception_trigger.py`, `src/goe/util/local_cache.py`, `src/goe/util/retry_logic.py`) add maintenance and type-checking overhead with zero runtime callers.
-2. **Fragmented GCP Credential & Project Resolution**: GOE's Google Cloud Platform integration is split across four independent code paths (`BackendBigQueryApi`, `GOEGcs`, `GOELogFileHandle`, and `OffloadTransportSparkBatchesGcloud` / `OffloadTransportSparkDataprocGcloud`) that advertise static service account JSON key files (`GOOGLE_APPLICATION_CREDENTIALS`) and conflate the caller's control-plane impersonation principal with the Dataproc worker runtime service account (`GOOGLE_DATAPROC_SERVICE_ACCOUNT`). Furthermore, `GOELogFileHandle` instantiates `fsspec.filesystem("gs")` without forwarding resolved credentials, causing `gcsfs` to silently fall back to anonymous access when ADC fails or when `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` is configured.
-3. **Broken Integration Test Collection & Missing CI Safety Net**: Collecting `tests/integration` without a live `offload.env` and Oracle connection crashes immediately during `unittest.TestCase.__init__` in `tests/integration/persistence/test_orchestration_metadata.py:139-145`. Additionally, stale helper signatures (`text_in_log` in `tests/testlib/test_framework/test_functions.py:120-124` and `self.config == DBTYPE_ORACLE` in `tests/integration/offload/test_offload_source_table.py:121,128`) prevent clean execution, and CI (`test.yaml`) currently runs only unit tests (`pytest tests/unit`) without an Oracle 23ai Free container or a golden dry-run (`execute=False`) characterization suite for Oracle-to-BigQuery offloads.
-
-This Master PRD establishes the Phase 1 foundation across three self-contained, sequentially ordered child flows:
-1. **Chapter 1.1 (`legacy_shim_removal_and_repo_hygiene_20261010`)**: Removes all `bin/*` wrappers, `redis_tools.py` / `RedisClient` shims, and 9 dead modules; ports upstream `#278` (`dee61e8`) non-Litestar Redis/listener cleanup and `ExecutionId.from_uuid` validation; ports upstream `#275` (`e12a818`) `release-please` + `pypi-publish` workflow and migrates `lark-parser` -> `lark>=1.1.9` while dropping `configparser` and `termcolor`; and synchronizes documentation and OKF knowledge bundles.
-2. **Chapter 1.2 (`gcp_adc_credential_unification_20261010`)**: Introduces a unified `resolve_gcp_credentials(config)` helper (`src/goe/util/gcp_credentials.py`) supporting standard ADC, Workload Identity Federation, and `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`, wires it into BigQuery, Cloud KMS, GCS (`google-cloud-storage` and `fsspec`/`gcsfs`), and `gcloud dataproc`, upgrades `gcs-connector` to `3.0.x`, and adds ADC preflight checks to `goe connect`.
-3. **Chapter 1.3 (`oracle_ci_and_bigquery_test_harness_20261010`)**: Repairs integration test collection and stale helper signatures, adds a non-interactive Oracle 23ai Free bootstrap script (`sql/oracle/source/bootstrap_ci.sh`) and GitHub Actions CI job (`integration-oracle`) plus WIF-backed `integration-bigquery` workflow, and builds a deterministic golden dry-run (`execute=False`) characterization suite (`tests/unit/characterization/test_offload_bigquery_golden.py`) locking in Oracle-to-BigQuery SQL and DDL generation.
-
----
-
-## Global Architecture & Boundaries
+1. **Chapter 1.1 (`legacy_shim_removal_and_repo_hygiene_20261010`, 6 tasks `1.1`–`1.6`)**: Removes the seven `bin/*` CLI wrapper scripts and their packaging/test/shell references; deletes the `goe.util.redis_tools` and `goe.listener.utils.cache.RedisClient` deprecation shims; ports the non-listener Redis cleanup, `PRODUCT_NAME_GEL` / `src/goe/listener/utils/ping.py` removal, and `ExecutionId.from_uuid` validation (`_uuid_as_uuid`) from upstream `gluent/goe#278` (`dee61e8`) while preserving the fork's Litestar listener (`src/goe/listener/`) and `OracleOrchestrationRepoClient` introspection methods; deletes 9 confirmed unimported dead modules (`src/goe/conductor/`, `src/goe/listener/services/hybrid_view.py`, `src/goe/util/{serialization,env,text,uuids,exception_trigger,local_cache,retry_logic}.py`); ports upstream `gluent/goe#275` (`e12a818`) `release-please` + `pypi-publish` workflow, migrates `lark-parser` -> `lark>=1.1.9`, drops `configparser`/`termcolor`/`mypyc`, modernizes the Cloud Run `Dockerfile` to Python 3.12 via `uv`, and synchronizes documentation and OKF knowledge bundles.
+2. **Chapter 1.2 (`gcp_adc_credential_unification_20261010`, 6 tasks `1.1`–`1.6`)**: Introduces the centralized `src/goe/util/gcp_credentials.py` resolver (`GcpCredentialBundle`, `resolve_gcp_credentials`, `resolve_gcloud_impersonation_principal`, `clear_gcp_credentials_cache`) and four `OrchestrationConfig` fields (`google_cloud_project`, `google_cloud_quota_project`, `google_impersonate_service_account`, `google_dataproc_impersonate_service_account`); wires credential bundles into `BackendBigQueryApi` (`bigquery.Client`, `kms.KeyManagementServiceClient`), `GOEGcs` (`storage.Client`, with `config` forwarded by `get_dfs_from_options`), and `GOELogFileHandle` (`gcsfs` `token=<Credentials>`, eliminating anonymous fallback); decouples Managed Spark serverless runtime `--service-account` from caller `--impersonate-service-account`; adds `goe connect` Google Cloud credential preflight and Managed Spark identity reporting; upgrades the bundled Cloud Storage Hadoop connector to `gcs-connector-3.0.20-shaded.jar` with `spark.hadoop.fs.gs.auth.type APPLICATION_DEFAULT`; and removes static key-file guidance across templates and docs.
+3. **Chapter 1.3 (`oracle_ci_and_bigquery_test_harness_20261010`, 3 tasks `1.1`–`1.3`)**: Fixes the `TestOrchestrationMetadata.__init__` collection crash (`tests/integration/persistence/test_orchestration_metadata.py:139-145`), `self.config.db_type == DBTYPE_ORACLE` checks (`tests/integration/offload/test_offload_source_table.py:120,127`, `tests/unit/offload/test_offload_source_table.py:92`), and `text_in_log(messages, ...)` signature (`tests/testlib/test_framework/test_functions.py:120-124`, `tests/integration/orchestration/test_orchestration_runner.py:117`), and adds `tests/integration/conftest.py` + pytest markers; creates the non-interactive Oracle 23ai Free bootstrap script (`sql/oracle/source/bootstrap_ci.sh`), GitHub Actions CI jobs (`integration-oracle` and WIF `integration-bigquery` in `.github/workflows/test.yaml`), and `Makefile` targets; and builds the offline BigQuery dry-run golden characterization suite (`tests/unit/characterization/test_offload_bigquery_golden.py`).
 
 ```mermaid
 flowchart TD
-    subgraph Ch1_1["Chapter 1.1: Legacy Shim Removal, Upstream Sync (#275/#278) & Dead-Code Purge"]
-        BIN["Delete bin/* wrappers & update goe.sh / Makefile"]
-        REDIS["Port #278 Redis/Listener cleanup, ExecutionId.from_uuid fix & purge 9 dead modules"]
-        DEPS["Port #275 release-please + pypi-publish, migrate lark>=1.1.9, drop configparser & termcolor"]
-        DOCS1["Sync docs/user_guide.md, Dockerfile & OKF pattern bundles"]
-        BIN --> REDIS
-        REDIS --> DEPS
-        DEPS --> DOCS1
+    subgraph Ch1_1["Chapter 1.1: Legacy Shim Removal, Upstream Sync (#275/#278) & Dead-Code Purge (6 Tasks)"]
+        BIN["1.1: Delete bin/* wrappers & Redis deprecation shims"]
+        REDIS["1.2-1.3: Port #278 Redis cleanup & ExecutionId.from_uuid validation"]
+        DEAD["1.4: Purge 9 unimported dead modules"]
+        DEPS["1.5-1.6: Port #275 release-please, migrate lark>=1.1.9, drop configparser/termcolor & sync docs"]
+        BIN --> REDIS --> DEAD --> DEPS
     end
 
-    subgraph Ch1_2["Chapter 1.2: GCP ADC & Impersonation Unification"]
-        CRED["Create src/goe/util/gcp_credentials.py & new config options"]
-        BQ_GCS["Wire resolve_gcp_credentials into BigQuery, KMS, GOEGcs & GOELogFileHandle"]
-        DP_CONN["Decouple Dataproc runtime SA vs caller impersonation, gcs-connector 3.0.x & goe connect"]
-        DOCS2["Update offload.env templates & docs/gcp_setup.md for keyless ADC"]
-        CRED --> BQ_GCS
-        BQ_GCS --> DP_CONN
-        DP_CONN --> DOCS2
+    subgraph Ch1_2["Chapter 1.2: GCP ADC & Impersonation Unification (6 Tasks)"]
+        CRED["1.1: Create src/goe/util/gcp_credentials.py & new config options"]
+        BQ_GCS["1.2: Wire resolve_gcp_credentials into BigQuery, KMS, GOEGcs & GOELogFileHandle"]
+        DP_CONN["1.3-1.5: Decouple Dataproc runtime SA vs caller impersonation, goe connect preflight & gcs-connector 3.0.20"]
+        DOCS2["1.6: Update offload.env templates, docs/gcp_setup.md & docs/user_guide.md"]
+        CRED --> BQ_GCS --> DP_CONN --> DOCS2
     end
 
-    subgraph Ch1_3["Chapter 1.3: Oracle 23ai CI & BigQuery Test Harness"]
-        COLL["Fix test_orchestration_metadata.py collection crash, stale helpers & conftest.py"]
-        ORACI["Create sql/oracle/source/bootstrap_ci.sh & GitHub Actions integration-oracle / integration-bigquery"]
-        GOLD["Create tests/unit/characterization/test_offload_bigquery_golden.py (execute=False)"]
+    subgraph Ch1_3["Chapter 1.3: Oracle 23ai CI & BigQuery Test Harness (3 Tasks)"]
+        COLL["1.1: Fix TestOrchestrationMetadata collection crash, latent test bugs & conftest.py"]
+        ORACI["1.2: Create sql/oracle/source/bootstrap_ci.sh & GitHub Actions integration-oracle / integration-bigquery"]
+        GOLD["1.3: Create tests/unit/characterization/test_offload_bigquery_golden.py (dry_run=True)"]
         COLL --> ORACI
         COLL --> GOLD
     end
 
-    Ch1_1 --> Ch1_2
-    Ch1_2 --> Ch1_3
+    Ch1_1 --> Ch1_2 --> Ch1_3
 ```
 
-### Architectural Invariants
-- **Single CLI Entrypoint**: `goe` (`src/goe/cli/__init__.py`) is the sole CLI entrypoint across local installations, Cloud Run (`docs/google_cloud_run/goe.sh` and `Dockerfile`), and user documentation.
-- **In-Process Cache Only & Zero Legacy Redis Config**: `MemoryCache` and `MemorySyncCache` (`src/goe/listener/utils/cache.py`) are the sole cache primitives for the Litestar Listener (`src/goe/listener/`); all `listener_redis_*` config attributes, `cache_enabled()`, `redis_publish`, `redis_execution_id`, `goe.util.redis_tools`, and `RedisClient` shims are removed while preserving `src/goe/listener/` and `OracleOrchestrationRepoClient`'s 5 schema introspection methods (`get_offloadable_schemas`, `get_schema_tables`, `get_table_columns`, `get_table_partitions`, `get_table_subpartitions`).
-- **Zero Dead Modules**: Confirmed unimported modules (`src/goe/conductor/`, `src/goe/listener/services/hybrid_view.py`, `src/goe/util/serialization.py`, `src/goe/util/env.py`, `src/goe/util/text.py`, `src/goe/util/uuids.py`, `src/goe/util/exception_trigger.py`, `src/goe/util/local_cache.py`, `src/goe/util/retry_logic.py`) are purged prior to strict typing ratchets in PRD 2.
-- **Centralized GCP Credential Resolution**: Every Google Cloud SDK client (`google.cloud.bigquery.Client`, `google.cloud.kms.KeyManagementServiceClient`, `google.cloud.storage.Client`, `fsspec.filesystem("gs", ...)`) and `gcloud dataproc` subprocess obtains credentials, target project, quota project, and impersonation settings exclusively via `src/goe/util/gcp_credentials.py`.
-- **Separation of Control-Plane Impersonation and Data-Plane Runtime SA**:
-  - `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` (`config.google_impersonate_service_account`) governs control-plane API calls and `gcloud` CLI invocation (`CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT` or `--impersonate-service-account`).
-  - `GOOGLE_DATAPROC_SERVICE_ACCOUNT` (`config.google_dataproc_service_account`) governs only the `gcloud dataproc batches submit spark --service-account=...` runtime worker identity.
-- **Offline-Collectible Integration Suite**: `uv run pytest tests/integration --collect-only` must succeed with zero environment variables or database connections configured, cleanly skipping live suites when credentials are absent while running in CI against `gvenzl/oracle-free:23-slim-faststart`.
+---
+
+### 2. Sequenced Chapter Roadmap
+
+| Order | Flow ID | Title & Tasks | Scope Summary | Depends On |
+| :--- | :--- | :--- | :--- | :--- |
+| **1.1** | `legacy_shim_removal_and_repo_hygiene_20261010` | **Chapter 1.1: Remove Deprecated Shims, Port Upstream `#278`/`#275`, Purge Dead Modules, and Clean Up Dependencies** (6 tasks: `1.1`–`1.6`) | Delete `bin/*` wrappers and `redis_tools.py`/`RedisClient` shims (`1.1`); port upstream `#278` (`dee61e8`) non-Litestar Redis/listener cleanup, `PRODUCT_NAME_GEL`/`ping.py` removal, frontend stubs, and legacy `tools/` scripts (`1.2`); port `#278` `ExecutionId.from_uuid` validation (`1.3`); purge 9 unimported dead modules (`1.4`); port upstream `#275` (`e12a818`) `release-please` + `pypi-publish`, migrate `lark>=1.1.9`, drop `configparser`/`termcolor`/`mypyc`, and modernize Cloud Run `Dockerfile` (`1.5`); synchronize docs, `AGENTS.md`, and OKF knowledge bundles (`1.6`). | None |
+| **1.2** | `gcp_adc_credential_unification_20261010` | **Chapter 1.2: Unified GCP Application Default Credentials & Service Account Impersonation** (6 tasks: `1.1`–`1.6`) | Create `src/goe/util/gcp_credentials.py` (`GcpCredentialBundle`, `resolve_gcp_credentials`, `resolve_gcloud_impersonation_principal`) and register `google_cloud_project`, `google_cloud_quota_project`, `google_impersonate_service_account`, and `google_dataproc_impersonate_service_account` (`1.1`); wire into `BackendBigQueryApi`, `GOEGcs`, `get_dfs_from_options`, and `GOELogFileHandle` (`1.2`); separate Managed Spark runtime `--service-account` from `--impersonate-service-account` (`1.3`); add `goe connect` GCP credential preflight and Managed Spark identity report (`1.4`); upgrade `gcs-connector` to `3.0.20-shaded` with `APPLICATION_DEFAULT` auth (`1.5`); update templates and docs (`1.6`). | `legacy_shim_removal_and_repo_hygiene_20261010` |
+| **1.3** | `oracle_ci_and_bigquery_test_harness_20261010` | **Chapter 1.3: Oracle 23ai Free CI Container, BigQuery Integration Harness, and Golden Dry-Run Characterization Suite** (3 tasks: `1.1`–`1.3`) | Defer `TestOrchestrationMetadata` setup to `setUp()`, fix `self.config.db_type == DBTYPE_ORACLE` and `text_in_log(messages, ...)`, and add `tests/integration/conftest.py` + markers (`1.1`); create `sql/oracle/source/bootstrap_ci.sh`, GitHub Actions `integration-oracle` and WIF `integration-bigquery` jobs in `.github/workflows/test.yaml`, and `Makefile` targets (`1.2`); build `tests/unit/characterization/test_offload_bigquery_golden.py` (`1.3`). | `gcp_adc_credential_unification_20261010` |
 
 ---
 
-## Sequenced Chapter Roadmap
+### 3. Architectural Invariants & Resolved Decisions
 
-| Chapter Order | Flow ID | Title | Scope Summary | Dependencies | Status |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **1.1** | `legacy_shim_removal_and_repo_hygiene_20261010` | Chapter 1.1: Remove Deprecated Shims, Merge Upstream `#275`/`#278`, Purge Dead Modules, and Clean Up Dependencies | Delete `bin/*` wrappers; port upstream `#278` (`dee61e8`) non-Litestar Redis/listener cleanup and `ExecutionId.from_uuid` validation; delete `src/goe/util/redis_tools.py` and 9 dead modules (`conductor/`, `hybrid_view.py`, `serialization.py`, `env.py`, `text.py`, `uuids.py`, `exception_trigger.py`, `local_cache.py`, `retry_logic.py`); port upstream `#275` (`e12a818`) `release-please` + `pypi-publish` workflow; migrate `lark-parser` to `lark>=1.1.9`, remove `configparser` and `termcolor`, modernize Cloud Run `Dockerfile`, and update `docs/user_guide.md` and OKF bundles. | None | `planned` |
-| **1.2** | `gcp_adc_credential_unification_20261010` | Chapter 1.2: Unified GCP Application Default Credentials & Service Account Impersonation | Create `src/goe/util/gcp_credentials.py` (`resolve_gcp_credentials`, `GcpCredentialBundle`, `build_gcloud_impersonation_env`), add `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_QUOTA_PROJECT`, `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`, and `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT` config options, wire into BigQuery, KMS, `GOEGcs`, `GOELogFileHandle`, and Dataproc transport, upgrade `gcs-connector` to `3.0.x`, add `goe connect` ADC preflight checks, and update templates/docs. | `legacy_shim_removal_and_repo_hygiene_20261010` | `planned` |
-| **1.3** | `oracle_ci_and_bigquery_test_harness_20261010` | Chapter 1.3: Oracle 23ai Free CI Container, BigQuery Integration Harness, and Golden Dry-Run Characterization Suite | Fix `TestOrchestrationMetadata.__init__` collection crash and stale test helper bugs (`text_in_log`, `self.config.db_type`), add `tests/integration/conftest.py` and markers, create `sql/oracle/source/bootstrap_ci.sh` and CI workflows (`integration-oracle` and WIF `integration-bigquery`), and build `tests/unit/characterization/test_offload_bigquery_golden.py`. | `gcp_adc_credential_unification_20261010` | `planned` |
+1. **Single CLI Entrypoint**: `[project.scripts] goe = "goe.cli.main:cli"` (`pyproject.toml:71`, registered in `src/goe/cli/main.py:47-53`) is the sole CLI entrypoint across local installations, Cloud Run (`docs/google_cloud_run/goe.sh` and `Dockerfile`), and user documentation.
+2. **In-Process Cache Only & Preserved Litestar Listener**: `MemoryCache` and `MemorySyncCache` (`src/goe/listener/utils/cache.py`) are the sole cache primitives for the Litestar listener (`src/goe/listener/`). All `listener_redis_*` config attributes, `cache_enabled()`, `redis_publish`, `redis_execution_id`, `goe.util.redis_tools`, `RedisClient` shims, `PRODUCT_NAME_GEL`, and `src/goe/listener/utils/ping.py` (`D-1.1-GEL` resolved) are removed while preserving `src/goe/listener/` and `OracleOrchestrationRepoClient`'s 5 schema introspection methods (`get_offloadable_schemas`, `get_schema_tables`, `get_table_columns`, `get_table_partitions`, `get_table_subpartitions`).
+3. **Zero Dead Modules**: Confirmed unimported dead modules (`src/goe/conductor/`, `src/goe/listener/services/hybrid_view.py`, `src/goe/util/{serialization,env,text,uuids,exception_trigger,local_cache,retry_logic}.py`) are deleted prior to strict typing ratchets in PRD 2.
+4. **Centralized Keyless GCP Credential Resolution**: Every Google Cloud SDK client (`google.cloud.bigquery.Client`, `google.cloud.kms.KeyManagementServiceClient`, `google.cloud.storage.Client`, `fsspec.filesystem("gs", ...)`) and `gcloud dataproc` command obtains credentials, target project, quota project, and caller impersonation settings exclusively via `src/goe/util/gcp_credentials.py` (`D2` resolved: project precedence `GOOGLE_CLOUD_PROJECT` -> ADC default project -> `BIGQUERY_DATASET_PROJECT`).
+5. **Separation of Control-Plane Impersonation and Data-Plane Runtime SA**:
+   - `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT` (falling back to `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`) governs `gcloud dataproc` caller impersonation (`--impersonate-service-account`) across `batches submit`, `batches describe`, and `jobs submit --cluster`.
+   - `GOOGLE_DATAPROC_SERVICE_ACCOUNT` governs only the `gcloud dataproc batches submit pyspark --service-account=...` serverless workload runtime identity.
+6. **Offline-Collectible Integration Suite & Golden Characterization Gate**: `GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only` succeeds with zero environment variables configured (`147 tests collected`), and `tests/unit/characterization/test_offload_bigquery_golden.py` exercises RBO, IPA `RANGE`, IPA `LIST`/`RANGE`, PBO, and BigQuery `add_columns` completely offline (`dry_run=True, do_not_connect=True`).
 
 ---
 
-## Cross-Cutting Requirements & Quality Gates
+### 4. Cross-Cutting Verification Gates
 
-Every child flow and task worksheet in this PRD must satisfy the following repository gates before completion:
+Every task in Chapters 1.1–1.3 is gated by the first four commands below, and `GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only` becomes an active gate starting at Chapter 1.3 Task `1.1` (where `TestOrchestrationMetadata.__init__` is fixed):
+```bash
+export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run mypy src/goe
+uv run pytest tests/unit
+GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only
+```
 
-1. **Static Analysis & Type Checking**:
-   ```bash
-   export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
-   uv run ruff check
-   uv run ruff format --check
-   uv run mypy src/goe
-   ```
-2. **Unit & Characterization Test Suite**:
-   ```bash
-   export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
-   uv run pytest tests/unit
-   ```
-3. **Offline Integration Test Collection Gate**:
-   ```bash
-   export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
-   GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only
-   ```
-4. **Code Style & Hygiene Standards**:
-   - All Python files must begin with the 2-line SPDX header (`# SPDX-FileCopyrightText: 2026 The GOE Authors` and `# SPDX-License-Identifier: Apache-2.0`).
-   - All imports must be placed at module top-level (or within module-level `if TYPE_CHECKING:` blocks); nested function-scoped imports are prohibited.
-   - Zero inline `#` comments inside Python code; all design rationale and step explanations belong in Google-style docstrings.
-   - Modern Python >=3.12 typing (`list`, `dict`, `X | None`) throughout all touched modules.
+---
+
+## Implementation Plan
+
+- [ ] 1.1 [Chapter 1.1: Remove Deprecated Shims, Port Upstream `#278`/`#275`, Purge Dead Modules, and Clean Up Dependencies](../legacy_shim_removal_and_repo_hygiene_20261010/spec.md) — 6 tasks (`1.1`–`1.6`): remove `bin/*` wrappers and Redis shims (`1.1`), port `#278` Redis cleanup and remove `PRODUCT_NAME_GEL`/`ping.py` (`1.2`), port `#278` `ExecutionId.from_uuid` validation (`1.3`), purge 9 dead modules (`1.4`), port `#275` `release-please` and migrate dependencies/Dockerfile (`1.5`), and sync docs/OKF bundles (`1.6`).
+- [ ] 1.2 [Chapter 1.2: Unified GCP Application Default Credentials & Service Account Impersonation](../gcp_adc_credential_unification_20261010/spec.md) — 6 tasks (`1.1`–`1.6`): create `src/goe/util/gcp_credentials.py` and config options (`1.1`), wire BigQuery/KMS/`GOEGcs`/`GOELogFileHandle` (`1.2`), separate Managed Spark runtime SA from caller impersonation (`1.3`), add `goe connect` GCP preflight (`1.4`), upgrade `gcs-connector` to `3.0.20` (`1.5`), and update templates/docs (`1.6`).
+- [ ] 1.3 [Chapter 1.3: Oracle 23ai Free CI Container, BigQuery Integration Harness, and Golden Dry-Run Characterization Suite](../oracle_ci_and_bigquery_test_harness_20261010/spec.md) — 3 tasks (`1.1`–`1.3`): fix integration collection crash, latent test bugs, and `conftest.py` (`1.1`), create `sql/oracle/source/bootstrap_ci.sh` and CI jobs (`1.2`), and build `tests/unit/characterization/test_offload_bigquery_golden.py` (`1.3`).
 
 ---
 
 ## Continuity Snapshot
 
-- **Current State**: Master PRD 1 and all three child chapter flows (`legacy_shim_removal_and_repo_hygiene_20261010`, `gcp_adc_credential_unification_20261010`, `oracle_ci_and_bigquery_test_harness_20261010`) are planned with decision-complete task worksheets (`1.1`–`1.4`, `1.1`–`1.4`, `1.1`–`1.3`), incorporating upstream commits `#275` (`e12a818`) and `#278` (`dee61e8`) and purging all 9 unimported dead modules.
-- **Next Action**: Execute Chapter 1.1 (`legacy_shim_removal_and_repo_hygiene_20261010`) starting at Task `1.1`, followed sequentially by Chapter 1.2 and Chapter 1.3.
+- **Flow / lifecycle**: `prd_01_foundation_adc_and_ci_harness_20261010` (`state: planned`).
+- **Current task / claimant**: `current_task: null` / `claimed_by: null`.
+- **Last verified checkpoint**: `none`.
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`.
+- **State identity**: `state_revision: 0`.
+- **Decisions**: `D-1.1-GEL` resolved (delete `PRODUCT_NAME_GEL` and `src/goe/listener/utils/ping.py` in Chapter 1.1 Task `1.2`) and `D2` resolved (BigQuery job project precedence: `GOOGLE_CLOUD_PROJECT` -> ADC default project -> `BIGQUERY_DATASET_PROJECT`).
+- **Recent discoveries**: All three child flows (15 tasks total: `6` in 1.1, `6` in 1.2, `3` in 1.3) have been audited against `HEAD` (`46890a8`), cross-checked against PRDs 2–4, and dry-run verified.
+- **Blockers**: `none`.
+- **Next exact step**: Execute Chapter 1.1 (`legacy_shim_removal_and_repo_hygiene_20261010`), Task `1.1` ([../legacy_shim_removal_and_repo_hygiene_20261010/tasks/1.1.md](../legacy_shim_removal_and_repo_hygiene_20261010/tasks/1.1.md)), followed sequentially by Chapter 1.2 and Chapter 1.3.
+- **Relevant knowledge**: `.agents/bundles/knowledge/patterns/cli-architecture.md`, `.agents/bundles/knowledge/operations/configuration-and-env.md`, `.agents/bundles/knowledge/backends/bigquery.md`, `.agents/bundles/knowledge/storage/gcs.md`, `.agents/bundles/knowledge/transport/spark-dataproc.md`, `.agents/bundles/knowledge/standards/testing.md`.

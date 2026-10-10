@@ -3,7 +3,7 @@ type: Spec
 flow_id: gcp_adc_credential_unification_20261010
 title: "Chapter 1.2: Unified GCP Application Default Credentials & Service Account Impersonation"
 state: planned
-plan_revision: 1
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,10 +11,11 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T16:00:00Z
-description: "Unify GCP authentication across BigQuery, Cloud KMS, Cloud Storage, fsspec/gcsfs, and Dataproc around Application Default Credentials (ADC) and GOOGLE_IMPERSONATE_SERVICE_ACCOUNT without requiring JSON private key files."
+updated_at: 2026-10-10T22:20:00Z
+description: "Unify GCP authentication across BigQuery, Cloud KMS, Cloud Storage, gcsfs log files, and gcloud Managed Spark commands around Application Default Credentials with optional service account impersonation, without service account key files."
 tags: [feature, security, gcp, bigquery]
-parent_prd: prd_01_foundation_adc_and_ci_harness_20261010
+parent: prd_01_foundation_adc_and_ci_harness_20261010
+depends_on: [legacy_shim_removal_and_repo_hygiene_20261010]
 research:
   - .agents/bundles/specs/gcp_adc_credential_unification_20261010/research/adc_credential_unification.md
 ---
@@ -23,52 +24,100 @@ research:
 
 ## Specification
 
-### Code Analysis Summary
-- **Implicit & Fragmented GCP Client Construction**:
-  - `src/goe/offload/bigquery/bigquery_backend_api.py:441-449`: `_get_bq_client()` constructs `bigquery.Client(default_query_job_config=job_config, location=self._bigquery_dataset_location)` without explicit `credentials` or `project`, and `_get_kms_client()` constructs `kms.KeyManagementServiceClient()` without `credentials`.
-  - `src/goe/offload/bigquery/bigquery_backend_api.py:203-209`: `_backend_project_name()` returns `self._orchestration_config.bigquery_dataset_project or self._client.project`, which fails or picks an unintended project when user/impersonated ADC is used without `GOOGLE_CLOUD_PROJECT`.
-  - `src/goe/filesystem/goe_gcs.py:58-68`: `GOEGcs.__init__` calls `storage.Client()` without passing resolved credentials or project.
-  - `src/goe/util/goe_log_fh.py:42-56`: `GOELogFileHandle._get_fs` calls `fsspec.filesystem(scheme, **kwargs)` for `gs://` log URIs with `token=None`, causing `gcsfs` (`gcsfs/credentials.py:325-345`) to silently fall back to `anon` (anonymous access) when ADC fails or when `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` is set.
-- **Conflated Dataproc Service Account Semantics & `gcloud` Credential Store Divergence**:
-  - `src/goe/offload/spark/dataproc_offload_transport.py:121-122` (`OffloadTransportSparkBatchesGcloud._gcloud_dataproc_submit_command`) passes `--service-account=GOOGLE_DATAPROC_SERVICE_ACCOUNT` (runtime worker SA for serverless batches), whereas `src/goe/offload/spark/dataproc_offload_transport.py:468-469` (`OffloadTransportSparkDataprocGcloud._gcloud_dataproc_submit_command`) passes `--impersonate-service-account=GOOGLE_DATAPROC_SERVICE_ACCOUNT` (caller control-plane impersonation for cluster jobs).
-  - Neither Dataproc transport propagates `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` / `CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT` to `gcloud` subprocesses.
-- **Outdated GCS Hadoop Connector & Missing `goe connect` Preflight**:
-  - `tools/transport/Makefile:12-13,41-42` bundles `gcs-connector-hadoop3-2.2.11-shaded.jar`, which lacks `fs.gs.auth.type=APPLICATION_DEFAULT` and `fs.gs.auth.impersonation.service.account` (introduced in `gcs-connector` 3.x).
-  - `src/goe/connect/connect_backend.py:67-80` and `src/goe/connect/connect_transport.py:235-263` perform no preflight inspection of the active ADC credential type, resolved principal, project, quota project, or JSON key file usage.
-- **JSON Key Guidance in Templates & Setup Docs**:
-  - `templates/conf/offload.env.template.bigquery:8-9`, `templates/conf/offload.env.template.snowflake:50-51`, and `docs/gcp_setup.md:17-34` instruct users to download service account JSON keys (`GOOGLE_APPLICATION_CREDENTIALS` / `gcloud auth activate-service-account --key-file`).
+### Context
+
+- **Baseline and ordering.** All line numbers in this flow are at commit `46890a8`.
+  - This chapter runs after Chapter 1.1 (`legacy_shim_removal_and_repo_hygiene_20261010`) and before Chapter 1.3 (`oracle_ci_and_bigquery_test_harness_20261010`).
+  - Files shared with Chapter 1.1 are cited by symbol name as well as line:
+    - Chapter 1.1 Task 1.2 edits `src/goe/config/orchestration_config.py`, `src/goe/config/orchestration_defaults.py`, and `tests/unit/config/test_orchestration_config.py`. This flow's Task 1.1 edits them too. Chapter 1.1 also touches `src/goe/goe.py`, `src/goe/offload/offload_messages.py`, `src/goe/connect/connect.py`, and `src/goe/connect/connect_functions.py`, which this flow only reads.
+    - Chapter 1.1 Task 1.6 edits `docs/gcp_setup.md:361` and `docs/user_guide.md`. This flow's Task 1.6 edits other sections of both.
+- **Current state (verified at `46890a8`).**
+  - No GOE code passes `credentials=` or `project=` to a Google client:
+    - `BackendBigQueryApi._get_bq_client`/`_get_kms_client` (`src/goe/offload/bigquery/bigquery_backend_api.py:441-449`).
+    - `GOEGcs.__init__` (`src/goe/filesystem/goe_gcs.py:68`).
+    - `GOELogFileHandle._get_fs` (`src/goe/util/goe_log_fh.py:52`).
+  - With `token=None`, gcsfs falls back silently to anonymous access (`gcsfs/credentials.py:304-345`).
+  - `OffloadTransportSparkBatchesGcloud._gcloud_dataproc_submit_command` uses `GOOGLE_DATAPROC_SERVICE_ACCOUNT` as the serverless runtime SA (`src/goe/offload/spark/dataproc_offload_transport.py:121-122`). `OffloadTransportSparkDataprocGcloud._gcloud_dataproc_submit_command` reuses it as `--impersonate-service-account` (`:468-469`).
+  - `tools/transport/Makefile:12-13,41-42` downloads `gcs-connector-hadoop3-2.2.11-shaded.jar`.
+  - `goe connect` reports no credential identity.
+  - `templates/conf/offload.env.template.bigquery:8-9`, `templates/conf/offload.env.template.snowflake:50-51`, and `docs/gcp_setup.md:17-33` advertise service account key files.
+- **Design facts that shape the tasks.**
+  - `gcloud` commands run through `OffloadTransport._run_os_cmd` (`src/goe/offload/offload_transport.py:845-860`), which has no `env` parameter and is optionally prefixed with SSH. Caller impersonation therefore uses the per-command `--impersonate-service-account` flag, not `CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT`. The PRD's `build_gcloud_impersonation_env` is replaced by `resolve_gcloud_impersonation_principal`.
+  - `storage.Client(project=None)` means "no project", so `project` is passed only when resolved.
+  - `import goe.offload.offload_messages` already loads `google.auth`, so module-top imports in `goe.util.gcp_credentials` keep the CLI import budget.
+  - Running ADC discovery inside `OrchestrationConfig` construction would execute on every config build, including unit tests. The key-file warning therefore lives in `goe connect` only.
+- **Primary sources.**
+  - ADC: <https://cloud.google.com/docs/authentication/application-default-credentials>.
+  - google-auth `default`: <https://googleapis.dev/python/google-auth/latest/reference/google.auth.html#google.auth.default>.
+  - Impersonated credentials: <https://googleapis.dev/python/google-auth/latest/reference/google.auth.impersonated_credentials.html>.
+  - gcloud impersonation: <https://cloud.google.com/docs/authentication/use-service-account-impersonation>.
+  - gcsfs token: <https://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.core.GCSFileSystem>.
+  - Serverless runtime SA: <https://cloud.google.com/sdk/gcloud/reference/dataproc/batches/submit/pyspark>.
+  - Cluster SA: <https://cloud.google.com/dataproc/docs/concepts/configuring-clusters/service-accounts>.
+  - gcs-connector 3.0.x: <https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.20/> and <https://github.com/GoogleCloudDataproc/hadoop-connectors/blob/branch-3.0.x/gcs/CONFIGURATION.md#authentication>.
+- **Decision resolved (`D2` — BigQuery job/billing project precedence).** Confirmed: `GOOGLE_CLOUD_PROJECT`, then the ADC default project, then `BIGQUERY_DATASET_PROJECT`. Today's job project is unchanged, and the dataset project is used only where clients currently fail with "Project was not passed and could not be determined".
+- **Behavior change (PRD invariant).** Permanent-cluster jobs no longer impersonate `GOOGLE_DATAPROC_SERVICE_ACCOUNT`. Operators set `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT` or `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` instead. GOE logs `DATAPROC_CLUSTER_SERVICE_ACCOUNT_IGNORED`, and `goe connect` warns.
 
 ### Relevant Patterns & Conventions
-- [Configuration & Persistence Architecture](../../knowledge/patterns/configuration-and-persistence.md): All environment options are declared in `src/goe/config/orchestration_defaults.py`, validated in `src/goe/config/config_validation_functions.py`, and wired into `OrchestrationConfig` (`src/goe/config/orchestration_config.py`).
-- [ADC Credential Unification Audit](research/adc_credential_unification.md): Comprehensive audit of all 36 GCP touchpoints in GOE.
+
+- [Configuration & Environment Variables](../../knowledge/operations/configuration-and-env.md): options are declared in `src/goe/config/orchestration_defaults.py` and wired into `OrchestrationConfig` (`EXPECTED_CONFIG_ARGS`, annotations, `from_dict`). Its L50 still describes `GOOGLE_APPLICATION_CREDENTIALS` as a key file path; archive synthesis must update it.
+- [BigQuery backend](../../knowledge/backends/bigquery.md), [GCS storage](../../knowledge/storage/gcs.md), [Spark Dataproc transport](../../knowledge/transport/spark-dataproc.md): current-state chapters that archive synthesis updates with the credential model.
+- [ADC Credential Unification Audit](research/adc_credential_unification.md): inventory of 36 GCP touchpoints, plus the revision 2 verification addendum.
 
 ### Requirements
-- **REQ-1**: Create `src/goe/util/gcp_credentials.py` providing `GcpCredentialBundle`, `resolve_gcp_credentials(config=None, scopes=None)`, and `build_gcloud_impersonation_env(config=None, base_env=None)` supporting standard ADC (`google.auth.default`), `google.auth.impersonated_credentials.Credentials` when `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` is set (preventing double-wrapping when ADC is already impersonated), and explicit project (`GOOGLE_CLOUD_PROJECT` -> `BIGQUERY_DATASET_PROJECT` -> ADC project) and quota project (`GOOGLE_CLOUD_QUOTA_PROJECT`) resolution; register `google_cloud_project`, `google_cloud_quota_project`, `google_impersonate_service_account`, and `google_dataproc_impersonate_service_account` in `OrchestrationConfig`.
-- **REQ-2**: Wire `resolve_gcp_credentials(self._orchestration_config)` into `BackendBigQueryApi` (`_get_bq_client`, `_get_kms_client`, `_backend_project_name`, `kms_key_name`), `GOEGcs.__init__`, and `GOELogFileHandle._get_fs` (passing `token=bundle.credentials, project=bundle.project` to `fsspec.filesystem("gs", ...)` to eliminate silent anonymous fallback).
-- **REQ-3**: Decouple Dataproc serverless batch runtime SA (`--service-account` from `google_dataproc_service_account`) from control-plane caller impersonation (`--impersonate-service-account` / `CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT` from `google_dataproc_impersonate_service_account` or `google_impersonate_service_account`) in `dataproc_offload_transport.py`, upgrade `gcs-connector-hadoop3` to `3.0.2` in `tools/transport/Makefile`, and add ADC principal/project preflight verification and JSON key deprecation warnings to `goe connect` and `config_validation_functions.py`.
-- **REQ-4**: Update `templates/conf/offload.env.template.bigquery`, `templates/conf/offload.env.template.snowflake`, and `docs/gcp_setup.md` to document keyless ADC, `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_QUOTA_PROJECT`, and Workload Identity Federation.
+
+- **REQ-1**: Create `src/goe/util/gcp_credentials.py` with:
+  - `GcpCredentialBundle`.
+  - `resolve_gcp_credentials(config=None, scopes=None)`, which runs ADC through `google.auth.default`. When `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` is set, it wraps the result in `impersonated_credentials.Credentials`, never double-wrapping and rejecting a conflicting impersonated ADC. It resolves the explicit project and quota project (D2) and caches bundles.
+  - `resolve_gcloud_impersonation_principal(config=None)`.
+  - Register `google_cloud_project`, `google_cloud_quota_project`, `google_impersonate_service_account`, and `google_dataproc_impersonate_service_account` in `OrchestrationConfig`.
+- **REQ-2**: Build these clients from `resolve_gcp_credentials`: `BackendBigQueryApi` (`bigquery.Client`, `kms.KeyManagementServiceClient`), `GOEGcs` (`storage.Client`, with config forwarded by `get_dfs_from_options`), and `GOELogFileHandle` (gcsfs `token=<Credentials>`, removing the anonymous fallback).
+- **REQ-3**: Separate the Managed Spark serverless runtime SA (`--service-account` from `GOOGLE_DATAPROC_SERVICE_ACCOUNT`) from gcloud caller impersonation (`--impersonate-service-account` from `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT` or `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`) on `batches submit`, `batches describe`, and `jobs submit --cluster`.
+- **REQ-4**: Add a `goe connect` "Google Cloud credentials" preflight. It reports credential type, principal, impersonated SA, project, and quota project. It fails on missing ADC or a denied token, and warns on a service account key or a missing project. Add a Managed Spark identity report.
+- **REQ-5**: Upgrade the bundled Cloud Storage Hadoop connector to 3.0.x (`gcs-connector-3.0.20-shaded.jar`) with `spark.hadoop.fs.gs.auth.type APPLICATION_DEFAULT` in the bundled Spark defaults.
+- **REQ-6**: Update `templates/conf/offload.env.template.bigquery`, `templates/conf/offload.env.template.snowflake`, `docs/gcp_setup.md`, and `docs/user_guide.md`. Document keyless ADC, the new settings, Workload Identity Federation, least-privilege IAM, and gcs-connector 3.0.x properties, and remove all key-file guidance.
 
 ### Requirement Traceability Matrix
 
 | Requirement | Task ID | Verification Strategy | Verification Target |
 | :--- | :--- | :--- | :--- |
 | REQ-1 | `1.1` | `behavior_tdd` | `uv run pytest tests/unit/util/test_gcp_credentials.py tests/unit/config/test_orchestration_config.py` |
-| REQ-2 | `1.2` | `behavior_tdd` | `uv run pytest tests/unit/offload/bigquery/ tests/unit/filesystem/ tests/unit/util/test_goe_log_fh.py` |
-| REQ-3 | `1.3` | `behavior_tdd` | `uv run pytest tests/unit/offload/test_offload_transport.py tests/unit/connect/` |
-| REQ-4 | `1.4` | `documentation_validation` | `! grep -n 'activate-service-account --key-file' docs/gcp_setup.md && grep -n 'GOOGLE_IMPERSONATE_SERVICE_ACCOUNT' templates/conf/offload.env.template.bigquery` |
+| REQ-2 | `1.2` | `behavior_tdd` | `uv run pytest tests/unit/offload/test_bigquery_backend_api_credentials.py tests/unit/filesystem/test_goe_gcs.py tests/unit/util/test_goe_log_fh.py` |
+| REQ-3 | `1.3` | `behavior_tdd` | `uv run pytest tests/unit/offload/test_offload_transport.py` |
+| REQ-4 | `1.4` | `behavior_tdd` | `uv run pytest tests/unit/connect/test_connect_gcp.py` |
+| REQ-5 | `1.5` | `static_validation` | `make -C tools/transport -n spark-jars \| grep -F gcs-connector/3.0.20/gcs-connector-3.0.20-shaded.jar` |
+| REQ-6 | `1.6` | `documentation_validation` | `grep` structural checks in `tasks/1.6.md` (no `activate-service-account`, `key-file`, or `private key JSON`; required sections present) |
+
+Every code task also runs `uv run ruff check src tests`, `uv run ruff format --check src tests`, `uv run mypy src/goe`, and `uv run pytest tests/unit`, each prefixed with `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false`.
 
 ---
 
 ## Implementation Plan
 
-- [ ] 1.1 Create `src/goe/util/gcp_credentials.py` and register GCP ADC/impersonation config options (`tasks/1.1.md`) [P0, behavior_tdd]
-- [ ] 1.2 Wire `resolve_gcp_credentials` into BigQuery, KMS, `GOEGcs`, and `GOELogFileHandle` (`tasks/1.2.md`) (depends on: 1.1) [P0, behavior_tdd]
-- [ ] 1.3 Separate Dataproc runtime SA vs caller impersonation, upgrade `gcs-connector` to `3.0.x`, and add `goe connect` ADC preflight checks (`tasks/1.3.md`) (depends on: 1.1, 1.2) [P1, behavior_tdd]
-- [ ] 1.4 Update `offload.env` templates and `docs/gcp_setup.md` for keyless ADC (`tasks/1.4.md`) (depends on: 1.1, 1.2, 1.3) [P1, documentation_validation]
+- [ ] 1.1 Create the shared GCP credential resolver and register ADC/impersonation config options ([tasks/1.1.md](tasks/1.1.md)) [P1, behavior_tdd]
+- [ ] 1.2 Wire the shared credential bundle into BigQuery, Cloud KMS, GOEGcs, and GOELogFileHandle ([tasks/1.2.md](tasks/1.2.md)) (depends on: 1.1) [P1, behavior_tdd]
+- [ ] 1.3 Separate the Managed Spark runtime service account from gcloud caller impersonation ([tasks/1.3.md](tasks/1.3.md)) (depends on: 1.1) [P1, behavior_tdd]
+- [ ] 1.4 Add goe connect Google Cloud credential preflight and Managed Spark identity report ([tasks/1.4.md](tasks/1.4.md)) (depends on: 1.1, 1.3) [P2, behavior_tdd]
+- [ ] 1.5 Upgrade the bundled Cloud Storage Hadoop connector to 3.0.20 with ADC authentication ([tasks/1.5.md](tasks/1.5.md)) [P2, static_validation]
+- [ ] 1.6 Document keyless ADC and impersonation in offload.env templates, gcp_setup.md, and user_guide.md ([tasks/1.6.md](tasks/1.6.md)) (depends on: 1.1, 1.2, 1.3, 1.4, 1.5) [P2, documentation_validation]
 
 ---
 
 ## Continuity Snapshot
 
-- **Current State**: Planned (`state: planned`, `plan_revision: 1`). Research document promoted to `research/adc_credential_unification.md` and tasks `1.1`–`1.4` authored.
-- **Next Action**: Claim and execute Task `1.1` (`tasks/1.1.md`) once Chapter 1.1 completes.
+- **Flow / lifecycle**: `gcp_adc_credential_unification_20261010` (`state: planned`).
+- **Current task / claimant**: `current_task: null` / `claimed_by: null`, and all six tasks are `open`.
+- **Last verified checkpoint**: `none`.
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`.
+- **State identity**: `state_revision: 0`.
+- **Decisions**: `D2` resolved (project precedence: `GOOGLE_CLOUD_PROJECT` -> ADC default project -> `BIGQUERY_DATASET_PROJECT`).
+- **Recent discoveries**: (1) `gcloud` runs via `OffloadTransport._run_os_cmd` (optionally over SSH), so caller impersonation uses `--impersonate-service-account` rather than process env vars; (2) `storage.Client(project=None)` disables project resolution, so `project` is passed only when resolved; (3) `gcs-connector-3.0.20-shaded.jar` uses `spark.hadoop.fs.gs.auth.type APPLICATION_DEFAULT`.
+- **Blockers**: Chapter 1.1 (`legacy_shim_removal_and_repo_hygiene_20261010`) must be completed first.
+- **Next exact step**: once every Chapter 1.1 task is closed, claim Task `1.1` and run its Step 1. Create `tests/unit/util/test_gcp_credentials.py` and confirm the `ImportError: cannot import name 'gcp_credentials' from 'goe.util'` red symptom.
+- **Relevant knowledge**:
+  - [configuration-and-env.md](../../knowledge/operations/configuration-and-env.md).
+  - [backends/bigquery.md](../../knowledge/backends/bigquery.md).
+  - [storage/gcs.md](../../knowledge/storage/gcs.md).
+  - [transport/spark-dataproc.md](../../knowledge/transport/spark-dataproc.md).
+  - [workflow.md](../../knowledge/workflow.md).
+  - [research/adc_credential_unification.md](research/adc_credential_unification.md).
