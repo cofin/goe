@@ -14,7 +14,25 @@ This directory contains specifications and task worksheets for active and planne
 
 ## Active & Planned Flows
 
-*No active or planned flows in progress.*
+### Phase 2 Next-Gen Modernization & Rebuild Roadmaps (Ordered by Implementation Dependency)
+
+1. **[Master PRD 1: Foundation Hygiene, GCP ADC Auth Unification & CI Integration Harness](prd_01_foundation_adc_and_ci_harness_20261010/spec.md)** (`prd_01_foundation_adc_and_ci_harness_20261010`):
+   - **Chapter 1.1**: [Legacy Shim Removal, Upstream Alignment & Repository Hygiene](legacy_shim_removal_and_repo_hygiene_20261010/spec.md) (`legacy_shim_removal_and_repo_hygiene_20261010`, 4 tasks)
+   - **Chapter 1.2**: [GCP Application Default Credentials (ADC) & Impersonation Unification](gcp_adc_credential_unification_20261010/spec.md) (`gcp_adc_credential_unification_20261010`, 4 tasks)
+   - **Chapter 1.3**: [Oracle Free CI Harness, Opt-In BigQuery ADC Integration Suite & Golden Dry-Run Baseline](oracle_ci_and_bigquery_test_harness_20261010/spec.md) (`oracle_ci_and_bigquery_test_harness_20261010`, 3 tasks)
+2. **[Master PRD 2: Typed msgspec Option Model, Core God-Module Decomposition & Strict Type Safety Ratchet](prd_02_core_typing_options_and_decomposition_20261010/spec.md)** (`prd_02_core_typing_options_and_decomposition_20261010`):
+   - **Chapter 2.1**: [Typed msgspec Option Model & Complete optparse Retirement](typed_msgspec_option_model_20261010/spec.md) (`typed_msgspec_option_model_20261010`, 3 tasks)
+   - **Chapter 2.2**: [Core God-Module Decomposition (Orchestration, Status Report, Source Data & Transport)](core_god_module_decomposition_20261010/spec.md) (`core_god_module_decomposition_20261010`, 4 tasks)
+   - **Chapter 2.3**: [Strict Mypy Type Safety Ratchet Across `src/goe/`](strict_mypy_type_safety_ratchet_20261010/spec.md) (`strict_mypy_type_safety_ratchet_20261010`, 3 tasks)
+3. **[Master PRD 3: SQLSpec Oracle Data Layer, Pluggable SQL AST Engine, BigQuery-First Backend & DuckDB Offload Transport](prd_03_sqlspec_bigquery_and_duckdb_engine_20261010/spec.md)** (`prd_03_sqlspec_bigquery_and_duckdb_engine_20261010`):
+   - **Chapter 3.1**: [SQLSpec Oracle Data Layer & Named SQL Migration](sqlspec_oracle_data_layer_migration_20261010/spec.md) (`sqlspec_oracle_data_layer_migration_20261010`, 3 tasks)
+   - **Chapter 3.2**: [Pluggable SQL Dialect Engine (`sql_engine.py`), Custom Oracle Dialect Adapter & `sqlglot` AST Builders](sqlglot_ast_and_predicate_engine_20261010/spec.md) (`sqlglot_ast_and_predicate_engine_20261010`, 3 tasks)
+   - **Chapter 3.3**: [BigQuery-First Backend & GCS Transfer Modernization](bigquery_first_backend_modernization_20261010/spec.md) (`bigquery_first_backend_modernization_20261010`, 4 tasks)
+   - **Chapter 3.4**: [DuckDB & `cofin/duckdb-oracle` + Community `gcs` Extension Offload Transport](duckdb_oracle_offload_transport_20261010/spec.md) (`duckdb_oracle_offload_transport_20261010`, 3 tasks)
+4. **[Master PRD 4: End-to-End OpenTelemetry Observability, Step Spans, Metrics & Log Correlation](prd_04_end_to_end_opentelemetry_observability_20261010/spec.md)** (`prd_04_end_to_end_opentelemetry_observability_20261010`):
+   - **Chapter 4.1**: [OpenTelemetry Foundation, Config & `ExecutionId` Context Bridge](opentelemetry_foundation_and_context_propagation_20261010/spec.md) (`opentelemetry_foundation_and_context_propagation_20261010`, 3 tasks)
+   - **Chapter 4.2**: [Orchestration Step Spans, Structured Log Correlation & Listener/Worker Telemetry](orchestration_step_and_listener_telemetry_20261010/spec.md) (`orchestration_step_and_listener_telemetry_20261010`, 3 tasks)
+   - **Chapter 4.3**: [Database (`OracleGateway`), Offload Transport, GCS & BigQuery Spans](database_transport_and_cloud_storage_spans_20261010/spec.md) (`database_transport_and_cloud_storage_spans_20261010`, 3 tasks)
 
 ## Archived Flows & Roadmaps
 
