@@ -188,6 +188,14 @@ def get_load_db_pattern():
     return "%s_load"
 
 
+def google_cloud_project_default() -> str | None:
+    return os.environ.get("GOOGLE_CLOUD_PROJECT")
+
+
+def google_cloud_quota_project_default() -> str | None:
+    return os.environ.get("GOOGLE_CLOUD_QUOTA_PROJECT")
+
+
 def google_dataproc_batches_subnet_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_BATCHES_SUBNET")
 
@@ -204,6 +212,10 @@ def google_dataproc_cluster_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_CLUSTER")
 
 
+def google_dataproc_impersonate_service_account_default() -> str | None:
+    return os.environ.get("GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT")
+
+
 def google_dataproc_project_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_PROJECT")
 
@@ -214,6 +226,10 @@ def google_dataproc_region_default() -> str | None:
 
 def google_dataproc_service_account_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_SERVICE_ACCOUNT")
+
+
+def google_impersonate_service_account_default() -> str | None:
+    return os.environ.get("GOOGLE_IMPERSONATE_SERVICE_ACCOUNT")
 
 
 def google_kms_key_name_default() -> str | None:
