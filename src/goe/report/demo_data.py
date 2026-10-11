@@ -3,9 +3,15 @@
 
 """Demo dataset mixin for the Offload Status Report."""
 
+from typing import Any
+
 
 class DemoDataMixin:
     """Mixin providing synthetic demo table data for OffloadStatusReport."""
+
+    _schema: Any
+    _table: Any
+    _messages: Any
 
     def _get_demo_table_data(self):
         """Test data to demo the report and to assist with speeding up development

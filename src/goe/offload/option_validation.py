@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.exceptions import OffloadException, OffloadOptionError, OptionValueError
 from goe.offload import offload_constants
@@ -31,6 +31,7 @@ def active_data_append_options(
     ignore_partition_names_opt=False,
     ignore_pbo=False,
 ):
+    """options has a couple of synonyms for less_than_value"""
     rpa_opts = {
         "--less-than-value": opts.less_than_value,
         "--partition-names": opts.partition_names_csv,
@@ -42,7 +43,6 @@ def active_data_append_options(
     ida_opts = {"--offload-predicate": opts.offload_predicate}
 
     if from_options:
-        # options has a couple of synonyms for less_than_value
         rpa_opts.update(
             {
                 "--older-than-days": opts.older_than_days,
@@ -74,8 +74,11 @@ def check_opt_is_posint(opt_name, opt_val, exception_class=OptionValueError, all
 
 
 def check_ipa_predicate_type_option_conflicts(
-    options, exc_cls=OffloadException, rdbms_table: "OffloadSourceTableInterface" = None
-):
+    options: Any,
+    exc_cls: Any = OffloadException,
+    rdbms_table: "OffloadSourceTableInterface | None" = None,
+) -> None:
+    """If we have access to an RDBMS table then we can check if the partition column data types are valid for IPA"""
     ipa_predicate_type = getattr(options, "ipa_predicate_type", None)
     active_lpa_opts = active_data_append_options(
         options,
@@ -101,7 +104,6 @@ def check_ipa_predicate_type_option_conflicts(
                 )
             )
         if rdbms_table and active_rpa_opts:
-            # If we have access to an RDBMS table then we can check if the partition column data types are valid for IPA
             unsupported_types = rdbms_table.unsupported_partition_data_types(
                 partition_type_override=OFFLOAD_PARTITION_TYPE_RANGE
             )
@@ -162,7 +164,7 @@ def normalise_offload_predicate_options(options):
         raise OffloadOptionError("--no-modify-hybrid-view can only be used with --offload-predicate")
 
 
-def normalise_stats_options(options, target_backend: str):
+def normalise_stats_options(options: Any, target_backend: str) -> None:
     if options.offload_stats_method not in [
         offload_constants.OFFLOAD_STATS_METHOD_NATIVE,
         offload_constants.OFFLOAD_STATS_METHOD_HISTORY,

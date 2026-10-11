@@ -163,10 +163,8 @@ class OffloadTransportSparkSubmit(OffloadTransportSpark):
         )
         spark_master_opt = ["--master", spark_master] if spark_master else []
         spark_config_props, no_log_password = [], []
-        [
+        for k, v in self._spark_config_properties.items():
             spark_config_props.extend(["--conf", "%s=%s" % (k, cli_safe_the_password(k, v))])
-            for k, v in self._spark_config_properties.items()
-        ]
         if "spark.jdbc.password" in self._spark_config_properties and not self._offload_transport_password_alias:
             password_config_to_obscure = "spark.jdbc.password=%s" % cli_safe_the_password(
                 "spark.jdbc.password",

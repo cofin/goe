@@ -7,6 +7,7 @@ import json
 import os
 import traceback
 from datetime import datetime
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -80,6 +81,24 @@ from goe.util.misc_functions import backtick_sandwich, format_json_list
 
 class ReportRenderersMixin:
     """Mixin providing CSV, TEXT, HTML, JSON, and RAW report renderers for OffloadStatusReport."""
+
+    _report_name: Any
+    _report_directory: Any
+    _ora_db_name: Any
+    _start_ts: Any
+    _start_time: Any
+    _output_format: Any
+    _output_level: Any
+    _messages: Any
+    _csv_enclosure: Any
+    _csv_delimiter: Any
+    _schema: Any
+    _table: Any
+    _demo_mode: Any
+    is_summary: Any
+    is_detail: Any
+    metadata: Any
+    _format_table_name: Any
 
     def _gen_report_file_name(self, extension=None):
         if self._report_name == DEFAULT_REPORT_NAME:
@@ -507,9 +526,9 @@ class ReportRenderersMixin:
                 line(15),
             )
         )
-        for rv in s4_raw_data:
-            schema_slice = rv[0]
-            table_slice = rv[1:]
+        for s4_rv in s4_raw_data:
+            schema_slice = s4_rv[0]
+            table_slice = s4_rv[1:]
             report_data.append(
                 "%-*s %-*s %15s %15s %15.2f %15s %15s %15.2f %15s %15s %15.2f %15s"
                 % (schema_width, schema_slice, table_width, *table_slice)

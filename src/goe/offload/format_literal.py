@@ -8,24 +8,11 @@
 import logging
 from abc import ABCMeta, abstractmethod
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 RE_TIMEZONE_NO_COLON = r".*(-|\+)(\d{2})(\d{2})"
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())  # Disabling logging by default
-
-
-###########################################################################
-# FormatLiteralInterface
-###########################################################################
+logger.addHandler(logging.NullHandler())
 
 
 class FormatLiteralInterface(metaclass=ABCMeta):

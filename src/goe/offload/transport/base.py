@@ -11,7 +11,7 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from socket import gethostname
 from textwrap import dedent
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from goe.filesystem.goe_dfs import DFS_TYPE_FILE
 from goe.offload.column_metadata import match_table_column
@@ -101,10 +101,10 @@ def convert_nans_to_nulls(offload_target_table, offload_operation):
 
 def get_offload_transport_value(
     offload_transport_method: str,
-    dedicated_value,
-    sqoop_specific_value,
-    spark_specific_value,
-):
+    dedicated_value: Any,
+    sqoop_specific_value: Any,
+    spark_specific_value: Any,
+) -> Any:
     if dedicated_value:
         return dedicated_value
     if offload_transport_method in OFFLOAD_TRANSPORT_SQOOP_METHODS and sqoop_specific_value:
@@ -120,15 +120,22 @@ class OffloadTransport(metaclass=ABCMeta):
     (abstract parent class)
     """
 
+    _offload_transport_method: Any
+    _canonical_columns: list[Any] | None
+    _transport_context: dict[str, Any]
+    _column_transformations: dict[str, Any]
+    _target_table: Any
+    _rdbms_table: Any
+
     def __init__(
         self,
         offload_source_table: "OffloadSourceTableInterface",
         offload_target_table: "BackendTableInterface",
-        offload_operation,
-        offload_options,
+        offload_operation: Any,
+        offload_options: Any,
         messages: "OffloadMessages",
-        dfs_client,
-    ):
+        dfs_client: Any,
+    ) -> None:
         """not decided how to deal with offload_options, below is a temporary measure Details of the source of the offload Details of the target of the offload Config relating to the transport method For a full list of properties see: http://spark.apache.org/docs/latest/configuration.html#available-properties Details relating to a load table"""
         self._offload_options = offload_options
         self._messages = messages
@@ -173,12 +180,12 @@ class OffloadTransport(metaclass=ABCMeta):
         self._offload_transport_parallelism = int(offload_operation.offload_transport_parallelism)
         self._validation_polling_interval = offload_operation.offload_transport_validation_polling_interval
         self._create_basic_connectivity_attributes(offload_options)
-        self._transport_context = {}
+        self._transport_context: dict[str, Any] = {}
         self._spark_config_properties = self._prepare_spark_config_properties(
             offload_operation.offload_transport_spark_properties
         )
         self._bucket_hash_col = offload_operation.bucket_hash_col
-        self._column_transformations = {}
+        self._column_transformations: dict[str, Any] = {}
         self._unicode_string_columns_csv = offload_operation.unicode_string_columns_csv
         self._convert_nans_to_nulls = False
         self._compress_load_table = offload_operation.compress_load_table
@@ -259,6 +266,7 @@ class OffloadTransport(metaclass=ABCMeta):
     def _get_canonical_columns(self):
         """Map source RDBMS columns to canonical columns so they can then be converted to staging columns"""
         if not self._canonical_columns:
+            assert self._rdbms_table is not None
             assume_all_staging_columns_nullable = bool(
                 self._offload_transport_method in OFFLOAD_TRANSPORT_SQOOP_METHODS
             )
@@ -288,7 +296,7 @@ class OffloadTransport(metaclass=ABCMeta):
         self._spark_thrift_host = offload_options.offload_transport_spark_thrift_host
         self._spark_thrift_port = offload_options.offload_transport_spark_thrift_port
 
-    def _get_transport_app_name(self, sep=".", ts=False, name_override=None) -> str:
+    def _get_transport_app_name(self, sep: str = ".", ts: bool = False, name_override: str | None = None) -> str:
         """Get a name suitable for the transport method in use.
         For most transports this will include the table name,  but some may choose to overload this
         If adding any punctuation, stick to underscores and dots below due to Java name rules
@@ -432,7 +440,7 @@ class OffloadTransport(metaclass=ABCMeta):
             rm_commands.append(ssh_cmd_prefix(ssh_user, target_host) + ["rm", "-f", options_file_remote_path])
         return rm_commands, options_file_remote_path
 
-    def _remote_copy_transport_file(self, local_path: str, target_host: str):
+    def _remote_copy_transport_file(self, local_path: str, target_host: str) -> str:
         """Copies a file required by Offload Transport to a remote host.
         If SSH short-circuit is in play then no copy is made, we just return the name of the local file.
         No effort is made to remove the remote file, this is because we put the file in /tmp and we could have a
@@ -506,11 +514,12 @@ class OffloadTransport(metaclass=ABCMeta):
     def _get_transport_row_source_query(
         self,
         partition_by: str,
-        partition_chunk=None,
-        pad=None,
-        id_col_min=None,
-        id_col_max=None,
-    ):
+        partition_chunk: Any = None,
+        pad: Any = None,
+        id_col_min: Any = None,
+        id_col_max: Any = None,
+    ) -> str:
+        assert self._rdbms_table is not None
         if self._rdbms_offload_predicate:
             self.log(
                 "Offloading with offload predicate:\n%s" % str(self._rdbms_offload_predicate),
@@ -536,12 +545,13 @@ class OffloadTransport(metaclass=ABCMeta):
     def _get_spark_jdbc_query_text(
         self,
         split_type: str,
-        partition_chunk,
-        sql_comment=None,
-        id_col_min=None,
-        id_col_max=None,
+        partition_chunk: Any,
+        sql_comment: Any = None,
+        id_col_min: Any = None,
+        id_col_max: Any = None,
     ) -> str:
         """Adds an outer query around the row source query produced by get_transport_row_source_query."""
+        assert self._rdbms_table is not None
         self.debug(
             "_get_spark_jdbc_query_text(%s, %s, %s)"
             % (TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN, split_type, sql_comment)
@@ -569,7 +579,8 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
         }
         return rdbms_source_query
 
-    def _get_transport_split_type(self, partition_chunk, native_range_split_available: bool = False) -> str:
+    def _get_transport_split_type(self, partition_chunk: Any, native_range_split_available: bool = False) -> str:
+        assert self._rdbms_table is not None
         predicate_offload_clause = self._rdbms_table.predicate_to_where_clause(self._rdbms_offload_predicate)
         (
             split_row_source_by,
@@ -597,10 +608,12 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
           this list is the names of the staging columns rather than the original source RDBMS columns.
           Nearly always the same but sometimes not.
         """
+        assert self._rdbms_table is not None
         self.debug("_build_offload_query_lists()")
         colnames, colexpressions = [], []
         staging_columns = self._staging_file.get_staging_columns()
         if convert_expressions_on_rdbms_side is None:
+            assert self._target_table is not None
             convert_expressions_on_rdbms_side = bool(self._target_table.backend_type() == DBTYPE_SYNAPSE)
         for rdbms_col in self._rdbms_columns:
             cast_column = apply_transformation(
@@ -610,6 +623,7 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
                 self._messages,
             )
             staging_column = match_table_column(rdbms_col.name, staging_columns)
+            assert staging_column is not None
 
             colnames.append(staging_column.staging_file_column_name)
 
@@ -690,7 +704,7 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
             return remap_prefix + remap_sep + remap_strings
         return [] if return_as_list else ""
 
-    def _check_and_log_transported_files(self, row_count) -> int | None:
+    def _check_and_log_transported_files(self, row_count: Any) -> int | None:
         """Check and list contents of target location.
         This interface level method assumes we can list contents via GOEDfs and is particularly useful when
         writing to cloud storage by ensuring filesystems with eventual consistency have made the files visible.
@@ -702,7 +716,7 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
         This logging is totally a nice-to-have and therefore we move on if it fails
         """
 
-        def log_file_size(path, uri_attribs) -> int:
+        def log_file_size(path: Any, uri_attribs: Any) -> int | None:
             self.log("Staged path: %s" % path, detail=VVERBOSE)
             if uri_attribs.get("length") is None:
                 size_str = "Unknown"
@@ -774,7 +788,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
     def _standalone_spark(self) -> bool:
         return bool(self._offload_options.backend_distribution not in HADOOP_BASED_BACKEND_DISTRIBUTIONS)
 
-    def _option_from_properties(self, option_name, property_name) -> list:
+    def _option_from_properties(self, option_name: Any, property_name: Any) -> list:
         """Small helper function to pluck a property value from self._spark_config_properties"""
         if property_name in self._spark_config_properties:
             return [option_name, self._spark_config_properties[property_name]]
@@ -786,7 +800,8 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             jdbc_option_clauses = ".option('oracle.jdbc.timezoneAsRegion', 'false')"
         return jdbc_option_clauses
 
-    def _get_id_range(self, split_row_source_by, id_range_column, partition_chunk) -> tuple:
+    def _get_id_range(self, split_row_source_by: Any, id_range_column: Any, partition_chunk: Any) -> tuple:
+        assert self._rdbms_table is not None
         col_name = id_range_column if isinstance(id_range_column, str) else id_range_column.name
         predicate_offload_clause = self._rdbms_table.predicate_to_where_clause(self._rdbms_offload_predicate)
         id_col_min, id_col_max = self._rdbms_api.get_id_range(
@@ -803,9 +818,12 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
         return split_row_source_by, id_col_min, id_col_max
 
     def _get_id_column_for_range_splitting(self) -> "ColumnMetadataInterface":
+        assert self._rdbms_table is not None
         return self._rdbms_api.get_id_column_for_range_splitting(self._rdbms_table)
 
-    def _get_pyspark_body(self, partition_chunk=None, create_spark_context=True, canary_query=None) -> str:
+    def _get_pyspark_body(
+        self, partition_chunk: Any = None, create_spark_context: bool = True, canary_query: Any = None
+    ) -> str:
         """Return pyspark code to copy data to the load table.
         Shared by multiple sub-classes.
         When defining the parallel chunks we set the upperBound (batch_col_max) one higher than the actual value.
@@ -930,7 +948,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             "parallelism": self._offload_transport_parallelism,
             "custom_schema_clause": ((",\n    " + custom_schema_clause) if custom_schema_clause else ""),
             "write_format": self._staging_format,
-            "uri": ("" if canary_query else self._target_table.get_staging_table_location()),
+            "uri": ("" if canary_query or not self._target_table else self._target_table.get_staging_table_location()),
             "fetch_size": self._offload_transport_fetch_size,
             "session_init_statement_opt": session_init_statement_opt,
             "debug_conf_snippet": debug_conf_snippet,

@@ -5,6 +5,8 @@
 
 """data_type_controls: Library of functions used in GOE to process data type control options/structures."""
 
+from typing import Any
+
 from goe.offload.column_metadata import (
     CANONICAL_CHAR_SEMANTICS_UNICODE,
     CANONICAL_TYPE_OPTION_NAMES,
@@ -33,10 +35,6 @@ class OffloadDataTypeControlsException(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 BACKEND_DATA_TYPE_CONTROL_OPTIONS = {
     GOE_TYPE_INTEGER_1: "--integer-1-columns",
     GOE_TYPE_INTEGER_2: "--integer-2-columns",
@@ -52,10 +50,6 @@ CONFLICTING_DATA_TYPE_OPTIONS_EXCEPTION_TEXT = "Data type conflict for columns"
 DECIMAL_COL_TYPE_SYNTAX_TEMPLATE = (
     'must be of format "precision,scale" where 1<=precision<={p} and 0<=scale<={s} and scale<=precision'
 )
-
-###############################################################################
-# GLOBAL FUNCTIONS
-###############################################################################
 
 
 def canonical_columns_from_columns_csv(
@@ -98,6 +92,7 @@ def char_semantics_override_map(unicode_string_columns_csv, reference_columns):
         raise OffloadDataTypeControlsException(f"No columns match pattern: {unicode_string_columns_csv}")
     for col in unicode_string_columns_list:
         rdbms_column = match_table_column(col, reference_columns)
+        assert rdbms_column is not None
         if not rdbms_column.is_string_based():
             raise OffloadDataTypeControlsException(
                 "%s %s: %s is not string based"
@@ -127,17 +122,25 @@ def date_min_max_incompatible(offload_source_table, offload_target_table):
 
 
 def offload_source_to_canonical_mappings(
-    offload_source_table,
-    offload_target_table,
-    offload_operation,
-    not_null_propagation,
+    offload_source_table: Any,
+    offload_target_table: Any,
+    offload_operation: Any,
+    not_null_propagation: Any,
     messages: OffloadMessages,
-):
+) -> Any:
     """Take source/RDBMS columns and translate them into intermediate canonical columns.
     This could be from:
         User specified options: canonical_overrides.
         Source schema attributes: offload_source_table.to_canonical_column().
         Data type sampling: offload_source_table.sample_rdbms_data_types().
+
+    precision - scale allows data beyond that supported by the backend system, fall back on sampling
+    Scale allows data beyond that supported by the backend system, fall back on sampling.
+    Use new_col above so that any user override of the scale is taken into account.
+    Some columns require sampling to determine a data type
+    Overwrite any previous canonical mapping with the post sampled version
+    Process any char semantics overrides
+    Get a fresh list of canonical columns in order to maintain column order
     """
     canonical_overrides = offload_operation.gen_canonical_overrides(
         offload_target_table, columns_override=offload_source_table.columns
@@ -164,7 +167,6 @@ def offload_source_to_canonical_mappings(
             and tab_col.data_precision is not None
             and (tab_col.data_precision - tab_col.data_scale) > offload_target_table.max_decimal_integral_magnitude()
         ):
-            # precision - scale allows data beyond that supported by the backend system, fall back on sampling
             messages.log(
                 "Sampling column because precision-scale > %s: %s"
                 % (offload_target_table.max_decimal_integral_magnitude(), tab_col.name),
@@ -177,8 +179,6 @@ def offload_source_to_canonical_mappings(
             and new_col.data_scale
             and new_col.data_scale > offload_target_table.max_decimal_scale()
         ):
-            # Scale allows data beyond that supported by the backend system, fall back on sampling.
-            # Use new_col above so that any user override of the scale is taken into account.
             messages.log(
                 "Sampling column because scale > %s: %s" % (offload_target_table.max_decimal_scale(), tab_col.name),
                 detail=VVERBOSE,
@@ -193,7 +193,6 @@ def offload_source_to_canonical_mappings(
             sample_candidate_columns.append(tab_col)
 
     if sample_candidate_columns and offload_operation.data_sample_pct:
-        # Some columns require sampling to determine a data type
         if offload_operation.data_sample_pct == DATA_SAMPLE_SIZE_AUTO:
             data_sample_pct = offload_source_table.get_suitable_sample_size()
             messages.log("Sampling %s%% of table" % data_sample_pct, detail=VERBOSE)
@@ -214,19 +213,16 @@ def offload_source_to_canonical_mappings(
         )
         if sampled_rdbms_cols:
             for tab_col in sampled_rdbms_cols:
-                # Overwrite any previous canonical mapping with the post sampled version
                 canonical_mappings[tab_col.name] = offload_source_table.to_canonical_column(tab_col)
 
         report_data_type_control_options_to_simulate_sampling(sampled_rdbms_cols, canonical_mappings, messages)
 
-    # Process any char semantics overrides
     for col_name, char_semantics in char_semantics_override_map(
         offload_operation.unicode_string_columns_csv, offload_source_table.columns
     ).items():
         canonical_mappings[col_name].char_semantics = char_semantics
         canonical_mappings[col_name].from_override = True
 
-    # Get a fresh list of canonical columns in order to maintain column order
     canonical_columns = [canonical_mappings[_.name] for _ in offload_source_table.columns]
 
     canonical_columns = apply_not_null_columns_csv(
@@ -243,11 +239,13 @@ def offload_source_to_canonical_mappings(
 
 
 def report_data_type_control_options_to_simulate_sampling(
-    sampled_rdbms_cols, canonical_mappings, messages: OffloadMessages
-):
+    sampled_rdbms_cols: Any, canonical_mappings: Any, messages: OffloadMessages
+) -> None:
     """Users requested the outcome of sampling should be logged to avoid resampling if an offload is re-run
     An example of when this is useful is running an offload in preview mode and then running in execute mode,
     this will run sampling twice and in some cases can be frustrating
+
+    Need to use a combination of options for each precision/scale combo
     """
     if not sampled_rdbms_cols:
         return
@@ -265,7 +263,6 @@ def report_data_type_control_options_to_simulate_sampling(
     )
     for used_type in canonical_types_used:
         if used_type == GOE_TYPE_DECIMAL:
-            # Need to use a combination of options for each precision/scale combo
             ps_tuples = list(
                 set([(_.data_precision, _.data_scale) for _ in sampled_canonical_columns if _.data_type == used_type])
             )

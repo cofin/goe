@@ -3,6 +3,8 @@
 
 """stats_controls: Library of functions used in GOE to control statistcs."""
 
+from typing import Any
+
 from goe.exceptions import OffloadException
 from goe.offload.column_metadata import (
     get_partition_source_column_names,
@@ -24,27 +26,51 @@ from goe.util.misc_functions import case_insensitive_in
 
 
 def copy_rdbms_stats_to_backend(
-    offload_source_table,
-    offload_target_table,
-    source_data_client,
-    offload_operation,
-    offload_options,
+    offload_source_table: Any,
+    offload_target_table: Any,
+    source_data_client: Any,
+    offload_operation: Any,
+    offload_options: Any,
     messages: OffloadMessages,
-):
+) -> None:
     """Copy RDBMS stats from source offload table to target table
     Copying stats from RDBMS table has only been implemented for Impala engine, this can be switched on for other backends using
     BackendApi.table_stats_set_supported()
+
+    Full table offloads overwrite backend side stats
+    Partition append offloads add to existing backend side stats
+    sum num_rows for all offloaded partitions
+    table level stats
+    column level stats
+    when doing incremental offloads we need to factor down num_nulls accordingly
+    partition level stats
+    Source table is partitioned so we can use partitions_to_offload to get more targeted stats
+    When comparing offloaded high values with backend partition keys where need to retain
+    the order of the partition columns from the RDBMS. For example if we offloaded a source
+    partitioned by (year, month, day) then that's how we need to compare, even if backend is
+    partitioned by (category, day, month, year, wibble).
+    regenerate rdbms_only_expr in the same order as the RDBMS partition keys
+    In the backend the list partition literals are not grouped like they may be in the RDBMS, therefore
+    we need to flatten the groups out
+    LIST can only have singular partition keys, we multiply this up for each HV
+    Rather than pro-rate values using offload min/max HV we could loop through RDBMS partitions being more specific. This
+    would cater for skew between partitions. However it could create confusing output with the same partitions being
+    altered several times. Plus this is intended for large tables where COMPUTE will be inefficient, for these we will
+    only offload a small number at a time therefore I decided that simplified code & screen output was preferable to more
+    granular stats
     """
 
     def comparision_tuple_from_hv(rdbms_hv_list, rdbms_synth_expressions):
-        # Trusting rdbms_synth_expressions to be in the same order as rdbms_hv_list.
-        # i.e. the order of the RDBMS partition keys.
+        """Trusting rdbms_synth_expressions to be in the same order as rdbms_hv_list.
+
+        i.e. the order of the RDBMS partition keys.
+        """
         if rdbms_hv_list:
             return tuple([conv_fn(hv) for (_, _, conv_fn, _), hv in zip(rdbms_synth_expressions, rdbms_hv_list)])
         return None
 
     def filter_for_affected_partitions_range(backend_partitions, synth_part_col_names, lower_hv_tuple, upper_hv_tuple):
-        # Reduce the list of all partitions down to only those affected by the offload.
+        """Reduce the list of all partitions down to only those affected by the offload."""
         partitions_affected_by_offload = []
         for partition_spec in backend_partitions:
             part_details = backend_partitions[partition_spec]
@@ -60,7 +86,7 @@ def copy_rdbms_stats_to_backend(
         return partitions_affected_by_offload
 
     def filter_for_affected_partitions_list(backend_partitions, synth_part_col_names, new_hv_tuples):
-        # reduce the list of all hadoop partitions down to only those affected by the offload
+        """reduce the list of all hadoop partitions down to only those affected by the offload"""
         partitions_affected_by_offload = []
         for partition_spec in backend_partitions:
             part_details = backend_partitions[partition_spec]
@@ -103,10 +129,8 @@ def copy_rdbms_stats_to_backend(
             "Pro-rate row count from RDBMS table: %s" % str(pro_rate_num_rows),
             detail=VVERBOSE,
         )
-        # Full table offloads overwrite backend side stats
         additive_stats = False
     else:
-        # Partition append offloads add to existing backend side stats
         additive_stats = True
         rdbms_part_col_names = set(_.name.upper() for _ in offload_source_table.partition_columns)
         upper_fn = lambda x: x.upper() if isinstance(x, str) else x
@@ -119,7 +143,6 @@ def copy_rdbms_stats_to_backend(
             messages.notice(
                 "RDBMS partition scheme is not a subset of backend partition scheme, pro-rating stats across all partitions"
             )
-            # sum num_rows for all offloaded partitions
             pro_rate_stats_across_all_partitions = True
             messages.log(
                 "Pro-rate row count from offloaded partitions: %s" % str(pro_rate_num_rows),
@@ -136,7 +159,6 @@ def copy_rdbms_stats_to_backend(
 
     backend_partitions = offload_target_table.get_table_stats_partitions()
 
-    # table level stats
     backend_tab_stats, _ = offload_target_table.get_table_stats(as_dict=True)
     if tab_stats["num_rows"] is None:
         messages.notice("No RDBMS table stats to copy to backend")
@@ -175,7 +197,6 @@ def copy_rdbms_stats_to_backend(
             ndv_cap = tab_stats["num_rows"]
         offload_target_table.set_table_stats(tab_stats, additive_stats)
 
-    # column level stats
     if not rdbms_col_stats:
         messages.notice("No RDBMS column stats to copy to backend")
     elif max(rdbms_tab_stats["num_rows"], 0) <= max(backend_tab_stats["num_rows"], 0):
@@ -189,7 +210,6 @@ def copy_rdbms_stats_to_backend(
         )
     elif offload_target_table.column_stats_set_supported():
         if additive_stats and pro_rate_num_rows and rdbms_tab_stats["num_rows"]:
-            # when doing incremental offloads we need to factor down num_nulls accordingly
             num_null_factor = float(pro_rate_num_rows + max(backend_tab_stats["num_rows"], 0)) / float(
                 rdbms_tab_stats["num_rows"]
             )
@@ -206,7 +226,6 @@ def copy_rdbms_stats_to_backend(
             )
         )
 
-    # partition level stats
     if pro_rate_stats_across_all_partitions:
         part_stats = []
         if tab_stats["num_rows"] is None:
@@ -238,18 +257,12 @@ def copy_rdbms_stats_to_backend(
                     }
                 )
     else:
-        # Source table is partitioned so we can use partitions_to_offload to get more targeted stats
         synth_part_expressions = offload_target_table.gen_synthetic_partition_col_expressions(as_python_fns=True)
 
-        # When comparing offloaded high values with backend partition keys where need to retain
-        # the order of the partition columns from the RDBMS. For example if we offloaded a source
-        # partitioned by (year, month, day) then that's how we need to compare, even if backend is
-        # partitioned by (category, day, month, year, wibble).
         rdbms_only_expr = [
             exprs for exprs in synth_part_expressions if case_insensitive_in(exprs[3], rdbms_part_col_names)
         ]
         rdbms_only_expr_by_rdbms_col = {exprs[3].upper(): exprs for exprs in rdbms_only_expr}
-        # regenerate rdbms_only_expr in the same order as the RDBMS partition keys
         rdbms_only_expr = [rdbms_only_expr_by_rdbms_col[col_name] for col_name in rdbms_part_col_names]
         filter_synth_col_names = [col_name.lower() for col_name, _, _, _ in rdbms_only_expr]
         messages.log(
@@ -288,10 +301,7 @@ def copy_rdbms_stats_to_backend(
         else:
             hv_tuple = get_current_offload_hv(offload_source_table, source_data_client, offload_operation, messages)
             new_hvs = hv_tuple[1] if hv_tuple else None
-            # In the backend the list partition literals are not grouped like they may be in the RDBMS, therefore
-            # we need to flatten the groups out
             new_hvs = flatten_lpa_high_values(new_hvs)
-            # LIST can only have singular partition keys, we multiply this up for each HV
             hv_tuples = [comparision_tuple_from_hv([hv], rdbms_only_expr) for hv in new_hvs]
 
             messages.log(
@@ -312,11 +322,6 @@ def copy_rdbms_stats_to_backend(
             detail=VERBOSE,
         )
 
-        # Rather than pro-rate values using offload min/max HV we could loop through RDBMS partitions being more specific. This
-        # would cater for skew between partitions. However it could create confusing output with the same partitions being
-        # altered several times. Plus this is intended for large tables where COMPUTE will be inefficient, for these we will
-        # only offload a small number at a time therefore I decided that simplified code & screen output was preferable to more
-        # granular stats
         num_rows_per_backend_partition = (
             max(pro_rate_num_rows // max(len(partitions_affected_by_offload), 1), 2)
             if pro_rate_num_rows is not None

@@ -4,7 +4,7 @@
 """Query Import offload transport implementation for direct RDBMS-to-staging extraction."""
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from goe.offload.factory.query_import_factory import query_import_factory
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
@@ -61,7 +61,7 @@ class OffloadTransportQueryImport(OffloadTransport):
 
         def step_fn():
             return_values = self._query_import_to_local_fs(partition_chunk)
-            if return_values:
+            if isinstance(return_values, tuple):
                 rows_imported, local_staging_path, dfs_load_path = return_values
                 self._query_import_copy_to_dfs(local_staging_path, dfs_load_path)
                 staged_bytes = self._check_and_log_transported_files(rows_imported)
@@ -82,7 +82,7 @@ class OffloadTransportQueryImport(OffloadTransport):
         """Not applicable to Query Import"""
         return None
 
-    def _query_import_to_local_fs(self, partition_chunk=None) -> tuple:
+    def _query_import_to_local_fs(self, partition_chunk: Any = None) -> tuple | int:
         """Execute Query Import transport.
 
         Query Import is not partition aware therefore partition_chunk is ignored

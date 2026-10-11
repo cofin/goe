@@ -4,6 +4,7 @@
 """List-partitioned Incremental Partition Append (IPA) source-data implementation."""
 
 from datetime import datetime
+from typing import Any
 
 from goe.offload import offload_constants
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
@@ -172,7 +173,7 @@ class OffloadSourceDataIpaList(OffloadSourceDataInterface):
         """
         assert isinstance(csv_str, str)
         logger.debug("_normalise_lpa_partition_append_csv")
-        pa_list = []
+        pa_list: Any = []
         if self._partition_columns[0].is_date_based():
             tokens = self._col_offload_source_table.split_partition_high_value_string(csv_str)
             pa_list.extend([self._datetime_literal_to_python(token) for token in tokens])

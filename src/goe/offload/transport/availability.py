@@ -3,7 +3,7 @@
 
 """Transport availability predicates for Spark, Dataproc, Livy, Query Import, and Sqoop."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.offload.offload_constants import (
     BACKEND_DISTRO_GCP,
@@ -38,8 +38,8 @@ if TYPE_CHECKING:
 
 
 def spark_submit_executable_exists(
-    config: "OrchestrationConfig", messages: "OffloadMessages", executable_override=None
-):
+    config: "OrchestrationConfig", messages: "OffloadMessages", executable_override: Any = None
+) -> bool:
     spark_submit_executable = executable_override or config.offload_transport_spark_submit_executable
     cmd = ["which", spark_submit_executable]
     cmd = (
@@ -55,9 +55,9 @@ def spark_submit_executable_exists(
 
 def is_spark_thrift_available(
     config: "OrchestrationConfig",
-    offload_source_table: "OffloadSourceTableInterface",
-    messages: "OffloadMessages" = None,
-):
+    offload_source_table: "OffloadSourceTableInterface | None",
+    messages: "OffloadMessages | None" = None,
+) -> bool:
     """If messages is passed in then we'll log any reason for a False return"""
     if not config.offload_transport_spark_thrift_host or not config.offload_transport_spark_thrift_port:
         if messages:
@@ -72,9 +72,9 @@ def is_spark_thrift_available(
 
 def is_livy_available(
     config: "OrchestrationConfig",
-    offload_source_table: "OffloadSourceTableInterface",
-    messages: "OffloadMessages" = None,
-):
+    offload_source_table: "OffloadSourceTableInterface | None",
+    messages: "OffloadMessages | None" = None,
+) -> bool:
     """If messages is passed in then we'll log any reason for a False return"""
     if not config.offload_transport_livy_api_url:
         (
@@ -92,10 +92,10 @@ def is_livy_available(
 
 def is_spark_submit_available(
     config: "OrchestrationConfig",
-    offload_source_table: "OffloadSourceTableInterface",
-    messages: "OffloadMessages" = None,
-    executable_override=None,
-):
+    offload_source_table: "OffloadSourceTableInterface | None",
+    messages: "OffloadMessages | None" = None,
+    executable_override: Any = None,
+) -> bool:
     """If messages is passed in then we'll log any reason for a False return
     If messages is not passed in then we can't yet run OS cmds, hence no spark_submit_executable_exists()
     """
@@ -131,9 +131,9 @@ def is_spark_submit_available(
 
 def is_spark_gcloud_available(
     config: "OrchestrationConfig",
-    offload_source_table: "OffloadSourceTableInterface",
-    messages: "OffloadMessages" = None,
-):
+    offload_source_table: "OffloadSourceTableInterface | None",
+    messages: "OffloadMessages | None" = None,
+) -> bool:
     """If messages is passed in then we'll log any reason for a False return
     If messages is not passed in then we can't yet run OS cmds, hence no spark_submit_executable_exists()
     """
@@ -174,9 +174,9 @@ def is_spark_gcloud_available(
 
 def is_spark_gcloud_dataproc_available(
     config: "OrchestrationConfig",
-    offload_source_table: "OffloadSourceTableInterface",
-    messages: "OffloadMessages" = None,
-):
+    offload_source_table: "OffloadSourceTableInterface | None",
+    messages: "OffloadMessages | None" = None,
+) -> bool:
     return bool(
         config.google_dataproc_cluster and is_spark_gcloud_available(config, offload_source_table, messages=messages)
     )
@@ -184,9 +184,9 @@ def is_spark_gcloud_dataproc_available(
 
 def is_spark_gcloud_batches_available(
     config: "OrchestrationConfig",
-    offload_source_table: "OffloadSourceTableInterface",
-    messages: "OffloadMessages" = None,
-):
+    offload_source_table: "OffloadSourceTableInterface | None",
+    messages: "OffloadMessages | None" = None,
+) -> bool:
     return bool(
         config.google_dataproc_batches_version
         and is_spark_gcloud_available(config, offload_source_table, messages=messages)
@@ -194,11 +194,11 @@ def is_spark_gcloud_batches_available(
 
 
 def is_query_import_available(
-    offload_operation,
+    offload_operation: Any,
     config: "OrchestrationConfig",
-    offload_source_table: "OffloadSourceTableInterface" = None,
-    messages: "OffloadMessages" = None,
-):
+    offload_source_table: "OffloadSourceTableInterface | None" = None,
+    messages: "OffloadMessages | None" = None,
+) -> bool:
     """If messages is passed in then we'll log any reason for a False return
     Query Import can only be validated if operational config is passed in. Without that we just assume True
     """
@@ -241,11 +241,11 @@ def is_query_import_available(
 
 
 def is_sqoop_available(
-    offload_operation,
+    offload_operation: Any,
     config: "OrchestrationConfig",
-    offload_source_table: "OffloadSourceTableInterface" = None,
-    messages: "OffloadMessages" = None,
-):
+    offload_source_table: "OffloadSourceTableInterface | None" = None,
+    messages: "OffloadMessages | None" = None,
+) -> bool:
     """If messages is passed in then we'll log any reason for a False return
     Sqoop can only be validated if operational config is passed in. Without that we just assume True
     """
@@ -308,7 +308,7 @@ def is_sqoop_available(
     return True
 
 
-def is_sqoop_by_query_available(config: "OrchestrationConfig", messages: "OffloadMessages" = None):
+def is_sqoop_by_query_available(config: "OrchestrationConfig", messages: "OffloadMessages | None" = None) -> bool:
     """If messages is passed in then we'll log any reason for a False return"""
     if config.backend_distribution and config.backend_distribution not in HADOOP_BASED_BACKEND_DISTRIBUTIONS:
         (

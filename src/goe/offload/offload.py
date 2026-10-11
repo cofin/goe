@@ -7,7 +7,7 @@ Ideally these would migrate to better locations in time.
 """
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.exceptions import OffloadException
 from goe.offload import offload_constants
@@ -51,7 +51,7 @@ def create_ddl_file_step(
     offload_operation: "OffloadOperation",
     config: "OrchestrationConfig",
     messages: OffloadMessages,
-):
+) -> None:
     """Create a DDL file for the final backend table."""
     if not offload_operation.ddl_file:
         return
@@ -62,6 +62,7 @@ def create_ddl_file_step(
             ddl.extend(offload_target_table.create_db(with_terminator=True))
             ddl.extend(offload_target_table.create_load_db(with_terminator=True))
         ddl.extend(offload_target_table.create_backend_table(with_terminator=True))
+        assert offload_operation.ddl_file is not None
         write_ddl_to_ddl_file(offload_operation.ddl_file, ddl, config, messages)
 
     messages.offload_step(command_steps.STEP_DDL_FILE, step_fn, execute=False)
@@ -70,7 +71,7 @@ def create_ddl_file_step(
 def create_final_backend_table_step(
     offload_target_table: "BackendTableInterface",
     offload_operation: "OffloadOperation",
-):
+) -> None:
     """Create the final backend table."""
     if not offload_target_table.table_exists() or offload_operation.reset_backend_table:
         offload_target_table.create_backend_table_step()
@@ -84,13 +85,13 @@ def drop_backend_table_step(
     backend_table: "BackendTableInterface",
     messages: OffloadMessages,
     repo_client: "OrchestrationRepoClientInterface",
-    execute,
-    purge=False,
-):
+    execute: Any,
+    purge: bool = False,
+) -> None:
     def step_fn():
+        """Also remove any metadata attached to the table"""
         if backend_table.table_exists():
             backend_table.drop_table(purge=purge)
-        # Also remove any metadata attached to the table
         repo_client.drop_offload_metadata(owner, table_name)
 
     messages.offload_step(command_steps.STEP_DROP_TABLE, step_fn, execute=execute)
@@ -99,13 +100,16 @@ def drop_backend_table_step(
 def get_current_offload_hv(
     offload_source_table: "OffloadSourceTableInterface",
     source_data_client: "OffloadSourceDataInterface",
-    offload_operation,
+    offload_operation: Any,
     messages: OffloadMessages,
-):
+) -> Any:
     """Identifies the HV for an IPA offload
     If there are partitions in flight then we can use those otherwise we will fall back to using pre-offload metadata
     Returns a list of length 2 containing:
       [RDBMS hv literals, python hv equivalents]
+
+    we are offloading partitions so use the latest one from that list, this works for verification mode too
+    if no partitions in flight then get metadata in order to understand HWM
     """
     new_hvs = None
 
@@ -117,7 +121,6 @@ def get_current_offload_hv(
                 hvs_python.append(p.partition_values_python)
             new_hvs = [hvs_individual, hvs_python]
         else:
-            # we are offloading partitions so use the latest one from that list, this works for verification mode too
             max_partition = source_data_client.partitions_to_offload.get_partition_by_index(0)
             new_hvs = [
                 max_partition.partition_values_individual,
@@ -128,7 +131,6 @@ def get_current_offload_hv(
             detail=VVERBOSE,
         )
     elif offload_operation.offload_type == "INCREMENTAL" and not offload_operation.reset_backend_table:
-        # if no partitions in flight then get metadata in order to understand HWM
         current_metadata = offload_operation.get_hybrid_metadata()
         (
             _,
@@ -144,11 +146,14 @@ def get_current_offload_hv(
 def get_prior_offloaded_hv(
     rdbms_table: "OffloadSourceTableInterface",
     source_data_client: "OffloadSourceDataInterface",
-    offload_operation,
+    offload_operation: Any,
     messages: OffloadMessages,
-):
+) -> Any:
     """Identifies the HV for a RANGE offload of the partition prior to the offload
     If there is pre-offload metadata we can use that otherwise we need to go back to the list of partitions
+
+    use metadata to get the prior high value
+    we haven't gotten values from metadata so let's look at the partition list for the prior HV
     """
     prior_hvs = None
 
@@ -157,7 +162,6 @@ def get_prior_offloaded_hv(
         and offload_operation.pre_offload_hybrid_metadata
         and offload_operation.pre_offload_hybrid_metadata.incremental_high_value
     ):
-        # use metadata to get the prior high value
         messages.log("Assigning prior_hv from pre-offload metadata", detail=VVERBOSE)
         (
             _,
@@ -176,7 +180,6 @@ def get_prior_offloaded_hv(
     if not prior_hvs and source_data_client:
         min_offloaded_partition = source_data_client.partitions_to_offload.get_partition_by_index(-1)
         if min_offloaded_partition:
-            # we haven't gotten values from metadata so let's look at the partition list for the prior HV
             messages.log(
                 "Searching original partitions for partition prior to: %s"
                 % str(min_offloaded_partition.partition_values_python),
@@ -199,22 +202,23 @@ def get_offload_data_manager(
     offload_source_table: "OffloadSourceTableInterface",
     offload_target_table: "BackendTableInterface",
     offload_operation: "OffloadOperation",
-    offload_options,
+    offload_options: Any,
     messages: OffloadMessages,
-    existing_metadata,
-    source_client_type,
-    partition_columns=None,
-    include_col_offload_source_table=False,
+    existing_metadata: Any,
+    source_client_type: Any,
+    partition_columns: Any = None,
+    include_col_offload_source_table: bool = False,
 ) -> "OffloadSourceDataInterface":
     """Return a source data manager object which has methods for slicing and dicing RDBMS partitions and state
     containing which partitions to offload and data to construct hybrid view/verification predicates
+
+    "not offload_target_table.is_view()" because we pass through here for presented joins too and do not expect previous metadata
     """
     if (
         offload_target_table.exists()
         and not offload_target_table.is_view()
         and not offload_operation.reset_backend_table
     ):
-        # "not offload_target_table.is_view()" because we pass through here for presented joins too and do not expect previous metadata
         messages.log("Pre-offload metadata: " + str(existing_metadata), detail=VVERBOSE)
 
     if include_col_offload_source_table and existing_metadata:
@@ -244,9 +248,11 @@ def get_offload_data_manager(
     return source_data_client
 
 
-def offload_backend_db_message(messages: OffloadMessages, db_type, backend_table, execute_mode):
+def offload_backend_db_message(messages: OffloadMessages, db_type: Any, backend_table: Any, execute_mode: Any) -> None:
     """Construct messages when backend databases do not exists.
     Either throw exception in execute mode or output warnings in preview mode.
+
+    Stop here to avoid subsequent exception further along the process
     """
     if backend_table.create_database_supported():
         message = (
@@ -256,7 +262,6 @@ def offload_backend_db_message(messages: OffloadMessages, db_type, backend_table
     else:
         message = "Offload %s does not exist or is incomplete, please create it before re-executing command" % db_type
     if execute_mode:
-        # Stop here to avoid subsequent exception further along the process
         raise OffloadException(message)
     messages.warning(message, ansi_code="red")
 
@@ -264,10 +269,16 @@ def offload_backend_db_message(messages: OffloadMessages, db_type, backend_table
 def offload_type_force_effects(
     hybrid_operation: "OffloadOperation",
     source_data_client: "OffloadSourceDataInterface",
-    original_metadata,
+    original_metadata: Any,
     offload_source_table: "OffloadSourceTableInterface",
     messages: OffloadMessages,
-):
+) -> None:
+    """Once we have switched to FULL we cannot trust the HWM with subpartition offloads,
+
+    what if another HWM appeared for already offloaded HWM!
+    We're switching OFFLOAD_TYPE for a LIST table, this is tricky for the user because we don't know the correct
+    INCREMENTAL_HIGH_VALUE value for metadata/hybrid view. So best we can do is try to alert them.
+    """
     if source_data_client.is_incremental_append_capable():
         original_offload_type = original_metadata.offload_type
         new_offload_type = hybrid_operation.offload_type
@@ -275,16 +286,12 @@ def offload_type_force_effects(
             original_offload_type,
             new_offload_type,
         ) == ("FULL", "INCREMENTAL"):
-            # Once we have switched to FULL we cannot trust the HWM with subpartition offloads,
-            # what if another HWM appeared for already offloaded HWM!
             raise OffloadException(offload_constants.OFFLOAD_TYPE_CHANGE_FOR_SUBPART_EXCEPTION_TEXT)
 
         if hybrid_operation.ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST and (
             original_offload_type,
             new_offload_type,
         ) == ("FULL", "INCREMENTAL"):
-            # We're switching OFFLOAD_TYPE for a LIST table, this is tricky for the user because we don't know the correct
-            # INCREMENTAL_HIGH_VALUE value for metadata/hybrid view. So best we can do is try to alert them.
             active_lpa_opts = active_data_append_options(hybrid_operation, partition_type=OFFLOAD_PARTITION_TYPE_LIST)
             if active_lpa_opts:
                 messages.notice(
@@ -329,8 +336,11 @@ def offload_type_force_effects(
 
 
 def normalise_less_than_options(options, exc_cls=OffloadException):
+    """We mustn't be in offload so should just drop out
+
+    move the value into less_than_value
+    """
     if not hasattr(options, "older_than_date"):
-        # We mustn't be in offload so should just drop out
         return
 
     active_pa_opts = active_data_append_options(options, from_options=True)
@@ -348,14 +358,12 @@ def normalise_less_than_options(options, exc_cls=OffloadException):
 
     if options.older_than_date:
         try:
-            # move the value into less_than_value
             options.less_than_value = parse_yyyy_mm_dd(options.older_than_date)
             options.older_than_date = None
         except ValueError as exc:
             raise exc_cls("option --older-than-date: %s" % str(exc))
     elif options.older_than_days:
         options.older_than_days = check_opt_is_posint("--older-than-days", options.older_than_days, allow_zero=True)
-        # move the value into less_than_value
         options.less_than_value = datetime.today() - timedelta(options.older_than_days)
         options.older_than_days = None
 

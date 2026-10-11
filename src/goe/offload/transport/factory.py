@@ -3,7 +3,7 @@
 
 """Transport method selection, validation, and factory instantiation."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.offload.offload_constants import (
     DBTYPE_MSSQL,
@@ -60,10 +60,10 @@ if TYPE_CHECKING:
 
 def get_offload_transport_method_validation_fns(
     config: "OrchestrationConfig",
-    offload_operation=None,
-    offload_source_table: "OffloadSourceTableInterface" = None,
-    messages: "OffloadMessages" = None,
-):
+    offload_operation: Any = None,
+    offload_source_table: "OffloadSourceTableInterface | None" = None,
+    messages: "OffloadMessages | None" = None,
+) -> dict[str, Any]:
     return {
         OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT: lambda: is_spark_thrift_available(
             config, offload_source_table, messages=messages
@@ -97,11 +97,11 @@ def get_offload_transport_method_validation_fns(
 def validate_offload_transport_method(
     offload_transport_method: str,
     config: "OrchestrationConfig",
-    offload_operation=None,
-    offload_source_table: "OffloadSourceTableInterface" = None,
-    messages: "OffloadMessages" = None,
-    exception_class=OffloadTransportException,
-):
+    offload_operation: Any = None,
+    offload_source_table: "OffloadSourceTableInterface | None" = None,
+    messages: "OffloadMessages | None" = None,
+    exception_class: Any = OffloadTransportException,
+) -> None:
     """If a specific method is requested then we can do certain config checks.
     This is not a health check, just confirming we have the config we need.
     Query Import and Sqoop methods can only be validated if optional operation config is passed in.
@@ -121,11 +121,11 @@ def validate_offload_transport_method(
 
 
 def choose_offload_transport_method(
-    offload_operation,
+    offload_operation: Any,
     offload_source_table: "OffloadSourceTableInterface",
     config: "OrchestrationConfig",
     messages: "OffloadMessages",
-):
+) -> str:
     """Select the data transport method based on a series of rules:
     AUTO:
         Work through GOE rules and then fall back to SQOOP rules

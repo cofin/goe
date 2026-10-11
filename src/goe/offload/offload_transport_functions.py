@@ -12,7 +12,7 @@ import sys
 from getpass import getuser
 from socket import getfqdn, gethostname
 from subprocess import PIPE, STDOUT
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import oracledb as cxo
 
@@ -49,33 +49,23 @@ class OffloadTransportException(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
-def offload_transport_file_name(name_prefix, extension="") -> str:
+def offload_transport_file_name(name_prefix: Any, extension: str = "") -> str:
     return standard_file_name(name_prefix, extension=extension)
 
 
 def load_db_hdfs_path(load_db_name: str, config: "OrchestrationConfig") -> str:
     assert load_db_name
     assert config.hdfs_load
-    return os.path.join(config.hdfs_load, load_db_name + config.hdfs_db_path_suffix)
+    return os.path.join(config.hdfs_load, load_db_name + (config.hdfs_db_path_suffix or ""))
 
 
-def avsc_hdfs_path(load_db_name: str, schema_filename: str, config: "OrchestrationConfig") -> str:
+def avsc_hdfs_path(load_db_name: str, schema_filename: str, config: "OrchestrationConfig") -> str | None:
+    """No HDFS in play"""
     if config.backend_distribution not in HADOOP_BASED_BACKEND_DISTRIBUTIONS:
-        # No HDFS in play
         return None
     return os.path.join(load_db_hdfs_path(load_db_name, config), schema_filename)
 
@@ -91,7 +81,7 @@ def get_local_staging_path(
     if is_gcs_path(config.log_path):
         local_path = "/tmp"
     else:
-        local_path = config.log_path
+        local_path = config.log_path or "/tmp"
     file_path = os.path.join(local_path, filename)
     return file_path
 
@@ -101,7 +91,7 @@ def schema_path(
     table_name: str,
     load_db_name: str,
     config: "OrchestrationConfig",
-) -> str:
+) -> str | None:
     owner_table = "%s.%s" % (target_owner, table_name)
     if config.offload_staging_format == FILE_STORAGE_FORMAT_AVRO:
         schema_filename = offload_transport_file_name(owner_table, extension=".avsc")
@@ -110,7 +100,7 @@ def schema_path(
     return avsc_hdfs_path(load_db_name, schema_filename, config)
 
 
-def ssh_cmd_prefix(ssh_user, host) -> list:
+def ssh_cmd_prefix(ssh_user: Any, host: Any) -> list:
     assert ssh_user
     assert host
     if ssh_user == getuser() and host == "localhost":
@@ -118,15 +108,16 @@ def ssh_cmd_prefix(ssh_user, host) -> list:
     return ["ssh", "-tq", ssh_user + "@" + host]
 
 
-def scp_to_cmd(user, host, from_path, to_path) -> list:
+def scp_to_cmd(user: Any, host: Any, from_path: Any, to_path: Any) -> list:
     if user == getuser() and host == "localhost":
         if to_path[0] != "/":
-            to_path = os.path.join(os.environ.get("HOME"), to_path)
+            to_path = os.path.join(os.environ.get("HOME", ""), to_path)
         return ["scp", from_path, to_path]
     return ["scp", from_path, "%s@%s:%s" % (user, host, to_path)]
 
 
 def get_rdbms_connection_for_oracle(ora_user, ora_pass, ora_dsn, use_oracle_wallet=False, ora_trace_id="GOE"):
+    """Ping updates the module/action in the session."""
     if use_oracle_wallet:
         ora_conn = cxo.connect(dsn=ora_dsn)
     else:
@@ -138,12 +129,11 @@ def get_rdbms_connection_for_oracle(ora_user, ora_pass, ora_dsn, use_oracle_wall
         session_cursor.close()
     ora_conn.module = FRONTEND_TRACE_MODULE
     ora_conn.action = "OffloadTransport"
-    # Ping updates the module/action in the session.
     ora_conn.ping()
     return ora_conn
 
 
-def credential_provider_path_jvm_override(credential_provider_path) -> str:
+def credential_provider_path_jvm_override(credential_provider_path: Any) -> str:
     """Return a JVM override clause to point to credential provider file"""
     if not credential_provider_path:
         return ""
@@ -151,20 +141,20 @@ def credential_provider_path_jvm_override(credential_provider_path) -> str:
 
 
 def write_progress_to_stdout():
+    """Writing dots to screen is non-essential, if we lost stdout then press on anyway."""
     try:
         sys.stdout.write(".")
         sys.stdout.flush()
     except OSError:
-        # Writing dots to screen is non-essential, if we lost stdout then press on anyway.
         pass
 
 
 def finish_progress_on_stdout():
+    """Writing dots to screen is non-essential, if we lost stdout then press on anyway."""
     try:
         sys.stdout.write("\n")
         sys.stdout.flush()
     except OSError:
-        # Writing dots to screen is non-essential, if we lost stdout then press on anyway.
         pass
 
 
@@ -184,6 +174,8 @@ def run_os_cmd(
       - Logs all command output at VVERBOSE level
     silent: No stdout unless vverbose is requested.
     The returned output is str, working on the assumption that output to screen will be unicode.
+
+    Writing to screen is non-essential, if we lost stdout then we still have the log file.
     """
     messages.log("_run_os_cmd()", detail=VVERBOSE)
     assert isinstance(cmd, list)
@@ -203,8 +195,9 @@ def run_os_cmd(
 
     output = ""
     proc = subprocess.Popen(cmd, stdout=PIPE, stderr=STDOUT)
-    for line in proc.stdout:
-        line = line.decode()
+    assert proc.stdout is not None
+    for raw_line in proc.stdout:
+        line = raw_line.decode()
         output += line
         if line and "password" in line:
             messages.log(
@@ -224,7 +217,6 @@ def run_os_cmd(
         try:
             sys.stdout.write(output)
         except OSError:
-            # Writing to screen is non-essential, if we lost stdout then we still have the log file.
             pass
 
     if not optional and cmd_returncode:
@@ -284,10 +276,11 @@ def transport_and_load_offload_chunk(
     sync: bool = True,
     offload_predicate: Optional["GenericPredicate"] = None,
     dry_run: bool = False,
-):
+) -> Any:
     """Offload transport steps for a regular offload chunk, used in goe.py."""
 
     def get_frontend_bytes():
+        """This is for instrumentation and non-essential"""
         try:
             if offload_predicate:
                 messages.log(
@@ -299,7 +292,6 @@ def transport_and_load_offload_chunk(
                 return partition_chunk.size_in_bytes()
             return offload_source_table.size_in_bytes
         except Exception as exc:
-            # This is for instrumentation and non-essential
             messages.warning(f"Unable to calculate transport frontend bytes due to exception: {exc!s}")
 
     chunk_id = repo_client.start_offload_chunk(
@@ -371,7 +363,7 @@ def split_ranges_for_id_range(id_min, id_max, parallelism):
     return id_ranges
 
 
-def split_lists_for_id_list(id_list: list, parallelism: int, round_robin=True, as_csvs=False) -> list:
+def split_lists_for_id_list(id_list: list, parallelism: int, round_robin: bool = True, as_csvs: bool = False) -> list:
     """Take a list of values, split them into sub-ranges based on parallelism and then, optionally, convert to CSVs.
     The splitting into sub-ranges can be contiguous or round-robin.
     Example input:

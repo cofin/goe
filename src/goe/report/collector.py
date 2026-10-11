@@ -8,6 +8,7 @@ import os
 import sys
 from copy import copy
 from datetime import datetime
+from types import SimpleNamespace
 
 from goe.config.options import StatusReportOptions
 from goe.config.orchestration_config import OrchestrationConfig
@@ -109,6 +110,8 @@ from goe.util.ora_query import OracleQuery, OracleQueryException, get_oracle_con
 
 class OffloadStatusReport(ReportRenderersMixin, DemoDataMixin):
     """Class for generating the Offload Status Report data and optional report."""
+
+    _execute: bool = True
 
     def __init__(self, orchestration_config, messages, ora_adm_conn=None):
         """OffloadStatusReport constructor. Essentially a range of the database connection parameters.
@@ -1057,12 +1060,13 @@ ORDER  BY
         """
 
         def get_offload_source_table(offloaded_table):
-            conn_options = lambda: None
-            conn_options.db_type = self._db_type
-            conn_options.ora_adm_user = self._ora_adm_user
-            conn_options.ora_adm_pass = self._ora_adm_pass
-            conn_options.rdbms_dsn = self._oracle_dsn
-            conn_options.use_oracle_wallet = self._use_oracle_wallet
+            conn_options = SimpleNamespace(
+                db_type=self._db_type,
+                ora_adm_user=self._ora_adm_user,
+                ora_adm_pass=self._ora_adm_pass,
+                rdbms_dsn=self._oracle_dsn,
+                use_oracle_wallet=self._use_oracle_wallet,
+            )
             return OffloadSourceTable.create(
                 offloaded_table[SOURCE_OWNER],
                 offloaded_table[SOURCE_TABLE],
@@ -1105,9 +1109,9 @@ ORDER  BY
             table_data.append(offloaded_table)
 
             self._messages.debug("RDBMS and offload data merged for %s" % qualified_table_name)
-            self._messages.debug("Merged data:" % offloaded_table, detail=SUPPRESS_STDOUT)
+            self._messages.debug("Merged data: %s" % offloaded_table, detail=SUPPRESS_STDOUT)
 
-        self._messages.debug("Table data:" % table_data, detail=SUPPRESS_STDOUT)
+        self._messages.debug("Table data: %s" % table_data, detail=SUPPRESS_STDOUT)
         return table_data
 
     def _process_report_data(self, table_data):

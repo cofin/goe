@@ -6,6 +6,7 @@
 import logging
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
+from typing import Any
 
 from goe.offload import offload_constants
 from goe.offload.backend_table import BackendTableInterface
@@ -457,6 +458,15 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
     offload logic.
     """
 
+    _incremental_append_capable: Any
+    _partition_append_capable: Any
+    _partition_append_predicate_type: Any
+    _source_partitions: Any
+    _offloaded_partitions: Any
+    _partitions_to_offload: Any
+    _target_table_max: Any
+    _rdbms_min: Any
+
     def __init__(
         self,
         offload_source_table,
@@ -795,7 +805,7 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
             self.debug("No synthetic partition predicate for negative numeric: %s" % str(hv_tuple[0]))
             return None
 
-        if hv_tuple:
+        if hv_tuple and synthetic_conv_fn:
             converted_hv = synthetic_conv_fn(hv_tuple[0])
             backend_literal = self._offload_target_table.to_backend_literal(
                 converted_hv, data_type=matching_backend_part_col.data_type
@@ -837,10 +847,10 @@ class OffloadSourceDataInterface(metaclass=ABCMeta):
                 self.debug("Matched %s: %s == %s" % (p.partition_name, p.partition_literal, hv))
             return match
 
-        hv_partition_index = [i for i, p in enumerate(source_partitions) if match_fn(p)]
-        if not hv_partition_index:
+        hv_partition_indices = [i for i, p in enumerate(source_partitions) if match_fn(p)]
+        if not hv_partition_indices:
             return None
-        hv_partition_index = hv_partition_index.pop()
+        hv_partition_index = hv_partition_indices.pop()
         if hv_partition_index >= len(source_partitions) - 1:
             return None
         return source_partitions[hv_partition_index + 1]

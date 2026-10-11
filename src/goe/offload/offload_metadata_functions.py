@@ -7,7 +7,7 @@
 For now a handy location for like minded functions, in the future this might become a class
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.offload.column_metadata import (
     invalid_column_list_message,
@@ -42,10 +42,6 @@ class OffloadMetadataException(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 OFFLOAD_TYPE_FULL = "FULL"
 OFFLOAD_TYPE_INCREMENTAL = "INCREMENTAL"
 
@@ -57,29 +53,28 @@ HYBRID_VIEW_IPA_HWM_TOKEN_REMOTE_END = "--ENDREMOTEHWM"
 METADATA_HYBRID_VIEW = "GOE_OFFLOAD_HYBRID_VIEW"
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
 def gen_offload_metadata(
     repo_client: "OrchestrationRepoClientInterface",
-    offload_operation,
+    offload_operation: Any,
     frontend_owner: str,
     frontend_table_name: str,
     backend_owner: str,
     backend_table_name: str,
-    threshold_cols,
-    offload_high_values,
-    incremental_predicate_values,
-    offload_snapshot,
-    pre_offload_metadata: OrchestrationMetadata,
-):
+    threshold_cols: Any,
+    offload_high_values: Any,
+    incremental_predicate_values: Any,
+    offload_snapshot: Any,
+    pre_offload_metadata: OrchestrationMetadata | None,
+) -> OrchestrationMetadata:
     """pre_offload_metadata is used to carry certain metadata attributes forward to another operation,
     e.g. from an offload to a present. Also used to carry forward attributes from one offload to another which would
     not otherwise be set, e.g. Incremental Update attributes.
     Backend owner and table names should NOT have their case interfered with. Some backends are case sensitive so
     we cannot uppercase all values for consistency (which is what we used to do).
+
+    Some attributes should not be changed for data append operations.
+    Predicate type might be changing so need to take it from the currently-executing operation...
+    incremental_predicate_type PREDICATE has a UNION ALL hybrid view but no incremental keys
     """
     if offload_operation.sort_columns:
         assert isinstance(offload_operation.sort_columns, list), (
@@ -94,7 +89,6 @@ def gen_offload_metadata(
     incremental_range = None
     offload_partition_functions = None
     if pre_offload_metadata:
-        # Some attributes should not be changed for data append operations.
         bucket_hash_column = pre_offload_metadata.offload_bucket_column
         offload_snapshot = pre_offload_metadata.offload_snapshot
         incremental_range = pre_offload_metadata.incremental_range
@@ -104,7 +98,6 @@ def gen_offload_metadata(
     else:
         bucket_hash_column = offload_operation.bucket_hash_col
 
-    # Predicate type might be changing so need to take it from the currently-executing operation...
     incremental_predicate_type = offload_operation.ipa_predicate_type or incremental_predicate_type
 
     if not incremental_range:
@@ -116,7 +109,6 @@ def gen_offload_metadata(
     offload_partition_functions = offload_partition_functions or offload_operation.offload_partition_functions
 
     if offload_operation.hwm_in_hybrid_view and incremental_predicate_type != INCREMENTAL_PREDICATE_TYPE_PREDICATE:
-        # incremental_predicate_type PREDICATE has a UNION ALL hybrid view but no incremental keys
         incremental_key_csv = incremental_key_csv_from_part_keys(threshold_cols)
         incremental_hv_csv = incremental_hv_csv_from_list(offload_high_values)
     else:
@@ -152,16 +144,16 @@ def gen_offload_metadata(
 def gen_and_save_offload_metadata(
     repo_client: "OrchestrationRepoClientInterface",
     messages: "OffloadMessages",
-    offload_operation,
+    offload_operation: Any,
     config: "OrchestrationConfig",
     offload_source_table: "OffloadSourceTableInterface",
     offload_target_table: "BackendTableInterface",
-    incremental_key_columns,
-    incremental_high_values,
-    incremental_predicate_values,
-    pre_offload_snapshot,
-    pre_offload_metadata: OrchestrationMetadata,
-):
+    incremental_key_columns: Any,
+    incremental_high_values: Any,
+    incremental_predicate_values: Any,
+    pre_offload_snapshot: Any,
+    pre_offload_metadata: OrchestrationMetadata | None,
+) -> OrchestrationMetadata:
     """Simple wrapper over generation and saving of metadata.
     Returns the new metadata object for convenience.
     """
@@ -240,10 +232,15 @@ def incremental_hv_list_from_csv(metadata_high_value_string, ipa_predicate_type)
     For RANGE this is just a pass through because metadata only stores a single HV list (implied tuple).
     For LIST the metadata is a list of tuples so we need to pre-process the string to get a list of the
     individual tuples.
+
+    for list each token is surrounded by brackets so we should remove those
     """
 
     def metadata_high_value_split(metadata_str):
-        """Splits a string on commas when not nested inside parentheses or quotes"""
+        """Splits a string on commas when not nested inside parentheses or quotes
+
+        add the final token
+        """
         tokens = []
         current_token = ""
         paren_level = 0
@@ -264,7 +261,6 @@ def incremental_hv_list_from_csv(metadata_high_value_string, ipa_predicate_type)
                 elif c == ")":
                     paren_level -= 1
                 current_token += c
-        # add the final token
         if current_token:
             tokens.append(current_token.strip())
         return tokens
@@ -273,7 +269,6 @@ def incremental_hv_list_from_csv(metadata_high_value_string, ipa_predicate_type)
         return None
     if ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST:
         tokens = metadata_high_value_split(metadata_high_value_string)
-        # for list each token is surrounded by brackets so we should remove those
         tokens = [unsurround(_, "(", ")") for _ in tokens]
         return tokens
     return metadata_high_value_string
@@ -281,7 +276,7 @@ def incremental_hv_list_from_csv(metadata_high_value_string, ipa_predicate_type)
 
 def decode_metadata_incremental_high_values_from_metadata(
     base_metadata: OrchestrationMetadata, rdbms_base_table: OffloadSourceTableInterface
-):
+) -> tuple[Any, Any, Any]:
     """Equivalent of OffloadSourceTable.decode_partition_high_values_with_literals but for metadata based values
     This function subverts ipa_predicate_type by using it as partition_type. This works currently but is not
     ideal.
@@ -301,11 +296,11 @@ def decode_metadata_incremental_high_values_from_metadata(
 
 
 def decode_metadata_incremental_high_values(
-    incremental_predicate_type,
-    incremental_key,
-    incremental_high_value,
+    incremental_predicate_type: Any,
+    incremental_key: Any,
+    incremental_high_value: Any,
     rdbms_base_table: OffloadSourceTableInterface,
-):
+) -> tuple[Any, Any, Any]:
     """Equivalent of OffloadSourceTable.decode_partition_high_values_with_literals but for metadata based values
     This function subverts ipa_predicate_type by using it as partition_type. This works currently but is not
     ideal.
@@ -325,8 +320,9 @@ def decode_metadata_incremental_high_values(
     partition_columns = partition_columns_from_metadata(incremental_key, rdbms_base_table.columns)
     partitionwise_hvs = incremental_hv_list_from_csv(incremental_high_value, ipa_predicate_type)
     if ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST:
-        hv_real_list, hv_indiv_list = [], []
-        for partitionwise_hv in partitionwise_hvs:
+        hv_real_list: list[Any] = []
+        hv_indiv_list: list[Any] = []
+        for partitionwise_hv in partitionwise_hvs or []:
             hv_real_vals, hv_indiv_vals = hvs_to_python(
                 partitionwise_hv,
                 partition_columns,
@@ -342,7 +338,7 @@ def decode_metadata_incremental_high_values(
     return partition_columns, hv_real_vals, hv_indiv_vals
 
 
-def split_metadata_incremental_high_values(base_metadata: OrchestrationMetadata, frontend_api):
+def split_metadata_incremental_high_values(base_metadata: OrchestrationMetadata, frontend_api: Any) -> Any:
     """Equivalent of decode_metadata_incremental_high_values() above but for when we don't have access
     to an RDBMS base table.
     This means we can only decode as far as string HVs, no conversion to real Python values.
@@ -352,7 +348,7 @@ def split_metadata_incremental_high_values(base_metadata: OrchestrationMetadata,
     ipa_predicate_type = base_metadata.incremental_predicate_type or INCREMENTAL_PREDICATE_TYPE_RANGE
     partitionwise_hvs = incremental_hv_list_from_csv(base_metadata.incremental_high_value, ipa_predicate_type)
     if ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST:
-        return [tuple(frontend_api.split_partition_high_value_string(_)) for _ in partitionwise_hvs]
+        return [tuple(frontend_api.split_partition_high_value_string(_)) for _ in partitionwise_hvs or []]
     return frontend_api.split_partition_high_value_string(partitionwise_hvs)
 
 

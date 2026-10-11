@@ -10,6 +10,7 @@ for each supported RDBMS, e.g. Oracle, MSSQL
 
 import logging
 from abc import ABCMeta, abstractmethod
+from typing import Any
 
 from goe.offload.column_metadata import (
     get_column_names,
@@ -33,17 +34,12 @@ from goe.offload.offload_constants import (
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
 
 class FrontendApiException(Exception):
     pass
 
-
-###############################################################################
-# CONSTANTS
-###############################################################################
 
 FETCH_ACTION_ALL = "all"
 FETCH_ACTION_ONE = "one"
@@ -57,11 +53,6 @@ GET_DDL_TYPE_TABLE = "TABLE"
 GET_DDL_TYPE_VIEW = "VIEW"
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
 def extract_connection_details_from_dsn(rdbms_dsn):
     """Take a rdbms_dsn of the form: <server>:<port>;database=<database> and return server, port and database"""
     assert rdbms_dsn
@@ -73,20 +64,10 @@ def extract_connection_details_from_dsn(rdbms_dsn):
     return server, port, database
 
 
-###########################################################################
-# QueryParameter
-###########################################################################
-
-
 class QueryParameter:
     def __init__(self, param_name, param_value):
         self.param_name = param_name
         self.param_value = param_value
-
-
-###########################################################################
-# BackendApiInterface
-###########################################################################
 
 
 class FrontendApiInterface(metaclass=ABCMeta):
@@ -124,191 +105,12 @@ class FrontendApiInterface(metaclass=ABCMeta):
         self._trace_action = trace_action or FRONTEND_TRACE_ACTION
         self._sql_engine_name = frontend_type.title()
 
-    ###########################################################################
-    # ENFORCED PRIVATE METHODS
-    ###########################################################################
-
-    @abstractmethod
-    def _create_table_sql_text(
-        self,
-        schema,
-        table_name,
-        column_list,
-        partition_column_names,
-        table_properties=None,
-    ) -> str:
-        """Return str DDL to create a table and cater for frontend specific details.
-        column_list: A list of column objects for the table.
-        partition_column_names: A list of column names for table partitioning, the columns must also
-                                be in column_list.
-        table_properties: a dict of frontend specific table options/attributes.
-        """
-
-    @abstractmethod
-    def _frontend_capabilities(self):
-        pass
-
-    @abstractmethod
-    def _execute_ddl_or_dml(
-        self,
-        sql,
-        query_options=None,
-        log_level=VERBOSE,
-        trace_action=None,
-        query_params=None,
-    ):
-        """Run SQL that has no result set, e.g. DDL, sql can be a str or a list of SQLs.
-        This function returns the SQL statements that were executed.
-        Exception will be raised upon failure.
-        query_options: key/value pairs for session settings.
-        trace_action: Token to use in tracing information to override self._trace_action
-        """
-
-    @abstractmethod
-    def _execute_query_fetch_x(
-        self,
-        sql,
-        fetch_action=FETCH_ACTION_ALL,
-        query_options=None,
-        log_level=None,
-        time_sql=False,
-        not_when_dry_running=False,
-        query_params=None,
-        profile=False,
-        trace_action=None,
-        as_dict=False,
-    ):
-        """Run a query, fetch and return the results.
-        query_options: key/value pairs for session settings
-        query_params: a list of QueryParameter objects
-        log_level: None = no logging. Otherwise VERBOSE/VVERBOSE etc
-        profile: If logging then log profile/statistics from the RDBMS
-        time_sql: If logging then log SQL elapsed time
-        not_when_dry_running: Some SQL will only work in execute mode, such as queries on a load table
-        trace_action: Token to use in tracing information to override self._trace_action
-        as_dict: When True each row is returned as a dict keyed by column name rather than a tuple/list.
-        """
-
-    @abstractmethod
-    def _executemany_dml(
-        self,
-        sql,
-        query_options=None,
-        log_level=VERBOSE,
-        trace_action=None,
-        query_params=None,
-        batch_size=None,
-    ):
-        """Run SQL that has no result set with multiple input records.
-        This function returns the SQL statements that were executed.
-        Exception will be raised upon failure.
-        query_options: key/value pairs for session settings.
-        query_params: Must be populated and a list of lists in order to drive the execute many operation.
-        trace_action: Token to use in tracing information to override self._trace_action.
-        batch_size: Whether to split query_params into batches when inserting. None means no batching.
-        """
-
-    @abstractmethod
-    def _fast_executemany_dml(
-        self,
-        sql,
-        query_options=None,
-        log_level=VERBOSE,
-        trace_action=None,
-        query_params=None,
-        batch_size=None,
-        param_inputsizes=None,
-    ):
-        """Run SQL that has no result set with multiple input records using the fast_executemany option.
-        This function returns the SQL statements that were executed.
-        Exception will be raised upon failure.
-        query_options: key/value pairs for session settings.
-        query_params: Must be populated and a list of lists in order to drive the execute many operation.
-        trace_action: Token to use in tracing information to override self._trace_action.
-        batch_size: Whether to split query_params into batches when inserting. None means no batching.
-        param_inputsizes: Certain requests will require the use of inputsizes to prevent exceptions.
-        """
-
-    @abstractmethod
-    def _goe_db_component_version(self):
-        """Return version of any in-database GOE code"""
-
-    @abstractmethod
-    def _to_native_query_params(self, query_params):
-        """Convert list of QueryParameter objects to a structure compatible with
-        the driver used for the specific frontend.
-        """
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _log(self, msg, detail=None, ansi_code=None):
-        """Write to offload log file"""
-        self._messages.log(msg, detail=detail, ansi_code=ansi_code)
-        if detail in (VERBOSE, VVERBOSE):
-            logger.debug(msg)
-        else:
-            logger.info(msg)
-
-    def _log_or_not(self, msg, log_level=VERBOSE):
-        """Wrapper over _log() to cater for suppressing logging of SQLs"""
-        if log_level is not None:
-            self._log(msg, detail=log_level)
-
-    def _debug(self, msg):
-        self._messages.debug(msg)
-        logger.debug(msg)
-
-    def _create_table_columns_clause_common(self, column_list):
-        """Trivial helper for SQL text consistency"""
-        return "    \n,   ".join(
-            ["%-32s %-20s" % (self.enclose_identifier(_.name), _.format_data_type()) for _ in column_list]
-        )
-
-    def _cursor_projection(self, cursor) -> list:
-        """Returns a list of strings describing the projection of a cursor.
-        Names are coerced to lower case to give a standard output across different frontend systems.
-        This should be called after the query has been executed.
-        """
-        return [_[0].lower() for _ in cursor.description]
-
-    def _cursor_row_to_dict(self, cursor_projection, row) -> dict:
-        """Trivial function combining typical tuple/list row format with results of _cursor_projection() to
-        generate a row dict.
-        """
-        return dict(zip(cursor_projection, row))
-
-    def _fixed_session_parameters(self) -> dict:
-        """Dictionary of session parameters for a given frontend. This top level method gives us an empty base"""
-        return {}
-
-    def _odbc_to_native_query_params(self, query_params):
-        """Using a list for pyodbc binds which are then bound as execute() arguments.
-        For convenience, if it is already a list then turning a blind eye and returning it, this allows code
-        migrated here from OffloadSourceTable to remain unchanged.
-        """
-        assert isinstance(query_params, list)
-        if query_params and isinstance(query_params[0], QueryParameter):
-            param_values = []
-            for qp in query_params:
-                param_values.append(qp.param_value)
-            return param_values
-        return query_params
-
-    def _upper_or_empty(self, s):
-        return (s or "").upper()
-
-    ###########################################################################
-    # ENFORCED PUBLIC METHODS
-    ###########################################################################
-
     @abstractmethod
     def close(self, force=False):
         """Free up any resources currently held"""
 
     @abstractmethod
-    def agg_validate_sample_column_names(self, num_required: int = 5) -> list:
+    def agg_validate_sample_column_names(self, schema: str, table_name: str, num_required: int = 5) -> list[str]:
         """Return a list of column names suitable for aggreage validation.
         Mandatory first, last columns + top (num_required) "high cardinality" columns.
         """
@@ -455,7 +257,7 @@ class FrontendApiInterface(metaclass=ABCMeta):
         """Return the size of the table in bytes"""
 
     @abstractmethod
-    def is_view(self, schema, object_name) -> bool:
+    def is_view(self, schema: Any, object_name: Any) -> bool:
         """Is the underlying RDBMS object a view"""
 
     @abstractmethod
@@ -484,7 +286,7 @@ class FrontendApiInterface(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def schema_exists(self, schema) -> bool:
+    def schema_exists(self, schema: Any) -> bool:
         """Return True/False if a schema/dataset/database exists
         The equivalent BackendApi method is called database_exists(), database is a misleading term and ideally
         we would not have used it.
@@ -497,11 +299,11 @@ class FrontendApiInterface(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def table_exists(self, schema, table_name) -> bool:
+    def table_exists(self, schema: Any, table_name: Any) -> bool:
         pass
 
     @abstractmethod
-    def to_frontend_literal(self, py_val, data_type=None) -> str:
+    def to_frontend_literal(self, py_val: Any, data_type: Any = None) -> str:
         """Translate a Python value to a frontend literal.
         Examples where this may act are dates (which may need specific formatting) and
         string (need quoting with a specific character).
@@ -509,21 +311,17 @@ class FrontendApiInterface(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def view_exists(self, schema, view_name) -> bool:
+    def view_exists(self, schema: Any, view_name: Any) -> bool:
         pass
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def create_table(
         self,
-        schema,
-        table_name,
-        column_list,
-        partition_column_names=None,
-        table_properties=None,
-        log_level=VERBOSE,
+        schema: Any,
+        table_name: Any,
+        column_list: Any,
+        partition_column_names: Any = None,
+        table_properties: Any = None,
+        log_level: Any = VERBOSE,
     ) -> list:
         """Create a table and cater for frontend specific details, we need to pass all parameters even if they
         don't apply to certain backends but some may be ignored depending on the system involved:
@@ -565,7 +363,9 @@ class FrontendApiInterface(metaclass=ABCMeta):
         """
         return ".".join([self.enclose_identifier(schema), self.enclose_identifier(object_name)])
 
-    def execute_ddl(self, sql, query_options=None, log_level=VERBOSE, trace_action=None) -> list:
+    def execute_ddl(
+        self, sql: Any, query_options: Any = None, log_level: Any = VERBOSE, trace_action: Any = None
+    ) -> list:
         """Simple wrapper over _execute_ddl_or_dml() to ensure we always get a return value"""
         return_sqls = self._execute_ddl_or_dml(
             sql,
@@ -578,11 +378,11 @@ class FrontendApiInterface(metaclass=ABCMeta):
 
     def execute_dml(
         self,
-        sql,
-        query_options=None,
-        log_level=VERBOSE,
-        trace_action=None,
-        query_params=None,
+        sql: Any,
+        query_options: Any = None,
+        log_level: Any = VERBOSE,
+        trace_action: Any = None,
+        query_params: Any = None,
     ) -> list:
         return_sqls = self._execute_ddl_or_dml(
             sql,
@@ -596,15 +396,15 @@ class FrontendApiInterface(metaclass=ABCMeta):
 
     def execute_query_fetch_all(
         self,
-        sql,
-        query_options=None,
-        log_level=None,
-        time_sql=False,
-        not_when_dry_running=False,
-        query_params=None,
-        profile=False,
-        trace_action=None,
-        as_dict=False,
+        sql: Any,
+        query_options: Any = None,
+        log_level: Any = None,
+        time_sql: bool = False,
+        not_when_dry_running: bool = False,
+        query_params: Any = None,
+        profile: bool = False,
+        trace_action: Any = None,
+        as_dict: bool = False,
     ) -> list:
         """For parameter descriptions see: _execute_query_fetch_x"""
         rows = self._execute_query_fetch_x(
@@ -675,12 +475,12 @@ class FrontendApiInterface(metaclass=ABCMeta):
 
     def executemany_dml(
         self,
-        sql,
-        query_options=None,
-        log_level=VERBOSE,
-        trace_action=None,
-        query_params=None,
-        batch_size=None,
+        sql: Any,
+        query_options: Any = None,
+        log_level: Any = VERBOSE,
+        trace_action: Any = None,
+        query_params: Any = None,
+        batch_size: Any = None,
     ) -> list:
         """Run SQL that has no result set with multiple input records.
         For executemany we need query_params to be populated and a list of lists.
@@ -704,13 +504,13 @@ class FrontendApiInterface(metaclass=ABCMeta):
 
     def fast_executemany_dml(
         self,
-        sql,
-        query_options=None,
-        log_level=VERBOSE,
-        trace_action=None,
-        query_params=None,
-        batch_size=None,
-        param_inputsizes=None,
+        sql: Any,
+        query_options: Any = None,
+        log_level: Any = VERBOSE,
+        trace_action: Any = None,
+        query_params: Any = None,
+        batch_size: Any = None,
+        param_inputsizes: Any = None,
     ) -> list:
         """Run SQL that has no result set with multiple input records using the fast_executemany option.
         For executemany we need query_params to be populated and a list of lists.
@@ -745,7 +545,6 @@ class FrontendApiInterface(metaclass=ABCMeta):
 
     def get_table_default_parallelism(self, schema, table_name):
         """Return the table level default parallelism. Oracle has an override for this."""
-        # Assume no table level default unless an implementation overrides.
         return
 
     def goe_db_component_version(self):
@@ -783,11 +582,7 @@ class FrontendApiInterface(metaclass=ABCMeta):
             remap_schema=remap_schema,
         )
 
-    ###########################################################################
-    # PUBLIC CAPABILITY METHODS
-    ###########################################################################
-
-    def is_capability_supported(self, capability_constant) -> bool:
+    def is_capability_supported(self, capability_constant: Any) -> bool:
         assert capability_constant in self._frontend_capabilities(), "Unknown capability: %s" % capability_constant
         return self._frontend_capabilities()[capability_constant]
 
@@ -837,3 +632,170 @@ class FrontendApiInterface(metaclass=ABCMeta):
 
     def schema_evolution_supported(self) -> bool:
         return self.is_capability_supported(CAPABILITY_SCHEMA_EVOLUTION)
+
+    @abstractmethod
+    def _create_table_sql_text(
+        self,
+        schema: Any,
+        table_name: Any,
+        column_list: Any,
+        partition_column_names: Any,
+        table_properties: Any = None,
+    ) -> str:
+        """Return str DDL to create a table and cater for frontend specific details.
+        column_list: A list of column objects for the table.
+        partition_column_names: A list of column names for table partitioning, the columns must also
+                                be in column_list.
+        table_properties: a dict of frontend specific table options/attributes.
+        """
+
+    @abstractmethod
+    def _frontend_capabilities(self):
+        pass
+
+    @abstractmethod
+    def _execute_ddl_or_dml(
+        self,
+        sql,
+        query_options=None,
+        log_level=VERBOSE,
+        trace_action=None,
+        query_params=None,
+    ):
+        """Run SQL that has no result set, e.g. DDL, sql can be a str or a list of SQLs.
+        This function returns the SQL statements that were executed.
+        Exception will be raised upon failure.
+        query_options: key/value pairs for session settings.
+        trace_action: Token to use in tracing information to override self._trace_action
+        """
+
+    @abstractmethod
+    def _execute_query_fetch_x(
+        self,
+        sql,
+        fetch_action=FETCH_ACTION_ALL,
+        query_options=None,
+        log_level=None,
+        time_sql=False,
+        not_when_dry_running=False,
+        query_params=None,
+        profile=False,
+        trace_action=None,
+        as_dict=False,
+    ):
+        """Run a query, fetch and return the results.
+        query_options: key/value pairs for session settings
+        query_params: a list of QueryParameter objects
+        log_level: None = no logging. Otherwise VERBOSE/VVERBOSE etc
+        profile: If logging then log profile/statistics from the RDBMS
+        time_sql: If logging then log SQL elapsed time
+        not_when_dry_running: Some SQL will only work in execute mode, such as queries on a load table
+        trace_action: Token to use in tracing information to override self._trace_action
+        as_dict: When True each row is returned as a dict keyed by column name rather than a tuple/list.
+        """
+
+    @abstractmethod
+    def _executemany_dml(
+        self,
+        sql,
+        query_options=None,
+        log_level=VERBOSE,
+        trace_action=None,
+        query_params=None,
+        batch_size=None,
+    ):
+        """Run SQL that has no result set with multiple input records.
+        This function returns the SQL statements that were executed.
+        Exception will be raised upon failure.
+        query_options: key/value pairs for session settings.
+        query_params: Must be populated and a list of lists in order to drive the execute many operation.
+        trace_action: Token to use in tracing information to override self._trace_action.
+        batch_size: Whether to split query_params into batches when inserting. None means no batching.
+        """
+
+    @abstractmethod
+    def _fast_executemany_dml(
+        self,
+        sql,
+        query_options=None,
+        log_level=VERBOSE,
+        trace_action=None,
+        query_params=None,
+        batch_size=None,
+        param_inputsizes=None,
+    ):
+        """Run SQL that has no result set with multiple input records using the fast_executemany option.
+        This function returns the SQL statements that were executed.
+        Exception will be raised upon failure.
+        query_options: key/value pairs for session settings.
+        query_params: Must be populated and a list of lists in order to drive the execute many operation.
+        trace_action: Token to use in tracing information to override self._trace_action.
+        batch_size: Whether to split query_params into batches when inserting. None means no batching.
+        param_inputsizes: Certain requests will require the use of inputsizes to prevent exceptions.
+        """
+
+    @abstractmethod
+    def _goe_db_component_version(self):
+        """Return version of any in-database GOE code"""
+
+    @abstractmethod
+    def _to_native_query_params(self, query_params):
+        """Convert list of QueryParameter objects to a structure compatible with
+        the driver used for the specific frontend.
+        """
+
+    def _log(self, msg, detail=None, ansi_code=None):
+        """Write to offload log file"""
+        self._messages.log(msg, detail=detail, ansi_code=ansi_code)
+        if detail in (VERBOSE, VVERBOSE):
+            logger.debug(msg)
+        else:
+            logger.info(msg)
+
+    def _log_or_not(self, msg, log_level=VERBOSE):
+        """Wrapper over _log() to cater for suppressing logging of SQLs"""
+        if log_level is not None:
+            self._log(msg, detail=log_level)
+
+    def _debug(self, msg):
+        self._messages.debug(msg)
+        logger.debug(msg)
+
+    def _create_table_columns_clause_common(self, column_list):
+        """Trivial helper for SQL text consistency"""
+        return "    \n,   ".join(
+            ["%-32s %-20s" % (self.enclose_identifier(_.name), _.format_data_type()) for _ in column_list]
+        )
+
+    def _cursor_projection(self, cursor: Any) -> list:
+        """Returns a list of strings describing the projection of a cursor.
+        Names are coerced to lower case to give a standard output across different frontend systems.
+        This should be called after the query has been executed.
+        """
+        return [_[0].lower() for _ in cursor.description]
+
+    def _cursor_row_to_dict(self, cursor_projection: Any, row: Any) -> dict:
+        """Trivial function combining typical tuple/list row format with results of _cursor_projection() to
+        generate a row dict.
+        """
+        return dict(zip(cursor_projection, row))
+
+    def _fixed_session_parameters(self) -> dict:
+        """Dictionary of session parameters for a given frontend. This top level method gives us an empty base"""
+        return {}
+
+    def _odbc_to_native_query_params(self, query_params):
+        """Using a list for pyodbc binds which are then bound as execute() arguments.
+        For convenience, if it is already a list then turning a blind eye and returning it, this allows code
+        migrated here from OffloadSourceTable to remain unchanged.
+        """
+        assert isinstance(query_params, list)
+        if query_params and isinstance(query_params[0], QueryParameter):
+            param_values = []
+            for qp in query_params:
+                param_values.append(qp.param_value)
+            return param_values
+        return query_params
+
+    def _upper_or_empty(self, s):
+        return (s or "").upper()

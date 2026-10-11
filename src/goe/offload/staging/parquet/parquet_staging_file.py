@@ -52,18 +52,8 @@ from goe.offload.staging.staging_file import (
     OffloadStagingFileInterface,
 )
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# OffloadStagingParquetFile
-###########################################################################
 
 
 class OffloadStagingParquetFile(OffloadStagingFileInterface):
@@ -94,9 +84,22 @@ class OffloadStagingParquetFile(OffloadStagingFileInterface):
         if dry_run:
             logger.info("* Dry run *")
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def from_canonical_column(self, column):
+        """Translate an internal GOE column to a Parquet column"""
+        return self._from_canonical_column_to_parquet(column)
+
+    def to_canonical_column(self, column, use_staging_file_name=False):
+        """Translate a Parquet column to an internal GOE column"""
+        return self._from_parquet_to_canonical_column(column, use_staging_file_name=use_staging_file_name)
+
+    def get_java_primitive(self, staging_column):
+        return self._get_parquet_java_primitive(staging_column)
+
+    def get_file_schema_json(self, as_string=True):
+        schema = [
+            (_.staging_file_column_name, _.format_data_type(), bool(_.nullable)) for _ in self.get_staging_columns()
+        ]
+        return repr(schema) if as_string else schema
 
     def _from_canonical_column_to_parquet(self, column):
         """Translate an internal GOE column to a Parquet column
@@ -231,6 +234,7 @@ class OffloadStagingParquetFile(OffloadStagingFileInterface):
         raise NotImplementedError("Unsupported Parquet data type: %s" % column.data_type)
 
     def _get_parquet_java_primitive(self, staging_column):
+        """Let the calling program use implicit conversion"""
         canonical_column = match_table_column(staging_column.name, self._canonical_columns)
         if staging_column.data_type == PARQUET_TYPE_BOOLEAN:
             return JAVA_PRIMITIVE_BOOLEAN
@@ -242,28 +246,7 @@ class OffloadStagingParquetFile(OffloadStagingFileInterface):
             return JAVA_PRIMITIVE_INTEGER
         if staging_column.data_type == PARQUET_TYPE_INT64:
             return JAVA_PRIMITIVE_LONG
+        assert canonical_column is not None
         if canonical_column.data_type not in (GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY):
             return JAVA_PRIMITIVE_STRING
-        # Let the calling program use implicit conversion
         return None
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def from_canonical_column(self, column):
-        """Translate an internal GOE column to a Parquet column"""
-        return self._from_canonical_column_to_parquet(column)
-
-    def to_canonical_column(self, column, use_staging_file_name=False):
-        """Translate a Parquet column to an internal GOE column"""
-        return self._from_parquet_to_canonical_column(column, use_staging_file_name=use_staging_file_name)
-
-    def get_java_primitive(self, staging_column):
-        return self._get_parquet_java_primitive(staging_column)
-
-    def get_file_schema_json(self, as_string=True):
-        schema = [
-            (_.staging_file_column_name, _.format_data_type(), bool(_.nullable)) for _ in self.get_staging_columns()
-        ]
-        return repr(schema) if as_string else schema

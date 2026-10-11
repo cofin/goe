@@ -51,7 +51,11 @@ def default_offload_partition_columns_from_rdbms(
     backend_table,
     messages,
 ):
-    """Default partition columns from RDBMS partition columns"""
+    """Default partition columns from RDBMS partition columns
+
+    If offload_partition_functions are being specified then we cannot reject string partitioning just yet.
+    If a function is being used on the string column its type may change to a supported type.
+    """
 
     def seed_notice(data_type_desc, return_cols, messages, middle_text=None):
         seed_message = f"{data_type_desc} RDBMS partition columns cannot be used to partition the backend table"
@@ -78,8 +82,6 @@ def default_offload_partition_columns_from_rdbms(
     ]:
         seed_notice("INTERVAL", return_cols, messages)
     if not backend_table.partition_by_string_supported() and return_cols and not offload_partition_functions:
-        # If offload_partition_functions are being specified then we cannot reject string partitioning just yet.
-        # If a function is being used on the string column its type may change to a supported type.
         return_cols = [_.name for _ in rdbms_partition_columns if not _.is_string_based()]
         pf_text = (
             PARTITION_BY_STRING_PARTITION_FUNCTION_SUFFIX if backend_table.goe_partition_functions_supported() else ""
@@ -92,7 +94,11 @@ def default_offload_partition_columns_from_rdbms(
 def default_granularity_for_matching_rdbms_list_partition_key(
     rdbms_col, rdbms_partition_columns, rdbms_partition_type, messages, date_as_string
 ):
-    """RDBMS list partition keys should be safe to have a granularity resulting in value parity"""
+    """RDBMS list partition keys should be safe to have a granularity resulting in value parity
+
+    use data_length (not char length) so we don't shorten multi-byte values
+    No default if date based column is being offloaded to a string
+    """
     new_granularity = None
     if rdbms_partition_type == OFFLOAD_PARTITION_TYPE_LIST and match_table_column(
         rdbms_col.name, rdbms_partition_columns
@@ -100,10 +106,8 @@ def default_granularity_for_matching_rdbms_list_partition_key(
         if rdbms_col.is_number_based():
             new_granularity = "1"
         elif rdbms_col.is_string_based():
-            # use data_length (not char length) so we don't shorten multi-byte values
             new_granularity = str(rdbms_col.data_length)
         elif rdbms_col.is_date_based() and not date_as_string:
-            # No default if date based column is being offloaded to a string
             new_granularity = PART_COL_GRANULARITY_DAY
     if new_granularity:
         messages.notice(
@@ -125,7 +129,7 @@ def derive_partition_digits(backend_table):
                 partition_column.partition_info.source_column_name,
                 backend_table.get_columns(),
             )
-            if source_column.is_number_based():
+            if source_column and source_column.is_number_based():
                 digits_in_use.append(partition_column.partition_info.digits)
     digits_in_use = list(set(digits_in_use))
     assert len(digits_in_use) <= 1, "Incompatible padding in synthetic partition cols"
@@ -197,9 +201,11 @@ def validate_offload_partition_columns(
     messages,
     offload_chunk_column,
 ):
-    """Default and validate requested backend partition columns"""
+    """Default and validate requested backend partition columns
+
+    User defined partition columns
+    """
     if offload_partition_columns:
-        # User defined partition columns
         new_partition_columns = expand_columns_csv(
             offload_partition_columns.upper(),
             rdbms_columns,
@@ -239,6 +245,9 @@ def validate_offload_partition_functions(
     Cannot check functions are compatible with the partition source column(s) because this will be called too early,
     but we can check it exists and has a valid structure.
     Returns a normalised value for offload_partition_functions, e.g. it may comes in as a string and leave as a list
+
+    For a first time offload this will be a CSV string and need splitting.
+    Validate the partition function
     """
     if offload_partition_columns:
         assert isinstance(offload_partition_columns, list), f"Type {type(offload_partition_columns)} is not list"
@@ -267,7 +276,6 @@ def validate_offload_partition_functions(
         return [None for _ in range(len(offload_partition_columns))]
 
     if isinstance(offload_partition_functions, str):
-        # For a first time offload this will be a CSV string and need splitting.
         offload_partition_functions = csv_split(offload_partition_functions)
 
     offload_partition_functions = empty_strings_to_none(offload_partition_functions)
@@ -285,7 +293,6 @@ def validate_offload_partition_functions(
 
     new_partition_functions = []
     for part_function in offload_partition_functions:
-        # Validate the partition function
         if part_function:
             if "." not in part_function:
                 raise OffloadPartitionControlsException(
@@ -313,6 +320,13 @@ def validate_offload_partition_granularity(
     variable_string_columns_csv,
     backend_columns=None,
 ):
+    """Check user specified granularity matches partition column count
+
+    Validate/default granularity list contents
+    If there's a partition function we don't yet know what data type the backend column will be
+    No default if date based column is being offloaded to a string
+    Check that specified granularity matches the column data type
+    """
     if offload_partition_columns:
         assert isinstance(offload_partition_columns, list)
         assert isinstance(offload_partition_functions, list)
@@ -321,10 +335,10 @@ def validate_offload_partition_granularity(
     if offload_partition_granularity:
         assert isinstance(offload_partition_granularity, str)
 
+    granularity_list: list[str | None]
     if offload_partition_granularity:
-        granularity_list = csv_split(offload_partition_granularity)
-        # Check user specified granularity matches partition column count
-        if len(offload_partition_columns) != len(granularity_list):
+        raw_granularity_list = csv_split(offload_partition_granularity)
+        if len(offload_partition_columns) != len(raw_granularity_list):
             raise OffloadPartitionControlsException(
                 'Backend partition granularity "%s" should have %d elements (%s)'
                 % (
@@ -333,11 +347,10 @@ def validate_offload_partition_granularity(
                     ",".join(offload_partition_columns),
                 )
             )
-        granularity_list = empty_strings_to_none(granularity_list)
+        granularity_list = empty_strings_to_none(raw_granularity_list)
     else:
         granularity_list = [None for _ in range(len(offload_partition_columns))]
 
-    # Validate/default granularity list contents
     new_partition_granularity = []
     for col_name, granularity, part_fn in zip(offload_partition_columns, granularity_list, offload_partition_functions):
         rdbms_col = match_table_column(col_name, rdbms_columns)
@@ -347,7 +360,6 @@ def validate_offload_partition_granularity(
 
         date_as_string = False
         if not part_fn:
-            # If there's a partition function we don't yet know what data type the backend column will be
             date_as_string = offloading_date_as_string(rdbms_col, backend_column, variable_string_columns_csv)
             pf_text = (
                 PARTITION_BY_STRING_PARTITION_FUNCTION_SUFFIX
@@ -387,7 +399,6 @@ def validate_offload_partition_granularity(
             )
 
         if rdbms_col.is_date_based() and not granularity:
-            # No default if date based column is being offloaded to a string
             if not date_as_string:
                 granularity = backend_table.default_date_based_partition_granularity()
 
@@ -402,7 +413,6 @@ def validate_offload_partition_granularity(
                 )
             )
 
-        # Check that specified granularity matches the column data type
         if (
             rdbms_col.is_date_based()
             and granularity not in backend_table.supported_date_based_partition_granularities()
@@ -428,12 +438,13 @@ def part_cols_have_matching_synthetic_expression(left_part_col, right_part_col):
     """Identify when two synthetic columns can be a direct comparison in join pushdown.
     Doesn't use source_column_name because that could be different, we have to trust the user when they
     chose the source columns as join columns.
+
+    We have partition columns on both sides of the join clause, check for detail match...
     """
     if not left_part_col or not right_part_col:
         return False
     if not is_synthetic_partition_column(left_part_col) or not is_synthetic_partition_column(right_part_col):
         return False
-    # We have partition columns on both sides of the join clause, check for detail match...
     return bool(
         left_part_col.partition_info.granularity == right_part_col.partition_info.granularity
         and left_part_col.partition_info.digits == right_part_col.partition_info.digits

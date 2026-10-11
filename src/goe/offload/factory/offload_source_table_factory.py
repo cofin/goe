@@ -12,7 +12,6 @@ from goe.offload.offload_constants import (
 )
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
 

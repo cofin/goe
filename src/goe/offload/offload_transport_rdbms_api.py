@@ -5,7 +5,7 @@
 
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
 from goe.offload.offload_transport_functions import ssh_cmd_prefix
@@ -23,10 +23,6 @@ class OffloadTransportRdbmsApiException(Exception):
     pass
 
 
-###########################################################################
-# CONSTANTS
-###########################################################################
-
 OFFLOAD_TRANSPORT_SQL_STATISTICS_TITLE = "Transport SQL Statistics"
 
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION = "partition"
@@ -34,23 +30,12 @@ TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION = "subpartition"
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_EXTENT = "extent"
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD = "mod"
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE = "id_range"
-# e.g. Spark native fetch partitioning.
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE = "native_range"
-# TODO Should this have a generic name, e.g. _SYSTEM_SHARD?
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_TERADATA_AMP = "amp"
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_TERADATA_HASHAMP = "hashamp"
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN = "goe_offload_batch"
 
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT = "Transport rowsource split type: "
-
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-###########################################################################
-# INTERFACE
-###########################################################################
 
 
 class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
@@ -62,8 +47,8 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         rdbms_table_name: str,
         offload_options: "OrchestrationConfig",
         messages: "OffloadMessages",
-        dry_run=False,
-    ):
+        dry_run: bool = False,
+    ) -> None:
         self._rdbms_owner = rdbms_owner
         self._rdbms_table_name = rdbms_table_name
         self._offload_options = offload_options
@@ -72,38 +57,10 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         self._offload_transport_dsn = offload_options.offload_transport_dsn
         self._rdbms_adm_dsn = offload_options.rdbms_dsn
         self._offload_transport_rdbms_session_parameters = offload_options.offload_transport_rdbms_session_parameters
-        self._rdbms_adm_conn = None
-        self._rdbms_app_conn = None
-        self._fixed_goe_parameters = None
-        self._app_user = None
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _row_source_query_union_all_clause(self, pad):
-        if pad is None:
-            # All on one line, Sqoop needs this
-            return " UNION ALL "
-        crlf = "\n" + (" " * (pad or 0))
-        return crlf + "UNION ALL" + crlf
-
-    def _ssh_cli_safe_value(self, cmd_option_string):
-        """If we are invoking Sqoop via SSH then we need extra protection for special characters on the command line
-        Without SSH the protection added by subprocess module is sufficient
-        """
-        if self._ssh_cmd_prefix():
-            return ansi_c_string_safe(cmd_option_string)
-        return cmd_option_string
-
-    def _ssh_cmd_prefix(self, host=None):
-        """Many calls to ssh_cmd_prefix() in this class use std inputs therefore abstract in this method"""
-        host = host or self._offload_options.offload_transport_cmd_host
-        return ssh_cmd_prefix(self._offload_options.offload_transport_user, host)
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
+        self._rdbms_adm_conn: Any = None
+        self._rdbms_app_conn: Any = None
+        self._fixed_goe_parameters: Any = None
+        self._app_user: Any = None
 
     def log(self, msg, detail=None):
         self._messages.log(msg, detail=detail)
@@ -129,7 +86,7 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_id_range(self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk=None) -> tuple:
+    def get_id_range(self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk: Any = None) -> tuple:
         """Function to get the MIN and MAX values for an id column"""
 
     @abstractmethod
@@ -154,14 +111,14 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
     @abstractmethod
     def get_rdbms_session_setup_commands(
         self,
-        module,
-        action,
-        custom_session_parameters,
-        include_fixed_sqoop=True,
-        for_plsql=False,
-        include_semi_colons=False,
-        escape_semi_colons=False,
-        max_ts_scale=None,
+        module: Any,
+        action: Any,
+        custom_session_parameters: Any,
+        include_fixed_sqoop: bool = True,
+        for_plsql: bool = False,
+        include_semi_colons: bool = False,
+        escape_semi_colons: bool = False,
+        max_ts_scale: Any = None,
     ) -> list:
         pass
 
@@ -191,16 +148,16 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         self,
         partition_by_prm: str,
         rdbms_table: "OffloadSourceTableInterface",
-        consistent_read,
+        consistent_read: Any,
         transport_scn: int,
-        parallelism,
-        offload_by_subpartition,
-        mod_column,
+        parallelism: Any,
+        offload_by_subpartition: Any,
+        mod_column: Any,
         predicate_offload_clause: str,
-        partition_chunk: "OffloadSourcePartitions" = None,
-        pad: int = None,
-        id_col_min=None,
-        id_col_max=None,
+        partition_chunk: "OffloadSourcePartitions | None" = None,
+        pad: int | None = None,
+        id_col_min: Any = None,
+        id_col_max: Any = None,
     ) -> str:
         """Define a frontend query that will retrieve data from a table dividing it by a split method
         such as partition or rowid range.
@@ -254,12 +211,16 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         return f'"SELECT 0, {offload_transport_parallelism - 1}"'
 
     @abstractmethod
-    def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands) -> list:
+    def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands: Any) -> list:
         """Return a list of Sqoop -D JVM overrides specific to the frontend RDBMS"""
 
     @abstractmethod
     def sqoop_rdbms_specific_jvm_table_options(
-        self, partition_chunk, partition_type=None, is_iot=False, consistent_read=False
+        self,
+        partition_chunk: Any,
+        partition_type: Any = None,
+        is_iot: bool = False,
+        consistent_read: bool = False,
     ) -> list:
         """Return a list of Sqoop -D JVM overrides specific to the frontend table"""
 
@@ -268,5 +229,24 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         """Return a list of Sqoop options specific to the frontend RDBMS"""
 
     @abstractmethod
-    def sqoop_rdbms_specific_table_options(self, rdbms_owner, table_name) -> list:
+    def sqoop_rdbms_specific_table_options(self, rdbms_owner: Any, table_name: Any) -> list:
         """Return a list of Sqoop options specific to the frontend table"""
+
+    def _row_source_query_union_all_clause(self, pad):
+        if pad is None:
+            return " UNION ALL "
+        crlf = "\n" + (" " * (pad or 0))
+        return crlf + "UNION ALL" + crlf
+
+    def _ssh_cli_safe_value(self, cmd_option_string):
+        """If we are invoking Sqoop via SSH then we need extra protection for special characters on the command line
+        Without SSH the protection added by subprocess module is sufficient
+        """
+        if self._ssh_cmd_prefix():
+            return ansi_c_string_safe(cmd_option_string)
+        return cmd_option_string
+
+    def _ssh_cmd_prefix(self, host=None):
+        """Many calls to ssh_cmd_prefix() in this class use std inputs therefore abstract in this method"""
+        host = host or self._offload_options.offload_transport_cmd_host
+        return ssh_cmd_prefix(self._offload_options.offload_transport_user, host)

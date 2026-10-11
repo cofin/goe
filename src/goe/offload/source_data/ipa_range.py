@@ -5,6 +5,7 @@
 
 import re
 from datetime import date, datetime
+from typing import Any
 
 from numpy import datetime64
 
@@ -313,7 +314,7 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         We only need oracle_min if there is already data in the backend traverse old to new Reached a partition with a HWM beyond the backend max, therefore time to break out of the loop When offloading by subpartition we may find repeating HWM, gobble up any other partitions of the same HWM There is an assumption here that partitions of matching HWM are contiguous. This will be true of Oracle, we need to be careful when introducing more RDBMSs
         """
         assert self._source_partitions
-        already_offloaded = []
+        already_offloaded: list[Any] = []
 
         if self._set_target_table_max():
             self._set_rdbms_min()
