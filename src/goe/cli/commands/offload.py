@@ -3,7 +3,6 @@
 
 """'goe offload' subcommand for high-performance data offloading."""
 
-from optparse import Values
 from typing import TYPE_CHECKING, Any
 
 import rich_click as click
@@ -12,14 +11,11 @@ from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribu
 from goe.cli.common import common_options, extract_common_options
 
 if TYPE_CHECKING:
-    from goe.goe import OFFLOAD_OP_NAME, get_options
-    from goe.offload.offload import get_offload_options
+    from goe.config.options import OffloadOperationOptions
     from goe.orchestration.cli_entry_points import offload_by_cli
 
 _LAZY_IMPORTS: LazyImportMap = {
-    "OFFLOAD_OP_NAME": ("goe.goe", "OFFLOAD_OP_NAME"),
-    "get_offload_options": ("goe.offload.offload", "get_offload_options"),
-    "get_options": ("goe.goe", "get_options"),
+    "OffloadOperationOptions": ("goe.config.options", "OffloadOperationOptions"),
     "offload_by_cli": ("goe.orchestration.cli_entry_points", "offload_by_cli"),
 }
 
@@ -519,32 +515,26 @@ def offload(ctx: click.Context, **kwargs: Any) -> None:
     """Execute offload operation with provided options."""
     bind_lazy_imports(__name__, _LAZY_IMPORTS)
     common_opts = extract_common_options(ctx, kwargs)
-    parser = get_options(operation_name=OFFLOAD_OP_NAME)
-    get_offload_options(parser)
-    defaults = parser.get_default_values()
-    options_dict = defaults.__dict__.copy()
-    options_dict.update(common_opts)
+    overrides: dict[str, Any] = dict(common_opts)
 
-    no_modify_hybrid_view = kwargs.pop("no_modify_hybrid_view", False)
-    if no_modify_hybrid_view:
-        options_dict["offload_predicate_modify_hybrid_view"] = False
+    if kwargs.pop("no_modify_hybrid_view", False):
+        overrides["offload_predicate_modify_hybrid_view"] = False
 
     no_verify = kwargs.pop("no_verify", False)
     verify_mode = kwargs.pop("verify", None)
     if no_verify:
-        options_dict["verify_row_count"] = False
+        overrides["verify_row_count"] = False
     elif verify_mode is not None:
-        options_dict["verify_row_count"] = verify_mode.lower()
+        overrides["verify_row_count"] = verify_mode.lower()
 
-    for k, v in kwargs.items():
-        if isinstance(v, tuple):
-            if v:
-                options_dict[k] = list(v)
-        elif v is not None:
-            options_dict[k] = v
+    for key, value in kwargs.items():
+        if isinstance(value, tuple):
+            if value:
+                overrides[key] = list(value)
+        elif value is not None:
+            overrides[key] = value
 
-    options = Values(options_dict)
-    offload_by_cli(options)
+    offload_by_cli(OffloadOperationOptions.from_mapping(overrides))
 
 
 def __getattr__(name: str) -> Any:

@@ -9,7 +9,12 @@ from litestar.di import Provide
 from litestar.testing import TestClient
 from litestar_queues import QueueService
 
-from goe.goe import EXPECTED_OFFLOAD_ARGS
+from goe.config.options import (
+    EXPECTED_OFFLOAD_ARGS,
+    LISTENER_OFFLOAD_CSV_ALIASES,
+    LISTENER_OFFLOAD_RENAME_ALIASES,
+    OffloadOperationOptions,
+)
 from goe.listener import jobs
 from goe.listener.app import create_app
 from goe.listener.schemas import ColumnDetail, ListenerConfig, OffloadOptions
@@ -129,3 +134,23 @@ def test_listener_config_and_column_detail_optional_fields() -> None:
     )
     assert col.data_precision == 10
     assert col.data_scale == 2
+
+
+def test_offload_options_fields_track_expected_offload_args() -> None:
+    """Listener REST fields equal the canonical offload keys plus documented aliases."""
+    alias_fields = set(LISTENER_OFFLOAD_RENAME_ALIASES) | set(LISTENER_OFFLOAD_CSV_ALIASES) | {"subpartitions"}
+    rest_fields = set(OffloadOptions.__struct_fields__) - alias_fields - {"quiet", "verbose"}
+    assert rest_fields == set(EXPECTED_OFFLOAD_ARGS) - {"operation_name"}
+
+
+def test_offload_options_to_operation_options_hydrates_canonical_defaults() -> None:
+    """OffloadOptions.to_operation_options() hydrates unset fields from OffloadOperationOptions while preserving REST execute=True."""
+    opts = OffloadOptions(owner_table="SH.SALES", replace_hybrid_view=True)
+    op_opts = opts.to_operation_options()
+    assert isinstance(op_opts, OffloadOperationOptions)
+    assert op_opts.owner_table == "SH.SALES"
+    assert op_opts.execute is True
+    assert op_opts.reset_hybrid_view is True
+    assert op_opts.reset_backend_table is False
+    assert op_opts.reuse_backend_table is False
+    assert op_opts.force is False

@@ -5,9 +5,8 @@
 
 This module is an import leaf. It imports only the standard library, msgspec,
 goe.lib.schemas and goe.config.orchestration_defaults so that goe.cli, goe.listener
-and goe.goe can all import it without circular imports. Field sets mirror the legacy
-optparse builders exactly, including defaults of options the builders removed,
-because optparse kept those defaults in the Values object it returned.
+and goe.goe can all import it without circular imports. Field sets mirror the
+historical option builders and preserve the defaults expected by downstream consumers.
 """
 
 import os
@@ -157,7 +156,7 @@ class BaseOptionStruct(BaseStruct, kw_only=True):
 
 
 class CommonOptions(BaseOptionStruct, kw_only=True):
-    """Options from the legacy get_common_options builder."""
+    """Common CLI and orchestration options shared across all GOE commands."""
 
     version: bool = msgspec.field(default_factory=orchestration_defaults.version_default)
     execute: bool = msgspec.field(default_factory=orchestration_defaults.execute_default)
@@ -176,7 +175,7 @@ class CommonOptions(BaseOptionStruct, kw_only=True):
 
 
 class TableOperationOptions(CommonOptions, kw_only=True):
-    """Options from the legacy get_options builder plus derived owner/table fields."""
+    """Table-scoped orchestration options plus derived owner and table fields."""
 
     owner_table: str | None = None
     target: str = msgspec.field(default_factory=orchestration_defaults.query_engine_default)
@@ -238,7 +237,7 @@ class TableOperationOptions(CommonOptions, kw_only=True):
 
 
 class OffloadOperationOptions(TableOperationOptions, kw_only=True):
-    """Options for the offload operation (legacy get_options plus get_offload_options)."""
+    """Options for the offload operation."""
 
     allow_decimal_scale_rounding: bool = msgspec.field(
         default_factory=orchestration_defaults.allow_decimal_scale_rounding_default
