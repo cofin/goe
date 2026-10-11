@@ -47,4 +47,4 @@ When implementing new features or bug fixes, choose the appropriate verification
 | `regression_tdd` | Bug/defect fixes | Focused reproduction unit test proving failure, followed by green test post-fix. |
 | `characterization` | Behavior-preserving refactoring | Passing baseline unit tests before and after code changes. |
 | `static_validation` | Configuration, DDL, templates | Lint, schema validation, and dry-run execution checks. |
-| `integration_acceptance` | Cross-system workflows | End-to-end offload test with verification (`bin/agg_validate`). |
+| `integration_acceptance` | Cross-system workflows | End-to-end offload test with verification (`goe validate`). |

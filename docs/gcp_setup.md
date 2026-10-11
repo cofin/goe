@@ -358,7 +358,7 @@ gcloud compute instances create ${INSTANCE_NAME} \
 DDL to create BigQuery datasets can be generated using the `--ddl-file` Offload option. For example:
 
 ```shell
-$OFFLOAD_HOME/bin/offload -t schema1.table1 --create-backend-db --ddl-file=/tmp/schema1.table1.sql
+goe offload -t schema1.table1 --create-backend-db --ddl-file=/tmp/schema1.table1.sql
 ```
 
 After running the command above the file `/tmp/schema1.table1.sql` will contain:

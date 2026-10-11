@@ -28,7 +28,7 @@ GOE loads environment variables using a 4-tier discovery architecture via `pytho
 ## Core Configuration Parameters
 
 ### Common Settings
-- `OFFLOAD_HOME`: Absolute path to installation root (must contain `conf/`, `bin/`, `lib/`).
+- `OFFLOAD_HOME`: Absolute path to installation root (must contain `conf/` and `lib/`).
 - `LOG_LEVEL`: Logging verbosity (`info`, `detail`, `debug`).
 - `OFFLOAD_LOGDIR`: Directory for execution log files (local directory or GCS `gs://` URI).
 - `PASSWORD_KEY_FILE`: AES key file used to decrypt encrypted database passwords or tokens.

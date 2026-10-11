@@ -56,7 +56,7 @@ You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)
 - `src/goe/`: Core Python framework package (orchestration, offload engine, frontend/backend adapters, filesystem, listener REST service).
 - `tests/`: Unit tests (`tests/unit/`) and integration test suites (`tests/integration/`).
 - `docs/`: Public documentation and internal design specifications (`docs/internal/design_docs/`).
-- `bin/`: CLI utilities (`offload`, `connect`, `listener`, `logmgr`, `agg_validate`).
+- `src/goe/cli/`: Unified `goe` CLI (`[project.scripts] goe = "goe.cli.main:cli"`; subcommands `offload`, `connect`, `validate`, `sync`, `report`, `listener`, `logmgr`). There is no `bin/` directory.
 - `sql/`: Oracle database DDL, packages (`OFFLOAD`, `OFFLOAD_REPO`), and repository tables.
 - `templates/conf/`: Environment configuration templates (`offload.env.template`).
 - `tools/`: Spark listener (Scala/SBT), transport scripts, and shell helper functions.

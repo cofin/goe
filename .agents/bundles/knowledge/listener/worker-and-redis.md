@@ -12,13 +12,13 @@ tags:
 
 # Listener Workers & Embedded Caching
 
-The Listener uses an embedded thread-safe in-process TTL cache (`MemoryCache` and `MemorySyncCache` in [`src/goe/listener/utils/cache.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/utils/cache.py)) and `litestar-queues` (`QueuePlugin` in [`src/goe/listener/app.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/app.py) and [`src/goe/listener/jobs.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/jobs.py)) for background task execution, metadata caching, heartbeat registration, and event buffering without requiring external Redis or Valkey infrastructure.
+The Listener uses an embedded thread-safe in-process TTL cache (`MemoryCache` and `MemorySyncCache` in [`src/goe/listener/utils/cache.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/utils/cache.py)) and `litestar-queues` (`QueuePlugin` in [`src/goe/listener/app.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/app.py) and [`src/goe/listener/jobs.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/jobs.py)) for background task execution, metadata caching, heartbeat registration, and event buffering without requiring external Redis infrastructure.
 
 ## Embedded Cache Architecture (`src/goe/listener/utils/cache.py`)
 
-- **Async & Sync Facades**: `MemoryCache` provides an async API for Litestar controllers and periodic tasks, while `MemorySyncCache` provides a synchronous API over the same thread-safe `RLock`-protected backing store for core orchestration modules (`goe.py`, `offload_messages.py`, `connect.py`).
+- **Async & Sync Facades**: `MemoryCache` provides an async API for Litestar controllers and periodic tasks, while `MemorySyncCache` provides a synchronous API over the same thread-safe `RLock`-protected backing store; core orchestration modules no longer import the listener cache.
 - **TTL & Glob Matching**: Supports monotonic TTL expiration (`set`, `expire`), glob key scanning (`keys`, `scan`, `delete_keys`), multi-key retrieval (`mget`), and list operations (`rpush`, `lrange`).
-- **Deprecation Shims**: Accessing `goe.listener.utils.cache.RedisClient` or importing `goe.util.redis_tools` emits a `DeprecationWarning` (scheduled for removal in GOE 2.0.0) and delegates to `MemoryCache` / `MemorySyncCache`.
+- **No Redis shims**: Legacy Redis compatibility shims were removed in PRD 1 Chapter 1.1; import `MemoryCache` / `MemorySyncCache` directly.
 
 ## Heartbeat & Metadata Publishers (`src/goe/listener/services/periodic_tasks.py`)
 
@@ -37,5 +37,4 @@ The Listener uses an embedded thread-safe in-process TTL cache (`MemoryCache` an
 
 ## Real-Time Event Buffering
 
-- During offload execution, log events from `OffloadMessages` are serialized via `msgspec` and appended (`rpush`) to `MemorySyncCache` key `goe:run:<execution_id>` with a 48-hour TTL.
-- Both synchronous CLI processes and asynchronous Litestar routes read and write to the same thread-safe `_store` dictionary protected by `threading.RLock`.
+- Both synchronous and asynchronous Listener components read and write to the same thread-safe `_store` dictionary protected by `threading.RLock`.

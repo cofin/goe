@@ -120,5 +120,5 @@ Before claiming a task, phase, or flow is complete, verify:
 - Always format Python files with `ruff` (`line-length = 120`), run `mypy`, and place PEP 257 explanations in docstrings (never in-line comments).
 - Structure utility modules in `src/goe/util/` to cleanly re-export `sqlspec.utils`.
 - Define serialization schemas as pure `msgspec.Struct` models without redundant client wrapper classes.
-- Maintain a single authoritative entrypoint in `pyproject.toml` (`[project.scripts] goe = "goe.cli.main:cli"`); keep legacy `bin/` scripts as lightweight in-process Python wrappers emitting `DeprecationWarning` notices and delegating to `goe <subcommand> "$@"`.
+- Maintain a single authoritative entrypoint in `pyproject.toml` (`[project.scripts] goe = "goe.cli.main:cli"`); legacy `bin/` wrappers were removed in PRD 1 Chapter 1.1 — do not reintroduce wrapper scripts.
 <!-- project-customization: end -->

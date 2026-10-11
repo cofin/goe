@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary & Scope
 
-The `connect` tool (`bin/connect`) is a post-installation user verification tool designed to validate that the Gluent Offload Engine (GOE) environment is correctly configured and healthy before running offload operations. It executes a suite of tests spanning configuration, database connectivity, and platform access, providing immediate visual feedback and structured exit codes.
+The `connect` tool (`goe connect`) is a post-installation user verification tool designed to validate that the Gluent Offload Engine (GOE) environment is correctly configured and healthy before running offload operations. It executes a suite of tests spanning configuration, database connectivity, and platform access, providing immediate visual feedback and structured exit codes.
 
 ### Supported Topologies
 * **Frontend**: Oracle Database.
@@ -21,7 +21,7 @@ While the underlying codebase contains legacy verification routines for other sy
 
 ```mermaid
 graph TD
-    A[bin/connect wrapper] --> B[check_config_path]
+    A[goe connect] --> B[check_config_path]
     B --> C[goe.connect.connect.connect]
     C --> D[Load Environment offload.env]
     D --> E[Parse CLI Options]
@@ -82,9 +82,9 @@ Data transport validation tests that the data processing cluster can fetch data 
 
 ### 3.5. Local Checks
 * **OS Distribution & Kernel Check**: Reads `/etc/redhat-release`, `/etc/SuSE-release`, or `/etc/os-release` and executes `uname -r`. Fails if the operating system distribution is unrecognized.
-* **GEL Listener & Redis Cache (Disabled)**:
-  * > [!IMPORTANT]
-  * > The Gluent Event Listener (GEL) and Redis cache status checks are currently hard-disabled in the codebase pending **GitHub Issue #109**.
+* **GEL Listener & Redis Cache (Removed)**:
+  * > [!NOTE]
+  * > The Gluent Event Listener (GEL) and Redis cache checks have been removed (upstream GitHub Issue #109 / PR #278).
 
 ---
 

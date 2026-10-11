@@ -25,7 +25,7 @@ tags:
 
 ### 1. Python Runtime & Core Libraries
 - **Base Environment**: Python >= 3.12 managed with `uv` virtual environments and `hatchling.build`.
-- **CLI & Parsing**: Unified `rich-click` CLI (`goe` entrypoint in `src/goe/cli/main.py`) wrapping `goe.orchestration.cli_entry_points`, and `lark-parser` for AST predicate grammar parsing.
+- **CLI & Parsing**: Unified `rich-click` CLI (`goe` entrypoint in `src/goe/cli/main.py`) wrapping `goe.orchestration.cli_entry_points`, and `lark` (>= 1.1.9) for AST predicate grammar parsing.
 - **Concurrency & Locking**: `filelock` for process mutual exclusion, `threading` for asynchronous telemetry scrapers.
 - **Data Serialization**: `pyarrow` (columnar memory buffers), `avro` (schema validation and row serialization), `msgspec` (high-performance JSON serialization and typed Struct models), `sqlspec` (database abstraction layer).
 

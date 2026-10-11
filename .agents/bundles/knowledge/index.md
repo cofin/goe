@@ -19,7 +19,7 @@ Canonical setup, development, testing, packaging, and validation workflows with 
 
 ### 2. [Patterns & Conventions](patterns/index.md)
 - [Serialization & Utility Re-Export Patterns](patterns/serialization-and-utils.md) - `sqlspec.utils` re-exports in `src/goe/util/` and `msgspec.Struct` schemas.
-- [Centralized Rich-Click CLI & Legacy Delegators](patterns/cli-architecture.md) - Unified `goe` CLI (`src/goe/cli/`) and `bin/` deprecation delegators.
+- [Centralized Rich-Click CLI](patterns/cli-architecture.md) - Unified `goe` CLI (`src/goe/cli/`) (sole entrypoint; no `bin/` wrappers).
 - [Data Offload, Canonical Typing & Storage Gotchas](patterns/offload-and-typing.md) - Three-tier column mapping, snapshot-consistent reads, staged ingestion, and Oracle sampling gotchas.
 
 ### 3. [Architecture & Orchestration](architecture/index.md)
