@@ -3,11 +3,13 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """GOEGcs: GCS implementation of GOEDfs"""
 
 import logging
 from os.path import basename
 from os.path import exists as file_exists
+from typing import Any
 
 from google.api_core import exceptions as google_exceptions
 from google.api_core import retry
@@ -27,26 +29,8 @@ from goe.filesystem.goe_dfs import (
 )
 from goe.util.gcp_credentials import resolve_gcp_credentials
 
-###############################################################################
-# EXCEPTIONS
-###############################################################################
-
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###############################################################################
-# LOGGING
-###############################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###############################################################################
-# GOEGcs
-###############################################################################
 
 
 class GOEGcs(GOEDfs):
@@ -69,6 +53,7 @@ class GOEGcs(GOEDfs):
 
         super().__init__(messages, dry_run=dry_run, do_not_connect=do_not_connect)
 
+        self._client: Any
         if do_not_connect:
             self._client = None
         else:
@@ -78,14 +63,6 @@ class GOEGcs(GOEDfs):
         self._db_path_suffix = db_path_suffix
         self.dfs_mechanism = GOE_DFS_GCS
         self.backend_dfs = "GCS"
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def chgrp(self, dfs_path, group):
         raise NotImplementedError("chgrp() not implemented for GOEGcs")
@@ -144,7 +121,12 @@ class GOEGcs(GOEDfs):
         deadline=DFS_RETRY_TIMEOUT,
     )
     def delete(self, dfs_path, recursive=False):
-        """Delete a file or directory and contents"""
+        """Delete a file or directory and contents
+
+        Just delete the single blob
+        No batching (self._client.batch()) here because that circumvents the NotFound catch in pragmatic_delete()
+        If we get this far then it worked
+        """
 
         def pragmatic_delete(blob):
             """Run a delete but accept the fact that the blob may have disappeared in the meantime"""
@@ -162,7 +144,6 @@ class GOEGcs(GOEDfs):
             return None
         bucket = self._client.get_bucket(container)
         if not recursive or (self.stat(dfs_path) or {}).get("type") == DFS_TYPE_FILE:
-            # Just delete the single blob
             blob = bucket.blob(path)
             if not blob.exists():
                 return None
@@ -176,7 +157,6 @@ class GOEGcs(GOEDfs):
             self.debug("Recursive delete using directory prefix: %s" % path)
             if not path.endswith(URI_SEP):
                 path += URI_SEP
-            # No batching (self._client.batch()) here because that circumvents the NotFound catch in pragmatic_delete()
             found_files = False
             for blob in self._client.list_blobs(bucket, prefix=path):
                 found_files = True
@@ -189,7 +169,6 @@ class GOEGcs(GOEDfs):
                 if blobs_pending_delete:
                     self.debug("GCS delete incomplete, retrying")
                     raise GOEDfsDeleteNotComplete
-        # If we get this far then it worked
         return True
 
     def gen_uri(
@@ -216,7 +195,12 @@ class GOEGcs(GOEDfs):
         deadline=DFS_RETRY_TIMEOUT,
     )
     def list_dir(self, dfs_path):
-        """Return a list of file/directory names within dfs_path"""
+        """Return a list of file/directory names within dfs_path
+
+        We need to iterate over all blobs in order to populate blobs.prefixes (directories).
+        Also exclude the directory we are checking contents of.
+        Tag the scheme & bucket back on the front of listing results
+        """
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("list_dir(%s)" % dfs_path)
@@ -227,11 +211,8 @@ class GOEGcs(GOEDfs):
         if self._client:
             bucket = self._client.get_bucket(container)
             blobs = self._client.list_blobs(bucket, prefix=path, delimiter=URI_SEP)
-            # We need to iterate over all blobs in order to populate blobs.prefixes (directories).
-            # Also exclude the directory we are checking contents of.
             blob_names = [_.name for _ in blobs if _.name != path]
             blob_names.extend(blobs.prefixes)
-            # Tag the scheme & bucket back on the front of listing results
             return [self.gen_uri(scheme, container, _) for _ in blob_names]
 
     def mkdir(self, dfs_path):
@@ -268,6 +249,12 @@ class GOEGcs(GOEDfs):
         deadline=DFS_RETRY_TIMEOUT,
     )
     def stat(self, dfs_path):
+        """No delimiter parameter because we want to be able to stat directories
+
+        We need to ensure we only match the requested path, not
+        any other files that happen to start with the same characters
+        We found file entries prefixed with dfs_path as a dir, so we know it is a directory
+        """
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("stat(%s)" % dfs_path)
@@ -280,10 +267,7 @@ class GOEGcs(GOEDfs):
         self.debug("Checking status of scheme/container/path: %s" % str([scheme, container, path]))
 
         bucket = self._client.get_bucket(container)
-        # No delimiter parameter because we want to be able to stat directories
         blobs = list(self._client.list_blobs(bucket, prefix=path))
-        # We need to ensure we only match the requested path, not
-        # any other files that happen to start with the same characters
         matched_files = [_ for _ in blobs if _.name == path]
         matched_files_by_dir = [_ for _ in blobs if _.name.startswith(path.rstrip(URI_SEP) + URI_SEP)]
 
@@ -297,11 +281,10 @@ class GOEGcs(GOEDfs):
                 "type": DFS_TYPE_FILE,
             }
         if matched_files_by_dir:
-            # We found file entries prefixed with dfs_path as a dir, so we know it is a directory
             return {"length": 0, "permission": None, "type": DFS_TYPE_DIRECTORY}
         return None
 
-    def write(self, dfs_path: str, data, overwrite=False):
+    def write(self, dfs_path: str, data: Any, overwrite: bool = False) -> None:
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("write(%s)" % dfs_path)

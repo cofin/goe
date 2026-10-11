@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """WebHdfs: WebHDFS/HTTPFS implementation of GOEDfs"""
 
 import logging
@@ -30,18 +31,6 @@ from goe.filesystem.goe_dfs import (
     gen_fs_uri,
 )
 
-###############################################################################
-# EXCEPTIONS
-###############################################################################
-
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###############################################################################
-# GLOBAL FUNCTIONS
-###############################################################################
-
 
 def get_hdfs_session(verify=None, user=None):
     """Construct 'HDFS session' object"""
@@ -50,23 +39,15 @@ def get_hdfs_session(verify=None, user=None):
     session.verify = verify
 
     if user:
-        if not session.params:
+        if not isinstance(session.params, dict):
             session.params = {}
         session.params["user.name"] = user
 
     return session
 
 
-###############################################################################
-# LOGGING
-###############################################################################
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())  # Disabling logging by default
-
-
-###############################################################################
-# GOEWebHdfsClient
-###############################################################################
+logger.addHandler(logging.NullHandler())
 
 
 class GOEWebHdfsClient(KerberosClient):
@@ -90,11 +71,6 @@ class GOEWebHdfsClient(KerberosClient):
                 self._session.close()
             except:
                 pass
-
-
-###############################################################################
-# GOEWebHdfsClient
-###############################################################################
 
 
 class WebHdfs(GOEDfs):
@@ -142,6 +118,213 @@ class WebHdfs(GOEDfs):
         )
         self.dfs_mechanism = GOE_DFS_WEBHDFS
         self.backend_dfs = "HDFS"
+
+    def __str__(self):
+        return self._url
+
+    @property
+    def client(self):
+        return self._hdfs
+
+    def mkdir(self, dfs_path):
+        """No return code because WebHDFS has no meaningful return code
+
+        not implemented mode parameter as prefer explicit chmod call
+        """
+        logger.info("mkdir(%s)" % dfs_path)
+        if not self._dry_run:
+            self._hdfs.makedirs(dfs_path)
+
+    @retry.Retry(
+        predicate=retry.if_exception_type(GOEDfsDeleteNotComplete),
+        deadline=DFS_RETRY_TIMEOUT,
+    )
+    def delete(self, dfs_path, recursive=False):
+        """Delete a file or directory and contents.
+
+        If cloud DFS then check the files are no longer visible
+        True and False are both success therefore not reacting to res == False
+        """
+        assert dfs_path
+        assert isinstance(dfs_path, str)
+        logger.info("delete(%s, %s)" % (dfs_path, recursive))
+        if not self._dry_run:
+            res = self._hdfs.delete(dfs_path, recursive)
+
+            scheme, _, _ = self._uri_component_split(dfs_path)
+            self._post_cloud_delete_wait(scheme)
+            if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER and self.stat(dfs_path):
+                self.debug("%s delete incomplete, retrying" % scheme)
+                raise GOEDfsDeleteNotComplete
+
+            logger.debug("delete() returning: %s" % res)
+            return res
+
+    def rename(self, hdfs_src_path, hdfs_dst_path):
+        logger.info("rename(%s, %s)" % (hdfs_src_path, hdfs_dst_path))
+        assert hdfs_src_path and hdfs_dst_path
+        if not self._dry_run:
+            self._hdfs.rename(hdfs_src_path, hdfs_dst_path)
+
+    def rmdir(self, dfs_path, recursive=False):
+        logger.info("rmdir(%s, %s)" % (dfs_path, recursive))
+        assert dfs_path
+        assert isinstance(dfs_path, str)
+        if not self._dry_run:
+            return self.delete(dfs_path, recursive)
+
+    def regex_mode_delta(self, mode):
+        """return tuple of 3 parts of e.g. 'g+rw' : ('g', '+', 'rw')"""
+        m = re.match(r"([ugo]+)([+\-])([rwx]+)", mode)
+        if not m or len(m.groups()) != 3:
+            raise GOEDfsException('Invalid chmod delta mode "%s"', mode)
+        return m.groups()
+
+    def octstr_from_human_perm_delta(self, mode):
+        """only supports rwx keys. That should be fine for GOE usage"""
+        perm_values = {"r": 4, "w": 2, "x": 1}
+        ugo_values = {"u": 0, "g": 0, "o": 0}
+        mode_groups = self.regex_mode_delta(mode)
+        int_perm = sum([perm_values[perm] for perm in set(list(mode_groups[2]))])
+        if mode_groups[1] == "-":
+            ugo_values = {"u": 7, "g": 7, "o": 7}
+            int_perm = 7 - int_perm
+        for ugo in list(mode_groups[0]):
+            ugo_values[ugo] = int_perm
+        return "%s%s%s" % (ugo_values["u"], ugo_values["g"], ugo_values["o"])
+
+    def apply_mode_delta(self, octstr_mode, octstr_delta, mode_op):
+        """Apply octal mode delta, e.g. apply_mode_delta('711', '020', '+') == '731'."""
+        assert mode_op in ["+", "-"]
+        if mode_op == "+":
+            new_mode = oct(int(octstr_mode, 8) | int(octstr_delta, 8))[2:]
+        else:
+            new_mode = oct(int(octstr_mode, 8) & int(octstr_delta, 8))[2:]
+        return new_mode
+
+    def chmod(self, dfs_path, mode):
+        """Chmod a file with mode in format 755 or g+w
+
+        replace existing perms with mode
+        combine existing perms with mode
+        combine existing perms with delta, e.g. 755 + 020 = 775
+        """
+        logger.info("chmod(%s, %s)" % (dfs_path, mode))
+
+        assert dfs_path and mode and (re.match(r"^\d+$", mode) or re.match(r"^[ugo]+[+\-][rwx]+$", mode))
+        assert isinstance(dfs_path, str)
+
+        if self.stat(dfs_path):
+            perms = self.get_perms(dfs_path)
+            if re.match(r"^\d+$", mode):
+                new_mode = mode
+            elif re.match(r"^[ugo]+[+\-][rwx]+$", mode):
+                mode_delta = self.octstr_from_human_perm_delta(mode)
+                new_mode = self.apply_mode_delta(perms, mode_delta, self.regex_mode_delta(mode)[1])
+                logger.debug("new_mode: %s" % new_mode)
+            else:
+                raise GOEDfsException('Invalid chmod mode "%s"', mode)
+
+            if not self._dry_run:
+                if str(perms) != str(new_mode):
+                    self._hdfs.set_permission(dfs_path, new_mode)
+                else:
+                    logger.debug("NOOP as mode matches new mode: %s == %s" % (str(perms), str(new_mode)))
+
+    def chgrp(self, dfs_path, group):
+        logger.info("chgrp(%s, %s)" % (dfs_path, group))
+        assert dfs_path and group
+        assert isinstance(dfs_path, str)
+        if not self._dry_run:
+            self._hdfs.set_owner(dfs_path, group=group)
+
+    def stat(self, dfs_path):
+        logger.info("stat(%s)" % dfs_path)
+        try:
+            if self._hdfs:
+                return self._hdfs.status(dfs_path, strict=True)
+        except HdfsError as exc:
+            if "File does not exist:" in str(exc):
+                return None
+            raise
+        return None
+
+    def container_exists(self, scheme, container):
+        raise NotImplementedError("container_exists() not implemented for WebHdfs")
+
+    def copy_from_local(self, local_path, dfs_path, overwrite=False):
+        logger.info("copy_from_local(%s, %s)" % (local_path, dfs_path))
+        if not self._dry_run:
+            try:
+                res = self._hdfs.upload(dfs_path, local_path, overwrite=overwrite)
+                self.debug("copy_from_local() returned: %s" % res)
+            except HdfsError as exc:
+                if "already exists" in str(exc) and not overwrite:
+                    raise GOEDfsException("Cannot copy file over existing file: %s" % dfs_path)
+                raise
+
+    def copy_to_local(self, dfs_path, local_path, overwrite=False):
+        logger.info("copy_to_local(%s, %s)" % (dfs_path, local_path))
+        if not self._dry_run:
+            if file_exists(local_path) and not overwrite:
+                raise GOEDfsException("Cannot copy file over existing file: %s" % local_path)
+            res = self._hdfs.download(dfs_path, local_path, overwrite=overwrite)
+            self.debug("copy_to_local() returned: %s" % res)
+
+    def write(self, dfs_path, data, overwrite=False):
+        logger.info("write(%s, data, %s)" % (dfs_path, overwrite))
+        if not self._dry_run:
+            try:
+                self._hdfs.write(dfs_path, data, overwrite)
+            except HdfsError as exc:
+                if "already exists" in str(exc) and not overwrite:
+                    raise GOEDfsException("Cannot copy file over existing file: %s" % dfs_path)
+                raise
+
+    def gen_uri(
+        self,
+        scheme,
+        container,
+        path_prefix,
+        backend_db=None,
+        table_name=None,
+        container_override=None,
+    ):
+        """Fall back to hdfs_data for backward compatibility"""
+        if not scheme or scheme == OFFLOAD_FS_SCHEME_INHERIT:
+            uri = gen_fs_uri(
+                self._hdfs_data,
+                self._db_path_suffix,
+                backend_db=backend_db,
+                table_name=table_name,
+            )
+        else:
+            prefix = self._hdfs_data if path_prefix is None else path_prefix
+            use_container = container if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER else None
+            uri = gen_fs_uri(
+                prefix,
+                self._db_path_suffix,
+                scheme=scheme,
+                container=container_override or use_container,
+                backend_db=backend_db,
+                table_name=table_name,
+            )
+        return uri
+
+    def read(self, dfs_path, as_str=False):
+        logger.info("read(%s)" % dfs_path)
+        if not self._dry_run:
+            with self._hdfs.read(dfs_path) as reader:
+                content = reader.read()
+                if as_str:
+                    content = content.decode()
+                return content
+
+    def list_dir(self, dfs_path):
+        logger.debug("list_dir(%s)" % dfs_path)
+        if self._hdfs:
+            return [os.path.join(dfs_path, _) for _ in self._hdfs.list(dfs_path)]
+        return None
 
     def _hdfs_client(
         self,
@@ -221,208 +404,3 @@ class WebHdfs(GOEDfs):
         self.debug("Client url: %s" % self._url)
         self.debug("Verify SSL: %s" % verify_ssl_cert)
         return GOEWebHdfsClient(self._url, verify=verify_ssl_cert, user=auth_user, **kwargs)
-
-    def __str__(self):
-        return self._url
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    @property
-    def client(self):
-        return self._hdfs
-
-    def mkdir(self, dfs_path):
-        """No return code because WebHDFS has no meaningful return code"""
-        logger.info("mkdir(%s)" % dfs_path)
-        # not implemented mode parameter as prefer explicit chmod call
-        if not self._dry_run:
-            self._hdfs.makedirs(dfs_path)
-
-    @retry.Retry(
-        predicate=retry.if_exception_type(GOEDfsDeleteNotComplete),
-        deadline=DFS_RETRY_TIMEOUT,
-    )
-    def delete(self, dfs_path, recursive=False):
-        """Delete a file or directory and contents."""
-        assert dfs_path
-        assert isinstance(dfs_path, str)
-        logger.info("delete(%s, %s)" % (dfs_path, recursive))
-        if not self._dry_run:
-            res = self._hdfs.delete(dfs_path, recursive)
-
-            # If cloud DFS then check the files are no longer visible
-            scheme, _, _ = self._uri_component_split(dfs_path)
-            self._post_cloud_delete_wait(scheme)
-            if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER and self.stat(dfs_path):
-                self.debug("%s delete incomplete, retrying" % scheme)
-                raise GOEDfsDeleteNotComplete
-
-            # True and False are both success therefore not reacting to res == False
-            logger.debug("delete() returning: %s" % res)
-            return res
-
-    def rename(self, hdfs_src_path, hdfs_dst_path):
-        logger.info("rename(%s, %s)" % (hdfs_src_path, hdfs_dst_path))
-        assert hdfs_src_path and hdfs_dst_path
-        if not self._dry_run:
-            self._hdfs.rename(hdfs_src_path, hdfs_dst_path)
-
-    def rmdir(self, dfs_path, recursive=False):
-        logger.info("rmdir(%s, %s)" % (dfs_path, recursive))
-        assert dfs_path
-        assert isinstance(dfs_path, str)
-        if not self._dry_run:
-            return self.delete(dfs_path, recursive)
-
-    def regex_mode_delta(self, mode):
-        # return tuple of 3 parts of e.g. 'g+rw' : ('g', '+', 'rw')
-        m = re.match(r"([ugo]+)([+\-])([rwx]+)", mode)
-        if not m or len(m.groups()) != 3:
-            raise GOEDfsException('Invalid chmod delta mode "%s"', mode)
-        return m.groups()
-
-    def octstr_from_human_perm_delta(self, mode):
-        # only supports rwx keys. That should be fine for GOE usage
-        perm_values = {"r": 4, "w": 2, "x": 1}
-        ugo_values = {"u": 0, "g": 0, "o": 0}
-        mode_groups = self.regex_mode_delta(mode)
-        int_perm = sum([perm_values[perm] for perm in set(list(mode_groups[2]))])
-        if mode_groups[1] == "-":
-            ugo_values = {"u": 7, "g": 7, "o": 7}
-            int_perm = 7 - int_perm
-        for ugo in list(mode_groups[0]):
-            ugo_values[ugo] = int_perm
-        return "%s%s%s" % (ugo_values["u"], ugo_values["g"], ugo_values["o"])
-
-    def apply_mode_delta(self, octstr_mode, octstr_delta, mode_op):
-        assert mode_op in ["+", "-"]
-        # e.g. apply_mode_delta('711', '020', '+') == '731'
-        if mode_op == "+":
-            new_mode = oct(int(octstr_mode, 8) | int(octstr_delta, 8))[2:]
-        else:
-            new_mode = oct(int(octstr_mode, 8) & int(octstr_delta, 8))[2:]
-        return new_mode
-
-    def chmod(self, dfs_path, mode):
-        """Chmod a file with mode in format 755 or g+w"""
-        logger.info("chmod(%s, %s)" % (dfs_path, mode))
-
-        assert dfs_path and mode and (re.match(r"^\d+$", mode) or re.match(r"^[ugo]+[+\-][rwx]+$", mode))
-        assert isinstance(dfs_path, str)
-
-        if self.stat(dfs_path):
-            perms = self.get_perms(dfs_path)
-            if re.match(r"^\d+$", mode):
-                # replace existing perms with mode
-                new_mode = mode
-            elif re.match(r"^[ugo]+[+\-][rwx]+$", mode):
-                # combine existing perms with mode
-                mode_delta = self.octstr_from_human_perm_delta(mode)
-                # combine existing perms with delta, e.g. 755 + 020 = 775
-                new_mode = self.apply_mode_delta(perms, mode_delta, self.regex_mode_delta(mode)[1])
-                logger.debug("new_mode: %s" % new_mode)
-            else:
-                raise GOEDfsException('Invalid chmod mode "%s"', mode)
-
-            if not self._dry_run:
-                if str(perms) != str(new_mode):
-                    self._hdfs.set_permission(dfs_path, new_mode)
-                else:
-                    logger.debug("NOOP as mode matches new mode: %s == %s" % (str(perms), str(new_mode)))
-
-    def chgrp(self, dfs_path, group):
-        logger.info("chgrp(%s, %s)" % (dfs_path, group))
-        assert dfs_path and group
-        assert isinstance(dfs_path, str)
-        if not self._dry_run:
-            self._hdfs.set_owner(dfs_path, group=group)
-
-    def stat(self, dfs_path):
-        logger.info("stat(%s)" % dfs_path)
-        try:
-            if self._hdfs:
-                return self._hdfs.status(dfs_path, strict=True)
-        except HdfsError as exc:
-            if "File does not exist:" in str(exc):
-                return None
-            raise
-        return None
-
-    def container_exists(self, scheme, container):
-        raise NotImplementedError("container_exists() not implemented for WebHdfs")
-
-    def copy_from_local(self, local_path, dfs_path, overwrite=False):
-        logger.info("copy_from_local(%s, %s)" % (local_path, dfs_path))
-        if not self._dry_run:
-            try:
-                res = self._hdfs.upload(dfs_path, local_path, overwrite=overwrite)
-                self.debug("copy_from_local() returned: %s" % res)
-            except HdfsError as exc:
-                if "already exists" in str(exc) and not overwrite:
-                    raise GOEDfsException("Cannot copy file over existing file: %s" % dfs_path)
-                raise
-
-    def copy_to_local(self, dfs_path, local_path, overwrite=False):
-        logger.info("copy_to_local(%s, %s)" % (dfs_path, local_path))
-        if not self._dry_run:
-            if file_exists(local_path) and not overwrite:
-                raise GOEDfsException("Cannot copy file over existing file: %s" % local_path)
-            res = self._hdfs.download(dfs_path, local_path, overwrite=overwrite)
-            self.debug("copy_to_local() returned: %s" % res)
-
-    def write(self, dfs_path, data, overwrite=False):
-        logger.info("write(%s, data, %s)" % (dfs_path, overwrite))
-        if not self._dry_run:
-            try:
-                self._hdfs.write(dfs_path, data, overwrite)
-            except HdfsError as exc:
-                if "already exists" in str(exc) and not overwrite:
-                    raise GOEDfsException("Cannot copy file over existing file: %s" % dfs_path)
-                raise
-
-    def gen_uri(
-        self,
-        scheme,
-        container,
-        path_prefix,
-        backend_db=None,
-        table_name=None,
-        container_override=None,
-    ):
-        if not scheme or scheme == OFFLOAD_FS_SCHEME_INHERIT:
-            # Fall back to hdfs_data for backward compatibility
-            uri = gen_fs_uri(
-                self._hdfs_data,
-                self._db_path_suffix,
-                backend_db=backend_db,
-                table_name=table_name,
-            )
-        else:
-            prefix = self._hdfs_data if path_prefix is None else path_prefix
-            use_container = container if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER else None
-            uri = gen_fs_uri(
-                prefix,
-                self._db_path_suffix,
-                scheme=scheme,
-                container=container_override or use_container,
-                backend_db=backend_db,
-                table_name=table_name,
-            )
-        return uri
-
-    def read(self, dfs_path, as_str=False):
-        logger.info("read(%s)" % dfs_path)
-        if not self._dry_run:
-            with self._hdfs.read(dfs_path) as reader:
-                content = reader.read()
-                if as_str:
-                    content = content.decode()
-                return content
-
-    def list_dir(self, dfs_path):
-        logger.debug("list_dir(%s)" % dfs_path)
-        if self._hdfs:
-            return [os.path.join(dfs_path, _) for _ in self._hdfs.list(dfs_path)]
-        return None

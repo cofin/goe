@@ -3,9 +3,7 @@
 
 """Base structs and schemas for GOE using msgspec."""
 
-from typing import Any
-
-from msgspec import Struct, convert
+from msgspec import Struct
 
 __all__ = (
     "BaseStruct",

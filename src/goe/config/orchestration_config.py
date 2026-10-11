@@ -3,12 +3,14 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """OrchestrationConfig: Class of configuration attributes for Orchestration commands.
 These are not attributes we expect an end user to change/provide on a command by command basis,
 it is config coming from configuration files.
 """
 
 import logging
+from typing import Any
 
 from goe.config import config_file, orchestration_defaults
 from goe.config.config_validation_functions import (
@@ -36,13 +38,7 @@ from goe.offload.offload_transport_functions import hs2_connection_log_message
 from goe.util.password_tools import PasswordToolsException
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# CONSTANTS
-###########################################################################
 
 EXPECTED_CONFIG_ARGS = [
     "ansi",
@@ -194,16 +190,6 @@ EXPECTED_CONFIG_ARGS = [
 ]
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
-###########################################################################
-# OrchestrationConfig
-###########################################################################
-
-
 class OrchestrationConfig:
     """OrchestrationConfig: Class of configuration attributes for Orchestration commands.
     These are not attributes we expect an end user to change/provide on a command by command basis,
@@ -214,12 +200,12 @@ class OrchestrationConfig:
     backend_distribution: str | None
     backend_identifier_case: str
     backend_odbc_driver_name: str | None
-    backend_session_parameters: str | None
+    backend_session_parameters: Any
     bigquery_dataset_location: str | None
     bigquery_dataset_project: str | None
     ca_cert: str | None
     db_name_pattern: str
-    db_name_prefix: str | None
+    db_name_prefix: Any
     db_type: str
     dev_log_level: str
     error_on_token: str | None
@@ -240,22 +226,37 @@ class OrchestrationConfig:
     google_kms_key_ring_name: str | None
     google_kms_key_name: str | None
     hadoop_host: str | None
-    hadoop_port: int | None
+    hadoop_port: Any
     hadoop_ssh_user: str | None
-    webhdfs_verify_ssl: str | None
-    hash_distribution_threshold: str | None
+    webhdfs_verify_ssl: Any
+    hash_distribution_threshold: Any
     hiveserver2_auth_mechanism: str | None
     hdfs_data: str | None
     hdfs_home: str | None
     hdfs_host: str | None
     hdfs_load: str | None
     hdfs_db_path_suffix: str | None
+    hive_max_dynamic_partitions: Any
+    hive_max_dynamic_partitions_pernode: Any
+    hive_optimize_sort_dynamic_partition: Any
+    hive_timeout_s: Any
+    hiveserver2_http_path: str | None
+    hiveserver2_http_transport: Any
+    ldap_password: str | None
+    ldap_password_file: str | None
+    ldap_user: str | None
+    load_db_name_pattern: str
     listener_host: str | None
     listener_port: int | None
     listener_heartbeat_interval: int
     listener_shared_token: str | None
     log_level: str | None
     log_path: str
+    kerberos_principal: str | None
+    kerberos_service: str | None
+    mssql_dsn: str | None
+    mssql_app_user: str | None
+    mssql_app_pass: str | None
     not_null_propagation: str | None
     offload_fs_azure_account_key: str | None
     offload_fs_azure_account_name: str | None
@@ -265,12 +266,82 @@ class OrchestrationConfig:
     offload_fs_scheme: str
     offload_staging_format: str
     offload_transport: str
+    offload_transport_auth_using_oracle_wallet: bool
     offload_transport_cmd_host: str
-    offload_transport_user: str
+    offload_transport_credential_provider_path: str | None
+    offload_transport_dsn: str | None
+    offload_transport_livy_api_url: str | None
+    offload_transport_livy_api_verify_ssl: Any
+    offload_transport_livy_max_sessions: int
+    offload_transport_livy_idle_session_timeout: int
+    offload_transport_rdbms_session_parameters: Any
+    offload_transport_password_alias: str | None
+    offload_transport_spark_files: str | None
+    offload_transport_spark_jars: str | None
+    offload_transport_spark_overrides: str | None
+    offload_transport_spark_queue_name: str | None
     offload_transport_spark_submit_executable: str | None
+    offload_transport_spark_submit_master_url: str | None
     offload_transport_spark_thrift_host: str | None
+    offload_transport_spark_thrift_port: Any
+    offload_transport_user: str
+    ora_adm_user: str | None
+    ora_adm_pass: str | None
+    ora_app_user: str | None
+    ora_app_pass: str | None
+    ora_repo_user: str
+    oracle_dsn: str | None
+    oracle_adm_dsn: str | None
+    password_key_file: str | None
+    quiet: bool
+    rdbms_app_user: str | None
+    rdbms_app_pass: str | None
+    rdbms_dsn: str | None
+    snowflake_user: str | None
+    snowflake_pass: str | None
+    snowflake_pem_file: str | None
+    snowflake_pem_passphrase: str | None
+    snowflake_account: str | None
+    snowflake_database: str | None
+    snowflake_file_format_prefix: str | None
+    snowflake_integration: str | None
+    snowflake_role: str | None
+    snowflake_stage: str | None
+    snowflake_warehouse: str | None
+    sqoop_disable_direct: bool
+    sqoop_outdir: str | None
+    sqoop_password_file: str | None
+    sqoop_queue_name: str | None
+    sqoop_overrides: str | None
+    suppress_stdout: bool
+    synapse_auth_mechanism: str | None
+    synapse_collation: str | None
+    synapse_database: str | None
+    synapse_data_source: str | None
+    synapse_file_format: str | None
+    synapse_msi_client_id: str | None
+    synapse_pass: str | None
+    synapse_port: Any
+    synapse_role: str | None
+    synapse_server: str | None
+    synapse_service_principal_id: str | None
+    synapse_service_principal_secret: str | None
+    synapse_user: str | None
+    target: str
+    teradata_adm_user: str | None
+    teradata_adm_pass: str | None
+    teradata_app_user: str | None
+    teradata_app_pass: str | None
+    teradata_server: str | None
+    teradata_repo_user: str
+    use_ssl: Any
     use_oracle_wallet: bool
     oracledb_thick_mode: bool
+    webhdfs_host: str | None
+    webhdfs_port: Any
+    verbose: bool
+    version: bool
+    vverbose: bool
 
     def __init__(self, do_not_connect=False, **kwargs):
         """Do not expect to construct directly via __init__.
@@ -308,13 +379,12 @@ class OrchestrationConfig:
         return OrchestrationConfig.from_dict({}, do_not_connect=do_not_connect)
 
     @staticmethod
-    def from_dict(config_dict: dict, do_not_connect=False):
+    def from_dict(config_dict: dict[str, Any], do_not_connect: bool = False) -> "OrchestrationConfig":
+        """Load environment for defaults and build OrchestrationConfig from config_dict."""
         assert isinstance(config_dict, dict)
         unexpected_keys = [k for k in config_dict if k not in EXPECTED_CONFIG_ARGS]
         assert not unexpected_keys, "Unexpected OrchestrationConfig keys: %s" % unexpected_keys
-        # Load environment for defaults.
         config_file.load_env()
-        # Build config from config_dict.
         return OrchestrationConfig(
             do_not_connect=do_not_connect,
             ansi=config_dict.get("ansi", orchestration_defaults.ansi_default()),
@@ -705,10 +775,6 @@ class OrchestrationConfig:
             ),
         )
 
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def check_backend_support(self, backend_api):
         """We cannot run some validations until after this object has been constructed because it is needed to create
         a backend connection. This method can be called once we have a connection.
@@ -741,9 +807,11 @@ class OrchestrationConfig:
                 )
 
     def override_offload_dfs_config(self, offload_fs_scheme, offload_fs_container, offload_fs_prefix):
-        # NJ@2022-01-19. I'm not happy having to do this but we needed CLI overrides for these option but enough
-        #                code treated these as config to make it hard. So I cheated and allowed an override instead
-        #                of moving these to OffloadOperation.
+        """NJ@2022-01-19. I'm not happy having to do this but we needed CLI overrides for these option but enough
+
+        code treated these as config to make it hard. So I cheated and allowed an override instead
+        of moving these to OffloadOperation.
+        """
         if offload_fs_scheme:
             self.offload_fs_scheme = offload_fs_scheme.lower()
         if offload_fs_container is not None:
@@ -751,10 +819,6 @@ class OrchestrationConfig:
         if offload_fs_prefix is not None:
             self.offload_fs_prefix = offload_fs_prefix
         normalise_filesystem_options(self)
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
 
     def _frontend_api_required(self):
         return bool(

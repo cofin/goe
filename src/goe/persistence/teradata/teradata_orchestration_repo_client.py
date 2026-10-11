@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """TeradataOrchestrationRepoClient: Teradata implementation of API for get/put of orchestration metadata."""
 
 import logging
@@ -26,25 +27,11 @@ if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 METADATA_SOURCE_TYPE_VIEW = "VIEW"
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# TeradataOrchestrationRepoClient
-###########################################################################
 
 
 class TeradataOrchestrationRepoClient(OrchestrationRepoClientInterface):
@@ -55,16 +42,136 @@ class TeradataOrchestrationRepoClient(OrchestrationRepoClientInterface):
         connection_options: "OrchestrationConfig",
         messages: "OffloadMessages",
         dry_run: bool = False,
-        trace_action: str = None,
-    ):
+        trace_action: str | None = None,
+    ) -> None:
         super().__init__(connection_options, messages, dry_run=dry_run, trace_action=trace_action)
         self._repo_user = self._connection_options.teradata_repo_user
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def set_offload_metadata(
+        self,
+        metadata: dict | OrchestrationMetadata,
+    ) -> None:
+        self._set_metadata(metadata)
 
-    def _drop_metadata(self, frontend_owner: str, frontend_name: str):
+    def drop_offload_metadata(self, frontend_owner, frontend_name):
+        self._drop_metadata(frontend_owner, frontend_name)
+
+    def start_command(
+        self,
+        execution_id: ExecutionId,
+        command_type: str,
+        command_input: str | dict | None,
+        parameters: dict | None,
+    ) -> int:
+        self._log(f"Recording command start: {execution_id}/{command_type})", detail=VVERBOSE)
+        self._debug(f"command_input: {command_input}")
+        self._assert_valid_start_command_inputs(execution_id, command_type)
+        self._prepare_command_parameters(command_input)
+        self._prepare_command_parameters(parameters)
+        return -1
+
+    def end_command(self, command_execution_id: int, status: str) -> None:
+        self._log(
+            f"Recording command {command_execution_id} status: {status}",
+            detail=VVERBOSE,
+        )
+        self._assert_valid_command_status(status)
+
+    def start_command_step(self, execution_id: ExecutionId, command_type: str, command_step: str) -> int:
+        self._log(
+            f"Recording command step start: {execution_id}/{command_step}",
+            detail=VVERBOSE,
+        )
+        self._assert_valid_start_step_inputs(execution_id, command_type, command_step)
+        return -1
+
+    def end_command_step(self, command_step_id: int, status: str, step_details: dict | None = None) -> None:
+        self._log(
+            f"Recording command step {command_step_id} status: {status}",
+            detail=VVERBOSE,
+        )
+        self._assert_valid_end_step_inputs(command_step_id, status, step_details)
+        if step_details is not None:
+            serialize_object(step_details)
+
+    def start_offload_chunk(
+        self,
+        execution_id: ExecutionId,
+        frontend_schema: str,
+        frontend_table_name: str,
+        backend_schema: str,
+        backend_table_name: str,
+        chunk_number: int = 1,
+        offload_partitions: list | None = None,
+        offload_partition_level: int | None = None,
+    ) -> int:
+        self._log(
+            f"Recording command chunk start: {execution_id}/{chunk_number}",
+            detail=VVERBOSE,
+        )
+        self._debug(f"frontend: {frontend_schema}/{frontend_table_name})")
+        self._debug(f"backend: {backend_schema}/{backend_table_name})")
+        self._assert_valid_start_chunk_inputs(
+            execution_id,
+            frontend_schema,
+            frontend_table_name,
+            backend_schema,
+            backend_table_name,
+            chunk_number,
+            offload_partitions,
+            offload_partition_level,
+        )
+        return -1
+
+    def end_offload_chunk(
+        self,
+        chunk_id: int,
+        status: str,
+        row_count: int | None = None,
+        frontend_bytes: int | None = None,
+        transport_bytes: int | None = None,
+        backend_bytes: int | None = None,
+    ) -> None:
+        self._log(f"Recording chunk {chunk_id} status: {status}", detail=VVERBOSE)
+        self._debug(f"row_count: {row_count})")
+        self._debug(f"frontend_bytes: {frontend_bytes})")
+        self._debug(f"transport_bytes: {transport_bytes})")
+        self._debug(f"backend_bytes: {backend_bytes})")
+        self._assert_valid_end_chunk_inputs(chunk_id, status)
+
+    def get_command_step_codes(self) -> list:
+        raise NotImplementedError("Teradata get_command_step_codes pending implementation")
+
+    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | Any]:
+        raise NotImplementedError("Teradata get_command_execution pending implementation")
+
+    def get_command_execution_steps(
+        self,
+        execution_id: ExecutionId | None,
+    ) -> list[dict[str, str | Any]]:
+        raise NotImplementedError("Teradata get_command_execution_steps pending implementation")
+
+    def get_command_executions(
+        self,
+    ) -> list[dict[str, str | Any]]:
+        raise NotImplementedError("Teradata get_command_executions pending implementation")
+
+    def get_offloadable_schemas(self):
+        raise NotImplementedError("Teradata get_offloadable_schemas pending implementation")
+
+    def get_schema_tables(self, schema_name):
+        raise NotImplementedError("Teradata get_schema_tables pending implementation")
+
+    def get_table_columns(self, schema_name, table_name):
+        raise NotImplementedError("Teradata get_table_columns pending implementation")
+
+    def get_table_partitions(self, schema_name, table_name):
+        raise NotImplementedError("Teradata get_table_partitions pending implementation")
+
+    def get_table_subpartitions(self, schema_name, table_name):
+        raise NotImplementedError("Teradata get_table_subpartitions pending implementation")
+
+    def _drop_metadata(self, frontend_owner: str, frontend_name: str) -> None:
         logger.debug(f"Dropping metadata: {frontend_owner}, {frontend_name}")
         assert frontend_owner
         assert frontend_name
@@ -81,11 +188,10 @@ class TeradataOrchestrationRepoClient(OrchestrationRepoClientInterface):
         )
         self._frontend_api.execute_dml(sql, query_params=[frontend_owner, frontend_name], log_level=VERBOSE)
 
-    def _get_metadata(self, frontend_owner: str, frontend_name: str) -> dict:
+    def _get_metadata(self, frontend_owner: str, frontend_name: str) -> dict | None:
         logger.debug(f"Fetching metadata: {frontend_owner}, {frontend_name}")
         assert frontend_owner
         assert frontend_name
-        # Columns will be in a specific order due to ALL_METADATA_ATTRIBUTES being a list
         projection = ",".join(ALL_METADATA_ATTRIBUTES)
         sql = dedent(
             f"""\
@@ -115,11 +221,10 @@ class TeradataOrchestrationRepoClient(OrchestrationRepoClientInterface):
             return row_tuple[i]
 
         assert row_tuple
-        # Row items will be in a specific order due to ALL_METADATA_ATTRIBUTES being a list
         metadata_dict = {k: format_row_item(k, i) for i, k in enumerate(ALL_METADATA_ATTRIBUTES)}
         return metadata_dict
 
-    def _set_metadata(self, metadata: dict | OrchestrationMetadata):
+    def _set_metadata(self, metadata: dict | OrchestrationMetadata) -> None:
         def prep_value(k, metadata):
             v = metadata.get(k)
             if v is None:
@@ -161,146 +266,3 @@ class TeradataOrchestrationRepoClient(OrchestrationRepoClientInterface):
             """
         )
         self._frontend_api.execute_dml(sql, query_params=insert_parameters, log_level=VERBOSE)
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def set_offload_metadata(
-        self,
-        metadata: dict | OrchestrationRepoClientInterface,
-    ):
-        self._set_metadata(metadata)
-
-    def drop_offload_metadata(self, frontend_owner, frontend_name):
-        self._drop_metadata(frontend_owner, frontend_name)
-
-    #
-    # COMMAND EXECUTION LOGGING METHODS
-    #
-    def start_command(
-        self,
-        execution_id: ExecutionId,
-        command_type: str,
-        command_input: str | dict | None,
-        parameters: dict | None,
-    ) -> int:
-        self._log(f"Recording command start: {execution_id}/{command_type})", detail=VVERBOSE)
-        self._debug(f"command_input: {command_input}")
-        self._assert_valid_start_command_inputs(execution_id, command_type)
-        prepared_input = self._prepare_command_parameters(command_input)
-        prepared_parameters = self._prepare_command_parameters(parameters)
-        # TODO For MVP this method is a pass-thru
-        return -1
-
-    def end_command(self, command_execution_id: int, status: str) -> None:
-        self._log(
-            f"Recording command {command_execution_id} status: {status}",
-            detail=VVERBOSE,
-        )
-        self._assert_valid_command_status(status)
-        # TODO For MVP this method is a pass-thru
-
-    def start_command_step(self, execution_id: ExecutionId, command_type: str, command_step: str) -> int:
-        self._log(
-            f"Recording command step start: {execution_id}/{command_step}",
-            detail=VVERBOSE,
-        )
-        self._assert_valid_start_step_inputs(execution_id, command_type, command_step)
-        # TODO For MVP this method is a pass-thru
-        return -1
-
-    def end_command_step(self, command_step_id: int, status: str, step_details: dict | None = None) -> None:
-        self._log(
-            f"Recording command step {command_step_id} status: {status}",
-            detail=VVERBOSE,
-        )
-        self._assert_valid_end_step_inputs(command_step_id, status, step_details)
-        step_details_str = serialize_object(step_details) if step_details is not None else None
-        # TODO For MVP this method is a pass-thru
-
-    def start_offload_chunk(
-        self,
-        execution_id: ExecutionId,
-        frontend_schema: str,
-        frontend_table_name: str,
-        backend_schema: str,
-        backend_table_name: str,
-        chunk_number: int = 1,
-        offload_partitions: list | None = None,
-        offload_partition_level: int | None = None,
-    ) -> int:
-        self._log(
-            f"Recording command chunk start: {execution_id}/{chunk_number}",
-            detail=VVERBOSE,
-        )
-        self._debug(f"frontend: {frontend_schema}/{frontend_table_name})")
-        self._debug(f"backend: {backend_schema}/{backend_table_name})")
-        self._assert_valid_start_chunk_inputs(
-            execution_id,
-            frontend_schema,
-            frontend_table_name,
-            backend_schema,
-            backend_table_name,
-            chunk_number,
-            offload_partitions,
-            offload_partition_level,
-        )
-        # TODO For MVP this method is a pass-thru
-        return -1
-
-    def end_offload_chunk(
-        self,
-        chunk_id: int,
-        status: str,
-        row_count: int | None = None,
-        frontend_bytes: int | None = None,
-        transport_bytes: int | None = None,
-        backend_bytes: int | None = None,
-    ) -> None:
-        self._log(f"Recording chunk {chunk_id} status: {status}", detail=VVERBOSE)
-        self._debug(f"row_count: {row_count})")
-        self._debug(f"frontend_bytes: {frontend_bytes})")
-        self._debug(f"transport_bytes: {transport_bytes})")
-        self._debug(f"backend_bytes: {backend_bytes})")
-        self._assert_valid_end_chunk_inputs(chunk_id, status)
-        # TODO For MVP this method is a pass-thru
-
-    #
-    # ORACLE LISTENER API METHODS
-    #
-
-    def get_command_step_codes(self) -> list:
-        raise NotImplementedError("Teradata get_command_step_codes pending implementation")
-        # sql = f"SELECT code FROM {self._repo_user}.command_step ORDER BY 1"
-        # rows = self._frontend_api.execute_query_fetch_all(sql, log_level=VVERBOSE)
-        # return [_[0] for _ in rows] if rows else rows
-
-    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | Any]:
-        raise NotImplementedError("Teradata get_command_execution pending implementation")
-
-    def get_command_execution_steps(
-        self,
-        execution_id: ExecutionId | None,
-    ) -> list[dict[str, str | Any]]:
-        raise NotImplementedError("Teradata get_command_execution_steps pending implementation")
-
-    def get_command_executions(
-        self,
-    ) -> list[dict[str, str | Any]]:
-        raise NotImplementedError("Teradata get_command_executions pending implementation")
-
-    def get_offloadable_schemas(self):
-        raise NotImplementedError("Teradata get_offloadable_schemas pending implementation")
-
-    def get_schema_tables(self, schema_name):
-        raise NotImplementedError("Teradata get_schema_tables pending implementation")
-
-    def get_table_columns(self, schema_name, table_name):
-        raise NotImplementedError("Teradata get_table_columns pending implementation")
-
-    def get_table_partitions(self, schema_name, table_name):
-        raise NotImplementedError("Teradata get_table_partitions pending implementation")
-
-    def get_table_subpartitions(self, schema_name, table_name):
-        raise NotImplementedError("Teradata get_table_subpartitions pending implementation")

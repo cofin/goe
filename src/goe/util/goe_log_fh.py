@@ -18,18 +18,18 @@ _LAZY_IMPORTS: LazyImportMap = {
 }
 
 
-def is_gcs_path(path: str):
+def is_gcs_path(path: str) -> bool:
     return bool(path and path.startswith("gs://"))
 
 
-def is_valid_path_for_logs(path: str):
+def is_valid_path_for_logs(path: str) -> bool:
     return bool(path and (path.startswith("/") or is_gcs_path(path)))
 
 
 class GOELogFileHandle:
     name: str | None = None
 
-    def __init__(self, path: str, mode="w"):
+    def __init__(self, path: str, mode: str = "w") -> None:
         self._fs = self._get_fs(path)
         self.name = path
         self._fh = self._open(path, mode=mode)
@@ -74,7 +74,7 @@ class GOELogFileHandle:
             fs = fsspec.filesystem("file")
         return fs
 
-    def _open(self, path: str, mode="w"):
+    def _open(self, path: str, mode: str = "w") -> Any:
         return self._fs.open(path, mode=mode)
 
 

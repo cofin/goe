@@ -3,40 +3,29 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """hive_ddl_transform: DDL transformation routines for hive/impala"""
 
 import logging
 import re
 
 
-###############################################################################
-# EXCEPTIONS
-###############################################################################
 class HiveDDLTransformException(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# 'CREATE TABLE' pattern
 RE_CREATE_TABLE = re.compile(
     r"(create\s+)(external\s+)?(table\s+)(if not exists\s+)?(`)?(\w+\.)?(\w+)(`)?(.*)$",
     re.IGNORECASE | re.DOTALL,
 )
 
-# 'CREATE VIEW' pattern
 RE_CREATE_VIEW = re.compile(
     r"(create\s+)?(view\s+)(if not exists\s+)?(`)?(\w+\.)?(\w+)(`)?(.*)$", re.IGNORECASE | re.DOTALL
 )
 
 
-###############################################################################
-# LOGGING
-###############################################################################
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())  # Disabling logging by default
+logger.addHandler(logging.NullHandler())
 
 
 class DDLTransform:
@@ -47,19 +36,60 @@ class DDLTransform:
 
         logger.debug("Initialized DDLTransform() object")
 
-    ###########################################################################
-    # PRIVATE ROUTINES
-    ###########################################################################
+    def transform_table(self, table_ddl, options):
+        """Transform 'table_ddl' according to 'options'"""
+        assert table_ddl and isinstance(options, dict)
+
+        transformed_ddl = table_ddl
+
+        transformed_ddl = self._parse_create_table(transformed_ddl, options)
+        transformed_ddl = self._adjust_columns(transformed_ddl)
+        transformed_ddl = self._adjust_partitioned_by(transformed_ddl)
+
+        if any(_.startswith("location") for _ in options):
+            transformed_ddl = self._parse_location(transformed_ddl, options)
+
+        return transformed_ddl
+
+    def transform_view(self, view_ddl, options):
+        """Transform 'view_ddl' according to 'options'"""
+        assert view_ddl and isinstance(options, dict)
+
+        transformed_ddl = view_ddl
+
+        transformed_ddl = self._parse_create_view(transformed_ddl, options)
+        if "where" in options:
+            transformed_ddl = self._inject_where_clause(transformed_ddl, options["where"])
+
+        return transformed_ddl
+
+    def is_view(self, ddl):
+        """Returns True if ddl is 'create view' ddl
+                False if ddl is 'create table' ddl
+        or raises HiveDDLTransformException if neither
+        """
+        if RE_CREATE_VIEW.match(ddl):
+            return True
+        if RE_CREATE_TABLE.match(ddl):
+            return False
+        raise HiveDDLTransformException("Only CREATE TABLE or CREATE VIEW statements are supported. Getting: %s" % ddl)
+
+    def transform(self, ddl, options):
+        """Transform DDL according to its type (table or view)"""
+        return self.transform_view(ddl, options) if self.is_view(ddl) else self.transform_table(ddl, options)
 
     def _parse_create_table(self, table_ddl, options):
-        """Change 'create table' components in 'table_ddl'"""
+        """Change 'create table' components in 'table_ddl'
+
+        Always add "if not exists"
+        Drop ; at the end (hive complains! and impala is ok with it)
+        """
         ddl_separator = re.compile(r";\s*$")
 
         match_ddl = RE_CREATE_TABLE.match(table_ddl)
         if match_ddl:
             ddl_chunks = list(match_ddl.groups())
 
-            # Always add "if not exists"
             if not ddl_chunks[3]:
                 ddl_chunks[3] = "if not exists "
 
@@ -80,10 +110,6 @@ class DDLTransform:
                 logger.debug("Replacing name: %s with: %s" % (match_ddl.group(4), options["name"]))
                 ddl_chunks[6] = options["name"]
 
-            # Force `s around db_table
-            # maxym@ 2016-03-22 Disabling as impala crashes when sees that (hive is good thou)
-            # ddl_chunks[4] = '`'
-            # ddl_chunks[7] = '`'
             ddl_chunks[4] = " "
             ddl_chunks[7] = " "
 
@@ -91,18 +117,19 @@ class DDLTransform:
         else:
             raise HiveDDLTransformException("Could not find 'create table' marker in DDL: %s" % table_ddl)
 
-        # Drop ; at the end (hive complains! and impala is ok with it)
         table_ddl = ddl_separator.sub("", table_ddl)
 
         return table_ddl
 
     def _parse_create_view(self, view_ddl, options):
-        """Change 'create view' components in 'view_ddl'"""
+        """Change 'create view' components in 'view_ddl'
+
+        Always add "if not exists"
+        """
         match_ddl = RE_CREATE_VIEW.match(view_ddl)
         if match_ddl:
             ddl_chunks = list(match_ddl.groups())
 
-            # Always add "if not exists"
             if not ddl_chunks[2]:
                 ddl_chunks[2] = "if not exists "
 
@@ -159,7 +186,10 @@ class DDLTransform:
         return table_ddl
 
     def _adjust_partitioned_by(self, table_ddl):
-        """Adjust 'partitioned by' part, i.e. surround column names with `s"""
+        """Adjust 'partitioned by' part, i.e. surround column names with `s
+
+        Partition marker is optional
+        """
 
         partitioned_pattern = re.compile(r"(create.*)(PARTITIONED BY\s*\()([^)]+)(.*)$", re.IGNORECASE | re.DOTALL)
         single_col_pattern = re.compile(r"^(\S+)\s+(.*),?$")
@@ -180,7 +210,6 @@ class DDLTransform:
 
             table_ddl = "".join([_ for _ in ddl_chunks if _])
         else:
-            # Partition marker is optional
             pass
 
         return table_ddl
@@ -265,49 +294,3 @@ class DDLTransform:
         view_ddl = "".join([_ for _ in ddl_chunks if _])
 
         return view_ddl
-
-    ###########################################################################
-    # PUBLIC ROUTINES
-    ###########################################################################
-
-    def transform_table(self, table_ddl, options):
-        """Transform 'table_ddl' according to 'options'"""
-        assert table_ddl and isinstance(options, dict)
-
-        transformed_ddl = table_ddl
-
-        transformed_ddl = self._parse_create_table(transformed_ddl, options)
-        transformed_ddl = self._adjust_columns(transformed_ddl)
-        transformed_ddl = self._adjust_partitioned_by(transformed_ddl)
-
-        if any(_.startswith("location") for _ in options):
-            transformed_ddl = self._parse_location(transformed_ddl, options)
-
-        return transformed_ddl
-
-    def transform_view(self, view_ddl, options):
-        """Transform 'view_ddl' according to 'options'"""
-        assert view_ddl and isinstance(options, dict)
-
-        transformed_ddl = view_ddl
-
-        transformed_ddl = self._parse_create_view(transformed_ddl, options)
-        if "where" in options:
-            transformed_ddl = self._inject_where_clause(transformed_ddl, options["where"])
-
-        return transformed_ddl
-
-    def is_view(self, ddl):
-        """Returns True if ddl is 'create view' ddl
-                False if ddl is 'create table' ddl
-        or raises HiveDDLTransformException if neither
-        """
-        if RE_CREATE_VIEW.match(ddl):
-            return True
-        if RE_CREATE_TABLE.match(ddl):
-            return False
-        raise HiveDDLTransformException("Only CREATE TABLE or CREATE VIEW statements are supported. Getting: %s" % ddl)
-
-    def transform(self, ddl, options):
-        """Transform DDL according to its type (table or view)"""
-        return self.transform_view(ddl, options) if self.is_view(ddl) else self.transform_table(ddl, options)

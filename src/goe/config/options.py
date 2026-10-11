@@ -316,7 +316,7 @@ class AggValidateOptions(TableOperationOptions, kw_only=True):
     """Options for aggregate validation (legacy get_agg_validate_options)."""
 
     as_of_scn: int | None = None
-    selects: list[str | int] | str | int = msgspec.field(default_factory=lambda: [5])
+    selects: list[str | int] | str | int = msgspec.field(default_factory=lambda: list[str | int]([5]))
     filters: str | list[tuple[str, str, object]] | None = None
     group_bys: str | list[str] | None = None
     aggregate_functions: tuple[str, ...] | list[str] | str = ("min", "max", "count")

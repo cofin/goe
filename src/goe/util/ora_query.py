@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """Execute ORACLE query and return results"""
 
 import datetime
@@ -15,26 +16,17 @@ from numpy import datetime64
 from goe.offload.offload_messages import VERBOSE, OffloadMessagesMixin
 
 
-############################################################
-# EXCEPTIONS
-############################################################
 class OracleQueryException(Exception):
     pass
 
 
-############################################################
-# MODULE CONSTANTS
-############################################################
-DEF_ARRAYSIZE = 50  # Default fetch array size
-MAX_ARRAYSIZE = 5000  # Max fetch array size
-MAX_BINDARRAY_SIZE = 20000  # Max bind array size
+DEF_ARRAYSIZE = 50
+MAX_ARRAYSIZE = 5000
+MAX_BINDARRAY_SIZE = 20000
 
 
-###############################################################################
-# LOGGING
-###############################################################################
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())  # Disabling logging by default
+logger.addHandler(logging.NullHandler())
 
 
 def output_type_handler(cursor, name, defaultType, size, precision, scale):
@@ -92,14 +84,14 @@ class OracleQuery(OffloadMessagesMixin):
         self._password = password
         self._dsn = dsn
 
-        self._db_handle = None  # ORACLE connection handle
-        self._cursor = None  # ORACLE cursor
+        self._db_handle = None
+        self._cursor = None
 
-        self._retcode = None  # Last operation return code
-        self._err = None  # ... Error message
+        self._retcode = None
+        self._err = None
 
-        self._my_cursor = False  # Marker: "this object created oracledb cursors"
-        self._my_connection = False  # Marker: "this object created oracledb connection"
+        self._my_cursor = False
+        self._my_connection = False
 
         self._messages = kwargs["messages"] if "messages" in kwargs else None
         super().__init__(self._messages, logger)
@@ -129,116 +121,8 @@ class OracleQuery(OffloadMessagesMixin):
     def fromconnection(cls, connection, **kwargs):
         """Construct object from existing connection"""
         obj = cls.fromcursor(connection.cursor(), **kwargs)
-        obj._my_cursor = True  # Destroy the cursor on exit as we just (artificially) created it
+        obj._my_cursor = True
         return obj
-
-    ###############################################################################
-    # PRIVATE METHODS
-    ###############################################################################
-
-    def _connect(self):
-        """Connect to ORACLE db and initialize oracledb handle objects"""
-        logger.debug("Connecting to ORACLE dsn: %s with user: %s" % (self._dsn, self._user))
-
-        try:
-            self._db_handle = oracledb.connect(user=self._user, password=self._password, dsn=self._dsn)
-            self._cursor = self._db_handle.cursor()
-            self._my_cursor = True
-            self._my_connection = True
-            logger.debug("Successfully connected to dsn: %s" % self._dsn)
-        except oracledb.Error as e:
-            (error,) = e.args
-            self._retcode = error.code
-            self._err = str(error)
-
-            raise OracleQueryException("Error: %s connecting to db: %s" % (self._err, self._dsn))
-
-    def _execute(self, sql, binds, bulk, ignore_errors, detail):
-        """Execute ORACLE sql
-
-        optionally, with binds
-        optionally, in BULK mode
-        optionally, ignoring errors
-        """
-        assert sql
-
-        sql_command = sql.split(" ")[0].lower()  # INSERT, UPDATE, SELECT etc
-        bulk_type = "BULK" if bulk else "SINGLE"
-        self.log("Oracle SQL: %s\n" % sql, detail=detail)
-        self.log_vverbose("\nBinds: %s\n" % binds)
-        logger.debug(
-            "Executing %s ORACLE SQL [%s]: %s in db: %s with binds: %s"
-            % (bulk_type, sql_command, sql, self._dsn, binds)
-        )
-
-        try:
-            if not self._db_handle:
-                self._connect()
-
-            self._cursor.outputtypehandler = output_type_handler
-
-            if bulk:
-                self._cursor.bindarraysize = MAX_BINDARRAY_SIZE
-                self._cursor.arraysize = MAX_BINDARRAY_SIZE
-            else:
-                self._cursor.arraysize = self._arraysize
-
-            if bulk:
-                self._cursor.executemany(sql, binds)
-            elif binds:
-                self._cursor.execute(sql, binds)
-            else:
-                self._cursor.execute(sql)
-            logger.debug(
-                "Executing %s ORACLE SQL [%s]: %s in db: %s - SUCCESS" % (bulk_type, sql_command, sql, self._dsn)
-            )
-        except oracledb.Error as e:
-            logger.debug(
-                "Executing %s ORACLE SQL [%s]: %s in db: %s - EXCEPTION: %s"
-                % (bulk_type, sql_command, sql, self._dsn, e)
-            )
-            (error,) = e.args
-            self._retcode = error.code
-            self._err = str(error)
-            if sql_command in ("insert", "update", "delete", "merge"):
-                logger.debug("Rolling back ORACLE transaction for command: %s" % sql_command)
-                self._db_handle.rollback()
-            else:
-                logger.debug("No need to roll back ORACLE transaction for command: %s" % sql_command)
-            if ignore_errors:
-                logger.warning("ORACLE execution problem: [%s] %s" % (self._retcode, self._err))
-                return False
-            raise OracleQueryException("ORACLE execution problem: [%s] %s" % (self._retcode, self._err))
-        else:
-            self._retcode = 0
-            self._err = None
-            if sql_command in ("insert", "update", "delete", "merge"):
-                logger.debug("Committing ORACLE transaction for command: %s" % sql_command)
-                self._db_handle.commit()
-            else:
-                logger.debug("No need to commit ORACLE transaction for command: %s" % sql_command)
-
-        return True
-
-    def _retrieve_source_code(self, obj):
-        """Retrieve source code for the object
-
-        This function is in place mostly to workaround problems
-        with 'interactive sessions' where inspect.getsource
-        raises exceptions when inspected code is not 'defined'
-        """
-        ret = "<code>"
-
-        try:
-            ret = inspect.getsource(obj)
-        except (OSError, TypeError) as e:
-            logger.debug("Exception: %s when inspecting the code" % e)
-
-        return ret
-
-    ###############################################################################
-    # PROPERTIES
-    ###############################################################################
 
     @property
     def cursor(self):
@@ -269,10 +153,6 @@ class OracleQuery(OffloadMessagesMixin):
             )
 
         self._arraysize = val
-
-    ###############################################################################
-    # PUBLIC ROUTINES
-    ###############################################################################
 
     def execute(
         self,
@@ -327,10 +207,11 @@ class OracleQuery(OffloadMessagesMixin):
         """Close current connection and cursor
         Strictly speaking this is unnecessary as oracledb will close them upon __del__
         Nice to have the option though
+
+        This object created oracledb AND cursor object
         """
         logger.debug("Disconnecting from ORACLE. User: %s DSN: %s" % (self._user, self._dsn))
         if self._my_cursor:
-            # This object created oracledb AND cursor object
             if self._cursor:
                 logger.debug("Destroying oracledb cursor allocated by this instance")
                 try:
@@ -361,3 +242,105 @@ class OracleQuery(OffloadMessagesMixin):
         elif isinstance(py_var, datetime64):
             py_var = "timestamp '%s'" % str(py_var).replace("T", " ")
         return py_var
+
+    def _connect(self):
+        """Connect to ORACLE db and initialize oracledb handle objects"""
+        logger.debug("Connecting to ORACLE dsn: %s with user: %s" % (self._dsn, self._user))
+
+        try:
+            self._db_handle = oracledb.connect(user=self._user, password=self._password, dsn=self._dsn)
+            self._cursor = self._db_handle.cursor()
+            self._my_cursor = True
+            self._my_connection = True
+            logger.debug("Successfully connected to dsn: %s" % self._dsn)
+        except oracledb.Error as e:
+            (error,) = e.args
+            self._retcode = error.code
+            self._err = str(error)
+
+            raise OracleQueryException("Error: %s connecting to db: %s" % (self._err, self._dsn))
+
+    def _execute(self, sql, binds, bulk, ignore_errors, detail):
+        """Execute ORACLE sql
+
+        optionally, with binds
+        optionally, in BULK mode
+        optionally, ignoring errors
+        """
+        assert sql
+
+        sql_command = sql.split(" ")[0].lower()
+        bulk_type = "BULK" if bulk else "SINGLE"
+        self.log("Oracle SQL: %s\n" % sql, detail=detail)
+        self.log_vverbose("\nBinds: %s\n" % binds)
+        logger.debug(
+            "Executing %s ORACLE SQL [%s]: %s in db: %s with binds: %s"
+            % (bulk_type, sql_command, sql, self._dsn, binds)
+        )
+
+        try:
+            if not self._db_handle:
+                self._connect()
+            assert self._db_handle is not None
+            assert self._cursor is not None
+
+            self._cursor.outputtypehandler = output_type_handler
+
+            if bulk:
+                self._cursor.bindarraysize = MAX_BINDARRAY_SIZE
+                self._cursor.arraysize = MAX_BINDARRAY_SIZE
+            else:
+                self._cursor.arraysize = self._arraysize
+
+            if bulk:
+                self._cursor.executemany(sql, binds)
+            elif binds:
+                self._cursor.execute(sql, binds)
+            else:
+                self._cursor.execute(sql)
+            logger.debug(
+                "Executing %s ORACLE SQL [%s]: %s in db: %s - SUCCESS" % (bulk_type, sql_command, sql, self._dsn)
+            )
+        except oracledb.Error as e:
+            logger.debug(
+                "Executing %s ORACLE SQL [%s]: %s in db: %s - EXCEPTION: %s"
+                % (bulk_type, sql_command, sql, self._dsn, e)
+            )
+            (error,) = e.args
+            self._retcode = error.code
+            self._err = str(error)
+            if sql_command in ("insert", "update", "delete", "merge") and self._db_handle is not None:
+                logger.debug("Rolling back ORACLE transaction for command: %s" % sql_command)
+                self._db_handle.rollback()
+            else:
+                logger.debug("No need to roll back ORACLE transaction for command: %s" % sql_command)
+            if ignore_errors:
+                logger.warning("ORACLE execution problem: [%s] %s" % (self._retcode, self._err))
+                return False
+            raise OracleQueryException("ORACLE execution problem: [%s] %s" % (self._retcode, self._err))
+        else:
+            self._retcode = 0
+            self._err = None
+            if sql_command in ("insert", "update", "delete", "merge"):
+                logger.debug("Committing ORACLE transaction for command: %s" % sql_command)
+                self._db_handle.commit()
+            else:
+                logger.debug("No need to commit ORACLE transaction for command: %s" % sql_command)
+
+        return True
+
+    def _retrieve_source_code(self, obj):
+        """Retrieve source code for the object
+
+        This function is in place mostly to workaround problems
+        with 'interactive sessions' where inspect.getsource
+        raises exceptions when inspected code is not 'defined'
+        """
+        ret = "<code>"
+
+        try:
+            ret = inspect.getsource(obj)
+        except (OSError, TypeError) as e:
+            logger.debug("Exception: %s when inspecting the code" % e)
+
+        return ret

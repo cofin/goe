@@ -9,15 +9,15 @@ import time
 class SimpleTimer:
     """Library for providing simple elapsed times for logging"""
 
-    def __init__(self, name="timer"):
+    def __init__(self, name: str = "timer") -> None:
         self.name = name
-        self.start = None
-        self.last_call = None
-        self.duration = None
+        self.start: float = 0.0
+        self.last_call: float = 0.0
+        self.duration: float = 0.0
         self.reset()
 
     @property
-    def elapsed(self):
+    def elapsed(self) -> float:
         return self.duration or (time.time() - self.start)
 
     def reset(self):

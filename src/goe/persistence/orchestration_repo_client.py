@@ -3,21 +3,18 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """OrchestrationRepoClientInterface: Base interface of API to interact with orchestration metadata repository.
 Each frontend/metadata system will have its own implementation.
 """
 
-import datetime
-import decimal
 import logging
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-# GOE
 from goe.offload.factory.frontend_api_factory import frontend_api_factory
 from goe.offload.offload_messages import VVERBOSE
 from goe.offload.offload_source_data import OffloadSourcePartition
-from goe.offload.predicate_offload import GenericPredicate
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.orchestration_metadata import (
@@ -32,15 +29,6 @@ if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
 def type_safe_json_dumps(d: Any) -> str:
     """Serialize object to JSON string using msgspec supporting Decimal, datetime, ExecutionId, and Predicate."""
     return serialize_object(d)
@@ -52,13 +40,7 @@ def type_safe_json_loads(payload: bytes | str) -> Any:
 
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# OrchestrationRepoClientInterface
-###########################################################################
 
 
 class OrchestrationRepoClientInterface(metaclass=ABCMeta):
@@ -71,8 +53,8 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
         connection_options: "OrchestrationConfig",
         messages: "OffloadMessages",
         dry_run: bool = False,
-        trace_action: str = None,
-    ):
+        trace_action: str | None = None,
+    ) -> None:
         """Abstract base class which acts as an interface for frontend specific sub-classes for
         get/put of orchestration metadata.
         dry_run: Read only mode
@@ -88,115 +70,6 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
     def __del__(self):
         self.close()
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _log(self, msg, detail=None, ansi_code=None):
-        """Write to offload log file"""
-        self._messages.log(msg, detail=detail, ansi_code=ansi_code)
-        if detail == VVERBOSE:
-            logger.debug(msg)
-        else:
-            logger.info(msg)
-
-    def _debug(self, msg):
-        self._messages.debug(msg)
-        logger.debug(msg)
-
-    def _warning(self, msg):
-        self._messages.warning(msg)
-        logger.warning(msg)
-
-    def _assert_valid_start_command_inputs(self, execution_id: ExecutionId, command_type: str) -> None:
-        assert isinstance(execution_id, ExecutionId), f"{type(execution_id)} is not ExecutionId"
-        assert command_type in orchestration_constants.ALL_COMMAND_CODES, f"{command_type} not in ALL_COMMAND_CODES"
-
-    def _assert_valid_start_step_inputs(self, execution_id: ExecutionId, command_type: str, command_step: str) -> None:
-        assert isinstance(execution_id, ExecutionId), f"{type(execution_id)} is not ExecutionId"
-        assert command_type in orchestration_constants.ALL_COMMAND_CODES, f"{command_type} not in ALL_COMMAND_CODES"
-        assert command_step in command_steps.STEP_TITLES, f"{command_step} not in STEP_TITLES"
-
-    def _assert_valid_start_chunk_inputs(
-        self,
-        execution_id: ExecutionId,
-        frontend_schema: str,
-        frontend_table_name: str,
-        backend_schema: str,
-        backend_table_name: str,
-        chunk_number: int,
-        offload_partitions: list,
-        offload_partition_level: int,
-    ) -> None:
-        assert isinstance(execution_id, ExecutionId), f"{type(execution_id)} is not ExecutionId"
-        assert isinstance(frontend_schema, str), f"{type(frontend_schema)} is not str"
-        assert isinstance(frontend_table_name, str), f"{type(frontend_table_name)} is not str"
-        assert isinstance(backend_schema, str), f"{type(backend_schema)} is not str"
-        assert isinstance(backend_table_name, str), f"{type(backend_table_name)} is not str"
-        assert isinstance(chunk_number, int) and chunk_number > 0, f"{chunk_number} is not a positive int"
-        if offload_partitions:
-            assert isinstance(offload_partitions, list), f"{type(offload_partitions)} is not list"
-            assert isinstance(offload_partitions[0], OffloadSourcePartition), (
-                f"{type(offload_partitions[0])} is not OffloadSourcePartition"
-            )
-            assert isinstance(offload_partition_level, int) and offload_partition_level > 0, (
-                f"{offload_partition_level} is not a positive int"
-            )
-
-    def _assert_valid_end_step_inputs(self, command_step_id: int, status: str, step_details: dict) -> None:
-        if not self._dry_run:
-            assert isinstance(command_step_id, int), f"{type(command_step_id)} is not int"
-        self._assert_valid_command_status(status)
-        if step_details is not None:
-            assert isinstance(step_details, dict), f"{type(step_details)} is not dict"
-
-    def _assert_valid_end_chunk_inputs(self, chunk_id: int, status: str) -> None:
-        if not self._dry_run:
-            assert isinstance(chunk_id, int), f"{type(chunk_id)} is not int"
-        self._assert_valid_command_status(status)
-
-    def _assert_valid_command_status(self, status):
-        assert status in [
-            orchestration_constants.COMMAND_SUCCESS,
-            orchestration_constants.COMMAND_ERROR,
-        ]
-
-    @property
-    def _frontend_api(self) -> "FrontendApiInterface":
-        """Return a frontend api client to make calls to the repo.
-        Implemented this way to ensure connection is lazy and not taken when class instantiated.
-        """
-        if self._frontend_client is None:
-            self._frontend_client = frontend_api_factory(
-                self._connection_options.db_type,
-                self._connection_options,
-                self._messages,
-                dry_run=self._dry_run,
-                trace_action=self._trace_action,
-            )
-        return self._frontend_client
-
-    @abstractmethod
-    def _get_metadata(self, frontend_owner: str, frontend_name: str) -> dict:
-        """Return metadata object for owner/name"""
-
-    def _metadata_dict_to_json_string(self, metadata_dict: dict) -> str:
-        """Encode metadata dictionary to JSON string using msgspec."""
-        return serialize_object(metadata_dict)
-
-    def _metadata_keys_with_positions(self) -> dict:
-        return {k: i for i, k in enumerate(ALL_METADATA_ATTRIBUTES)}
-
-    def _prepare_command_parameters(self, parameters: str | dict) -> str:
-        """Ensure PARAMETERS column value is a JSON str."""
-        if isinstance(parameters, dict):
-            return serialize_object(parameters)
-        return parameters
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def close(self, force=False):
         """Free up any resources currently held"""
         if self._frontend_client:
@@ -208,10 +81,7 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
             else:
                 self._frontend_client.close()
 
-    #
-    # OFFLOAD METADATA
-    #
-    def get_offload_metadata(self, frontend_owner: str, frontend_name: str) -> OrchestrationMetadata:
+    def get_offload_metadata(self, frontend_owner: str, frontend_name: str) -> OrchestrationMetadata | None:
         """Return metadata object for owner/name"""
         metadata_dict = self._get_metadata(frontend_owner, frontend_name)
         if metadata_dict:
@@ -228,22 +98,19 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
     def set_offload_metadata(
         self,
         metadata: dict | OrchestrationMetadata,
-    ):
+    ) -> None:
         """Persist metadata"""
 
     @abstractmethod
-    def drop_offload_metadata(self, frontend_owner: str, frontend_name: str):
+    def drop_offload_metadata(self, frontend_owner: str, frontend_name: str) -> None:
         """Remove metadata"""
 
-    #
-    # COMMAND EXECUTION LOGGING METHODS
-    #
     @abstractmethod
     def start_command(
         self,
         execution_id: ExecutionId,
         command_type: str,
-        command_input: str | dict,
+        command_input: str | dict | None,
         parameters: dict | None,
     ) -> int:
         """Record the start of an orchestration command in the repo.
@@ -314,33 +181,28 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
         chunk_id: The identifier returned from start_offload_chunk.
         """
 
-    #
-    # OFFLOAD LISTENER API METHODS
-    #
     @abstractmethod
-    def get_offloadable_schemas(self):
+    def get_offloadable_schemas(self) -> Any:
         """Returns a dict of all schemas in the database (excluding GOE-created ones)
         and whether they currently have a hybrid schema created.
         """
 
     @abstractmethod
-    def get_schema_tables(self, schema_name: str):
+    def get_schema_tables(self, schema_name: str) -> Any:
         """Returns a dict of all tables for a schema"""
 
     @abstractmethod
-    def get_table_columns(self, schema_name: str, table_name: str):
+    def get_table_columns(self, schema_name: str, table_name: str) -> Any:
         """Returns a dict of all columns for a schema's table"""
 
     @abstractmethod
-    def get_table_partitions(self, schema_name: str, table_name: str):
+    def get_table_partitions(self, schema_name: str, table_name: str) -> Any:
         """Returns a dict of all partitions for a schema's table"""
 
     @abstractmethod
-    def get_table_subpartitions(self, schema_name: str, table_name: str):
+    def get_table_subpartitions(self, schema_name: str, table_name: str) -> Any:
         """Returns a dict of all subpartitions for a schema's table"""
 
-    # GENERAL REPO INTROSPECTION
-    #
     @abstractmethod
     def get_command_step_codes(self) -> list:
         """Return a list of codes from REPO.COMMEND_STEP table"""
@@ -356,3 +218,104 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
     @abstractmethod
     def get_command_execution_steps(self, execution_id: ExecutionId | None) -> list[dict[str, str | Any]]:
         """Return a list of steps for a given execution id"""
+
+    def _log(self, msg, detail=None, ansi_code=None):
+        """Write to offload log file"""
+        self._messages.log(msg, detail=detail, ansi_code=ansi_code)
+        if detail == VVERBOSE:
+            logger.debug(msg)
+        else:
+            logger.info(msg)
+
+    def _debug(self, msg):
+        self._messages.debug(msg)
+        logger.debug(msg)
+
+    def _warning(self, msg):
+        self._messages.warning(msg)
+        logger.warning(msg)
+
+    def _assert_valid_start_command_inputs(self, execution_id: ExecutionId, command_type: str) -> None:
+        assert isinstance(execution_id, ExecutionId), f"{type(execution_id)} is not ExecutionId"
+        assert command_type in orchestration_constants.ALL_COMMAND_CODES, f"{command_type} not in ALL_COMMAND_CODES"
+
+    def _assert_valid_start_step_inputs(self, execution_id: ExecutionId, command_type: str, command_step: str) -> None:
+        assert isinstance(execution_id, ExecutionId), f"{type(execution_id)} is not ExecutionId"
+        assert command_type in orchestration_constants.ALL_COMMAND_CODES, f"{command_type} not in ALL_COMMAND_CODES"
+        assert command_step in command_steps.STEP_TITLES, f"{command_step} not in STEP_TITLES"
+
+    def _assert_valid_start_chunk_inputs(
+        self,
+        execution_id: ExecutionId,
+        frontend_schema: str,
+        frontend_table_name: str,
+        backend_schema: str,
+        backend_table_name: str,
+        chunk_number: int,
+        offload_partitions: list | None,
+        offload_partition_level: int | None,
+    ) -> None:
+        assert isinstance(execution_id, ExecutionId), f"{type(execution_id)} is not ExecutionId"
+        assert isinstance(frontend_schema, str), f"{type(frontend_schema)} is not str"
+        assert isinstance(frontend_table_name, str), f"{type(frontend_table_name)} is not str"
+        assert isinstance(backend_schema, str), f"{type(backend_schema)} is not str"
+        assert isinstance(backend_table_name, str), f"{type(backend_table_name)} is not str"
+        assert isinstance(chunk_number, int) and chunk_number > 0, f"{chunk_number} is not a positive int"
+        if offload_partitions:
+            assert isinstance(offload_partitions, list), f"{type(offload_partitions)} is not list"
+            assert isinstance(offload_partitions[0], OffloadSourcePartition), (
+                f"{type(offload_partitions[0])} is not OffloadSourcePartition"
+            )
+            assert isinstance(offload_partition_level, int) and offload_partition_level > 0, (
+                f"{offload_partition_level} is not a positive int"
+            )
+
+    def _assert_valid_end_step_inputs(self, command_step_id: int, status: str, step_details: dict | None) -> None:
+        if not self._dry_run:
+            assert isinstance(command_step_id, int), f"{type(command_step_id)} is not int"
+        self._assert_valid_command_status(status)
+        if step_details is not None:
+            assert isinstance(step_details, dict), f"{type(step_details)} is not dict"
+
+    def _assert_valid_end_chunk_inputs(self, chunk_id: int, status: str) -> None:
+        if not self._dry_run:
+            assert isinstance(chunk_id, int), f"{type(chunk_id)} is not int"
+        self._assert_valid_command_status(status)
+
+    def _assert_valid_command_status(self, status):
+        assert status in [
+            orchestration_constants.COMMAND_SUCCESS,
+            orchestration_constants.COMMAND_ERROR,
+        ]
+
+    @property
+    def _frontend_api(self) -> Any:
+        """Return a frontend api client to make calls to the repo.
+        Implemented this way to ensure connection is lazy and not taken when class instantiated.
+        """
+        if self._frontend_client is None:
+            self._frontend_client = frontend_api_factory(
+                self._connection_options.db_type,
+                self._connection_options,
+                self._messages,
+                dry_run=self._dry_run,
+                trace_action=self._trace_action,
+            )
+        return self._frontend_client
+
+    @abstractmethod
+    def _get_metadata(self, frontend_owner: str, frontend_name: str) -> dict | None:
+        """Return metadata object for owner/name"""
+
+    def _metadata_dict_to_json_string(self, metadata_dict: dict | list) -> str:
+        """Encode metadata dictionary to JSON string using msgspec."""
+        return serialize_object(metadata_dict)
+
+    def _metadata_keys_with_positions(self) -> dict:
+        return {k: i for i, k in enumerate(ALL_METADATA_ATTRIBUTES)}
+
+    def _prepare_command_parameters(self, parameters: str | dict | None) -> str | None:
+        """Ensure PARAMETERS column value is a JSON str."""
+        if isinstance(parameters, dict):
+            return serialize_object(parameters)
+        return parameters
