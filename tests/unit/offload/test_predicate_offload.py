@@ -5,12 +5,12 @@
 
 """Offload predicate test code."""
 
-from optparse import OptionValueError
 from unittest import TestCase, main
 
 import numpy as np
 from lark import Token, Tree
 
+from goe.exceptions import OptionValueError
 from goe.offload.bigquery import bigquery_column, bigquery_predicate
 from goe.offload.hadoop import hadoop_column, hadoop_predicate
 from goe.offload.microsoft import synapse_column, synapse_predicate

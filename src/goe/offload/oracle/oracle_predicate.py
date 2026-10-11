@@ -5,10 +5,9 @@
 
 """Offload predicate specialisations for Oracle."""
 
-from optparse import OptionValueError
-
 import numpy as np
 
+from goe.exceptions import OptionValueError
 from goe.offload import predicate_offload
 from goe.offload.oracle.oracle_column import ORACLE_TYPE_DATE, ORACLE_TYPE_TIMESTAMP
 

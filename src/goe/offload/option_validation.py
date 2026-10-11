@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import re
-from optparse import OptionValueError
 from typing import TYPE_CHECKING
 
-from goe.exceptions import OffloadException, OffloadOptionError
+from goe.exceptions import OffloadException, OffloadOptionError, OptionValueError
 from goe.offload import offload_constants
 from goe.offload.offload_source_table import (
     DATA_SAMPLE_SIZE_AUTO,

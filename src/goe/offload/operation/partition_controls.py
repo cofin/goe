@@ -4,8 +4,8 @@
 """Functions for validating backend partition controls in Offload"""
 
 import re
-from optparse import OptionValueError
 
+from goe.exceptions import OptionValueError
 from goe.offload.column_metadata import (
     ColumnPartitionInfo,
     is_synthetic_partition_column,

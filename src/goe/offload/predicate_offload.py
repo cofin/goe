@@ -80,12 +80,12 @@ eg. (column(EVENT_TIME) >= datetime(2020-01-01)) AND (column(EVENT_CODE) IN (num
 import datetime
 import logging
 import traceback
-from optparse import OptionValueError
 
 import lark
 import numpy as np
 from lark import Token, Tree
 
+from goe.exceptions import OptionValueError
 from goe.offload.column_metadata import (
     ColumnMetadataInterface,
     get_partition_columns,
