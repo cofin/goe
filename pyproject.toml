@@ -335,6 +335,10 @@ filterwarnings = [
 markers = [
     "unit: Unit tests",
     "integration: Integration tests",
+    "oracle: requires a live Oracle Database connection (ORA_ADM_USER / GOE_TEST_USER_PASS)",
+    "bigquery: requires Google BigQuery ADC credentials and GOOGLE_CLOUD_PROJECT",
+    "gcs: requires Google Cloud Storage ADC credentials and OFFLOAD_FS_CONTAINER",
+    "spark: requires Apache Spark or Dataproc transport",
 ]
 minversion = "6.0"
 testpaths = ["tests"]

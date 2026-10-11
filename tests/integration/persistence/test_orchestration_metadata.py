@@ -138,128 +138,16 @@ EXAMPLE_STORY_PBO_R_INTRA_METADATA_DICT = {
 class TestOrchestrationMetadata(TestCase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.config = None
+        self.messages = None
+        self.db = None
+        self.maxDiff = None
+
+    def setUp(self):
+        super().setUp()
         self.config = build_current_options()
         self.messages = get_test_messages(self.config, "TestOrchestrationMetadata")
         self.db = get_default_test_user()
-        # See all unittest output in diff mismatches
-        self.maxDiff = None
-
-    def _convert_to_test_metadata(
-        self,
-        source_metadata,
-        new_owner,
-        new_name,
-    ):
-        """Generate some test data, using the metadata for SALES as a base and a description of the
-        OFFLOAD_METADATA table to fill in the blanks...
-        """
-        # Modify the test data...
-        test_metadata = source_metadata
-        test_metadata["OFFLOADED_OWNER"] = new_owner
-        test_metadata["OFFLOADED_TABLE"] = new_name
-        # There is a unique key on backend table too:
-        test_metadata["HADOOP_TABLE"] = new_name
-        for k, v in test_metadata.items():
-            if v is None:
-                # Fill in the blanks with dummy data.
-                test_metadata[k] = METADATA_DICT_TEST_DEFAULTS[k]
-        return test_metadata
-
-    def _gen_test_metadata(self, table_name_suffix=None):
-        source_metadata = OrchestrationMetadata(EXAMPLE_SALES_METADATA_DICT)
-        new_metadata_dict = self._convert_to_test_metadata(
-            source_metadata.as_dict(),
-            self.db,
-            UNITTEST_METADATA_NAME + (table_name_suffix or ""),
-        )
-        return OrchestrationMetadata(new_metadata_dict, connection_options=self.config, messages=self.messages)
-
-    def _test_metadata(
-        self,
-        test_metadata: OrchestrationMetadata,
-        client=None,
-        connection_options=None,
-        messages=None,
-    ):
-        """Tests we can get/change and delete OrchestrationMetadata"""
-        execution_id = ExecutionId()
-        repo_client = test_metadata.client
-        cid = repo_client.start_command(
-            execution_id,
-            orchestration_constants.COMMAND_OFFLOAD,
-            "test",
-            '{"test": 123}',
-        )
-
-        # Inject the execution id into our test metadata.
-        test_metadata.command_execution = execution_id
-
-        # Save initial metadata.
-        test_metadata.save()
-
-        # Retrieve the metadata again and confirm all attributes are the same as those we saved.
-        saved_metadata = OrchestrationMetadata.from_name(
-            self.db,
-            test_metadata.offloaded_table,
-            client=client,
-            connection_options=connection_options,
-            messages=messages,
-        )
-        self.assertIsInstance(saved_metadata, OrchestrationMetadata)
-        self.assertEqual(
-            test_metadata.as_dict(),
-            saved_metadata.as_dict(),
-            "Saved metadata mismatch when re-fetched",
-        )
-
-        # Test that the save function updates changes
-        # Change by attribute:
-        test_metadata.incremental_high_value = EXAMPLE_SALES_METADATA_DICT_HV2
-        test_metadata.save()
-        saved_metadata = OrchestrationMetadata.from_name(
-            self.db,
-            test_metadata.offloaded_table,
-            client=client,
-            connection_options=connection_options,
-            messages=messages,
-        )
-        self.assertIsInstance(saved_metadata, OrchestrationMetadata)
-        self.assertEqual(
-            test_metadata.offload_snapshot,
-            saved_metadata.offload_snapshot,
-            "Saved metadata.offload_snapshot mismatch when re-fetched",
-        )
-        # Change by dict:
-        test_metadata_dict = test_metadata.as_dict()
-        test_metadata_dict["INCREMENTAL_HIGH_VALUE"] = EXAMPLE_SALES_METADATA_DICT_HV3
-        test_metadata = OrchestrationMetadata(test_metadata_dict, client=test_metadata.client)
-        test_metadata.save()
-        saved_metadata = OrchestrationMetadata.from_name(
-            self.db,
-            test_metadata.offloaded_table,
-            client=client,
-            connection_options=connection_options,
-            messages=messages,
-        )
-        self.assertIsInstance(saved_metadata, OrchestrationMetadata)
-        self.assertEqual(
-            test_metadata.offload_snapshot,
-            saved_metadata.offload_snapshot,
-            "Saved metadata.offload_snapshot mismatch when re-fetched",
-        )
-
-        # Drop metadata
-        test_metadata.drop()
-        saved_metadata = OrchestrationMetadata.from_name(
-            self.db,
-            test_metadata.offloaded_table,
-            client=client,
-            connection_options=connection_options,
-            messages=messages,
-        )
-        self.assertIsNone(saved_metadata, "Metadata was not deleted")
-
-        repo_client.end_command(cid, orchestration_constants.COMMAND_SUCCESS)
 
     def test_metadata_by_client(self):
         """Tests we can interact with OrchestrationMetadata by client.
@@ -286,7 +174,6 @@ class TestOrchestrationMetadata(TestCase):
         """Test that the metadata prepared with gen_offload_metadata goes through the standard test flow."""
         source_metadata = self._gen_test_metadata(table_name_suffix="_GM")
         source_metadata_dict = source_metadata.as_dict()
-        # Generate a new metadata object using constructor attributes
         attributes = {k: source_metadata_dict[v] for k, v in METADATA_ATTRIBUTES.items()}
         new_metadata = OrchestrationMetadata.from_attributes(
             connection_options=self.config, messages=self.messages, **attributes
@@ -322,21 +209,19 @@ class TestOrchestrationMetadata(TestCase):
         self.assertEqual(pbo_metadata.is_hwm_in_hybrid_view(), True)
 
     def test_incremental_data_append_feature(self):
-        # Offload dimension
+        """Verify incremental_data_append_feature across dimension, partition, subpartition, and predicate offloads."""
         channels_metadata = OrchestrationMetadata(EXAMPLE_CHANNELS_METADATA_DICT)
         self.assertIsInstance(channels_metadata.incremental_data_append_feature(), str)
         self.assertNotIn("partition", channels_metadata.incremental_data_append_feature().lower())
         self.assertNotIn("sub", channels_metadata.incremental_data_append_feature().lower())
         self.assertNotIn("predicate", channels_metadata.incremental_data_append_feature().lower())
 
-        # Offload by partition
         sales_metadata = OrchestrationMetadata(EXAMPLE_SALES_METADATA_DICT)
         self.assertIsInstance(sales_metadata.incremental_data_append_feature(), str)
         self.assertIn("partition", sales_metadata.incremental_data_append_feature().lower())
         self.assertNotIn("sub", sales_metadata.incremental_data_append_feature().lower())
         self.assertNotIn("predicate", sales_metadata.incremental_data_append_feature().lower())
 
-        # Offload by subpartition
         goe_list_range_day_dt_metadata = OrchestrationMetadata(EXAMPLE_GOE_LIST_RANGE_DAY_DT_METADATA_DICT)
         self.assertIsInstance(goe_list_range_day_dt_metadata.incremental_data_append_feature(), str)
         self.assertIn(
@@ -352,19 +237,123 @@ class TestOrchestrationMetadata(TestCase):
             goe_list_range_day_dt_metadata.incremental_data_append_feature().lower(),
         )
 
-        # Offload by predicate
         pbo_metadata = OrchestrationMetadata(EXAMPLE_STORY_PBO_DIM_METADATA_DICT)
         self.assertIsInstance(pbo_metadata.incremental_data_append_feature(), str)
         self.assertNotIn("partition", pbo_metadata.incremental_data_append_feature().lower())
         self.assertNotIn("sub", pbo_metadata.incremental_data_append_feature().lower())
         self.assertIn("predicate", pbo_metadata.incremental_data_append_feature().lower())
 
-        # Offload by predicate and partition
         intra_pbo_metadata = OrchestrationMetadata(EXAMPLE_STORY_PBO_R_INTRA_METADATA_DICT)
         self.assertIsInstance(intra_pbo_metadata.incremental_data_append_feature(), str)
         self.assertIn("partition", intra_pbo_metadata.incremental_data_append_feature().lower())
         self.assertNotIn("sub", intra_pbo_metadata.incremental_data_append_feature().lower())
         self.assertIn("predicate", intra_pbo_metadata.incremental_data_append_feature().lower())
+
+    def _convert_to_test_metadata(
+        self,
+        source_metadata,
+        new_owner,
+        new_name,
+    ):
+        """Generate some test data, using the metadata for SALES as a base and a description of the
+        OFFLOAD_METADATA table to fill in the blanks...
+        """
+        test_metadata = source_metadata
+        test_metadata["OFFLOADED_OWNER"] = new_owner
+        test_metadata["OFFLOADED_TABLE"] = new_name
+        test_metadata["HADOOP_TABLE"] = new_name
+        for k, v in test_metadata.items():
+            if v is None:
+                test_metadata[k] = METADATA_DICT_TEST_DEFAULTS[k]
+        return test_metadata
+
+    def _gen_test_metadata(self, table_name_suffix=None):
+        source_metadata = OrchestrationMetadata(EXAMPLE_SALES_METADATA_DICT)
+        new_metadata_dict = self._convert_to_test_metadata(
+            source_metadata.as_dict(),
+            self.db,
+            UNITTEST_METADATA_NAME + (table_name_suffix or ""),
+        )
+        return OrchestrationMetadata(new_metadata_dict, connection_options=self.config, messages=self.messages)
+
+    def _test_metadata(
+        self,
+        test_metadata: OrchestrationMetadata,
+        client=None,
+        connection_options=None,
+        messages=None,
+    ):
+        """Tests we can get/change and delete OrchestrationMetadata"""
+        execution_id = ExecutionId()
+        repo_client = test_metadata.client
+        cid = repo_client.start_command(
+            execution_id,
+            orchestration_constants.COMMAND_OFFLOAD,
+            "test",
+            '{"test": 123}',
+        )
+
+        test_metadata.command_execution = execution_id
+        test_metadata.save()
+
+        saved_metadata = OrchestrationMetadata.from_name(
+            self.db,
+            test_metadata.offloaded_table,
+            client=client,
+            connection_options=connection_options,
+            messages=messages,
+        )
+        self.assertIsInstance(saved_metadata, OrchestrationMetadata)
+        self.assertEqual(
+            test_metadata.as_dict(),
+            saved_metadata.as_dict(),
+            "Saved metadata mismatch when re-fetched",
+        )
+
+        test_metadata.incremental_high_value = EXAMPLE_SALES_METADATA_DICT_HV2
+        test_metadata.save()
+        saved_metadata = OrchestrationMetadata.from_name(
+            self.db,
+            test_metadata.offloaded_table,
+            client=client,
+            connection_options=connection_options,
+            messages=messages,
+        )
+        self.assertIsInstance(saved_metadata, OrchestrationMetadata)
+        self.assertEqual(
+            test_metadata.offload_snapshot,
+            saved_metadata.offload_snapshot,
+            "Saved metadata.offload_snapshot mismatch when re-fetched",
+        )
+        test_metadata_dict = test_metadata.as_dict()
+        test_metadata_dict["INCREMENTAL_HIGH_VALUE"] = EXAMPLE_SALES_METADATA_DICT_HV3
+        test_metadata = OrchestrationMetadata(test_metadata_dict, client=test_metadata.client)
+        test_metadata.save()
+        saved_metadata = OrchestrationMetadata.from_name(
+            self.db,
+            test_metadata.offloaded_table,
+            client=client,
+            connection_options=connection_options,
+            messages=messages,
+        )
+        self.assertIsInstance(saved_metadata, OrchestrationMetadata)
+        self.assertEqual(
+            test_metadata.offload_snapshot,
+            saved_metadata.offload_snapshot,
+            "Saved metadata.offload_snapshot mismatch when re-fetched",
+        )
+
+        test_metadata.drop()
+        saved_metadata = OrchestrationMetadata.from_name(
+            self.db,
+            test_metadata.offloaded_table,
+            client=client,
+            connection_options=connection_options,
+            messages=messages,
+        )
+        self.assertIsNone(saved_metadata, "Metadata was not deleted")
+
+        repo_client.end_command(cid, orchestration_constants.COMMAND_SUCCESS)
 
 
 if __name__ == "__main__":
