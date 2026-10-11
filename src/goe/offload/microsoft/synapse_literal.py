@@ -26,21 +26,7 @@ from goe.offload.microsoft.synapse_column import (
 )
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-###########################################################################
-# SynapseLiteral
-###########################################################################
 
 
 class SynapseLiteral(FormatLiteralInterface):
@@ -51,9 +37,13 @@ class SynapseLiteral(FormatLiteralInterface):
         This is based on:
             https://docs.microsoft.com/en-us/sql/analytics-platform-system/load-with-insert?view=aps-pdw-2016-au7
         Disappointingly primitive.
+
+        Assuming DATETIME if no data_type specified
+        Any uniqueidentifier literal should drop in here therefore we don't need a specific format.
         """
 
         def format_date_for_data_type(str_val, data_type):
+            """%z in strftime does not have a colon in the timezone offset which Synapse requires"""
             if data_type == SYNAPSE_TYPE_DATE:
                 return "'%s'" % str_val[:10]
             if data_type in [
@@ -63,7 +53,6 @@ class SynapseLiteral(FormatLiteralInterface):
             ]:
                 return "'%s'" % cls._strip_unused_time_scale(str_val)
             if data_type == SYNAPSE_TYPE_DATETIMEOFFSET and re.match(RE_TIMEZONE_NO_COLON, str_val):
-                # %z in strftime does not have a colon in the timezone offset which Synapse requires
                 return f"'{str_val[:-2]}:{str_val[-2:]}'"
             return "'%s'" % str_val
 
@@ -75,26 +64,22 @@ class SynapseLiteral(FormatLiteralInterface):
             elif data_type:
                 new_py_val = format_date_for_data_type(str(python_value).replace("T", " "), data_type)
             else:
-                # Assuming DATETIME if no data_type specified
                 new_py_val = format_date_for_data_type(str(python_value).replace("T", " "), SYNAPSE_TYPE_DATETIME)
         elif isinstance(python_value, date):
             if data_type == SYNAPSE_TYPE_DATE:
                 new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d"), data_type)
             elif data_type == SYNAPSE_TYPE_DATETIMEOFFSET:
-                if not python_value.tzinfo:
-                    # Assume empty TZ means UTC
+                if not getattr(python_value, "tzinfo", None):
                     new_py_val = format_date_for_data_type(
                         python_value.strftime("%Y-%m-%d %H:%M:%S.%f +00:00"), data_type
                     )
                 else:
-                    # Synapse only understands HH:MM time zone offset, not named time zones
                     new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S.%f %z"), data_type)
             elif data_type == SYNAPSE_TYPE_TIME:
                 new_py_val = format_date_for_data_type(python_value.strftime("%H:%M:%S.%f"), data_type)
             elif data_type:
                 new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type)
             else:
-                # Assuming DATETIME if no data_type specified
                 new_py_val = format_date_for_data_type(
                     python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), SYNAPSE_TYPE_DATETIME
                 )
@@ -113,7 +98,6 @@ class SynapseLiteral(FormatLiteralInterface):
             else:
                 new_py_val = "0x%s" % python_value.hex()
         elif isinstance(python_value, str):
-            # Any uniqueidentifier literal should drop in here therefore we don't need a specific format.
             new_py_val = "'%s'" % python_value
         elif isinstance(python_value, bytes):
             new_py_val = "'%s'" % python_value.decode()

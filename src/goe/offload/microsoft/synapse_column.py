@@ -11,11 +11,6 @@ from goe.offload.column_metadata import (
     ColumnMetadataInterface,
 )
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# Eventually these may converge with MSSQL types into e.g. MICROSOFT_TYPE_X
 SYNAPSE_TYPE_BIGINT = "bigint"
 SYNAPSE_TYPE_BINARY = "binary"
 SYNAPSE_TYPE_BIT = "bit"
@@ -43,11 +38,6 @@ SYNAPSE_TYPE_VARCHAR = "varchar"
 SYNAPSE_TYPE_MAX_TOKEN = "max"
 
 
-###########################################################################
-# CLASSES
-###########################################################################
-
-
 class SynapseColumn(ColumnMetadataInterface):
     """Holds details for a single table column
     Table objects hold a list of objects of this class
@@ -68,6 +58,7 @@ class SynapseColumn(ColumnMetadataInterface):
         char_semantics=None,
         collation=None,
     ):
+        """Collation is a Microsoft only attribute and not present in ColumnMetadataInterface."""
         super().__init__(
             name,
             data_type,
@@ -81,7 +72,6 @@ class SynapseColumn(ColumnMetadataInterface):
             char_length=char_length,
             char_semantics=char_semantics,
         )
-        # Collation is a Microsoft only attribute and not present in ColumnMetadataInterface.
         self.collation = collation
 
     def format_data_type(self):

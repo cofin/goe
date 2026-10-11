@@ -9,6 +9,7 @@ import logging
 import re
 from datetime import date, datetime
 from textwrap import dedent
+from typing import Any
 
 from numpy import datetime64
 
@@ -87,13 +88,8 @@ from goe.offload.teradata.teradata_partition_expression import (
 from goe.util.misc_functions import chunk_list
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
-
-###########################################################################
-# CONSTANTS
-###########################################################################
 
 DATA_SAMPLE_SIZE_MIN_PCT = 0.000001
 DATA_SAMPLE_SIZE_MAX_PCT = 0.999999
@@ -107,19 +103,10 @@ SUPPORTED_RANGE_DATA_TYPES = [
     TERADATA_TYPE_SMALLINT,
     TERADATA_TYPE_NUMBER,
 ]
-SUPPORTED_LIST_DATA_TYPES = []
+SUPPORTED_LIST_DATA_TYPES: list[str] = []
 
 STRTOK_SPLIT_TO_TABLE_MAX_LENGTH = 31000
 STRTOK_SPLIT_TO_TABLE_MAX_SUBCSV_ITEMS = 2000
-
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-###########################################################################
-# CLASSES
-###########################################################################
 
 
 class TeradataSourceTable(OffloadSourceTableInterface):
@@ -164,304 +151,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             if self._table_exists:
                 self._size_in_bytes = self._get_table_size()
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _decode_partition_high_values_string(self, hv, data_type):
-        """Convert partition high value to string"""
-        if hv is None:
-            return None
-        return self._db_api.to_frontend_literal(hv, data_type)
-
-    def _get_column_low_high_values(self, column_name, from_stats=True, sample_perc=1):
-        """Return low/high values for a specific column either from stats or from sampling data in the table
-        When using optimiser stats only certain data types are supported
-        """
-        logger.debug(
-            "get_column_low_high_values: %s, %s, %s, %s" % (self.owner, self.table_name, column_name, from_stats)
-        )
-        assert column_name
-        column_name = column_name.upper()
-
-        if from_stats:
-            # TODO Can't find a way to do this on Teradata but we should revisit and try harder than I did for MVP.
-            raise NotImplementedError("Low/high value from statistics is not supported")
-        q = dedent(
-            """\
-                SELECT MIN(%(col)s)
-                ,      MAX(%(col)s)
-                FROM   %(owner_table)s
-                SAMPLE %(perc)s"""
-        ) % {
-            "owner_table": self._db_api.enclose_object_reference(self.owner, self.table_name),
-            "col": column_name,
-            "perc": self._sample_data_types_data_sample_pct(sample_perc or 1),
-        }
-        row = self._db_api.execute_query_fetch_one(q)
-
-        return row
-
-    def _get_hash_bucket_candidate(self):
-        """Return the column name of a selective column suitable for use as a bucket/hash column.
-        Techniques may differ by frontend but in general we are looking for a column with high distinct values
-        and low number of NULLs.
-        """
-        logger.debug("_get_hash_bucket_candidate: %s, %s" % (self.owner, self.table_name))
-        # TODO we could look for any unique indexes
-        # TODO we can use stats like on Oracle but we need to have a proper look into summary vs more detailed stats.
-        raise NotImplementedError("_get_hash_bucket_candidate() pending implementation on Teradata")
-
-    def _get_primary_partition_expression(
-        self,
-    ) -> TeradataPartitionExpression | None:
-        """Return a TeradataPartitionExpression object describing the first row partition expression we'll use
-        to drive offloads.
-        The result is cached in state because we'll need to decode this data for multiple reasons.
-        """
-        if self._primary_partition_expression is None:
-            try:
-                self._primary_partition_expression = teradata_get_primary_partition_expression(
-                    self.owner, self.table_name, self._db_api
-                )
-            except (
-                UnsupportedCaseNPartitionExpression,
-                UnsupportedPartitionExpression,
-            ) as exc:
-                # Treat tables with unsupported partition expressions as non-partitioned.
-                self._log(
-                    f"Cannot retrieve partition expression, treating table as not partitioned: {exc!s}",
-                    detail=VVERBOSE,
-                )
-        return self._primary_partition_expression
-
-    def _get_partitions(self, strict=True, populate_hvs=True) -> list:
-        """Return a list of RdbmsPartition() objects
-        Partitions are in high value descending order
-        """
-        logger.debug("_get_partitions: %s, %s" % (self.owner, self.table_name))
-        pe = self._get_primary_partition_expression()
-        partition_column = match_table_column(pe.column, self.partition_columns)
-        owner_table = self._db_api.enclose_object_reference(self.owner, self.table_name)
-
-        if pe.partition_type != OFFLOAD_PARTITION_TYPE_RANGE:
-            raise NotImplementedError(f"Partition type is not supported on Teradata: {pe.partition_type}")
-
-        if partition_column.data_type in (TERADATA_TYPE_DATE, TERADATA_TYPE_TIMESTAMP):
-            margin = "INTERVAL '1' DAY" if partition_column.data_type == TERADATA_TYPE_TIMESTAMP else "1"
-            range_n_periods_cte_template = """SELECT END(pd) AS period_end
-            FROM   SYS_CALENDAR.CALENDAR
-            WHERE  calendar_date = {start}
-            EXPAND ON PERIOD( {start}, {end} + {end_margin} ) AS pd BY {interval}"""
-            cte_branches = [
-                range_n_periods_cte_template.format(start=start, end=end, interval=interval, end_margin=margin)
-                for start, end, interval in pe.ranges
-            ]
-            range_n_periods_cte = "\n            UNION ALL\n            ".join(cte_branches)
-        elif partition_column.is_number_based():
-            cte_branches = []
-            for start, end, interval in pe.ranges:
-                # Get Teradata to work out how many periods there are, then we don't need to understand the step literal.
-                row = self._db_api.execute_query_fetch_one(
-                    f"SELECT ({end}-{start})/{interval} AS n", log_level=VVERBOSE
-                )
-                interval_count = row[0]
-                intervals = [str(_ + 1) for _ in range(interval_count)]
-                interval_csv = ",".join(intervals)
-                if len(interval_csv) > STRTOK_SPLIT_TO_TABLE_MAX_LENGTH:
-                    # Split the CSV into sub-CSVs of no more than STRTOK_SPLIT_TO_TABLE_MAX_SUBCSV_ITEMS elements
-                    # keeping each list well below the limit.
-                    sub_intervals = chunk_list(intervals, STRTOK_SPLIT_TO_TABLE_MAX_SUBCSV_ITEMS)
-                    interval_csvs = [",".join(_) for _ in sub_intervals]
-                else:
-                    interval_csvs = [interval_csv]
-
-                for interval_csv in interval_csvs:
-                    sql = f"""SELECT {start} + ({interval} * CAST(d.token AS INTEGER)) AS period_end
-            FROM TABLE (STRTOK_SPLIT_TO_TABLE(1, '{interval_csv}', ',')
-                 RETURNS (outkey INTEGER, tokennum INTEGER, token VARCHAR(64) CHARACTER SET UNICODE)
-            ) AS d"""
-                    cte_branches.append(sql)
-            range_n_periods_cte = "\n            UNION ALL\n            ".join(cte_branches)
-        else:
-            raise NotImplementedError(
-                f'Teradata partition retrieval by "{partition_column.data_type}" has not been implemented'
-            )
-
-        # The SQL below appears to retrieve all data from the source table but our testing shows that
-        # "SELECT DISTINCT PARTITION#L1" utilises "cylinder index scan" which is much faster than retrieving
-        # all rows, example text from EXPLAIN:
-        #       3) We do an all-AMPs SUM step in TD_MAP1 to aggregate from
-        #          ?.? by way of a cylinder index scan with no residual
-        #          conditions, grouping by field1 (?.?.PARTITION#L1).
-        sql = dedent(
-            f"""\
-        WITH partition_range_metadata AS (
-            SELECT ROW_NUMBER() OVER (ORDER BY period_end) AS partition_no
-            ,      period_end                              AS high_value
-            FROM   range_n_periods)
-        ,    range_n_periods AS (
-            {range_n_periods_cte})
-        ,    populated_partitions AS (
-                SELECT DISTINCT {pe.pseudo_column} AS partition_no
-                FROM   {owner_table})
-        SELECT pp.partition_no
-        ,      prm.high_value
-        ,      CASE
-                  WHEN prm.partition_no IS NULL
-                  THEN 'Y'
-                  ELSE NULL
-               END AS out_of_range
-        FROM   populated_partitions     pp
-               LEFT OUTER JOIN
-               partition_range_metadata prm
-               ON (prm.partition_no = pp.partition_no)
-        ORDER  BY pp.partition_no DESC"""
-        )
-        rows = self._db_api.execute_query_fetch_all(sql, log_level=VVERBOSE)
-        partitions = []
-        # TODO Using avergae partition size is obviously flawed but have not found how to get this
-        #      information on Teradata so this will suffice for MVP.
-        average_partition_size = int((self.size_in_bytes or 0) / len(rows)) if rows else None
-        for row in rows:
-            partition_id, partition_high_value, out_of_range = row[0], row[1], row[2]
-            if out_of_range:
-                if pe.partition_type == OFFLOAD_PARTITION_TYPE_RANGE:
-                    partition_high_value = offload_constants.PART_OUT_OF_RANGE
-                else:
-                    partition_high_value = offload_constants.PART_OUT_OF_LIST
-            hv_literal = self._decode_partition_high_values_string(partition_high_value, partition_column.data_type)
-            hv_list = convert_high_values_to_python(
-                self.partition_columns,
-                [partition_high_value],
-                self.partition_type,
-                self,
-                strict=strict,
-            )
-            partition = RdbmsPartition.by_name(
-                partition_count=1,
-                partition_name=str(partition_id),
-                partition_position=partition_id,
-                partition_size=average_partition_size,
-                high_values_csv=hv_literal,
-                high_values_individual=(hv_literal,),
-                high_values_python=hv_list,
-            )
-            partitions.append(partition)
-
-        return partitions
-
-    def _get_primary_index_columns(self) -> list:
-        """Return a list of primary index column objects for applicable frontends."""
-        pi_columns = []
-        # It is my understanding that only a single index on a table can have type in P, Q but just
-        # to be sure we also select the name and ensure all columns are for the same index.
-        q = dedent(
-            """\
-            SELECT IndexName, ColumnName
-            FROM   dbc.IndicesV
-            WHERE  DatabaseName = ?
-            AND    TableName = ?
-            AND    IndexType IN ('P', 'Q')"""
-        )
-        rows = self._db_api.execute_query_fetch_all(q, query_params=[self.owner, self.table_name])
-        if rows:
-            assert len(set([_[0] for _ in rows])) == 1, (
-                f"Multiple primary indexes unexpected: {[set([_[0] for _ in rows])]}"
-            )
-            for row in rows:
-                pi_columns.append(match_table_column(row[1], self.columns))
-        return pi_columns
-
-    def _get_table_details(self):
-        logger.debug("_get_table_details: %s, %s" % (self.owner, self.table_name))
-        # num_rows calculation below looks clunky, and probably is clunky.
-        # StatsV is by  column and is also a history table of previous stats records.
-        # Because of this we find the newest record. Finally use a MAX even though only 1 record to
-        # ensure we have NULL if no stats for the table.
-        # TODO we need to see how to get partition yes/no. PartitioningLevels is temporary
-        q = dedent(
-            """\
-            WITH s AS
-            (   SELECT RowCount
-                FROM   dbc.StatsV
-                WHERE  DatabaseName = ?
-                AND    TableName = ?
-                QUALIFY ROW_NUMBER() OVER (ORDER BY LastCollectTimeStamp, RowCount DESC) = 1)
-            SELECT PartitioningLevels
-            ,      (SELECT MAX(RowCount) FROM s) num_rows
-            FROM   DBC.TablesV
-            WHERE  DatabaseName = ?
-            AND    TableName = ?"""
-        )
-        row = self._db_api.execute_query_fetch_one(
-            q, query_params=[self.owner, self.table_name, self.owner, self.table_name]
-        )
-        if row:
-            self._table_exists = True
-            self._partition_levels = row[0]
-            self._stats_num_rows = row[1]
-            partition_expression = self._get_primary_partition_expression()
-            if partition_expression:
-                self._partition_type = partition_expression.partition_type
-        else:
-            self._table_exists = False
-
-    def _get_table_stats(self):
-        # TODO pending implementation
-        raise NotImplementedError("_get_table_stats() pending implementation on Teradata")
-        # return self._table_stats
-
-    def _is_compression_enabled(self) -> bool:
-        raise NotImplementedError("_is_compression_enabled() pending implementation on Teradata")
-
-    def _sample_data_types_compression_factor(self):
-        return 0.25
-
-    def _sample_data_types_data_sample_parallelism(self, data_sample_parallelism):
-        """No sampling parallelism on Teradata"""
-        return
-
-    def _sample_data_types_data_sample_pct(self, data_sample_pct):
-        if data_sample_pct is not None:
-            if data_sample_pct < 0:
-                return self._sample_data_types_min_pct()
-            if data_sample_pct >= 100:
-                return self._sample_data_types_max_pct()
-            # Teradata SAMPLE expects a fraction > 0 and < 1
-            return data_sample_pct / 100
-        return self._sample_data_types_max_pct()
-
-    def _sample_data_types_date_as_string_column(self, column_name):
-        return TeradataColumn(column_name, self._db_api.generic_string_data_type(), data_length=128)
-
-    def _sample_data_types_min_gb(self):
-        """1GB seems like a good target"""
-        return 1
-
-    def _sample_data_types_max_pct(self):
-        return 0.999999
-
-    def _sample_data_types_min_pct(self):
-        return 0.000001
-
-    def _sample_data_types_decimal_column(self, column, data_precision, data_scale):
-        return TeradataColumn(
-            column.name,
-            TERADATA_TYPE_NUMBER,
-            data_precision=data_precision,
-            data_scale=data_scale,
-            nullable=column.nullable,
-            safe_mapping=False,
-        )
-
-    def _sample_perc_sql_clause(self, data_sample_pct) -> str:
-        return f"SAMPLE {data_sample_pct}"
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def check_nanosecond_offload_allowed(self, backend_max_datetime_scale, allow_nanosecond_timestamp_columns=None):
         """Do not expect to get this far because the frontend does not support nano so the backend is irrelevant"""
         return False
@@ -474,7 +163,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         if isinstance(rdbms_literal, date):
             return datetime64(rdbms_literal)
         if rdbms_literal.startswith("DATE "):
-            # if decoding dba_tab_partitions.high_value then need to parse TO_DATE()
             _, dt, _ = rdbms_literal.split("'")
             return datetime64(dt)
         if rdbms_literal.startswith("TIMESTAMP "):
@@ -484,7 +172,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             return None
         raise NotImplementedError("Teradata date/time literal not implemented: %s" % rdbms_literal)
 
-    def decode_partition_high_values(self, hv_csv, strict=True) -> tuple:
+    def decode_partition_high_values(self, hv_csv: Any, strict: bool = True) -> tuple:
         logger.debug("decode_partition_high_values: %s, %s" % (hv_csv, strict))
         if not hv_csv or not self.partition_columns:
             return tuple()
@@ -536,7 +224,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         assert isinstance(column, CanonicalColumn)
 
         if column.data_type == GOE_TYPE_FIXED_STRING:
-            # TODO Don't know 32000 is just for UNICODE or if CHAR as well
             max_length = (
                 32000
                 if column.char_semantics in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
@@ -562,7 +249,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         if column.data_type == GOE_TYPE_LARGE_STRING:
             return new_column(column, TERADATA_TYPE_CLOB)
         if column.data_type == GOE_TYPE_VARIABLE_STRING:
-            # TODO Don't know 32000 is just for UNICODE or if CHAR as well
             max_length = (
                 32000
                 if column.char_semantics in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
@@ -621,7 +307,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
                 data_length=data_length,
             )
         if column.data_type in [GOE_TYPE_FLOAT, GOE_TYPE_DOUBLE]:
-            # Teradata REAL, FLOAT and DOUBLE are all the same thing, a 64 bit double.
             return new_column(column, TERADATA_TYPE_DOUBLE, data_length=8)
         if column.data_type == GOE_TYPE_DATE:
             return new_column(column, TERADATA_TYPE_DATE, data_length=4)
@@ -679,8 +364,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
     def get_max_partition_size(self):
         """Return the size of the largest partition"""
         if self.is_partitioned():
-            # TODO Using avergae partition size is obviously flawed but have not found how to get this
-            #      information on Teradata so this will suffice for MVP.
             partitions = self.get_partitions()
             average_partition_size = int((self.size_in_bytes or 0) / len(partitions)) if partitions else None
             return average_partition_size
@@ -693,7 +376,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         min_sql = f"SELECT MIN({self.enclose_identifier(self.partition_columns[0].name)}) FROM {self._db_api.enclose_object_reference(self.owner, self.table_name)}"
         row = self._db_api.execute_query_fetch_one(min_sql)
         if row and row[0] is None:
-            # Tuple (None, ) is True, catch that here and return None instead
             return None
         return row
 
@@ -743,7 +425,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
 
     @property
     def offload_partition_level(self) -> int | None:
-        # TODO we need to get the actual partition level from the partition expression
         return 1 if self.is_partitioned() else None
 
     def partition_has_rows(self, partition_name):
@@ -774,9 +455,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         return teradata_predicate.predicate_to_where_clause(columns_override or self.columns, predicate)
 
     def predicate_to_where_clause_with_binds(self, predicate):
-        # TODO Ideally we should revisit this and implement predicate_to_where_clause_with_binds(), but not for MVP.
         return teradata_predicate.predicate_to_where_clause(self.columns, predicate), []
-        # return teradata_predicate.predicate_to_where_clause_with_binds(self.columns, predicate), []
 
     def rdbms_literal_to_python(self, rdbms_column, rdbms_literal, partition_type, strict=True):
         logger.debug("rdbms_literal_to_python: %s, %s, %s" % (rdbms_column.name, rdbms_column.data_type, rdbms_literal))
@@ -810,7 +489,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             TERADATA_TYPE_DECIMAL,
             TERADATA_TYPE_DOUBLE,
             TERADATA_TYPE_INTEGER,
-            # TODO Only included INTERVAL DS and YM as they are supported in canonical model. Need to revisit.
             TERADATA_TYPE_INTERVAL_YM,
             TERADATA_TYPE_INTERVAL_DS,
             TERADATA_TYPE_NUMBER,
@@ -834,14 +512,14 @@ class TeradataSourceTable(OffloadSourceTableInterface):
     def supported_range_partition_data_type(self, data_type):
         return bool(data_type.upper() in SUPPORTED_RANGE_DATA_TYPES)
 
-    def teradata_partition_pseudo_column(self) -> str:
+    def teradata_partition_pseudo_column(self) -> str | None:
         """Teradata only method used in Teradata Offload Transport.
         With more time we should look at understanding partition levels across Oracle and Teradata and have
         a unified approach to choosing which level to offload at.
         For the time being we cheat and use this Teradata only method.
         """
         pe = self._get_primary_partition_expression()
-        return pe.pseudo_column
+        return pe.pseudo_column if pe else None
 
     def to_canonical_column(self, column):
         """Translate a Teradata column to an internal GOE column"""
@@ -862,7 +540,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             variants, doubles and variable strings.
             """
             safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            # TODO Do we need to know column/table/database character set here in order to set char_semantics?
             char_semantics = CANONICAL_CHAR_SEMANTICS_UNICODE if (123 == 456) else col.char_semantics
             return CanonicalColumn(
                 col.name,
@@ -884,8 +561,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         if column.data_type == TERADATA_TYPE_BIGINT:
             return new_column(column, GOE_TYPE_INTEGER_8, safe_mapping=True)
         if column.data_type == TERADATA_TYPE_BLOB:
-            # TODO Teradata BLOB/CLOB return 2097088000 (2GB) as the data length which is too large for Snowflake BINARY
-            # return new_column(column, GOE_TYPE_LARGE_BINARY, data_length=column.data_length)
             return new_column(column, GOE_TYPE_LARGE_BINARY, data_length=8388608)
         if column.data_type in [TERADATA_TYPE_BYTE, TERADATA_TYPE_VARBYTE]:
             return new_column(column, GOE_TYPE_BINARY, data_length=column.data_length)
@@ -899,7 +574,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
                 safe_mapping=True,
             )
         if column.data_type == TERADATA_TYPE_CLOB:
-            # TODO Teradata BLOB/CLOB return 2097088000 (2GB) as the char length which is too large for Snowflake TEXT
             column.char_length = 16777216
             return new_column(column, GOE_TYPE_LARGE_STRING, data_length=column.data_length)
         if column.data_type == TERADATA_TYPE_DATE:
@@ -910,7 +584,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             integral_type = self._frontend_decimal_to_integral_type(data_precision, data_scale)
             if integral_type:
                 return new_column(column, integral_type, data_precision=data_precision, data_scale=0)
-            # If precision & scale are None then this is unsafe, otherwise leave it None to let new_column() logic take over
             safe_mapping = False if data_precision is None and data_scale is None else None
             return new_column(
                 column,
@@ -967,7 +640,7 @@ class TeradataSourceTable(OffloadSourceTableInterface):
         if isinstance(py_val, datetime64):
             py_val = str(py_val).replace("T", " ")
         elif isinstance(py_val, date):
-            py_val = datetime.strptime(py_val, "%Y-%m-%d %H:%M:%S.%f")
+            py_val = datetime.strptime(str(py_val), "%Y-%m-%d %H:%M:%S.%f")
 
         if rdbms_data_type == TERADATA_TYPE_DATE:
             py_val = py_val[:19]
@@ -979,8 +652,6 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             fmt = "YYYY-MM-DD HH24:MI:SS.FF%s" % (str(ts_ff) if ts_ff > 0 else "")
             sql_fn = "TO_TIMESTAMP(%s," + f"'{fmt}')"
         elif rdbms_data_type == TERADATA_TYPE_TIMESTAMP_TZ:
-            # Unimplemented as we don't support timezones within the offload/present Python.
-            # We can offload the data but not as a partition key or for use with this code.
             raise NotImplementedError(
                 "Teradata to_rdbms_literal_with_sql_conv_fn() data type %s not implemented." % rdbms_data_type
             )
@@ -1041,3 +712,277 @@ class TeradataSourceTable(OffloadSourceTableInterface):
             self._log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
             return False
         return False
+
+    def _decode_partition_high_values_string(self, hv, data_type):
+        """Convert partition high value to string"""
+        if hv is None:
+            return None
+        return self._db_api.to_frontend_literal(hv, data_type)
+
+    def _get_column_low_high_values(self, column_name, from_stats=True, sample_perc=1):
+        """Return low/high values for a specific column either from stats or from sampling data in the table
+        When using optimiser stats only certain data types are supported
+
+        TODO Can't find a way to do this on Teradata but we should revisit and try harder than I did for MVP.
+        """
+        logger.debug(
+            "get_column_low_high_values: %s, %s, %s, %s" % (self.owner, self.table_name, column_name, from_stats)
+        )
+        assert column_name
+        column_name = column_name.upper()
+
+        if from_stats:
+            raise NotImplementedError("Low/high value from statistics is not supported")
+        q = dedent(
+            """\
+                SELECT MIN(%(col)s)
+                ,      MAX(%(col)s)
+                FROM   %(owner_table)s
+                SAMPLE %(perc)s"""
+        ) % {
+            "owner_table": self._db_api.enclose_object_reference(self.owner, self.table_name),
+            "col": column_name,
+            "perc": self._sample_data_types_data_sample_pct(sample_perc or 1),
+        }
+        row = self._db_api.execute_query_fetch_one(q)
+
+        return row
+
+    def _get_hash_bucket_candidate(self):
+        """Return the column name of a selective column suitable for use as a bucket/hash column.
+        Techniques may differ by frontend but in general we are looking for a column with high distinct values
+        and low number of NULLs.
+
+        TODO we could look for any unique indexes
+        TODO we can use stats like on Oracle but we need to have a proper look into summary vs more detailed stats.
+        """
+        logger.debug("_get_hash_bucket_candidate: %s, %s" % (self.owner, self.table_name))
+        raise NotImplementedError("_get_hash_bucket_candidate() pending implementation on Teradata")
+
+    def _get_primary_partition_expression(
+        self,
+    ) -> TeradataPartitionExpression | None:
+        """Return a TeradataPartitionExpression object describing the first row partition expression we'll use
+        to drive offloads.
+        The result is cached in state because we'll need to decode this data for multiple reasons.
+
+        Treat tables with unsupported partition expressions as non-partitioned.
+        """
+        if self._primary_partition_expression is None:
+            try:
+                self._primary_partition_expression = teradata_get_primary_partition_expression(
+                    self.owner, self.table_name, self._db_api
+                )
+            except (
+                UnsupportedCaseNPartitionExpression,
+                UnsupportedPartitionExpression,
+            ) as exc:
+                self._log(
+                    f"Cannot retrieve partition expression, treating table as not partitioned: {exc!s}",
+                    detail=VVERBOSE,
+                )
+        return self._primary_partition_expression
+
+    def _get_partitions(self, strict: bool = True, populate_hvs: bool = True) -> list:
+        """Return a list of RdbmsPartition() objects
+        Partitions are in high value descending order
+        """
+        logger.debug("_get_partitions: %s, %s" % (self.owner, self.table_name))
+        pe = self._get_primary_partition_expression()
+        assert pe is not None and pe.column is not None
+        partition_column = match_table_column(pe.column, self.partition_columns)
+        assert partition_column is not None
+        owner_table = self._db_api.enclose_object_reference(self.owner, self.table_name)
+
+        if pe.partition_type != OFFLOAD_PARTITION_TYPE_RANGE:
+            raise NotImplementedError(f"Partition type is not supported on Teradata: {pe.partition_type}")
+
+        if partition_column.data_type in (TERADATA_TYPE_DATE, TERADATA_TYPE_TIMESTAMP):
+            margin = "INTERVAL '1' DAY" if partition_column.data_type == TERADATA_TYPE_TIMESTAMP else "1"
+            range_n_periods_cte_template = """SELECT END(pd) AS period_end
+            FROM   SYS_CALENDAR.CALENDAR
+            WHERE  calendar_date = {start}
+            EXPAND ON PERIOD( {start}, {end} + {end_margin} ) AS pd BY {interval}"""
+            cte_branches = [
+                range_n_periods_cte_template.format(start=start, end=end, interval=interval, end_margin=margin)
+                for start, end, interval in (pe.ranges or [])
+            ]
+            range_n_periods_cte = "\n            UNION ALL\n            ".join(cte_branches)
+        elif partition_column.is_number_based():
+            cte_branches = []
+            for start, end, interval in pe.ranges or []:
+                row = self._db_api.execute_query_fetch_one(
+                    f"SELECT ({end}-{start})/{interval} AS n", log_level=VVERBOSE
+                )
+                interval_count = row[0]
+                intervals = [str(_ + 1) for _ in range(interval_count)]
+                interval_csv = ",".join(intervals)
+                if len(interval_csv) > STRTOK_SPLIT_TO_TABLE_MAX_LENGTH:
+                    sub_intervals = chunk_list(intervals, STRTOK_SPLIT_TO_TABLE_MAX_SUBCSV_ITEMS)
+                    interval_csvs = [",".join(_) for _ in sub_intervals]
+                else:
+                    interval_csvs = [interval_csv]
+
+                for interval_csv in interval_csvs:
+                    sql = f"""SELECT {start} + ({interval} * CAST(d.token AS INTEGER)) AS period_end
+            FROM TABLE (STRTOK_SPLIT_TO_TABLE(1, '{interval_csv}', ',')
+                 RETURNS (outkey INTEGER, tokennum INTEGER, token VARCHAR(64) CHARACTER SET UNICODE)
+            ) AS d"""
+                    cte_branches.append(sql)
+            range_n_periods_cte = "\n            UNION ALL\n            ".join(cte_branches)
+        else:
+            raise NotImplementedError(
+                f'Teradata partition retrieval by "{partition_column.data_type}" has not been implemented'
+            )
+
+        sql = dedent(
+            f"""\
+        WITH partition_range_metadata AS (
+            SELECT ROW_NUMBER() OVER (ORDER BY period_end) AS partition_no
+            ,      period_end                              AS high_value
+            FROM   range_n_periods)
+        ,    range_n_periods AS (
+            {range_n_periods_cte})
+        ,    populated_partitions AS (
+                SELECT DISTINCT {pe.pseudo_column} AS partition_no
+                FROM   {owner_table})
+        SELECT pp.partition_no
+        ,      prm.high_value
+        ,      CASE
+                  WHEN prm.partition_no IS NULL
+                  THEN 'Y'
+                  ELSE NULL
+               END AS out_of_range
+        FROM   populated_partitions     pp
+               LEFT OUTER JOIN
+               partition_range_metadata prm
+               ON (prm.partition_no = pp.partition_no)
+        ORDER  BY pp.partition_no DESC"""
+        )
+        rows = self._db_api.execute_query_fetch_all(sql, log_level=VVERBOSE)
+        partitions = []
+        average_partition_size = int((self.size_in_bytes or 0) / len(rows)) if rows else None
+        for row in rows:
+            partition_id, partition_high_value, out_of_range = row[0], row[1], row[2]
+            if out_of_range:
+                if pe.partition_type == OFFLOAD_PARTITION_TYPE_RANGE:
+                    partition_high_value = offload_constants.PART_OUT_OF_RANGE
+                else:
+                    partition_high_value = offload_constants.PART_OUT_OF_LIST
+            hv_literal = self._decode_partition_high_values_string(partition_high_value, partition_column.data_type)
+            hv_list = convert_high_values_to_python(
+                self.partition_columns,
+                [partition_high_value],
+                self.partition_type,
+                self,
+                strict=strict,
+            )
+            partition = RdbmsPartition.by_name(
+                partition_count=1,
+                partition_name=str(partition_id),
+                partition_position=partition_id,
+                partition_size=average_partition_size,
+                high_values_csv=hv_literal,
+                high_values_individual=(hv_literal,),
+                high_values_python=hv_list,
+            )
+            partitions.append(partition)
+
+        return partitions
+
+    def _get_primary_index_columns(self) -> list:
+        """Return a list of primary index column objects for applicable frontends."""
+        pi_columns = []
+        q = dedent(
+            """\
+            SELECT IndexName, ColumnName
+            FROM   dbc.IndicesV
+            WHERE  DatabaseName = ?
+            AND    TableName = ?
+            AND    IndexType IN ('P', 'Q')"""
+        )
+        rows = self._db_api.execute_query_fetch_all(q, query_params=[self.owner, self.table_name])
+        if rows:
+            assert len(set([_[0] for _ in rows])) == 1, (
+                f"Multiple primary indexes unexpected: {[set([_[0] for _ in rows])]}"
+            )
+            for row in rows:
+                pi_columns.append(match_table_column(row[1], self.columns))
+        return pi_columns
+
+    def _get_table_details(self):
+        logger.debug("_get_table_details: %s, %s" % (self.owner, self.table_name))
+        q = dedent(
+            """\
+            WITH s AS
+            (   SELECT RowCount
+                FROM   dbc.StatsV
+                WHERE  DatabaseName = ?
+                AND    TableName = ?
+                QUALIFY ROW_NUMBER() OVER (ORDER BY LastCollectTimeStamp, RowCount DESC) = 1)
+            SELECT PartitioningLevels
+            ,      (SELECT MAX(RowCount) FROM s) num_rows
+            FROM   DBC.TablesV
+            WHERE  DatabaseName = ?
+            AND    TableName = ?"""
+        )
+        row = self._db_api.execute_query_fetch_one(
+            q, query_params=[self.owner, self.table_name, self.owner, self.table_name]
+        )
+        if row:
+            self._table_exists = True
+            self._partition_levels = row[0]
+            self._stats_num_rows = row[1]
+            partition_expression = self._get_primary_partition_expression()
+            if partition_expression:
+                self._partition_type = partition_expression.partition_type
+        else:
+            self._table_exists = False
+
+    def _get_table_stats(self):
+        raise NotImplementedError("_get_table_stats() pending implementation on Teradata")
+
+    def _is_compression_enabled(self) -> bool:
+        raise NotImplementedError("_is_compression_enabled() pending implementation on Teradata")
+
+    def _sample_data_types_compression_factor(self):
+        return 0.25
+
+    def _sample_data_types_data_sample_parallelism(self, data_sample_parallelism):
+        """No sampling parallelism on Teradata"""
+        return
+
+    def _sample_data_types_data_sample_pct(self, data_sample_pct):
+        if data_sample_pct is not None:
+            if data_sample_pct < 0:
+                return self._sample_data_types_min_pct()
+            if data_sample_pct >= 100:
+                return self._sample_data_types_max_pct()
+            return data_sample_pct / 100
+        return self._sample_data_types_max_pct()
+
+    def _sample_data_types_date_as_string_column(self, column_name):
+        return TeradataColumn(column_name, self._db_api.generic_string_data_type(), data_length=128)
+
+    def _sample_data_types_min_gb(self):
+        """1GB seems like a good target"""
+        return 1
+
+    def _sample_data_types_max_pct(self):
+        return 0.999999
+
+    def _sample_data_types_min_pct(self):
+        return 0.000001
+
+    def _sample_data_types_decimal_column(self, column, data_precision, data_scale):
+        return TeradataColumn(
+            column.name,
+            TERADATA_TYPE_NUMBER,
+            data_precision=data_precision,
+            data_scale=data_scale,
+            nullable=column.nullable,
+            safe_mapping=False,
+        )
+
+    def _sample_perc_sql_clause(self, data_sample_pct: Any) -> str:
+        return f"SAMPLE {data_sample_pct}"

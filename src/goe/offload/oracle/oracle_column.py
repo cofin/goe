@@ -14,11 +14,6 @@ from goe.offload.column_metadata import (
     ColumnMetadataInterface,
 )
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# Data type constants, these must match the types stored in the data dictionary
 ORACLE_TYPE_CHAR = "CHAR"
 ORACLE_TYPE_NCHAR = "NCHAR"
 ORACLE_TYPE_CLOB = "CLOB"
@@ -54,11 +49,6 @@ ORACLE_INTERVAL_YM_RE = re.compile(r"^INTERVAL YEAR(\([0-9]\))? TO MONTH(\([0-9]
 ORACLE_INTERVAL_YM_SUB_PATTERN = "INTERVAL YEAR(%s) TO MONTH"
 
 
-###########################################################################
-# CLASSES
-###########################################################################
-
-
 class OracleColumn(ColumnMetadataInterface):
     """Holds details for a single table column
     Table objects hold a list of objects of this class
@@ -79,6 +69,7 @@ class OracleColumn(ColumnMetadataInterface):
         safe_mapping=True,
         partition_info=None,
     ):
+        """Oracle holds precision.scale information inside some data_type values, we remove them here"""
         super().__init__(
             name,
             data_type,
@@ -93,7 +84,6 @@ class OracleColumn(ColumnMetadataInterface):
             char_semantics=char_semantics,
         )
         self.hidden = self._optional_boolean(hidden)
-        # Oracle holds precision.scale information inside some data_type values, we remove them here
         if ORACLE_TIMESTAMP_RE.match(self.data_type):
             self.data_type = ORACLE_TYPE_TIMESTAMP
         elif ORACLE_TIMESTAMP_TZ_RE.match(self.data_type):
@@ -113,7 +103,10 @@ class OracleColumn(ColumnMetadataInterface):
 
     @staticmethod
     def from_oracle(attribute_list):
-        """Accepts an Oracle specific list of attributes for a column and returns object based on them"""
+        """Accepts an Oracle specific list of attributes for a column and returns object based on them
+
+        Precision for FLOAT does not match with our use of precision for NUMBER
+        """
         (
             name,
             _,
@@ -128,7 +121,6 @@ class OracleColumn(ColumnMetadataInterface):
             char_length,
         ) = attribute_list
         if data_type == ORACLE_TYPE_FLOAT and data_precision:
-            # Precision for FLOAT does not match with our use of precision for NUMBER
             data_precision = None
         if char_used:
             if data_type in [
@@ -156,6 +148,11 @@ class OracleColumn(ColumnMetadataInterface):
         return col
 
     def format_data_type(self):
+        """Oracle -> Oracle will always have char_length so this must be Backend -> Oracle
+
+        this is a bit of a fudge, if the data type is just TIMESTAMP then Oracle has a default of TIMESTAMP(6)
+        """
+
         def char_semantic(char_semantics):
             return "CHAR" if char_semantics == CANONICAL_CHAR_SEMANTICS_CHAR else "BYTE"
 
@@ -178,7 +175,6 @@ class OracleColumn(ColumnMetadataInterface):
                     self.char_length,
                     char_semantic(self.char_semantics),
                 )
-            # Oracle -> Oracle will always have char_length so this must be Backend -> Oracle
             return "%s(%s %s)" % (
                 self.data_type,
                 self.data_length,
@@ -187,10 +183,8 @@ class OracleColumn(ColumnMetadataInterface):
         if self.data_type in (ORACLE_TYPE_NCHAR, ORACLE_TYPE_NVARCHAR2):
             return "%s(%s)" % (self.data_type, self.char_length)
         if self.data_type == ORACLE_TYPE_TIMESTAMP:
-            # this is a bit of a fudge, if the data type is just TIMESTAMP then Oracle has a default of TIMESTAMP(6)
             return ORACLE_TIMESTAMP_SUB_PATTERN % (6 if self.data_scale is None else self.data_scale)
         if self.data_type == ORACLE_TYPE_TIMESTAMP_TZ:
-            # this is a bit of a fudge, if the data type is just TIMESTAMP then Oracle has a default of TIMESTAMP(6)
             return ORACLE_TIMESTAMP_TZ_SUB_PATTERN % (6 if self.data_scale is None else self.data_scale)
         if self.data_type == ORACLE_TYPE_TIMESTAMP_LOCAL_TZ:
             return ORACLE_TIMESTAMP_LOCAL_TZ_SUB_PATTERN % (6 if self.data_scale is None else self.data_scale)

@@ -7,12 +7,6 @@
 
 from goe.offload.column_metadata import ColumnMetadataInterface
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# Data type constants, these must match the types stored in the data dictionary
-
 MSSQL_TYPE_BIGINT = "bigint"
 MSSQL_TYPE_BIT = "bit"
 MSSQL_TYPE_DECIMAL = "decimal"
@@ -40,11 +34,6 @@ MSSQL_TYPE_NTEXT = "ntext"
 MSSQL_TYPE_BINARY = "binary"
 MSSQL_TYPE_VARBINARY = "varbinary"
 MSSQL_TYPE_IMAGE = "image"
-
-
-###########################################################################
-# CLASSES
-###########################################################################
 
 
 class MSSQLColumn(ColumnMetadataInterface):
@@ -111,7 +100,7 @@ class MSSQLColumn(ColumnMetadataInterface):
         return col
 
     def format_data_type(self):
-        # TODO not been through all types and format possibilities
+        """TODO not been through all types and format possibilities"""
         if self.data_type in [MSSQL_TYPE_DECIMAL, MSSQL_TYPE_NUMERIC]:
             if self.data_precision and self.data_scale is not None:
                 return "%s(%s,%s)" % (
