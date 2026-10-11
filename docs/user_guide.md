@@ -706,7 +706,8 @@ To use Managed Service for Apache Spark (permanent), at a minimum, the following
 - `GOOGLE_DATAPROC_CLUSTER`
 - `GOOGLE_DATAPROC_PROJECT`
 - `GOOGLE_DATAPROC_REGION`
-- `GOOGLE_DATAPROC_SERVICE_ACCOUNT`
+
+`GOOGLE_DATAPROC_SERVICE_ACCOUNT` is the runtime service account for Managed Spark serverless batches only; permanent cluster jobs run as the cluster VM service account. `gcloud` uses its active account unless `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT` or `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` is set, in which case GOE passes `--impersonate-service-account` to every `gcloud dataproc` command. See [Google Cloud Platform Setup](gcp_setup.md#authentication-application-default-credentials) for authentication options.
 
 Other options can be reviewed in the `offload.env` configuration file.
 
