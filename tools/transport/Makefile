@@ -9,8 +9,8 @@ SPARK_TARBALL=$(SPARK_REL_DIR).tgz
 JAR_DIR=$(SPARK_TARGET_DIR)/$(SPARK_REL_DIR)/jars
 AVRO_VER=2.12
 AVRO_JAR=spark-avro_$(AVRO_VER)-$(SPARK_VER).jar
-GCS_HADOOP_VER=hadoop3-2
-GCS_JAR=gcs-connector-$(GCS_HADOOP_VER).2.11-shaded.jar
+GCS_CONNECTOR_VER=3.0.20
+GCS_JAR=gcs-connector-$(GCS_CONNECTOR_VER)-shaded.jar
 
 .PHONY: spark-target spark-source spark-config
 
@@ -39,7 +39,7 @@ $(JAR_DIR)/$(AVRO_JAR): spark-source
 	test -f $(JAR_DIR)/$(AVRO_JAR) || wget --directory-prefix $(JAR_DIR)/ https://repo1.maven.org/maven2/org/apache/spark/spark-avro_$(AVRO_VER)/$(SPARK_VER)/$(AVRO_JAR)
 
 $(JAR_DIR)/$(GCS_JAR): spark-source
-	test -f $(JAR_DIR)/$(GCS_JAR) || wget --directory-prefix $(JAR_DIR)/ https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/$(GCS_HADOOP_VER).2.11/$(GCS_JAR)
+	test -f $(JAR_DIR)/$(GCS_JAR) || wget --directory-prefix $(JAR_DIR)/ https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/$(GCS_CONNECTOR_VER)/$(GCS_JAR)
 
 $(SPARK_TARGET_DIR):
 	test -d $(SPARK_TARGET_DIR) || mkdir $(SPARK_TARGET_DIR)
