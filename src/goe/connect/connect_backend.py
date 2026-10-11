@@ -6,6 +6,9 @@ import socket
 import sys
 import traceback
 
+from google.auth.exceptions import DefaultCredentialsError, RefreshError, TransportError
+from google.auth.transport.requests import Request
+
 from goe.config import orchestration_defaults
 from goe.connect.connect_constants import (
     CONNECT_DETAIL,
@@ -24,8 +27,10 @@ from goe.connect.connect_functions import (
     test_header,
     warning,
 )
+from goe.exceptions import OffloadOptionError
 from goe.filesystem.cli_hdfs import CliHdfs
 from goe.filesystem.goe_dfs import (
+    OFFLOAD_FS_SCHEME_GS,
     OFFLOAD_NON_HDFS_FS_SCHEMES,
     get_scheme_from_location_uri,
     uri_component_split,
@@ -42,6 +47,23 @@ from goe.offload.offload_constants import (
 )
 from goe.offload.offload_messages import VVERBOSE, OffloadMessages
 from goe.util.better_impyla import BetterImpylaException
+from goe.util.gcp_credentials import credential_principal, resolve_gcp_credentials
+
+GCP_CREDENTIALS_TEST_NAME = "Google Cloud credentials"
+GCP_ADC_MISSING_HINT = (
+    "No Application Default Credentials found. Attach a service account (GCE/GKE/Cloud Run), run "
+    "'gcloud auth application-default login', or point GOOGLE_APPLICATION_CREDENTIALS at a Workload Identity "
+    "Federation credential configuration file"
+)
+GCP_TOKEN_REFRESH_HINT = (
+    "Unable to obtain an access token. When GOOGLE_IMPERSONATE_SERVICE_ACCOUNT is set the ADC principal needs "
+    "roles/iam.serviceAccountTokenCreator on that service account and iamcredentials.googleapis.com must be enabled"
+)
+GCP_SERVICE_ACCOUNT_KEY_HINT = (
+    "ADC resolved to a service account private key file. Prefer an attached service account, "
+    "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT, or Workload Identity Federation and delete the key"
+)
+GCP_PROJECT_MISSING_HINT = "No Google Cloud project resolved. Set GOOGLE_CLOUD_PROJECT in offload.env"
 
 
 def static_backend_name(orchestration_config):
@@ -63,6 +85,49 @@ def is_hadoop_environment(orchestration_config):
 def get_backend_api(options, orchestration_config, messages=None, dry_run=False):
     api_messages = messages or OffloadMessages.from_options(options, get_log_fh())
     return backend_api_factory(orchestration_config.target, orchestration_config, api_messages, dry_run=dry_run)
+
+
+def uses_google_cloud(orchestration_config) -> bool:
+    """Return True when the configuration talks to BigQuery or stages data in Cloud Storage."""
+    return bool(
+        orchestration_config.backend_distribution == BACKEND_DISTRO_GCP
+        or orchestration_config.offload_fs_scheme == OFFLOAD_FS_SCHEME_GS
+    )
+
+
+def test_gcp_credentials(orchestration_config) -> None:
+    """Report the resolved Google Cloud identity and prove an access token can be minted.
+
+    Runs before the BigQuery connectivity test so ADC and impersonation failures surface with an actionable hint
+    instead of a client construction traceback. A resolved service account key or missing project is a warning.
+    """
+    test_header(GCP_CREDENTIALS_TEST_NAME)
+    try:
+        gcp = resolve_gcp_credentials(orchestration_config)
+        gcp.credentials.refresh(Request())
+    except DefaultCredentialsError as exc:
+        detail(str(exc))
+        failure(GCP_CREDENTIALS_TEST_NAME, GCP_ADC_MISSING_HINT)
+        return
+    except (RefreshError, TransportError) as exc:
+        detail(str(exc))
+        failure(GCP_CREDENTIALS_TEST_NAME, GCP_TOKEN_REFRESH_HINT)
+        return
+    except OffloadOptionError as exc:
+        detail(str(exc))
+        failure(GCP_CREDENTIALS_TEST_NAME)
+        return
+    detail(f"Credential type: {gcp.credential_type}")
+    detail(f"Principal: {credential_principal(gcp.credentials) or 'unknown'}")
+    detail(f"Impersonated service account: {gcp.impersonated_principal or 'none'}")
+    detail(f"Project: {gcp.project or 'not set'}")
+    detail(f"Quota project: {gcp.quota_project or 'not set'}")
+    if gcp.using_service_account_key:
+        warning(GCP_CREDENTIALS_TEST_NAME, GCP_SERVICE_ACCOUNT_KEY_HINT)
+    elif not gcp.project:
+        warning(GCP_CREDENTIALS_TEST_NAME, GCP_PROJECT_MISSING_HINT)
+    else:
+        success(GCP_CREDENTIALS_TEST_NAME)
 
 
 def test_backend_db_connectivity(options, orchestration_config, messages):
@@ -420,5 +485,7 @@ def run_check_backend_supporting_objects(backend_api, orchestration_config, test
 
 
 def run_backend_tests(options, orchestration_config, messages):
+    if uses_google_cloud(orchestration_config):
+        test_gcp_credentials(orchestration_config)
     backend_api = test_backend_db_connectivity(options, orchestration_config, messages)
     run_check_backend_supporting_objects(backend_api, orchestration_config, static_backend_name(orchestration_config))
