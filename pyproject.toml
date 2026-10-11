@@ -7,7 +7,7 @@ requires = ["hatchling"]
 
 [project]
 name = "goe-framework"
-version = "1.1.1.dev0"
+version = "1.1.0"
 description = "Gluent Offload Engine (GOE) Framework"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -26,17 +26,15 @@ dependencies = [
     # Core packages
     "pyarrow",
     "avro",
-    "configparser",
     "cryptography",
     "filelock",
-    "lark-parser",
+    "lark>=1.1.9",
     "numpy",
     "msgspec>=0.19.0",
-    "sqlspec[performance,mypyc,oracledb,adbc,duckdb]>=0.61.0",
+    "sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0",
     "python-dateutil",
     "PyYAML",
     "requests",
-    "termcolor",
     "urllib3",
     # For Cloud storage
     "fsspec[gcs]",
@@ -95,7 +93,7 @@ teradata = [
     "pyodbc",
 ]
 sqlspec = [
-    "sqlspec[performance,mypyc,oracledb,adbc,duckdb]>=0.61.0",
+    "sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0",
 ]
 all = [
     "hdfs",
@@ -105,7 +103,7 @@ all = [
     "snowflake-connector-python",
     "pymssql",
     "pyodbc",
-    "sqlspec[performance,mypyc,oracledb,adbc,duckdb]>=0.61.0",
+    "sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0",
 ]
 
 [dependency-groups]
@@ -160,7 +158,7 @@ exclude = [".github", "docs"]
 packages = ["src/goe"]
 
 [tool.bumpversion]
-current_version = "1.1.1.dev0"
+current_version = "1.1.0"
 parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)(?:\\.(?P<dev>dev\\d+))?"
 serialize = [
     "{major}.{minor}.{patch}.{dev}",
@@ -286,7 +284,6 @@ exclude = [
     "^dist/",
     "^.venv/",
     "^node_modules/",
-    "^bin/",
 ]
 files = ["src/goe", "tests"]
 follow_imports = "silent"
@@ -351,7 +348,6 @@ omit = [
     "target/*",
     "tools/*",
     "templates/*",
-    "bin/*",
     ".venv/*",
 ]
 parallel = true

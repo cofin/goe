@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -692,15 +692,6 @@ wheels = [
 ]
 
 [[package]]
-name = "configparser"
-version = "7.2.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8b/ac/ea19242153b5e8be412a726a70e82c7b5c1537c83f61b20995b2eda3dcd7/configparser-7.2.0.tar.gz", hash = "sha256:b629cc8ae916e3afbd36d1b3d093f34193d851e11998920fdcfc4552218b7b70", size = 51273, upload-time = "2025-03-08T16:04:09.339Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/fe/f61e7129e9e689d9e40bbf8a36fb90f04eceb477f4617c02c6a18463e81f/configparser-7.2.0-py3-none-any.whl", hash = "sha256:fee5e1f3db4156dcd0ed95bc4edfa3580475537711f67a819c966b389d09ce62", size = 17232, upload-time = "2025-03-08T16:04:07.743Z" },
-]
-
-[[package]]
 name = "coverage"
 version = "7.15.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1065,7 +1056,7 @@ wheels = [
 
 [[package]]
 name = "goe-framework"
-version = "1.1.1.dev0"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "avro" },
@@ -1074,7 +1065,6 @@ dependencies = [
     { name = "boto3" },
     { name = "brotli" },
     { name = "click" },
-    { name = "configparser" },
     { name = "cryptography" },
     { name = "filelock" },
     { name = "fsspec", extra = ["gcs"] },
@@ -1082,7 +1072,7 @@ dependencies = [
     { name = "google-cloud-kms" },
     { name = "google-cloud-storage" },
     { name = "httptools" },
-    { name = "lark-parser" },
+    { name = "lark" },
     { name = "litestar" },
     { name = "litestar-autowire" },
     { name = "litestar-granian" },
@@ -1099,9 +1089,8 @@ dependencies = [
     { name = "requests" },
     { name = "rich" },
     { name = "rich-click" },
-    { name = "sqlspec", extra = ["adbc", "duckdb", "mypyc", "oracledb", "performance"] },
+    { name = "sqlspec", extra = ["adbc", "duckdb", "oracledb", "performance"] },
     { name = "tenacity" },
-    { name = "termcolor" },
     { name = "urllib3" },
     { name = "uvloop" },
 ]
@@ -1114,7 +1103,7 @@ all = [
     { name = "pyodbc" },
     { name = "requests-kerberos" },
     { name = "snowflake-connector-python" },
-    { name = "sqlspec", extra = ["adbc", "duckdb", "mypyc", "oracledb", "performance"] },
+    { name = "sqlspec", extra = ["adbc", "duckdb", "oracledb", "performance"] },
     { name = "thrift-sasl" },
 ]
 hadoop = [
@@ -1130,7 +1119,7 @@ sql-server = [
     { name = "pymssql" },
 ]
 sqlspec = [
-    { name = "sqlspec", extra = ["adbc", "duckdb", "mypyc", "oracledb", "performance"] },
+    { name = "sqlspec", extra = ["adbc", "duckdb", "oracledb", "performance"] },
 ]
 synapse = [
     { name = "pyodbc" },
@@ -1193,7 +1182,6 @@ requires-dist = [
     { name = "boto3" },
     { name = "brotli", specifier = ">=1.0.9" },
     { name = "click", specifier = ">=8.1.7" },
-    { name = "configparser" },
     { name = "cryptography" },
     { name = "filelock" },
     { name = "fsspec", extras = ["gcs"] },
@@ -1205,7 +1193,7 @@ requires-dist = [
     { name = "httptools" },
     { name = "impyla", marker = "extra == 'all'" },
     { name = "impyla", marker = "extra == 'hadoop'" },
-    { name = "lark-parser" },
+    { name = "lark", specifier = ">=1.1.9" },
     { name = "litestar", specifier = ">=2.8.0" },
     { name = "litestar-autowire", specifier = ">=0.1.0" },
     { name = "litestar-granian", specifier = ">=0.4.0" },
@@ -1231,11 +1219,10 @@ requires-dist = [
     { name = "rich-click", specifier = ">=1.8.0" },
     { name = "snowflake-connector-python", marker = "extra == 'all'" },
     { name = "snowflake-connector-python", marker = "extra == 'snowflake'" },
-    { name = "sqlspec", extras = ["performance", "mypyc", "oracledb", "adbc", "duckdb"], specifier = ">=0.61.0" },
-    { name = "sqlspec", extras = ["performance", "mypyc", "oracledb", "adbc", "duckdb"], marker = "extra == 'all'", specifier = ">=0.61.0" },
-    { name = "sqlspec", extras = ["performance", "mypyc", "oracledb", "adbc", "duckdb"], marker = "extra == 'sqlspec'", specifier = ">=0.61.0" },
+    { name = "sqlspec", extras = ["performance", "oracledb", "adbc", "duckdb"], specifier = ">=0.61.0" },
+    { name = "sqlspec", extras = ["performance", "oracledb", "adbc", "duckdb"], marker = "extra == 'all'", specifier = ">=0.61.0" },
+    { name = "sqlspec", extras = ["performance", "oracledb", "adbc", "duckdb"], marker = "extra == 'sqlspec'", specifier = ">=0.61.0" },
     { name = "tenacity", specifier = ">=8.0.1" },
-    { name = "termcolor" },
     { name = "thrift-sasl", marker = "extra == 'all'" },
     { name = "thrift-sasl", marker = "extra == 'hadoop'" },
     { name = "urllib3" },
@@ -1818,12 +1805,12 @@ wheels = [
 ]
 
 [[package]]
-name = "lark-parser"
-version = "0.12.0"
+name = "lark"
+version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5a/ee/fd1192d7724419ddfe15b6f17d1c8742800d4de917c0adac3b6aaf22e921/lark-parser-0.12.0.tar.gz", hash = "sha256:15967db1f1214013dca65b1180745047b9be457d73da224fcda3d9dd4e96a138", size = 235029, upload-time = "2021-08-30T09:14:44.484Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/34/28fff3ab31ccff1fd4f6c7c7b0ceb2b6968d8ea4950663eadcb5720591a0/lark-1.3.1.tar.gz", hash = "sha256:b426a7a6d6d53189d318f2b6236ab5d6429eaf09259f1ca33eb716eed10d2905", size = 382732, upload-time = "2025-10-27T18:25:56.653Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/00/90f05db333fe1aa6b6ffea83a35425b7d53ea95c8bba0b1597f226cf1d5f/lark_parser-0.12.0-py2.py3-none-any.whl", hash = "sha256:0eaf30cb5ba787fe404d73a7d6e61df97b21d5a63ac26c5008c78a494373c675", size = 103498, upload-time = "2021-08-30T13:01:01.603Z" },
+    { url = "https://files.pythonhosted.org/packages/82/3d/14ce75ef66813643812f3093ab17e46d3a206942ce7376d31ec2d36229e7/lark-1.3.1-py3-none-any.whl", hash = "sha256:c629b661023a014c37da873b4ff58a817398d12635d3bbb2c5a03be7fe5d1e12", size = 113151, upload-time = "2025-10-27T18:25:54.882Z" },
 ]
 
 [[package]]
@@ -3388,34 +3375,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f3/bc/2a07cef49046e6cf5d1a8b1de553aaef8491b4170dbfe254c8687c764408/sqlglot-30.17.0-py3-none-any.whl", hash = "sha256:84435ac283a60173da31b5fd7d11a725037a1c3fd6ed1e21fb065de74ddb579f", size = 741795, upload-time = "2026-08-12T19:36:48.699Z" },
 ]
 
-[package.optional-dependencies]
-c = [
-    { name = "sqlglotc" },
-]
-
-[[package]]
-name = "sqlglotc"
-version = "30.17.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "sqlglot" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/57/994126404551c5b40aa5f93d2c60b56fb191271a4cec445f7007f68070ab/sqlglotc-30.17.0.tar.gz", hash = "sha256:8f83229edbeebb5c02602257a59b596d0c26e63e9827c5dfe9976681e2fb51a7", size = 518037, upload-time = "2026-08-12T19:35:47.487Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/5e/23816877b67e707bb56d2537c9c0972fdd876928e9f8ee0685fc451486c0/sqlglotc-30.17.0-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:cc37a0d9b78e73e187a1caee7d01d966107a0fef77d35294acb4ae69f400342c", size = 32965395, upload-time = "2026-08-12T19:35:17.507Z" },
-    { url = "https://files.pythonhosted.org/packages/f4/85/48cc91739c86fb41239ded78c675b7f72ead286b3a84a6ccdec7dff4b7d4/sqlglotc-30.17.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5d02c86e516509ef971fe0d290140818f9ecd471a2d86b43de573f5c778f467b", size = 26396103, upload-time = "2026-08-12T19:35:20.102Z" },
-    { url = "https://files.pythonhosted.org/packages/1a/fc/55f5c8d92d516da373a0dcbadb103759c385ef17d1f4ec409228c443b27e/sqlglotc-30.17.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:24c0df324d3b8cb1ab65b4139b52dc4de2291ba0e3ce4086ef7fcd0b96555ba3", size = 27686053, upload-time = "2026-08-12T19:35:22.654Z" },
-    { url = "https://files.pythonhosted.org/packages/35/72/70da36523e61d2ac9854d502221958b4e4caf737fb22fe57e92e2b8f60d5/sqlglotc-30.17.0-cp312-cp312-win_amd64.whl", hash = "sha256:98386f93556e1c3075f58aab85be6f919b5af3ade4cc0609996f7fb68cb85bab", size = 11288238, upload-time = "2026-08-12T19:35:25.054Z" },
-    { url = "https://files.pythonhosted.org/packages/fb/7b/e1a76eccad0fc585e0ec219eddb4d8411014eff2c0b4826d86c8ca348fb2/sqlglotc-30.17.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:486bb9652a11fd8d97005dbbd37aebe33a93fd74903c21c88f25b2e4cdc8d769", size = 32493923, upload-time = "2026-08-12T19:35:27.504Z" },
-    { url = "https://files.pythonhosted.org/packages/36/d8/b16152da0feff92eec30564dfaf25ba2d713d73d2a749e702b4363c7dcb3/sqlglotc-30.17.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1c34c1c99121dd510553a1cdaa3ea1c597fafc58a60d794a81bdb09a1d45eef2", size = 25971903, upload-time = "2026-08-12T19:35:30.048Z" },
-    { url = "https://files.pythonhosted.org/packages/5c/ae/10e451d34dc0d62c1c334c5a50a70ab1dcab9fdddd6c6db7aaab214e8362/sqlglotc-30.17.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c397302b4739e134e0062d48809dbe841a85b704bf5d0291336f057d74784a35", size = 27270385, upload-time = "2026-08-12T19:35:32.713Z" },
-    { url = "https://files.pythonhosted.org/packages/eb/90/5843d6da4de08aea9c264f111f8df7783c414300371e4a38c604c467d382/sqlglotc-30.17.0-cp313-cp313-win_amd64.whl", hash = "sha256:a5a5cb708a9d96e08b5fa6d31a3817d94d615d7b536ade2cb1e88b6f1ec10917", size = 11288453, upload-time = "2026-08-12T19:35:34.819Z" },
-    { url = "https://files.pythonhosted.org/packages/3e/14/40e655b38b369533bb19e9ca0de274d3f3d0a410de396cadcd34e2d897a6/sqlglotc-30.17.0-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:a79ca1259d89194b1ae3d50509aebb2727e74de0190dc57568917d27b2f70baf", size = 32419054, upload-time = "2026-08-12T19:35:37.351Z" },
-    { url = "https://files.pythonhosted.org/packages/57/91/f6000ee61f31a9614e7bdee365ffb9b9faf8483f23c12c4fb48f184fd982/sqlglotc-30.17.0-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:86b84c58b563d9762724a503398604c25553a5e637501c48dc27cf9fef466332", size = 25963607, upload-time = "2026-08-12T19:35:40.584Z" },
-    { url = "https://files.pythonhosted.org/packages/e2/7e/82107bbe1b86fec5d71074ab210165d6a725c1b9f8479162c5340826209a/sqlglotc-30.17.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:599ec9e4c7450175df0c4f844d95e7732c4890077a997352f62af25203633970", size = 27168501, upload-time = "2026-08-12T19:35:43.519Z" },
-    { url = "https://files.pythonhosted.org/packages/c9/24/4c59aee76544d4c6f0a6af2871bc0e9848a899cb310149f13d81d1dd8694/sqlglotc-30.17.0-cp314-cp314-win_amd64.whl", hash = "sha256:3396b2e596049cb185b9980b6b59453ff7b5d400b2c6c335cb854cf93458b0a8", size = 11429982, upload-time = "2026-08-12T19:35:45.737Z" },
-]
-
 [[package]]
 name = "sqlspec"
 version = "0.62.1"
@@ -3452,9 +3411,6 @@ duckdb = [
     { name = "duckdb" },
     { name = "pytz" },
 ]
-mypyc = [
-    { name = "sqlglot", extra = ["c"] },
-]
 oracledb = [
     { name = "oracledb" },
 ]
@@ -3487,15 +3443,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/2c/f5/04748914f5c78f7418b803226bd56cdddd70ac369b936b3e24f5158017f1/tenacity-8.0.1.tar.gz", hash = "sha256:43242a20e3e73291a28bcbcacfd6e000b02d3857a9a9fff56b297a27afdc932f", size = 37492, upload-time = "2021-07-12T09:36:23.172Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f2/a5/f86bc8d67c979020438c8559cc70cfe3a1643fd160d35e09c9cca6a09189/tenacity-8.0.1-py3-none-any.whl", hash = "sha256:f78f4ea81b0fabc06728c11dc2a8c01277bfc5181b321a4770471902e3eb844a", size = 24206, upload-time = "2021-07-12T09:36:20.085Z" },
-]
-
-[[package]]
-name = "termcolor"
-version = "3.3.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/46/79/cf31d7a93a8fdc6aa0fbb665be84426a8c5a557d9240b6239e9e11e35fc5/termcolor-3.3.0.tar.gz", hash = "sha256:348871ca648ec6a9a983a13ab626c0acce02f515b9e1983332b17af7979521c5", size = 14434, upload-time = "2025-12-29T12:55:21.882Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/d1/8bb87d21e9aeb323cc03034f5eaf2c8f69841e40e4853c2627edf8111ed3/termcolor-3.3.0-py3-none-any.whl", hash = "sha256:cf642efadaf0a8ebbbf4bc7a31cec2f9b5f21a9f726f4ccbb08192c9c26f43a5", size = 7734, upload-time = "2025-12-29T12:55:20.718Z" },
 ]
 
 [[package]]

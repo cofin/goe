@@ -88,12 +88,6 @@ TERADATA_COLUMNS = [
 
 
 class TestIdaPredicateParse(TestCase):
-    def _test_parse_single_numeric(self, dsl_value_str, ast_token_values):
-        self.assertEqual(
-            parse_predicate_dsl(f"numeric({dsl_value_str})", top_level_node="value"),
-            Tree("numeric_value", [Token(*ast_token_values)]),
-        )
-
     def test_parse_numeric(self):
         self._test_parse_single_numeric("3.141", ("SIGNED_DECIMAL", 3.141))
         self._test_parse_single_numeric("+3.141", ("SIGNED_DECIMAL", 3.141))
@@ -109,12 +103,6 @@ class TestIdaPredicateParse(TestCase):
         self._test_parse_single_numeric(" 3", ("SIGNED_INTEGER", 3))
         self._test_parse_single_numeric("3 ", ("SIGNED_INTEGER", 3))
         self._test_parse_single_numeric(" 3 ", ("SIGNED_INTEGER", 3))
-
-    def _test_parse_single_datetime(self, dsl_value_str, ast_token_values):
-        self.assertEqual(
-            parse_predicate_dsl(f"datetime({dsl_value_str})", top_level_node="value"),
-            Tree("datetime_value", [Token(*ast_token_values)]),
-        )
 
     def test_parse_datetime(self):
         self._test_parse_single_datetime("2012-01-01", ("DATE", np.datetime64("2012-01-01")))
@@ -162,16 +150,6 @@ class TestIdaPredicateParse(TestCase):
 
         # below literal value correctness testing is out of scope
         # self.assertRaises(OptionValueError, self._test_parse_single_datetime, '2012-01-01 25:00:01', None)
-
-    def _test_parse_single_string(self, dsl_value_str, ast_value_str=None):
-        ast_value_str = dsl_value_str if ast_value_str is None else ast_value_str
-        self.assertEqual(
-            parse_predicate_dsl(f'string("{dsl_value_str}")', top_level_node="value"),
-            Tree(
-                "string_value",
-                [Token("ESCAPED_STRING", ast_value_str.replace('\\"', '"'))],
-            ),
-        )
 
     def test_parse_string(self):
         self._test_parse_single_string("test string")
@@ -222,6 +200,28 @@ class TestIdaPredicateParse(TestCase):
 
         for predicate_dsl in parse_dsl:
             GenericPredicate(predicate_dsl)
+
+    def _test_parse_single_numeric(self, dsl_value_str, ast_token_values):
+        self.assertEqual(
+            parse_predicate_dsl(f"numeric({dsl_value_str})", top_level_node="value"),
+            Tree("numeric_value", [Token(*ast_token_values)]),
+        )
+
+    def _test_parse_single_datetime(self, dsl_value_str, ast_token_values):
+        self.assertEqual(
+            parse_predicate_dsl(f"datetime({dsl_value_str})", top_level_node="value"),
+            Tree("datetime_value", [Token(*ast_token_values)]),
+        )
+
+    def _test_parse_single_string(self, dsl_value_str, ast_value_str=None):
+        ast_value_str = dsl_value_str if ast_value_str is None else ast_value_str
+        self.assertEqual(
+            parse_predicate_dsl(f'string("{dsl_value_str}")', top_level_node="value"),
+            Tree(
+                "string_value",
+                [Token("ESCAPED_STRING", ast_value_str.replace('\\"', '"'))],
+            ),
+        )
 
 
 class TestIdaPredicateMethods(TestCase):
