@@ -61,22 +61,6 @@ from sqlspec.builder._generation import invalidate_generator_dispatch
 _ORACLE_EXTENSIONS_REGISTERED_ATTR: Final[str] = "_goe_oracle_extensions_registered"
 
 
-def _oracle_version_sql(generator: OracleGenerator, expression: exp.Version) -> str:
-    """Render Oracle Flashback Query AS OF {SCN | TIMESTAMP} and VERSIONS BETWEEN clauses."""
-    this = expression.name.upper()
-    kind = expression.text("kind").upper()
-    expr_sql = generator.sql(expression, "expression")
-    if this in {"SCN", "TIMESTAMP"} and kind == "AS OF":
-        return f"AS OF {this} {expr_sql}"
-    if this in {"SCN", "TIMESTAMP"} and kind == "BETWEEN":
-        expr_node = expression.expression
-        if isinstance(expr_node, exp.Tuple) and len(expr_node.expressions) == 2:
-            start_sql = generator.sql(expr_node.expressions[0])
-            end_sql = generator.sql(expr_node.expressions[1])
-            return f"VERSIONS BETWEEN {this} {start_sql} AND {end_sql}"
-    return f"FOR {this} {kind} {expr_sql}"
-
-
 def register_oracle_dialect_extensions() -> None:
     """Register Oracle PARTITION/SUBPARTITION selection and AS OF SCN/TIMESTAMP flashback extensions."""
     if getattr(OracleParser, _ORACLE_EXTENSIONS_REGISTERED_ATTR, False):
@@ -94,6 +78,22 @@ def register_oracle_dialect_extensions() -> None:
     OracleGenerator.TRANSFORMS[exp.Version] = _oracle_version_sql
     invalidate_generator_dispatch(OracleGenerator)
     setattr(OracleParser, _ORACLE_EXTENSIONS_REGISTERED_ATTR, True)
+
+
+def _oracle_version_sql(generator: OracleGenerator, expression: exp.Version) -> str:
+    """Render Oracle Flashback Query AS OF {SCN | TIMESTAMP} and VERSIONS BETWEEN clauses."""
+    this = expression.name.upper()
+    kind = expression.text("kind").upper()
+    expr_sql = generator.sql(expression, "expression")
+    if this in {"SCN", "TIMESTAMP"} and kind == "AS OF":
+        return f"AS OF {this} {expr_sql}"
+    if this in {"SCN", "TIMESTAMP"} and kind == "BETWEEN":
+        expr_node = expression.expression
+        if isinstance(expr_node, exp.Tuple) and len(expr_node.expressions) == 2:
+            start_sql = generator.sql(expr_node.expressions[0])
+            end_sql = generator.sql(expr_node.expressions[1])
+            return f"VERSIONS BETWEEN {this} {start_sql} AND {end_sql}"
+    return f"FOR {this} {kind} {expr_sql}"
 ```
 
 ## 3. Capability Matrix for GOE Constructs

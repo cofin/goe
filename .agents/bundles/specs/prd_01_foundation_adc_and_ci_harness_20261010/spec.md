@@ -93,14 +93,16 @@ flowchart TD
    - `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT` (falling back to `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`) governs `gcloud dataproc` caller impersonation (`--impersonate-service-account`) across `batches submit`, `batches describe`, and `jobs submit --cluster`.
    - `GOOGLE_DATAPROC_SERVICE_ACCOUNT` governs only the `gcloud dataproc batches submit pyspark --service-account=...` serverless workload runtime identity.
 6. **Offline-Collectible Integration Suite & Golden Characterization Gate**: `GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only` succeeds with zero environment variables configured (`147 tests collected`), and `tests/unit/characterization/test_offload_bigquery_golden.py` exercises RBO, IPA `RANGE`, IPA `LIST`/`RANGE`, PBO, and BigQuery `add_columns` completely offline (`dry_run=True, do_not_connect=True`).
+7. **Public-Before-Private Function & Method Organization**: Every new or touched Python module and class in Chapters 1.1–1.3 groups all public and dunder (`__init__`, `__enter__`, `__exit__`, etc.) functions/methods together at the top and places private (`_...`) helper functions/methods at the bottom (moving `# PUBLIC METHODS` above `# PRIVATE METHODS` in legacy classes), verified by an AST ordering check in each task's verification block.
 
 ---
 
 ### 4. Cross-Cutting Verification Gates
 
-Every task in Chapters 1.1–1.3 is gated by the first four commands below, and `GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only` becomes an active gate starting at Chapter 1.3 Task `1.1` (where `TestOrchestrationMetadata.__init__` is fixed):
+Every task in Chapters 1.1–1.3 is gated by the AST public-before-private ordering check on its touched Python files plus the first four commands below, and `GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only` becomes an active gate starting at Chapter 1.3 Task `1.1` (where `TestOrchestrationMetadata.__init__` is fixed):
 ```bash
 export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
+uv run python -c "import ast,sys; is_priv=lambda n:n.startswith('_') and not (n.startswith('__') and n.endswith('__')); bad=[(p,getattr(s,'name','<module>'),f.name) for p in sys.argv[1:] for s in ast.walk(ast.parse(open(p).read())) if isinstance(s,(ast.Module,ast.ClassDef)) for funcs in [[n for n in s.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]] for i,f in enumerate(funcs) if not is_priv(f.name) and any(is_priv(g.name) for g in funcs[:i])]; assert not bad, bad" <touched_python_files...>
 uv run ruff check src tests
 uv run ruff format --check src tests
 uv run mypy src/goe

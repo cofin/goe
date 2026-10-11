@@ -104,6 +104,8 @@ flowchart TD
 4. **Canonical Option Exception & Strict Typing Discipline**:
    - `OffloadOptionError` (`src/goe/exceptions.py`) is the single canonical option exception, with `OptionValueError = OffloadOptionError` exported from `src/goe/exceptions.py`.
    - All new and modified Python files start with the 2-line SPDX header, place imports at module top-level (or module-level `if TYPE_CHECKING:`), use PEP 585/604 syntax (`list`, `dict`, `X | None`), contain zero inline `#` comments inside functions/classes, and add zero `# type: ignore` directives.
+5. **Public-Before-Private Function & Method Ordering**:
+   - In every new, modified, or decomposed Python module and test file across Chapters 2.1, 2.2, and 2.3, all public functions/methods and dunder lifecycle methods (`__init__`, `__del__`, `__enter__`, `__exit__`, `__getattr__`, etc.) MUST be grouped together at the top of each module or class body, and all private (`_...`) helper functions/methods MUST be placed at the bottom of that module or class body. Legacy classes that placed `# PRIVATE METHODS` before `# PUBLIC METHODS` must be reorganized when touched or decomposed.
 
 ---
 
@@ -122,6 +124,7 @@ Every task across Chapters 2.1, 2.2, and 2.3 is gated by:
 - `uv run ruff check --no-fix --select F401,F841,ERA001 <owned_paths>` (and repo-wide in `make lint` upon completion of Chapter 2.3 Task 1.6)
 - `uv run ruff check` and `uv run ruff format --check`
 - `uv run mypy src/goe` (plus the config-independent `--config-file=` strict gate per wave in Chapter 2.3)
+- `uv run python -c "import ast,sys; is_priv=lambda n:n.startswith('_') and not (n.startswith('__') and n.endswith('__')); bad=[(p,getattr(s,'name','<module>'),f.name) for p in sys.argv[1:] for s in ast.walk(ast.parse(open(p).read())) if isinstance(s,(ast.Module,ast.ClassDef)) for funcs in [[n for n in s.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]] for i,f in enumerate(funcs) if not is_priv(f.name) and any(is_priv(g.name) for g in funcs[:i])]; assert not bad, bad" <touched_files>`
 - `uv run pytest tests/unit` and `GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only -q`
 - `! git grep -n optparse src/goe` upon completion of Chapter 2.1 Task 1.3
 - `disable_error_code = []`, `check_untyped_defs = true`, `disallow_incomplete_defs = true`, and `! git grep -n "type: ignore" -- src/goe` upon completion of Chapter 2.3 Task 1.6.

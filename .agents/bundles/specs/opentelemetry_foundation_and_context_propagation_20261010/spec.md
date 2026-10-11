@@ -55,7 +55,7 @@ Establish `src/goe/observability/` so later chapters can instrument GOE with sta
   - Google Cloud Telemetry (OTLP) API accepts `/v1/traces` and `/v1/metrics` at `https://telemetry.googleapis.com`: https://cloud.google.com/stackdriver/docs/reference/telemetry/overview. `opentelemetry-exporter-gcp-trace`/`-gcp-monitoring` are deprecated and not used; `opentelemetry-resourcedetectors-gcp` does not exist on PyPI (the real name is singular).
   - `litestar.plugins.opentelemetry` (litestar 2.24.0) imports `opentelemetry.instrumentation.asgi` at import time; it is the canonical path since 2.22.0 (`litestar.contrib.opentelemetry` emits a deprecation warning).
   - `sqlspec.utils.correlation.CorrelationContext.context(None)` generates a random id, so the bridge only enters it when an execution id is bound.
-- Repo conventions applied: SPDX header, top-level imports only (optional modules bound with `goe.cli._lazy` per `.agents/bundles/knowledge/patterns/cli-architecture.md`), no inline comments, PEP 585/604 types.
+- Repo conventions applied: SPDX header, top-level imports only (optional modules bound with `goe.cli._lazy` per `.agents/bundles/knowledge/patterns/cli-architecture.md`), no inline comments, PEP 585/604 types, and public-before-private function/method ordering (all public functions/methods and dunder lifecycle methods grouped at the top of each module and class body, with private `_...` helpers at the bottom).
 
 ### 3. Module Architecture
 
@@ -124,6 +124,7 @@ classDiagram
 
 ```bash
 export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
+uv run python -c "import ast,sys; is_priv=lambda n:n.startswith('_') and not (n.startswith('__') and n.endswith('__')); bad=[(p,getattr(s,'name','<module>'),f.name) for p in sys.argv[1:] for s in ast.walk(ast.parse(open(p).read())) if isinstance(s,(ast.Module,ast.ClassDef)) for funcs in [[n for n in s.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]] for i,f in enumerate(funcs) if not is_priv(f.name) and any(is_priv(g.name) for g in funcs[:i])]; assert not bad, bad" src/goe/observability/config.py src/goe/observability/metrics.py src/goe/observability/context.py src/goe/observability/_sdk.py src/goe/observability/runtime.py src/goe/config/options.py src/goe/cli/common.py src/goe/orchestration/cli_entry_points.py tests/unit/observability/test_settings.py tests/unit/observability/test_metrics.py tests/unit/observability/test_context.py tests/unit/observability/test_sdk.py tests/unit/observability/test_runtime.py tests/unit/observability/test_cli_wiring.py
 uv run ruff format --check src/goe/observability tests/unit/observability
 uv run ruff check src/goe/observability tests/unit/observability
 uv run mypy src/goe

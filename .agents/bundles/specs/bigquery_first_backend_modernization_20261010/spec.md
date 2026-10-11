@@ -3,7 +3,7 @@ type: Spec
 flow_id: bigquery_first_backend_modernization_20261010
 title: "Chapter 3.3: BigQuery-First Backend & Transport Modernization"
 state: planned
-plan_revision: 2
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,10 +11,10 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T18:35:00Z
+updated_at: 2026-10-11T00:10:00Z
 description: Make Google BigQuery and GCS the first-class GOE backend path by replacing Legacy SQL partition metadata, modernizing BackendBigQueryApi query execution and lifecycle, adding native BigQuery load jobs for staged files, removing redundant GOEGcs existence/poll round trips, and prioritizing GCP transports, with zero feature loss and no edits to deprioritized backends.
 tags: [refactor, bigquery, gcs, transport, backend]
-parent_prd: prd_03_sqlspec_bigquery_and_duckdb_engine_20261010
+parent: prd_03_sqlspec_bigquery_and_duckdb_engine_20261010
 depends_on:
   - sqlspec_oracle_data_layer_migration_20261010
   - sqlglot_ast_and_predicate_engine_20261010
@@ -34,7 +34,7 @@ research: [research/bigquery_first_and_test_harness.md]
   - `oracle_ci_and_bigquery_test_harness_20261010` adds the live WIF `integration-bigquery` CI job and `pytest-databases[oracle]`; no BigQuery emulator.
   - `core_god_module_decomposition_20261010:1.4` moves `choose_offload_transport_method` to `src/goe/offload/transport/factory.py` and `OffloadTransportQueryImport` to `src/goe/offload/transport/query_import.py`, leaving `src/goe/offload/offload_transport.py` as a `<= 60` LOC re-export facade.
   - `strict_mypy_type_safety_ratchet_20261010` enables strict mypy; new code is fully annotated.
-  - `sqlglot_ast_and_predicate_engine_20261010:1.1` replaces `_create_external_table`, `_create_table_properties_clause`, `_gen_bigquery_create_table_sql_text` and the `get_table_ddl` `re.sub` in `bigquery_backend_api.py`. This flow does not touch those methods.
+  - `sqlglot_ast_and_predicate_engine_20261010:1.2` replaces `_create_external_table`, `_create_table_properties_clause`, `_gen_bigquery_create_table_sql_text` and the `get_table_ddl` `re.sub` in `bigquery_backend_api.py`. This flow does not touch those methods.
 - Verified external facts (sources recorded in `research/bigquery_first_and_test_harness.md` §C):
   - `google-cloud-bigquery` is locked at `3.44.0` (`uv.lock:1346-1347`); `Client.query_and_wait(query, *, job_config, location, project, api_timeout, wait_timeout, retry, job_retry, page_size, max_results, ...) -> RowIterator` exists since `3.14.0`; `Client(client_info: google.api_core.client_info.ClientInfo | None)`; `LoadJobConfig` exposes `source_format`, `write_disposition`, `decimal_target_types`, `destination_encryption_configuration`, `labels`.
   - `INFORMATION_SCHEMA.PARTITIONS` (Preview) requires a dataset qualifier; `partition_id` is `NULL` for unpartitioned tables and `__UNPARTITIONED__` can appear twice (active + long-term storage), so queries use `DISTINCT`.
@@ -65,6 +65,7 @@ research: [research/bigquery_first_and_test_harness.md]
 - Zero modifications to `src/goe/offload/snowflake/`, `microsoft/`, `hadoop/`, `teradata/`, `backend_api.py`, `backend_table.py`. No new abstract methods or capability keys: the native load is implemented inside `BackendBigQueryTable` using existing `BackendBigQueryApi.bq_client()`.
 - **`BQ-D1` (RESOLVED)**: the local `goccy/bigquery-emulator` + `fake-gcs-server` integration harness is excluded — the emulator does not implement external tables (`EXTERNAL` mode), `INFORMATION_SCHEMA.PARTITIONS`, `dry_run`, or CMEK/Parquet load fidelity, and GOE will **never code around emulator limitations**. Live verification uses the real GCP BigQuery test environment (`oracle_ci_and_bigquery_test_harness_20261010` `integration-bigquery`) alongside offline unit and golden dry-run suites.
 - **`BQ-D2` (RESOLVED)**: unwired additions from revision 1 are removed: the optional `BigQueryStorageWriteStreamer` (no caller, new `google-cloud-bigquery-storage` dependency, Write API cannot carry job labels), `GOEGcs.copy_many_from_local` via `transfer_manager` (no multi-file upload caller), the `dry_run_preview` parameter (no caller), load-dataset `default_table_expiration`, and `BIGQUERY_BILLING_PROJECT` (duplicates `google_cloud_project`).
+- **Public-Before-Private Function & Method Ordering**: Every Python module and class created or modified in this flow (`bigquery_backend_api.py`, `bigquery_backend_table.py`, `bigquery_load_job.py`, `goe_gcs.py`, `factory.py`, `query_import.py`, and their unit test modules) keeps all public/dunder functions and methods grouped above private (`_...`) helpers, verified via an AST ordering check.
 
 ### Task Breakdown & File Ownership
 
@@ -93,12 +94,13 @@ uv run pytest tests/unit -q
 uv run ruff check src/goe tests/unit
 uv run ruff format --check src/goe tests/unit
 uv run mypy src/goe
+uv run python -c "import ast,sys; is_priv=lambda n:n.startswith('_') and not (n.startswith('__') and n.endswith('__')); bad=[(p,getattr(s,'name','<module>'),f.name) for p in sys.argv[1:] for s in ast.walk(ast.parse(open(p).read())) if isinstance(s,(ast.Module,ast.ClassDef)) for funcs in [[n for n in s.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]] for i,f in enumerate(funcs) if not is_priv(f.name) and any(is_priv(g.name) for g in funcs[:i])]; assert not bad, bad" src/goe/offload/bigquery/bigquery_backend_api.py src/goe/offload/bigquery/bigquery_backend_table.py src/goe/offload/bigquery/bigquery_load_job.py src/goe/filesystem/goe_gcs.py src/goe/offload/transport/factory.py src/goe/offload/transport/query_import.py
 ```
 
 ## Continuity Snapshot
 
 - **State:** `planned`; current task: none.
 - **Next exact step:** after `sqlglot_ast_and_predicate_engine_20261010` completes, claim Task `1.1` (`tasks/1.1.md`). Tasks `1.1`, `1.2`, `1.4` and `1.5` have no in-flow dependencies; `1.3` requires `1.1` and `1.2`. Execute sequentially in id order.
-- **Plan identity:** `plan_revision: 2`, `plan_commit: null`.
+- **Plan identity:** `plan_revision: 3`, `plan_commit: null`.
 - **Decisions:** `BQ-D1` (resolved — no emulator workarounds; use real GCP BigQuery project + offline unit/golden suites), `BQ-D2` (resolved — removed unwired additions).
 - **Knowledge:** `.agents/bundles/knowledge/patterns/index.md`, `.agents/bundles/product/tech-stack.md`, `research/bigquery_first_and_test_harness.md`.

@@ -119,6 +119,7 @@ classDiagram
 5. **Shared offload keys**: `EXPECTED_OFFLOAD_ARGS` (a `tuple[str, ...]` preserving baseline order, used by `OffloadOperation._vars`) and the listener alias tables move to `options.py`; `goe.goe` and `goe.listener.schemas` import them.
 6. **Listener REST schema (`D-2.1-A` — RESOLVED)**: the listener `OffloadOptions` keeps its REST wire defaults (`execute: bool = True` so API/MCP calls execute by default, and `None` unset sentinels for optional fields so `to_params_dict()` preserves alias precedence and records only caller-supplied parameters in `COMMAND_EXECUTION.COMMAND_INPUT`), while adding `to_operation_options(self) -> OffloadOperationOptions` (`OffloadOperationOptions.from_mapping(self.to_params_dict())`) to hydrate all omitted fields from the single canonical `OffloadOperationOptions` default set (`orchestration_defaults.*_default()` and safe `False` destructive flags). Duplication is removed by importing `EXPECTED_OFFLOAD_ARGS` and the alias tables from `options.py` and by a drift test that asserts the REST field set equals `EXPECTED_OFFLOAD_ARGS - {operation_name}` plus the alias and verbosity fields.
 7. **Entry-point signatures**: `goe` is the single CLI entrypoint after PRD 1 deletes `bin/*`, so `connect()`, `offload_status_report_run()`, and agg-validate no longer parse `sys.argv`. `connect(options: ConnectOptions)` and `offload_status_report_run(options: StatusReportOptions)` require an options struct; `agg_validate.parse_args()` and `agg_validate.main()` are deleted.
+8. **Public-before-private function and method ordering**: all new and modified modules and classes in this chapter must group public functions/methods and dunder lifecycle methods (`__init__`, `__del__`, `__getattr__`, etc.) at the top of each module or class body and place private (`_...`) helper functions/methods at the bottom.
 
 ### 4. Requirement traceability
 
@@ -129,6 +130,7 @@ classDiagram
 | R3 connect/report/sync/validate entrypoints use structs; their builders deleted | 1.2 | `tests/unit/cli/test_{connect,report,sync,validate}_command.py`, `tests/unit/connect/test_connect.py` |
 | R4 offload entrypoint uses structs; `goe.py`/`offload.py` builders deleted; zero `optparse` in `src/goe` | 1.3 | `tests/unit/cli/test_offload_command.py`, `! git grep -n optparse src/goe` |
 | R5 Listener schema shares canonical keys/aliases and hydrates canonical defaults via `to_operation_options()` (`D-2.1-A`) | 1.3 | `tests/unit/listener/test_offload_options_schema.py` |
+| R6 All touched modules/classes enforce public-before-private function/method ordering | 1.1, 1.2, 1.3 | AST ordering check in 1.1, 1.2, and 1.3 Verification |
 
 ### 5. File ownership
 

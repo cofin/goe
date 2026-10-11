@@ -3,7 +3,7 @@ type: Spec
 flow_id: strict_mypy_type_safety_ratchet_20261010
 title: "Chapter 2.3: Strict Mypy Type Safety Ratchet"
 state: planned
-plan_revision: 2
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,7 +11,7 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T18:50:00Z
+updated_at: 2026-10-11T00:10:00Z
 description: "Ratchet mypy across every live package in src/goe in five package waves, then remove all 14 disable_error_code suppressions and production ignore_errors overrides, enable check_untyped_defs/disallow_incomplete_defs, and enforce F401/F841/ERA001 in make lint."
 tags:
   - refactor
@@ -65,6 +65,7 @@ The previous three-task plan put 660 offload errors and the global switch in one
 4. Behavior is unchanged: when a fix would change runtime behavior (for example a real `None` bug), stop and record it in the task's `## Notes & Discoveries` and route it through `revise` instead of fixing it inside the ratchet.
 5. Each wave also removes `F401`/`F841`/`ERA001` findings in its paths (`uv run ruff check --no-fix --select F401,F841,ERA001 <paths>` reaches zero), deleting dead code rather than annotating it.
 6. Re-export facades from Chapter 2.2 use `from x import name as name`, which mypy and ruff treat as explicit re-exports; do not add `__all__` to them.
+7. Each wave reorganizes every module and class in its owned paths so all public functions/methods and dunder lifecycle methods (`__init__`, `__del__`, `__enter__`, `__exit__`, `__str__`, `__getattr__`, etc.) precede private (`_...`) helper functions/methods (`# PUBLIC METHODS` above `# PRIVATE METHODS`).
 
 ### 4. Requirement traceability (PRD 2 §2 row 2.3, §4)
 
@@ -74,6 +75,7 @@ The previous three-task plan put 660 offload errors and the global switch in one
 | Remove `ignore_errors` for `goe.listener.*`, `goe.connect.*`, `goe.schema_sync.*` | 1.6 (code proven clean in 1.2) | `uv run mypy src/goe`, gate proof |
 | Eliminate the 14 `disable_error_code` entries; enable `check_untyped_defs`, `disallow_incomplete_defs`, `warn_redundant_casts`, `warn_unused_ignores`, `warn_no_return`, `warn_unused_configs` | 1.6 | gate proof, `uv run mypy src/goe` |
 | Enforce `F401`, `F841`, `ERA001` in `make lint` | 1.6 | `make lint`, gate proof |
+| Enforce public-before-private function/method ordering across every wave in `src/goe/` | 1.1-1.6 | AST public-before-private check per wave and repo-wide in 1.5/1.6 |
 
 ## Implementation Plan
 
@@ -90,5 +92,5 @@ The previous three-task plan put 660 offload errors and the global switch in one
 - **Decisions**: none pending.
 - **Blockers**: Chapter 2.2 complete (new module layout exists); PRD 1 dead modules deleted.
 - **Next exact step**: claim Task 1.1 and run its canonical wave gate to record the initial error count.
-- **Plan identity**: `plan_revision: 2`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 0`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/workflow.md` (lint/test commands), `.agents/bundles/knowledge/patterns/cli-architecture.md` (lazy imports), `.agents/bundles/product/tech-stack.md`.

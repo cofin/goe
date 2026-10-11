@@ -71,8 +71,8 @@ research:
   - `resolve_gcp_credentials(config=None, scopes=None)`, which runs ADC through `google.auth.default`. When `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` is set, it wraps the result in `impersonated_credentials.Credentials`, never double-wrapping and rejecting a conflicting impersonated ADC. It resolves the explicit project and quota project (D2) and caches bundles.
   - `resolve_gcloud_impersonation_principal(config=None)`.
   - Register `google_cloud_project`, `google_cloud_quota_project`, `google_impersonate_service_account`, and `google_dataproc_impersonate_service_account` in `OrchestrationConfig`.
-- **REQ-2**: Build these clients from `resolve_gcp_credentials`: `BackendBigQueryApi` (`bigquery.Client`, `kms.KeyManagementServiceClient`), `GOEGcs` (`storage.Client`, with config forwarded by `get_dfs_from_options`), and `GOELogFileHandle` (gcsfs `token=<Credentials>`, removing the anonymous fallback).
-- **REQ-3**: Separate the Managed Spark serverless runtime SA (`--service-account` from `GOOGLE_DATAPROC_SERVICE_ACCOUNT`) from gcloud caller impersonation (`--impersonate-service-account` from `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT` or `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`) on `batches submit`, `batches describe`, and `jobs submit --cluster`.
+- **REQ-2**: Build these clients from `resolve_gcp_credentials`: `BackendBigQueryApi` (`bigquery.Client`, `kms.KeyManagementServiceClient`), `GOEGcs` (`storage.Client`, with config forwarded by `get_dfs_from_options`), and `GOELogFileHandle` (gcsfs `token=<Credentials>`, removing the anonymous fallback), and reorder `BackendBigQueryApi` (`src/goe/offload/bigquery/bigquery_backend_api.py`) and `GOELogFileHandle` (`src/goe/util/goe_log_fh.py`) so public/dunder methods precede private (`_...`) helpers.
+- **REQ-3**: Separate the Managed Spark serverless runtime SA (`--service-account` from `GOOGLE_DATAPROC_SERVICE_ACCOUNT`) from gcloud caller impersonation (`--impersonate-service-account` from `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT` or `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`) on `batches submit`, `batches describe`, and `jobs submit --cluster`, and reorder `OffloadTransportSparkBatchesGcloud`, `OffloadTransportSparkBatchesGcloudCanary`, and `OffloadTransportSparkDataprocGcloudCanary` (`src/goe/offload/spark/dataproc_offload_transport.py`) so public/dunder methods precede private (`_...`) methods.
 - **REQ-4**: Add a `goe connect` "Google Cloud credentials" preflight. It reports credential type, principal, impersonated SA, project, and quota project. It fails on missing ADC or a denied token, and warns on a service account key or a missing project. Add a Managed Spark identity report.
 - **REQ-5**: Upgrade the bundled Cloud Storage Hadoop connector to 3.0.x (`gcs-connector-3.0.20-shaded.jar`) with `spark.hadoop.fs.gs.auth.type APPLICATION_DEFAULT` in the bundled Spark defaults.
 - **REQ-6**: Update `templates/conf/offload.env.template.bigquery`, `templates/conf/offload.env.template.snowflake`, `docs/gcp_setup.md`, and `docs/user_guide.md`. Document keyless ADC, the new settings, Workload Identity Federation, least-privilege IAM, and gcs-connector 3.0.x properties, and remove all key-file guidance.
@@ -81,14 +81,14 @@ research:
 
 | Requirement | Task ID | Verification Strategy | Verification Target |
 | :--- | :--- | :--- | :--- |
-| REQ-1 | `1.1` | `behavior_tdd` | `uv run pytest tests/unit/util/test_gcp_credentials.py tests/unit/config/test_orchestration_config.py` |
-| REQ-2 | `1.2` | `behavior_tdd` | `uv run pytest tests/unit/offload/test_bigquery_backend_api_credentials.py tests/unit/filesystem/test_goe_gcs.py tests/unit/util/test_goe_log_fh.py` |
-| REQ-3 | `1.3` | `behavior_tdd` | `uv run pytest tests/unit/offload/test_offload_transport.py` |
-| REQ-4 | `1.4` | `behavior_tdd` | `uv run pytest tests/unit/connect/test_connect_gcp.py` |
+| REQ-1 | `1.1` | `behavior_tdd` | `uv run pytest tests/unit/util/test_gcp_credentials.py tests/unit/config/test_orchestration_config.py`; AST public-before-private check on touched files |
+| REQ-2 | `1.2` | `behavior_tdd` | `uv run pytest tests/unit/offload/test_bigquery_backend_api_credentials.py tests/unit/filesystem/test_goe_gcs.py tests/unit/util/test_goe_log_fh.py`; AST public-before-private check on `bigquery_backend_api.py`, `goe_gcs.py`, `goe_dfs_factory.py`, `goe_log_fh.py` |
+| REQ-3 | `1.3` | `behavior_tdd` | `uv run pytest tests/unit/offload/test_offload_transport.py`; AST public-before-private check on `dataproc_offload_transport.py` |
+| REQ-4 | `1.4` | `behavior_tdd` | `uv run pytest tests/unit/connect/test_connect_gcp.py`; AST public-before-private check on `connect_backend.py`, `connect_transport.py` |
 | REQ-5 | `1.5` | `static_validation` | `make -C tools/transport -n spark-jars \| grep -F gcs-connector/3.0.20/gcs-connector-3.0.20-shaded.jar` |
 | REQ-6 | `1.6` | `documentation_validation` | `grep` structural checks in `tasks/1.6.md` (no `activate-service-account`, `key-file`, or `private key JSON`; required sections present) |
 
-Every code task also runs `uv run ruff check src tests`, `uv run ruff format --check src tests`, `uv run mypy src/goe`, and `uv run pytest tests/unit`, each prefixed with `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false`.
+Every code task also runs the AST public-before-private ordering check on its touched Python files, `uv run ruff check src tests`, `uv run ruff format --check src tests`, `uv run mypy src/goe`, and `uv run pytest tests/unit`, each prefixed with `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false`.
 
 ---
 

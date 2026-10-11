@@ -3,7 +3,7 @@ type: Spec
 flow_id: prd_04_end_to_end_opentelemetry_observability_20261010
 title: "Master PRD 4: End-to-End OpenTelemetry Observability, Step Spans, Metrics & Log Correlation"
 state: planned
-plan_revision: 2
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,7 +11,7 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T17:15:00Z
-updated_at: 2026-10-10T18:40:00Z
+updated_at: 2026-10-11T01:40:00Z
 description: "Master roadmap for opt-in, zero-cost-when-disabled OpenTelemetry tracing, metrics, and log correlation across the GOE CLI, Listener HTTP/MCP/queue workers, orchestration steps, OracleGateway, all offload transports, GCS, and BigQuery."
 tags:
   - prd
@@ -82,7 +82,7 @@ flowchart LR
 3. **Oracle `MODULE`/`ACTION` invariant**: `LOG_SQL_STATS_QUERY_TEXT` (`src/goe/offload/oracle/oracle_offload_transport_rdbms_api.py:66-77`) finds transport SQL in `gv$sql` by `module`/`action`; trace correlation uses only `CLIENT_INFO` (`conn.clientinfo` / `DBMS_APPLICATION_INFO.SET_CLIENT_INFO`, 64 bytes) and comment tokens appended after the action token.
 4. **Canonical Litestar import**: `OpenTelemetryConfig`/`OpenTelemetryPlugin` come from `litestar.plugins.opentelemetry` (never the deprecated `litestar.contrib.opentelemetry`), bound lazily because the module requires the optional `opentelemetry-instrumentation-asgi`.
 5. **Fail-safe**: telemetry errors never abort an offload (exporter build failures fall back to no-op; `atexit` flushes exporters).
-6. **Code hygiene**: SPDX 2-line header, top-level imports only (optional modules via `goe.cli._lazy`), PEP 585/604 types, docstrings, no inline `#` comments.
+6. **Code hygiene & Public-Before-Private Function/Method Ordering**: SPDX 2-line header, top-level imports only (optional modules via `goe.cli._lazy`), PEP 585/604 types, docstrings, no inline `#` comments, and in every new or modified module and test file all public functions/methods and dunder lifecycle methods (`__init__`, `__getattr__`, etc.) are grouped at the top of each module and class body, with private (`_...`) helpers placed at the bottom.
 
 ---
 
@@ -99,6 +99,7 @@ flowchart LR
 
 ```bash
 export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
+uv run python -c "import ast,pathlib; is_priv=lambda n:n.startswith('_') and not (n.startswith('__') and n.endswith('__')); bad=[(str(p),getattr(s,'name','<module>'),f.name) for root in ('src/goe','tests') for p in sorted(pathlib.Path(root).rglob('*.py')) for s in ast.walk(ast.parse(p.read_text())) if isinstance(s,(ast.Module,ast.ClassDef)) for funcs in [[n for n in s.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]] for i,f in enumerate(funcs) if not is_priv(f.name) and any(is_priv(g.name) for g in funcs[:i])]; assert not bad, bad"
 uv run ruff format --check src/goe tests/unit
 uv run ruff check src/goe tests/unit
 uv run mypy src/goe
@@ -120,5 +121,5 @@ uv run pytest tests/unit/ -v
 - **Decisions**: see §4 (`D-4.3-SQLCOMMENTER` resolved).
 - **Blockers**: PRDs 1-3 must complete first.
 - **Next exact step**: execute Chapter 4.1 task `1.1` (`opentelemetry_foundation_and_context_propagation_20261010:1.1`).
-- **Plan identity**: `plan_revision: 2`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 0`.
 - **Relevant knowledge**: `.agents/bundles/product/tech-stack.md`, `.agents/bundles/knowledge/architecture/orchestration.md`, `.agents/bundles/knowledge/listener/index.md`, `.agents/bundles/knowledge/patterns/cli-architecture.md`, `.agents/bundles/knowledge/workflow.md`.

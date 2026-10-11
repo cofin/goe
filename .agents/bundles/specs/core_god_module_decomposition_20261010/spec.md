@@ -11,7 +11,7 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T18:50:00Z
+updated_at: 2026-10-11T00:10:00Z
 description: "Decompose goe.py, offload_status_report.py, offload_source_data.py, offload_transport.py and offload_transport_factory.py into cohesive modules by verbatim moves, delete proven dead code, and leave each legacy module as a definition-free re-export facade that serves exactly its observed import surface."
 tags:
   - refactoring
@@ -43,7 +43,7 @@ research: []
 
 ### 2. Rules for every task
 
-1. **Verbatim moves**: classes, functions, and constants move unchanged (only import lines change). No behavior edits, renames, or reformatting beyond `uv run ruff format`.
+1. **Verbatim body moves with public-before-private ordering**: function and method bodies, signatures, and constants move unchanged (only import lines and class method order change). Within every module and class, all public functions/methods and dunder lifecycle methods (`__init__`, `__del__`, etc.) are grouped at the top before any private (`_...`) helper functions/methods (`# PUBLIC METHODS` immediately after `__init__`/`__del__`, `# PRIVATE METHODS` at the bottom of each class). No behavior edits, renames, or reformatting beyond `uv run ruff format`.
 2. **Facade contract (replaces the old `<= 60 LOC` budget)**: after the task, the legacy module body is exactly a module docstring followed by `from <new module> import name as name` statements. It re-exports exactly the names other code imports from it, computed by the surface scanner in each worksheet (ImportFrom statements, `("module", "name")` lazy-import tuples in `src/goe/cli`, and `"module.name"` patch strings, across `src/`, `tests/`, `tools/`). The redundant `as name` alias marks explicit re-exports for ruff `F401` and mypy. A fixed line budget is not used because `ruff format` explodes multi-name imports one per line, which makes the transport facade (40+ names) exceed 60 lines while still containing zero definitions.
 3. **New package `__init__.py` files contain only the SPDX header and a one-line docstring.** `src/goe/orchestration/__init__.py` and `src/goe/offload/__init__.py` are empty at baseline and `goe.offload.offload_messages` imports `goe.orchestration.command_steps` at module load; re-exporting submodules from a package `__init__` would execute the whole package on that import and create import cycles.
 4. **Dead code is deleted only with zero-caller evidence** (`git grep -n "\b<name>\b" -- src tests tools` returns only the definition) recorded in the task's Notes.
@@ -71,11 +71,12 @@ Downstream contracts kept: `choose_offload_transport_method` lives in `src/goe/o
 | NFR-1 | Legacy modules are definition-free facades serving their observed surface | 1.1-1.4 | facade structure and surface heredocs |
 | NFR-2 | No new F401/F841/ERA001 findings in moved code | 1.1-1.4 | `uv run ruff check --no-fix --select F401,F841,ERA001 <new modules>` |
 | NFR-3 | SPDX headers, PEP 585/604, no inline comments in new code; `ruff check`, `ruff format --check`, `mypy src/goe` green | 1.1-1.4 | Verification blocks |
+| NFR-4 | Every decomposed module, class, and characterization test places public/dunder functions and methods before private (`_...`) helpers | 1.1-1.4 | AST public-before-private check in Verification blocks |
 
-### 5. Open decisions
+### 5. Resolved decisions
 
-- `Decision pending: D-2.2-A` — The HTML report template `offload_status_report/goe_offload_status_report.html` does not exist in this repository (`git ls-files` has no `templates/offload_status_report/`; upstream `gluent/goe` keeps it under repo-root `templates/`), so HTML output raises `jinja2.TemplateNotFound` at baseline. Default applied: preserve the lookup path (`src/goe/templates/`) verbatim and characterize the current failure; restoring or removing HTML is out of scope for this behavior-preserving chapter.
-- `Decision pending: D-2.2-B` — `OffloadStatusReport.__init__` reads `self._execute` (L190, L239) before assigning it (L243), so constructing the report raises `AttributeError` at baseline, and it opens an Oracle connection. Default applied: the characterization test builds the instance with `OffloadStatusReport.__new__` and sets only the attributes the demo/report path reads; the constructor defect is reported, not fixed here.
+- **`D-2.2-A` (RESOLVED)** — The HTML report template `offload_status_report/goe_offload_status_report.html` does not exist in this repository (`git ls-files` has no `templates/offload_status_report/`; upstream `gluent/goe` keeps it under repo-root `templates/`), so HTML output raises `jinja2.TemplateNotFound` at baseline. Preserve the lookup path (`src/goe/templates/`) verbatim and characterize the current failure; restoring or removing HTML is out of scope for this behavior-preserving chapter.
+- **`D-2.2-B` (RESOLVED)** — `OffloadStatusReport.__init__` reads `self._execute` (L190, L239) before assigning it (L243), so constructing the report raises `AttributeError` at baseline, and it opens an Oracle connection. The characterization test builds the instance with `OffloadStatusReport.__new__` and sets only the attributes the demo/report path reads; the constructor defect is preserved verbatim in this behavior-preserving decomposition.
 
 ### 6. File ownership
 
@@ -98,7 +99,7 @@ Tasks are sequential (each ends green) even though their files are disjoint, so 
 ## Continuity Snapshot
 
 - **State**: `planned`; current task: none; claimant: none; last verified checkpoint: none.
-- **Decisions**: `D-2.2-A` (missing HTML template) and `D-2.2-B` (OSR constructor defect) pending; defaults applied as described in §5.
+- **Decisions**: `D-2.2-A` (missing HTML template) and `D-2.2-B` (OSR constructor seam) resolved as described in §5.
 - **Blockers**: Chapter 2.1 complete (option structs, builders deleted); PRD 1 golden suite present.
 - **Next exact step**: claim Task 1.1 and write `tests/unit/orchestration/test_goe_orchestration_characterization.py` (Step 1).
 - **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 0`.

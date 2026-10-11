@@ -3,7 +3,7 @@ type: Spec
 flow_id: prd_03_sqlspec_bigquery_and_duckdb_engine_20261010
 title: "Master PRD 3: SQLSpec Data Layer, Pluggable SQL AST Engine, BigQuery-First Backend & DuckDB Offload Transport"
 state: planned
-plan_revision: 2
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,7 +11,7 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T18:55:00Z
+updated_at: 2026-10-11T00:10:00Z
 description: "Master roadmap governing the migration of GOE's Oracle data layer to SQLSpec, f-string SQL builders to a pluggable Protocol-based SQL dialect/AST engine (with a custom upstreamable Oracle dialect extension for AS OF SCN and PARTITION selection), BigQuery-first backend modernization, and an opt-in zero-JVM DuckDB Oracle offload transport."
 tags: [refactor, sqlspec, sqlglot, bigquery, duckdb, oracle, transport]
 parent: null
@@ -48,7 +48,7 @@ This Master PRD modernizes GOE's database, SQL generation, backend execution, an
 ```mermaid
 flowchart TD
     subgraph Ch3_1["Chapter 3.1: SQLSpec Oracle Data Layer Migration (3 Tasks)"]
-        SQLFiles["Named SQL Files (SQLFileLoader)\nsrc/goe/persistence/sql/oracle_repo.sql (7 statements)\nsrc/goe/offload/oracle/sql/oracle_frontend.sql (16 statements)"]
+        SQLFiles["Named SQL Files (SQLFileLoader)\nsrc/goe/persistence/sql/oracle_repo.sql (7 statements)\nsrc/goe/offload/oracle/sql/frontend_metadata.sql (16 statements)"]
         OraGateway["OracleGateway (OracleSyncConfig + per-call OracleSyncDriver)\nsrc/goe/persistence/oracle_gateway.py"]
         RepoClient["OracleFrontendApi + OracleQuery (1.2)\nOracleOrchestrationRepoClient + msgspec Schemas (1.3)"]
         SQLFiles --> OraGateway --> RepoClient
@@ -67,7 +67,7 @@ flowchart TD
     end
 
     subgraph Ch3_3["Chapter 3.3: BigQuery-First Backend & Transport (5 Tasks)"]
-        BQSpec["1.1-1.3: Parquet default + BackendBigQueryApi/Table\nINFORMATION_SCHEMA + query_and_wait + Native LoadJob"]
+        BQSpec["1.1-1.3: Parquet default + BackendBigQueryApi/Table\nINFORMATION_SCHEMA + query_and_wait (1.2) + Native LoadJob (1.3)"]
         GcsTransport["1.4-1.5: GOEGcs preconditions + GCP AUTO order\nQuery Import modernization"]
     end
 
@@ -89,9 +89,9 @@ flowchart TD
 
 | Order | Flow ID | Title & Tasks | Primary Scope | Depends On |
 | :--- | :--- | :--- | :--- | :--- |
-| **3.1** | `sqlspec_oracle_data_layer_migration_20261010` | **Chapter 3.1: SQLSpec Oracle Data Layer Migration** (3 tasks: `1.1`–`1.3`) | Create `OracleGateway` (`OracleSyncConfig(connection_config=None, ...)` wrapping caller-validated `oracledb.Connection` instances in `OracleSyncDriver(connection=...)` per call, plus `SQLFileLoader` and `new_out_var` while keeping PL/SQL on `FrontendApi.execute_function`) (`1.1`); migrate `OracleFrontendApi` (16 named statements in `oracle_frontend.sql`, `get_validated_oracle_connection()`, substring-preserving reconnect) and `OracleQuery` (case-preserving `rows_as_dicts`) (`1.2`); migrate `OracleOrchestrationRepoClient` (7 named statements in `oracle_repo.sql`, `msgspec.Struct` row validation hydrated back via `msgspec.structs.asdict`, bound `:adm_user`/`:app_user`/`:repo_user`) (`1.3`). | PRD 1 & PRD 2 |
+| **3.1** | `sqlspec_oracle_data_layer_migration_20261010` | **Chapter 3.1: SQLSpec Oracle Data Layer Migration** (3 tasks: `1.1`–`1.3`) | Create `OracleGateway` (`OracleSyncConfig(connection_config=None, ...)` wrapping caller-validated `oracledb.Connection` instances in `OracleSyncDriver(connection=...)` per call, plus `SQLFileLoader` and `new_out_var` while keeping PL/SQL on `FrontendApi.execute_function`) (`1.1`); migrate `OracleFrontendApi` (16 named statements in `frontend_metadata.sql`, `get_validated_oracle_connection()`, substring-preserving reconnect) and `OracleQuery` (case-preserving `rows_as_dicts`) (`1.2`); migrate `OracleOrchestrationRepoClient` (7 named statements in `oracle_repo.sql`, `msgspec.Struct` row validation hydrated back via `msgspec.structs.asdict`, bound `:adm_user`/`:app_user`/`:repo_user`) (`1.3`). | PRD 1 & PRD 2 |
 | **3.2** | `sqlglot_ast_and_predicate_engine_20261010` | **Chapter 3.2: Pluggable SQL AST, Custom Oracle Dialect & Predicate Engine** (5 tasks: `1.1`–`1.5`) | Define library-agnostic `BigQueryDialectEngineProtocol`, `OracleExtractionQueryProtocol`, `PredicateDialectEngineProtocol`, `ValidationQueryEngineProtocol`, and `RenderedSQL` in `src/goe/offload/sql_engine.py` (`1.1`); implement `BigQuerySqlEngine` (`src/goe/offload/bigquery/bigquery_sql.py`) and refactor `BackendBigQueryApi` DDL/DML (`1.2`); implement `register_oracle_dialect_extensions` + `OracleSqlEngine` (`src/goe/offload/oracle/oracle_dialect.py` with literal `AS OF SCN <int>` and `PARTITION`/`SUBPARTITION`) and refactor `OffloadTransportOracleApi` (`1.3`); implement `PredicateSqlEngine` and refactor `oracle_predicate.py` and `bigquery_predicate.py` while keeping `GenericPredicateToSQL` base classes for Hadoop/Synapse/Snowflake/Teradata (`1.4`); implement `ValidationSqlEngine` and refactor `CrossDbValidator` in `offload_validation.py` (`1.5`). | Chapter 3.1 |
-| **3.3** | `bigquery_first_backend_modernization_20261010` | **Chapter 3.3: BigQuery-First Backend & Transport Modernization** (5 tasks: `1.1`–`1.5`) | Parquet staging default and `BIGQUERY_LOAD_TABLE_MODE` (`1.1`); GoogleSQL `INFORMATION_SCHEMA.PARTITIONS`, `ClientInfo`, idempotent `close()`, and dataset `default_kms_key_name` (`1.2`); `query_and_wait`, `sanitize_bigquery_label`, `_default_job_labels`, and native `load_table_from_uri` load tables with external-table fallback (`1.3`); `GOEGcs` `if_generation_match=0` uploads and single-pass `delete_blobs` (`1.4`); GCP-first `AUTO` order and Query Import fetch-size/cleanup modernization (`1.5`). | Chapter 3.1, Chapter 3.2 |
+| **3.3** | `bigquery_first_backend_modernization_20261010` | **Chapter 3.3: BigQuery-First Backend & Transport Modernization** (5 tasks: `1.1`–`1.5`) | Parquet staging default and `BIGQUERY_LOAD_TABLE_MODE` (`1.1`); GoogleSQL `INFORMATION_SCHEMA.PARTITIONS`, `ClientInfo`, idempotent `close()`, dataset `default_kms_key_name`, `query_and_wait`, `sanitize_bigquery_label_value`, and `job_labels()` (`1.2`); native `load_table_from_uri` load tables with external-table fallback (`1.3`); `GOEGcs` `if_generation_match=0` uploads and single-pass `delete_blobs` (`1.4`); GCP-first `AUTO` order and Query Import fetch-size/cleanup modernization (`1.5`). | Chapter 3.1, Chapter 3.2 |
 | **3.4** | `duckdb_oracle_offload_transport_20261010` | **Chapter 3.4: Opt-In DuckDB Oracle Offload Transport** (4 tasks: `1.1`–`1.4`) | DuckDB transport constants and `OrchestrationConfig` options (`1.1`); `duckdb_engine.py` helpers for `cofin/duckdb-oracle` (`CREATE TEMPORARY SECRET ... TYPE oracle`, `ATTACH ... AS goe_ora`, `oracle_query`) and community `gcs` (`gcss://` + ADC `ACCESS_TOKEN` secret) (`1.2`); `OffloadTransportDuckDB` (`_run_batch`, `_run_batches`, staging verification) (`1.3`); opt-in registration (`--offload-transport-method=DUCKDB`) and offline availability gate (`1.4`). | Chapter 3.1, Chapter 3.2, Chapter 3.3 |
 
 ---
@@ -114,6 +114,8 @@ flowchart TD
    - Never mix positional and named bind parameters in any SQLSpec execution call. All Oracle SQLSpec queries use `NAMED_COLON` (`:param_name`) binds passed as a `dict[str, Any]`.
 5. **Oracle Nanosecond Fidelity Inside `PredicateSqlEngine`**:
    - Inside `PredicateSqlEngine`, preserve 9-digit nanosecond (`FF9`) precision in Oracle `TIMESTAMP(9)` predicates (`TIMESTAMP 'YYYY-MM-DD HH:MM:SS.fffffffff'` and `TO_TIMESTAMP(:bind, 'YYYY-MM-DD HH24:MI:SS.FF9')`) directly from `numpy.datetime64` formatting without parsing through `sqlglot.parse_one`.
+6. **Public-Before-Private Function & Method Ordering**:
+   - Every Python module and class created or modified across Chapters 3.1–3.4 must group all public functions/methods and dunder lifecycle methods (`__init__`, `__enter__`, `__exit__`, `__str__`, `__getattr__`, etc.) at the top of the module or class (`# PUBLIC METHODS`), and place all private (`_...`) helper functions/methods at the bottom (`# PRIVATE METHODS`).
 
 ---
 
@@ -123,13 +125,14 @@ Each child chapter is gated by:
 - `make format` (`uv run ruff format` and `uv run ruff check --fix`)
 - `make lint` (`uv run ruff check` and `uv run mypy src/goe`)
 - `GOOGLE_API_USE_CLIENT_CERTIFICATE=false uv run pytest tests/unit`
+- Public-before-private AST ordering check on all created/modified Python source and test files (`assert not bad`).
 - Chapter-specific characterization and TDD unit suites verifying SQL equivalence, bind parameter dictionaries, protocol decoupling, Oracle `AS OF SCN` / `PARTITION` AST round-tripping, dead-code removal, BigQuery load-job behavior, and DuckDB transport behavior (mocked; no network).
 
 ## Implementation Plan
 
-- [ ] 3.1 [Chapter 3.1: SQLSpec Oracle Data Layer Migration](../sqlspec_oracle_data_layer_migration_20261010/spec.md) — 3 tasks (`1.1`–`1.3`): create `OracleGateway` (`1.1`), migrate `OracleFrontendApi` (16 statements in `oracle_frontend.sql`) and `OracleQuery` (`1.2`), and migrate `OracleOrchestrationRepoClient` (7 statements in `oracle_repo.sql`) (`1.3`).
+- [ ] 3.1 [Chapter 3.1: SQLSpec Oracle Data Layer Migration](../sqlspec_oracle_data_layer_migration_20261010/spec.md) — 3 tasks (`1.1`–`1.3`): create `OracleGateway` (`1.1`), migrate `OracleFrontendApi` (16 statements in `frontend_metadata.sql`) and `OracleQuery` (`1.2`), and migrate `OracleOrchestrationRepoClient` (7 statements in `oracle_repo.sql`) (`1.3`).
 - [ ] 3.2 [Chapter 3.2: Pluggable SQL AST, Custom Oracle Dialect & Predicate Engine](../sqlglot_ast_and_predicate_engine_20261010/spec.md) — 5 tasks (`1.1`–`1.5`): define `sql_engine.py` protocols and value objects (`1.1`), implement `BigQuerySqlEngine` and refactor `BackendBigQueryApi` DDL/DML (`1.2`), implement `oracle_dialect.py` (`AS OF SCN` / `PARTITION` / `SUBPARTITION`) and refactor `OffloadTransportOracleApi` (`1.3`), implement `PredicateSqlEngine` and refactor `oracle_predicate.py` / `bigquery_predicate.py` (`1.4`), and implement `ValidationSqlEngine` and refactor `CrossDbValidator` (`1.5`).
-- [ ] 3.3 [Chapter 3.3: BigQuery-First Backend & Transport Modernization](../bigquery_first_backend_modernization_20261010/spec.md) — 5 tasks (`1.1`–`1.5`): Parquet default and `BIGQUERY_LOAD_TABLE_MODE` (`1.1`), `BackendBigQueryApi` metadata/lifecycle/KMS modernization (`1.2`), `query_and_wait`, job labels, and native `load_table_from_uri` load tables (`1.3`), `GOEGcs` precondition uploads and single-pass deletes (`1.4`), and GCP `AUTO` order and Query Import modernization (`1.5`).
+- [ ] 3.3 [Chapter 3.3: BigQuery-First Backend & Transport Modernization](../bigquery_first_backend_modernization_20261010/spec.md) — 5 tasks (`1.1`–`1.5`): Parquet default and `BIGQUERY_LOAD_TABLE_MODE` (`1.1`), `BackendBigQueryApi` metadata/lifecycle/KMS/`query_and_wait`/job-label modernization (`1.2`), native `load_table_from_uri` load tables (`1.3`), `GOEGcs` precondition uploads and single-pass deletes (`1.4`), and GCP `AUTO` order and Query Import modernization (`1.5`).
 - [ ] 3.4 [Chapter 3.4: Opt-In DuckDB Oracle Offload Transport](../duckdb_oracle_offload_transport_20261010/spec.md) — 4 tasks (`1.1`–`1.4`): DuckDB config options (`1.1`), `duckdb_engine.py` helpers for `cofin/duckdb-oracle` and `gcs` (`1.2`), `OffloadTransportDuckDB` (`1.3`), and registration + availability gate (`1.4`).
 
 ## Decisions
@@ -137,12 +140,12 @@ Each child chapter is gated by:
 - **`BQ-D1` (RESOLVED)** — Local `goccy/bigquery-emulator` + `fake-gcs-server` harness: excluded (emulator lacks external tables, `INFORMATION_SCHEMA.PARTITIONS`, `dry_run`, and CMEK/Parquet load fidelity, and GOE will never code around emulator limitations). Live verification uses the real GCP BigQuery project (`oracle_ci_and_bigquery_test_harness_20261010` `integration-bigquery`) plus offline unit and golden suites.
 - **`BQ-D2` (RESOLVED)** — Removed unwired 3.3 additions (Storage Write streamer, `transfer_manager` upload helper, `dry_run_preview`, load-dataset expiration, `BIGQUERY_BILLING_PROJECT`).
 - **`DUCK-D1` (RESOLVED)** — `DUCKDB` is strictly opt-in (`--offload-transport-method=DUCKDB` / `OFFLOAD_TRANSPORT=DUCKDB`), excluded from `AUTO`, and adds no DuckDB verification engine.
-- `DUCK-D2` (pending) — Runtime DuckDB version gate versus `duckdb==1.5.5` pin.
-- `DUCK-D3` (pending) — Unsigned extension install from the custom repository versus mandatory `EXTENSION_PATH` + SHA-256 verification.
+- **`DUCK-D2` (RESOLVED)** — Runtime DuckDB version gate versus `duckdb==1.5.5` pin: both are enforced (`duckdb==1.5.5` lockfile pin plus runtime `duckdb.__version__` prefix gate against `OFFLOAD_TRANSPORT_DUCKDB_SUPPORTED_VERSION_PREFIX = "1.5.5"` in `is_duckdb_available()` and `configure_duckdb_for_offload()`).
+- **`DUCK-D3` (RESOLVED)** — Unsigned extension install from the custom repository versus `EXTENSION_PATH`: when `OFFLOAD_TRANSPORT_DUCKDB_ORACLE_EXTENSION_PATH` is set, load the local binary directly; when installing from `OFFLOAD_TRANSPORT_DUCKDB_ORACLE_REPOSITORY` without a local path, require explicit opt-in via `OFFLOAD_TRANSPORT_DUCKDB_ALLOW_UNSIGNED_EXTENSIONS=true` (enforced by both `is_duckdb_available()` and `configure_duckdb_for_offload()`).
 
 ## Continuity Snapshot
 
-- **Current State**: `planned`, `plan_revision: 2`, `plan_commit: null`; 4 sequenced child flows (17 tasks total: `3` in 3.1, `5` in 3.2, `5` in 3.3, `4` in 3.4), executed after PRD 1 and PRD 2.
+- **Current State**: `planned`, `plan_revision: 3`, `plan_commit: null`; 4 sequenced child flows (17 tasks total: `3` in 3.1, `5` in 3.2, `5` in 3.3, `4` in 3.4), executed after PRD 1 and PRD 2.
 - **Next Action**: Execute Chapter 3.1 (`sqlspec_oracle_data_layer_migration_20261010`), Task `1.1` ([../sqlspec_oracle_data_layer_migration_20261010/tasks/1.1.md](../sqlspec_oracle_data_layer_migration_20261010/tasks/1.1.md)).
-- **Decisions**: `BQ-D1`, `BQ-D2`, `DUCK-D1` resolved; `DUCK-D2`, `DUCK-D3` pending.
+- **Decisions**: `BQ-D1`, `BQ-D2`, `DUCK-D1`, `DUCK-D2`, `DUCK-D3` resolved; none pending.
 - **Knowledge**: `.agents/bundles/specs/index.md`, `.agents/bundles/product/tech-stack.md`, `.agents/bundles/knowledge/patterns/index.md`.

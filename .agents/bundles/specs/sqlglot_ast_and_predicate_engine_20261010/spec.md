@@ -3,7 +3,7 @@ type: Spec
 flow_id: sqlglot_ast_and_predicate_engine_20261010
 title: "Chapter 3.2: Pluggable SQL AST, Custom Oracle Dialect & Predicate Engine"
 state: planned
-plan_revision: 2
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,10 +11,12 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T19:25:00Z
+updated_at: 2026-10-11T00:10:00Z
 description: "Introduce a library-agnostic SQL dialect and AST engine seam (src/goe/offload/sql_engine.py), a custom upstreamable Oracle dialect extension (src/goe/offload/oracle/oracle_dialect.py) for AS OF SCN and PARTITION/SUBPARTITION ASTs, and encapsulated sqlglot implementations for BigQuery DDL/DML, Oracle extraction queries, predicate rendering, and CrossDbValidator."
 tags: [refactor, sqlglot, bigquery, oracle, predicates, validation, architecture]
-parent_prd: prd_03_sqlspec_bigquery_and_duckdb_engine_20261010
+parent: prd_03_sqlspec_bigquery_and_duckdb_engine_20261010
+depends_on:
+  - sqlspec_oracle_data_layer_migration_20261010
 research:
   - research/sql_generation_and_dialects.md
 ---
@@ -32,13 +34,13 @@ Replace string-concatenated and f-string-interpolated SQL construction across GO
    - Create `src/goe/offload/sql_engine.py` defining library-agnostic domain value objects and `typing.Protocol` interfaces (**zero `sqlglot` imports in `sql_engine.py`**):
      - `RenderedSQL(msgspec.Struct, frozen=True, kw_only=True)`: `sql: str`, `params: dict[str, Any] = msgspec.field(default_factory=dict)`
      - `ValidationQuerySpec(msgspec.Struct, frozen=True, kw_only=True)`: structured specification for cross-database aggregate validation queries.
-     - `BigQueryDialectEngineProtocol(Protocol)`: methods (`partition_by_clause`, `properties_clause`, `create_table`, `create_external_table`, `create_or_replace_ddl`, `ctas`, `insert_select`, `alter_add_columns`, `create_view`) accepting pure GOE domain objects (`project`, `db_name`, `table_name`, `Sequence[ColumnMetadataInterface]`, partition/cluster specs, `options: Mapping[str, Any]`) and returning `str` — **never exposing `sqlglot.exp.Expr` in public signatures**.
+     - `BigQueryDialectEngineProtocol(Protocol)`: methods (`partition_by_clause`, `properties_clause`, `create_table`, `create_external_table`, `create_or_replace_ddl`, `ctas`, `insert_select`, `alter_add_columns`, `create_view`) accepting pure GOE domain objects (`project`, `db_name`, `table_name`, `Sequence[ColumnMetadataInterface] | None`, partition/cluster specs, `options: Mapping[str, Any] | None`) and returning `str` — **never exposing `sqlglot.exp.Expr` in public signatures**.
      - `OracleExtractionQueryProtocol(Protocol)`: methods (`snapshot_scn_clause`, `iot_partition_clause`, `table_from_clause`, `id_range_query`, `partition_split_branch_query`, `extent_split_branch_query`, `mod_split_query`, `native_range_split_query`, `id_range_split_branch_query`, `parse_and_render`) for building and round-tripping Oracle Flashback (`AS OF SCN`) and `PARTITION` / `SUBPARTITION` extraction queries as `str`.
      - `PredicateDialectEngineProtocol(Protocol)`: `render_literal_sql(typed_tree: Any, columns: Sequence[ColumnMetadataInterface]) -> str`, `render_bind_sql(typed_tree: Any, columns: Sequence[ColumnMetadataInterface]) -> RenderedSQL`, and `validate_where_clause(raw_sql: str, dialect: str) -> str`.
      - `ValidationQueryEngineProtocol(Protocol)`: `build_aggregate_query(spec: ValidationQuerySpec) -> str` and `validate_filter_clause(raw_filter: str, dialect: str) -> str`.
 2. **BigQuery Dialect Engine (`bigquery_sql.py`) & `BackendBigQueryApi` Refactoring (`Task 1.2`)**:
    - Create `src/goe/offload/bigquery/bigquery_sql.py` encapsulating `BigQuerySqlEngine(BigQueryDialectEngineProtocol)` behind `get_bigquery_dialect_engine() -> BigQueryDialectEngineProtocol`.
-   - Refactor `BackendBigQueryApi` in `src/goe/offload/bigquery/bigquery_backend_api.py` to call `get_bigquery_dialect_engine()` (**never importing `sqlglot` directly**) and **delete** the replaced raw f-string DDL/DML construction code (`_create_external_table` at `L219-262`, `_create_table_properties_clause` raw `OPTIONS` join at `L264-280`, `_gen_bigquery_create_table_sql_text` string builder at `L455-509`, `add_columns` at `L674-693`, `create_view` at `L910-932`, `gen_ctas_sql_text` at `L1235-1277`, `gen_insert_select_sql_text` at `L1279-1324`, `gen_native_range_partition_key_cast` at `L1326-1372`, and `re.sub(r"^CREATE TABLE", "CREATE OR REPLACE TABLE", ddl_str, re.IGNORECASE)` in `get_table_ddl` at `L1490-1497`).
+   - Refactor `BackendBigQueryApi` in `src/goe/offload/bigquery/bigquery_backend_api.py` to call `get_bigquery_dialect_engine()` (**never importing `sqlglot` directly**) and **delete** the replaced raw f-string DDL/DML construction code (`_create_external_table` at `L238-262`, `_create_table_properties_clause` raw `OPTIONS` join at `L264-280`, `_gen_bigquery_create_table_sql_text` string builder at `L455-509`, `add_columns` at `L674-693`, `create_view` at `L910-932`, `gen_ctas_sql_text` at `L1235-1277`, `gen_insert_select_sql_text` at `L1279-1324`, `gen_native_range_partition_key_cast` at `L1326-1372`, and `re.sub(r"^CREATE TABLE", "CREATE OR REPLACE TABLE", ddl_str, re.IGNORECASE)` in `get_table_ddl` at `L1490-1497`).
 3. **Custom Upstreamable Oracle Dialect Extension (`oracle_dialect.py`) & `OffloadTransportOracleApi` Refactoring (`Task 1.3`)**:
    - Create `src/goe/offload/oracle/oracle_dialect.py` (modeled directly on `sqlspec.dialects.spanner` for future upstreaming to `sqlspec/dialects/oracle/`):
      - Implement `register_oracle_dialect_extensions()` registering `SUBPARTITION` (`TokenType.PARTITION` from `sqlglot.tokenizer_core`), `Oracle.ALIAS_POST_VERSION = True`, `OracleParser.SUPPORTS_PARTITION_SELECTION = True`, `OracleParser.VERSION_PHRASES` (`AS OF SCN`, `AS OF TIMESTAMP`, `VERSIONS SCN`, `VERSIONS TIMESTAMP`), and `_oracle_version_sql` on `OracleGenerator.TRANSFORMS[exp.Version]` with `sqlspec.builder._generation.invalidate_generator_dispatch(OracleGenerator)`.
@@ -70,6 +72,8 @@ Replace string-concatenated and f-string-interpolated SQL construction across GO
    - Never call `sqlglot.transpile(..., read="oracle", write="bigquery")` or run `qualify` / `optimize` on DDL or validation queries.
    - Embed caller-supplied SQL expressions (projections, casts, and validated `WHERE` filter expressions) verbatim via `exp.Var(this=...)` / `exp.Paren(this=exp.Var(this=...))` rather than round-tripping through `sqlglot.parse_one(...).sql(...)`, which would truncate 9-digit Oracle `TIMESTAMP '...'` literals to `FF6`, drop the 3rd `NLS_CALENDAR` argument of `TO_DATE(...)`, or rewrite BigQuery typed literals (`DATETIME '...'`, `DATE '...'`) to `CAST(...)`.
    - Construct Oracle `TIMESTAMP(9)` literals (`TIMESTAMP 'YYYY-MM-DD HH:MM:SS.fffffffff'`) and binds (`TO_TIMESTAMP(:bind, 'YYYY-MM-DD HH24:MI:SS.FF9')`) directly from `numpy.datetime64` formatting, and construct numeric literals via `exp.Literal(this=formatted, is_string=False)` to preserve `np.format_float_positional(val, trim="-")` output on negative decimals.
+5. **Public-Before-Private Function & Method Ordering**:
+   - In every new and modified Python module and test file (`src/goe/offload/sql_engine.py`, `src/goe/offload/bigquery/bigquery_sql.py`, `src/goe/offload/bigquery/bigquery_backend_api.py`, `src/goe/offload/oracle/oracle_dialect.py`, `src/goe/offload/oracle/oracle_offload_transport_rdbms_api.py`, `src/goe/offload/predicate_offload.py`, `src/goe/offload/oracle/oracle_predicate.py`, `src/goe/offload/bigquery/bigquery_predicate.py`, `src/goe/offload/offload_validation.py`, and their unit test suites), all public functions/methods and dunder lifecycle methods (`__init__`, `__enter__`, `__exit__`, etc.) must appear at the top of each module and class body, with private (`_...`) helper functions/methods grouped at the bottom.
 
 ---
 
@@ -93,5 +97,5 @@ Replace string-concatenated and f-string-interpolated SQL construction across GO
 
 ## Continuity Snapshot
 
-- **Current State**: Planned (`plan_revision: 2`).
+- **Current State**: Planned (`plan_revision: 3`, zero-ambiguity `/flow refine` audit complete).
 - **Next Action**: Execute Task `1.1` (`sqlglot_ast_and_predicate_engine_20261010:1.1`).

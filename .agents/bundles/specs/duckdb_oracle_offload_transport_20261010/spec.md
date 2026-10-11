@@ -3,7 +3,7 @@ type: Spec
 flow_id: duckdb_oracle_offload_transport_20261010
 title: "Chapter 3.4: Opt-In DuckDB Oracle Offload Transport (duckdb-oracle + community gcs)"
 state: planned
-plan_revision: 2
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,10 +11,10 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T18:50:00Z
+updated_at: 2026-10-11T00:10:00Z
 description: Add an opt-in DUCKDB offload transport that runs one SCN-pinned oracle_query per GOE transport batch through cofin/duckdb-oracle and writes Parquet directly to gcss:// with the community gcs extension using GOE's central ADC credentials, for Oracle-to-BigQuery offloads.
 tags: [feature, duckdb, oracle, gcs, bigquery, transport, parquet]
-parent_prd: prd_03_sqlspec_bigquery_and_duckdb_engine_20261010
+parent: prd_03_sqlspec_bigquery_and_duckdb_engine_20261010
 depends_on:
   - sqlspec_oracle_data_layer_migration_20261010
   - sqlglot_ast_and_predicate_engine_20261010
@@ -31,7 +31,7 @@ research: [research/duckdb_integration.md]
 - Citations use baseline commit `46890a8`. Transport code moves into `src/goe/offload/transport/` (`constants.py`, `base.py`, `query_import.py`, `factory.py`, ...) in `core_god_module_decomposition_20261010:1.4`; every task names the post-PRD-2 module plus the baseline symbol/line.
 - Earlier chapters this flow builds on:
   - `gcp_adc_credential_unification_20261010:1.1` — `goe.util.gcp_credentials.resolve_gcp_credentials(config, scopes)`; PRD 1 requires every GCP client to use it.
-  - `sqlglot_ast_and_predicate_engine_20261010:1.2` — Oracle row-source/SCN SQL is produced by `OracleSqlEngine` behind unchanged `OracleOffloadTransportRdbmsApi` signatures; output still contains literal `AS OF SCN <n>`.
+  - `sqlglot_ast_and_predicate_engine_20261010:1.3` — Oracle row-source/SCN SQL is produced by `OracleSqlEngine` behind unchanged `OffloadTransportOracleApi` signatures; output still contains literal `AS OF SCN <n>`.
   - `bigquery_first_backend_modernization_20261010:1.1` — Parquet is the default BigQuery staging format; `:1.3` — native BigQuery load of `part*` files; `:1.5` — GCP `AUTO` order in `factory.py`.
 - Verified upstream facts (full matrix and URLs in `research/duckdb_integration.md`):
   - `cofin/duckdb-oracle` v0.2.2 is built only for DuckDB 1.5.5, unsigned, installed from `https://cofin.github.io/duckdb-oracle`, not a community extension; `oracle_query(conn_ref, sql)` takes an ATTACH alias (bare secret names rejected); oracle secrets accept `HOST/PORT/SERVICE/USER/PASSWORD`; SQL passes through verbatim (literal `AS OF SCN` works); auth is `OCI_CRED_RDBMS` only; 30 s OCI call timeout and 64 KiB value buffers are hard-coded; no session-init, timeout, LOB or time-zone settings exist.
@@ -48,6 +48,7 @@ research: [research/duckdb_integration.md]
 - **REQ-2 Engine helpers:** bounded batch connections, `oracle`/`gcs` LOAD-then-INSTALL, temporary escaped secrets, ATTACH alias, `gcss://` rewriting, Parquet cast projection, SCN invariant, `COPY` SQL. → Task 1.2
 - **REQ-3 Transport:** `OffloadTransportDuckDB` with SCN-pinned per-batch queries for PARTITION/SUBPARTITION/EXTENT/MOD/ID_RANGE splits, `ORA_SDTZ=UTC`, one ADC access token per run, fresh connection per batch, row/byte context, `post_transport_tasks`, secret-free logging, spill cleanup, dry-run parity. → Task 1.3
 - **REQ-4 Registration:** `DUCKDB` method and `OFFLOAD_TRANSPORT=DUCKDB` rule set, offline availability gate, factory branch, CLI help; never in `AUTO`. → Task 1.4
+- **REQ-5 Public-Before-Private Function & Method Ordering:** In all new and modified Python modules and test suites (`duckdb_constants.py`, `duckdb_engine.py`, `duckdb_transport.py`, `duckdb_availability.py`, `factory.py`, `orchestration_defaults.py`, `orchestration_config.py`, `config_validation_functions.py`, `offload.py`, and their unit tests), all public functions/methods and dunder lifecycle methods (`__init__`, etc.) are grouped at the top of each module and class body, with private (`_...`) helpers placed at the bottom. → Tasks 1.1–1.4
 
 ### Non-Goals & Limits
 
@@ -56,8 +57,8 @@ research: [research/duckdb_integration.md]
 - Ineligible (gate returns False with a logged reason): non-BigQuery targets, non-`gs` filesystems, Avro staging, DuckDB version drift, Oracle Wallet auth, non-EZConnect DSNs, tables above `OFFLOAD_TRANSPORT_DUCKDB_MAX_BYTES`, CLOB/NCLOB/BLOB/LONG/LONG RAW/RAW/XMLTYPE columns.
 - Known runtime limits documented to operators: 30 s per OCI round trip; one access token per run (a batch must finish within the token lifetime, default 3600 s); `ORA_SDTZ=UTC` is process-global; extension INSTALL needs network unless `OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_DIR`/`EXTENSION_PATH` is pre-seeded.
 - **`DUCK-D1` (RESOLVED)**: `DUCKDB` is strictly opt-in (`--offload-transport-method=DUCKDB` / `OFFLOAD_TRANSPORT=DUCKDB`) and excluded from `AUTO`, and adds no DuckDB verification engine because `cofin/duckdb-oracle` is unsigned, has hard-coded timeouts/buffers and password-only auth, and `CrossDbValidator` already pushes validation to Oracle and BigQuery. If `AUTO` is chosen later, the hook is `GCP_AUTO_TRANSPORT_METHODS` in `src/goe/offload/transport/factory.py`.
-- `Decision pending: DUCK-D2` — DuckDB version control: runtime gate (`OFFLOAD_TRANSPORT_DUCKDB_VERSION`, default `1.5.5`) versus pinning `duckdb==1.5.5` in `pyproject.toml`. This revision uses the runtime gate and does not edit `pyproject.toml`.
-- `Decision pending: DUCK-D3` — extension supply chain: the plan allows `INSTALL oracle FROM <repository>` with `allow_unsigned_extensions`; an alternative requires `OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_PATH` plus SHA-256 verification against upstream `SHA256SUMS.txt`.
+- **`DUCK-D2` (RESOLVED)**: DuckDB version control uses the runtime gate (`OFFLOAD_TRANSPORT_DUCKDB_VERSION`, default `1.5.5`) rather than pinning `duckdb==1.5.5` in `pyproject.toml`, preserving transitive dependency flexibility while failing fast on ABI mismatch.
+- **`DUCK-D3` (RESOLVED)**: Extension supply chain supports local air-gapped loading via `OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_PATH` / `OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_DIR` and falls back to `INSTALL oracle FROM <repository>` with `allow_unsigned_extensions` when unset.
 
 ### Task Breakdown & File Ownership
 
@@ -66,7 +67,7 @@ research: [research/duckdb_integration.md]
 | 1.1 | `OFFLOAD_TRANSPORT_DUCKDB_*` options | `behavior_tdd` | P1 | — | `src/goe/config/orchestration_defaults.py`, `src/goe/config/orchestration_config.py`, `src/goe/config/config_validation_functions.py`, `templates/conf/offload.env.template.bigquery` | `tests/unit/config/test_duckdb_transport_config.py` |
 | 1.2 | Constants and engine helpers | `behavior_tdd` | P1 | — | `src/goe/offload/transport/duckdb_constants.py`, `src/goe/offload/transport/duckdb_engine.py`, `tests/unit/offload/transport/__init__.py` | `tests/unit/offload/transport/test_duckdb_engine.py` |
 | 1.3 | `OffloadTransportDuckDB` | `behavior_tdd` | P2 | 1.1, 1.2 | `src/goe/offload/transport/duckdb_transport.py` | `tests/unit/offload/transport/test_duckdb_transport.py` |
-| 1.4 | Registration, availability gate, factory, CLI help | `behavior_tdd` | P2 | 1.1, 1.3 | `src/goe/offload/offload_constants.py`, `src/goe/offload/transport/constants.py`, `src/goe/offload/transport/duckdb_availability.py`, `src/goe/offload/transport/factory.py`, `src/goe/cli/commands/offload.py` | `tests/unit/offload/transport/test_duckdb_registration.py` |
+| 1.4 | Registration, availability gate, factory, CLI help | `behavior_tdd` | P2 | 1.1, 1.3 | `src/goe/offload/offload_constants.py`, `src/goe/offload/transport/constants.py`, `src/goe/offload/transport/duckdb_availability.py`, `src/goe/offload/transport/factory.py`, `src/goe/cli/commands/offload.py`, `tests/unit/offload/test_offload_transport.py` | `tests/unit/offload/transport/test_duckdb_registration.py`, `tests/unit/offload/test_offload_transport.py` |
 
 ## Implementation Plan
 
@@ -81,6 +82,7 @@ research: [research/duckdb_integration.md]
 export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
 uv run pytest tests/unit/config/test_duckdb_transport_config.py tests/unit/offload/transport -q
 uv run pytest tests/unit -q
+uv run python -c "import ast,sys; is_priv=lambda n:n.startswith('_') and not (n.startswith('__') and n.endswith('__')); bad=[(p,getattr(s,'name','<module>'),f.name) for p in sys.argv[1:] for s in ast.walk(ast.parse(open(p).read())) if isinstance(s,(ast.Module,ast.ClassDef)) for funcs in [[n for n in s.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]] for i,f in enumerate(funcs) if not is_priv(f.name) and any(is_priv(g.name) for g in funcs[:i])]; assert not bad, bad" src/goe/config/orchestration_defaults.py src/goe/config/orchestration_config.py src/goe/config/config_validation_functions.py src/goe/offload/transport/duckdb_constants.py src/goe/offload/transport/duckdb_engine.py src/goe/offload/transport/duckdb_transport.py src/goe/offload/transport/duckdb_availability.py src/goe/offload/transport/factory.py src/goe/cli/commands/offload.py tests/unit/config/test_duckdb_transport_config.py tests/unit/offload/transport/test_duckdb_engine.py tests/unit/offload/transport/test_duckdb_transport.py tests/unit/offload/transport/test_duckdb_registration.py
 uv run ruff check src/goe tests/unit
 uv run ruff format --check src/goe tests/unit
 uv run mypy src/goe
@@ -90,6 +92,6 @@ uv run mypy src/goe
 
 - **State:** `planned`; current task: none.
 - **Next exact step:** after `bigquery_first_backend_modernization_20261010` completes, claim Task `1.1` (`tasks/1.1.md`), then execute `1.2` → `1.3` → `1.4` sequentially.
-- **Plan identity:** `plan_revision: 2`, `plan_commit: null`.
-- **Decisions:** `DUCK-D1` (resolved — opt-in only, excluded from `AUTO`), `DUCK-D2` (pending — version pin), `DUCK-D3` (pending — extension supply chain).
+- **Plan identity:** `plan_revision: 3`, `plan_commit: null`.
+- **Decisions:** `DUCK-D1` (resolved — opt-in only, excluded from `AUTO`), `DUCK-D2` (resolved — runtime version gate), `DUCK-D3` (resolved — local extension path/dir with repository fallback).
 - **Knowledge:** `.agents/bundles/knowledge/patterns/index.md`, `.agents/bundles/product/tech-stack.md`, `research/duckdb_integration.md`.

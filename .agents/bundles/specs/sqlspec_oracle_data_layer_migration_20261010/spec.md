@@ -3,7 +3,7 @@ type: Spec
 flow_id: sqlspec_oracle_data_layer_migration_20261010
 title: "Chapter 3.1: SQLSpec Oracle Data Layer Migration"
 state: planned
-plan_revision: 2
+plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
@@ -11,10 +11,10 @@ last_operation: null
 operation_targets: []
 last_verified_checkpoint: null
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T18:50:00Z
+updated_at: 2026-10-11T00:10:00Z
 description: "Introduce a SQLSpec-backed OracleGateway (SQLFileLoader + OracleSyncDriver over GOE's existing oracledb connection), move OracleFrontendApi dictionary queries and OracleOrchestrationRepoClient repository queries into named .sql files with msgspec.Struct row hydration, and keep every Oracle auth, session-tagging, reconnect, dry-run, and PL/SQL behavior unchanged."
 tags: [refactor, sqlspec, oracle, persistence, frontend]
-parent_prd: prd_03_sqlspec_bigquery_and_duckdb_engine_20261010
+parent: prd_03_sqlspec_bigquery_and_duckdb_engine_20261010
 research:
   - research/sqlspec_oracle_gateway.md
 ---
@@ -27,10 +27,10 @@ research:
 
 - Baseline commit for every line reference in this flow: `46890a8`. Line numbers drift after earlier chapters; each worksheet therefore names the enclosing symbol next to every line range and the executor locates code by symbol first.
 - Earlier chapters that change files this flow touches (all execute before PRD 3):
-  - `legacy_shim_removal_and_repo_hygiene_20261010:1.3` changes `pyproject.toml` to `sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0` (drops `mypyc` at `:35`, `:98`, `:108`) and `lark-parser` -> `lark>=1.1.9`. This flow does not edit `pyproject.toml`; Task 1.1 only asserts the precondition.
+  - `legacy_shim_removal_and_repo_hygiene_20261010:1.5` changes `pyproject.toml` to `sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0` (drops `mypyc` at `:35`, `:98`, `:108`) and `lark-parser` -> `lark>=1.1.9`. This flow does not edit `pyproject.toml`; Task 1.1 only asserts the precondition.
   - `typed_msgspec_option_model_20261010` may replace `tests/unit/test_functions.build_mock_options`; worksheets reuse whatever config fixture `TestOracleFrontendApi.setUp` in `tests/unit/offload/test_frontend_api.py` uses at execution time.
   - `core_god_module_decomposition_20261010` moves `OracleQuery` consumers from `src/goe/offload/offload_status_report.py` into `src/goe/report/`; `OracleQuery`'s public contract stays unchanged here, so no consumer edits are needed.
-  - `strict_mypy_type_safety_ratchet_20261010:1.1` annotates `src/goe/util/ora_query.py`, `src/goe/persistence/schemas.py`, and `src/goe/persistence/oracle/oracle_orchestration_repo_client.py`; `:1.3` annotates `src/goe/offload/oracle/oracle_frontend_api.py` and enables strict mypy flags (`disallow_incomplete_defs`, `warn_unused_ignores`). All new code in this flow is fully annotated.
+  - `strict_mypy_type_safety_ratchet_20261010:1.1` annotates `src/goe/util/ora_query.py`, `src/goe/persistence/schemas.py`, and `src/goe/persistence/oracle/oracle_orchestration_repo_client.py`; `:1.4` annotates `src/goe/offload/oracle/oracle_frontend_api.py` and `:1.6` enables strict mypy flags (`disallow_incomplete_defs`, `warn_unused_ignores`). All new code in this flow is fully annotated.
 - Later chapter coupling: `database_transport_and_cloud_storage_spans_20261010:1.1` (PRD 4) adds SQLSpec observability to `OracleGateway` at `OracleSyncConfig(...)` and `OracleSyncDriver(connection=...)`; keeping a single `OracleSyncConfig(...)` site in `__init__` and a single `driver = OracleSyncDriver(connection=...)` site in `_driver()` gives it clean seams.
 - Verified library facts and source facts with evidence: [`research/sqlspec_oracle_gateway.md`](research/sqlspec_oracle_gateway.md).
 
@@ -55,6 +55,7 @@ Route GOE's static Oracle SQL through **SQLSpec** (`sqlspec.loader.SQLFileLoader
 4. **`OracleQuery` execution stays native.** Its public contract is `execute(sql, binds, cursor_fn, bulk, as_dict, ignore_errors)` where `cursor_fn` operates on the raw cursor and `bulk` uses `executemany` with `bindarraysize`; `OracleSyncDriver` exposes neither. Only row projection is shared.
 5. **Named binds only.** Every gateway call passes a `dict`; positional sequences raise `TypeError`. Identifier slots (`{repo_user}`, `{unsupported_col_name}`) are validated by `validate_oracle_identifier` and substituted with `str.replace`, never `str.format`.
 6. **Row-shape parity.** Repository methods keep returning `list[dict[str, Any]]` / `dict[str, Any] | None` with the same lower-case keys and raw values (`bytes` UUIDs, `datetime`), because listener controllers mutate those dicts. Struct hydration validates rows, then `msgspec.structs.asdict` restores the dict shape.
+7. **Public-before-private ordering.** Every module and class created or modified in this flow (`oracle_gateway.py`, `oracle_frontend_api.py`, `ora_query.py`, `oracle_orchestration_repo_client.py`, `schemas.py`, and their unit test modules) keeps all public/dunder functions and methods grouped above private (`_...`) helpers, verified via an AST ordering check.
 
 ### 3. Task Breakdown & File Ownership
 
@@ -73,7 +74,7 @@ Route GOE's static Oracle SQL through **SQLSpec** (`sqlspec.loader.SQLFileLoader
 ## Continuity Snapshot
 
 - **State**: planned; current task: none; claimant: none; last verified checkpoint: none.
-- **Plan identity**: `plan_revision: 2`, `plan_commit: null`; state identity `state_revision: 0`.
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`; state identity `state_revision: 0`.
 - **Decisions**: wrap GOE's existing connection with `OracleSyncDriver` (no `OracleSyncConfig` pool); PL/SQL stays on `execute_function`; `OracleQuery` execution stays native (row projection shared); repository rows stay `dict`-shaped after `msgspec.Struct` validation.
 - **Blockers**: none. Precondition: PRD 1 and PRD 2 chapters are closed.
 - **Next exact step**: claim Task `1.1` and run its Step 1 precondition check.
