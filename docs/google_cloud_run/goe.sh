@@ -17,4 +17,4 @@ fi
 
 export USER=$(whoami)
 . ${OFFLOAD_HOME}/.venv/bin/activate
-${OFFLOAD_HOME}/bin/$*
+exec goe "$@"

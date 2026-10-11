@@ -54,7 +54,7 @@ def test_listener_status_unreachable(mock_get):
 
 @patch("goe.cli.commands.listener.Granian")
 def test_listener_bare_invocation_starts_server(mock_granian):
-    """Verify bare goe listener (and bin/listener) starts the server by default."""
+    """Verify bare goe listener starts the server by default."""
     runner = CliRunner()
     result = runner.invoke(cli, ["listener", "--port", "9090", "-v"])
     assert result.exit_code == 0
