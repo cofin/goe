@@ -853,10 +853,6 @@ def sqoop_queue_name_default() -> str | None:
 ###########################################################################
 
 
-def cache_enabled() -> bool:
-    return True if os.environ.get("OFFLOAD_LISTENER_REDIS_HOST") else False
-
-
 def listener_host_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_HOST")
 
@@ -871,35 +867,3 @@ def listener_heartbeat_interval_default() -> int:
 
 def listener_shared_token_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_SHARED_TOKEN")
-
-
-def listener_redis_username_default() -> str | None:
-    return os.environ.get("OFFLOAD_LISTENER_REDIS_USERNAME")
-
-
-def listener_redis_password_default() -> str | None:
-    return os.environ.get("OFFLOAD_LISTENER_REDIS_PASSWORD")
-
-
-def listener_redis_host_default() -> str | None:
-    return os.environ.get("OFFLOAD_LISTENER_REDIS_HOST")
-
-
-def listener_redis_port_default() -> int:
-    return int(os.environ.get("OFFLOAD_LISTENER_REDIS_PORT") or 6379)
-
-
-def listener_redis_db_default() -> int:
-    return int(os.environ.get("OFFLOAD_LISTENER_REDIS_DB") or 0)
-
-
-def listener_redis_ssl_cert_default() -> str | None:
-    return os.environ.get("OFFLOAD_LISTENER_REDIS_SSL_CERT")
-
-
-def listener_redis_use_ssl_default() -> bool:
-    return bool(os.environ.get("OFFLOAD_LISTENER_REDIS_SSL", "false").lower() == "true")
-
-
-def listener_redis_use_sentinel_default() -> int:
-    return bool(os.environ.get("OFFLOAD_LISTENER_REDIS_USE_SENTINEL", "false").lower() == "true")

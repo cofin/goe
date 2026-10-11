@@ -9,7 +9,7 @@ import re
 import sys
 import traceback
 from copy import copy
-from datetime import datetime, timedelta
+from datetime import datetime
 from optparse import SUPPRESS_HELP, Option, OptionParser, OptionValueError
 from typing import TYPE_CHECKING
 
@@ -21,7 +21,6 @@ from goe.filesystem.goe_dfs import (
     get_scheme_from_location_uri,
 )
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
-from goe.listener.utils.cache import MemorySyncCache as RedisClient
 from goe.offload import offload_constants
 from goe.offload.backend_api import IMPALA_NOSHUFFLE_HINT, IMPALA_SHUFFLE_HINT
 from goe.offload.column_metadata import (
@@ -110,7 +109,6 @@ from goe.offload.option_validation import (
     normalise_verify_options,
 )
 from goe.orchestration import command_steps
-from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.factory.orchestration_repo_client_factory import (
     orchestration_repo_client_factory,
 )
@@ -124,7 +122,6 @@ from goe.persistence.orchestration_metadata import (
     OrchestrationMetadata,
 )
 from goe.util.goe_log_fh import GOELogFileHandle
-from goe.util.json_tools import serialize_object
 from goe.util.misc_functions import (
     all_int_chars,
     csv_split,
@@ -245,18 +242,13 @@ log_fh = None
 suppress_stdout_override = False
 execution_id = ""
 
-redis_execution_id = None
-redis_in_error = False
-
 
 def ansi(line, ansi_code):
     return OffloadMessages.ansi_wrap(line, ansi_code, options.ansi)
 
 
-def log(line, detail=normal, ansi_code=None, redis_publish=True):
+def log(line, detail=normal, ansi_code=None):
     global log_fh
-    global redis_in_error
-    global redis_execution_id
 
     def fh_log(line):
         log_fh.write((line or "") + "\n")
@@ -265,21 +257,6 @@ def log(line, detail=normal, ansi_code=None, redis_publish=True):
     def stdout_log(line):
         sys.stdout.write((line or "") + "\n")
         sys.stdout.flush()
-
-    if redis_publish and orchestration_defaults.cache_enabled() and not redis_in_error and redis_execution_id:
-        try:
-            cache = RedisClient.connect()
-            msg = {
-                "message": line,
-            }
-            cache.rpush(
-                f"goe:run:{redis_execution_id}",
-                serialize_object(msg),
-                ttl=timedelta(hours=48),
-            )
-        except Exception as exc:
-            fh_log(f"Disabling Redis integration due to: {exc!s}")
-            redis_in_error = True
 
     if not log_fh:
         log_fh = sys.stderr
@@ -301,9 +278,9 @@ def get_log_fh():
 
 
 def log_command_line(detail=vverbose):
-    log("Command line:", detail=detail, redis_publish=False)
-    log(" ".join(sys.argv), detail=detail, redis_publish=False)
-    log("", detail=detail, redis_publish=False)
+    log("Command line:", detail=detail)
+    log(" ".join(sys.argv), detail=detail)
+    log("", detail=detail)
 
 
 def log_close():
@@ -1068,10 +1045,6 @@ def strict_version_ready(version_string):
 
 def init_log(log_name):
     global log_fh
-    global redis_in_error
-
-    # Reset Redis status so we attempt to publish messages.
-    redis_in_error = False
 
     current_log_name = standard_log_name(log_name)
     log_path = os.path.join(options.log_path, current_log_name)
@@ -1102,11 +1075,6 @@ def init(options_i):
     if options.version:
         print(version())
         sys.exit(0)
-
-
-def init_redis_execution_id(execution_id: str | ExecutionId):
-    global redis_execution_id
-    redis_execution_id = str(execution_id)
 
 
 def get_default_location_fs_scheme(offload_target_table):
@@ -1221,153 +1189,6 @@ class BaseOperation:
 
         self.partition_names_csv = self.partition_names_csv.upper() if self.partition_names_csv else None
         self.partition_names = self.partition_names_csv.split(",") if self.partition_names_csv else []
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _gen_base_canonical_overrides(
-        self,
-        backend_table,
-        max_decimal_precision=None,
-        max_decimal_scale=None,
-        columns_override=None,
-    ):
-        max_decimal_precision = max_decimal_precision or 38
-        max_decimal_scale = max_decimal_scale or 38
-        reference_columns = columns_override or backend_table.get_columns()
-        canonical_columns = []
-        if self.integer_1_columns_csv:
-            canonical_columns.extend(
-                canonical_columns_from_columns_csv(
-                    GOE_TYPE_INTEGER_1,
-                    self.integer_1_columns_csv,
-                    canonical_columns,
-                    reference_columns,
-                )
-            )
-        if self.integer_2_columns_csv:
-            canonical_columns.extend(
-                canonical_columns_from_columns_csv(
-                    GOE_TYPE_INTEGER_2,
-                    self.integer_2_columns_csv,
-                    canonical_columns,
-                    reference_columns,
-                )
-            )
-        if self.integer_4_columns_csv:
-            canonical_columns.extend(
-                canonical_columns_from_columns_csv(
-                    GOE_TYPE_INTEGER_4,
-                    self.integer_4_columns_csv,
-                    canonical_columns,
-                    reference_columns,
-                )
-            )
-        if self.integer_8_columns_csv:
-            canonical_columns.extend(
-                canonical_columns_from_columns_csv(
-                    GOE_TYPE_INTEGER_8,
-                    self.integer_8_columns_csv,
-                    canonical_columns,
-                    reference_columns,
-                )
-            )
-        if self.integer_38_columns_csv:
-            canonical_columns.extend(
-                canonical_columns_from_columns_csv(
-                    GOE_TYPE_INTEGER_38,
-                    self.integer_38_columns_csv,
-                    canonical_columns,
-                    reference_columns,
-                )
-            )
-        if self.date_columns_csv:
-            canonical_columns.extend(
-                canonical_columns_from_columns_csv(
-                    GOE_TYPE_DATE,
-                    self.date_columns_csv,
-                    canonical_columns,
-                    reference_columns,
-                )
-            )
-        if self.decimal_columns_csv_list:
-            assert type(self.decimal_columns_csv_list) is list, "%s is not list" % type(self.decimal_columns_csv_list)
-            assert type(self.decimal_columns_type_list) is list, "%s is not list" % type(self.decimal_columns_type_list)
-            if not self.decimal_columns_type_list or len(self.decimal_columns_csv_list) != len(
-                self.decimal_columns_type_list
-            ):
-                log(
-                    "--decimal-columns unbalanced list: %s" % str(self.decimal_columns_csv_list),
-                    detail=vverbose,
-                )
-                log(
-                    "--decimal-columns-type unbalanced list: %s" % str(self.decimal_columns_type_list),
-                    detail=vverbose,
-                )
-                raise OffloadException(
-                    "Unbalanced --decimal-columns, --decimal-columns-type pairs (--decimal-columns * %d, --decimal-columns-type * %d)"
-                    % (
-                        len(self.decimal_columns_csv_list),
-                        len(self.decimal_columns_type_list or []),
-                    )
-                )
-            for col_csv, spec_csv in zip(self.decimal_columns_csv_list, self.decimal_columns_type_list):
-                if len(spec_csv.split(",")) != 2 or not re.match(r"^([1-9][0-9]?)\s*,\s*([0-9][0-9]?)$", spec_csv):
-                    raise OffloadException(
-                        "--decimal-columns-type "
-                        + DECIMAL_COL_TYPE_SYNTAX_TEMPLATE.format(p=max_decimal_precision, s=max_decimal_scale)
-                    )
-                spec = [int(num) for num in spec_csv.split(",")]
-                if not valid_canonical_decimal_spec(spec[0], spec[1], max_decimal_precision, max_decimal_scale):
-                    raise OffloadException(
-                        "--decimal-columns-type "
-                        + DECIMAL_COL_TYPE_SYNTAX_TEMPLATE.format(p=max_decimal_precision, s=max_decimal_scale)
-                    )
-                if spec[0] > backend_table.max_decimal_precision():
-                    raise OffloadException(
-                        "--decimal-columns-type precision is beyond backend maximum: %s > %s"
-                        % (spec[0], backend_table.max_decimal_precision())
-                    )
-                if spec[1] > backend_table.max_decimal_scale():
-                    raise OffloadException(
-                        "--decimal-columns-type scale is beyond backend maximum: %s > %s"
-                        % (spec[1], backend_table.max_decimal_scale())
-                    )
-                canonical_columns.extend(
-                    canonical_columns_from_columns_csv(
-                        GOE_TYPE_DECIMAL,
-                        col_csv,
-                        canonical_columns,
-                        reference_columns,
-                        precision=spec[0],
-                        scale=spec[1],
-                    )
-                )
-        if self.timestamp_tz_columns_csv:
-            canonical_columns.extend(
-                canonical_columns_from_columns_csv(
-                    GOE_TYPE_TIMESTAMP_TZ,
-                    self.timestamp_tz_columns_csv,
-                    canonical_columns,
-                    reference_columns,
-                    scale=backend_table.max_datetime_scale(),
-                )
-            )
-        return canonical_columns
-
-    def _setup_offload_step(self, messages):
-        assert messages
-        messages.setup_offload_step(
-            skip=self.skip,
-            error_before_step=self.error_before_step,
-            error_after_step=self.error_after_step,
-            repo_client=self.repo_client,
-        )
-
-    def _vars(self, expected_args):
-        """Return a dictionary of official attributes, none of the convenience attributes/methods we also store"""
-        return {k: v for k, v in vars(self).items() if k in expected_args}
 
     ###########################################################################
     # PUBLIC METHODS
@@ -1852,6 +1673,153 @@ class BaseOperation:
         finally:
             if created_api:
                 backend_api.close()
+
+    ###########################################################################
+    # PRIVATE METHODS
+    ###########################################################################
+
+    def _gen_base_canonical_overrides(
+        self,
+        backend_table,
+        max_decimal_precision=None,
+        max_decimal_scale=None,
+        columns_override=None,
+    ):
+        max_decimal_precision = max_decimal_precision or 38
+        max_decimal_scale = max_decimal_scale or 38
+        reference_columns = columns_override or backend_table.get_columns()
+        canonical_columns = []
+        if self.integer_1_columns_csv:
+            canonical_columns.extend(
+                canonical_columns_from_columns_csv(
+                    GOE_TYPE_INTEGER_1,
+                    self.integer_1_columns_csv,
+                    canonical_columns,
+                    reference_columns,
+                )
+            )
+        if self.integer_2_columns_csv:
+            canonical_columns.extend(
+                canonical_columns_from_columns_csv(
+                    GOE_TYPE_INTEGER_2,
+                    self.integer_2_columns_csv,
+                    canonical_columns,
+                    reference_columns,
+                )
+            )
+        if self.integer_4_columns_csv:
+            canonical_columns.extend(
+                canonical_columns_from_columns_csv(
+                    GOE_TYPE_INTEGER_4,
+                    self.integer_4_columns_csv,
+                    canonical_columns,
+                    reference_columns,
+                )
+            )
+        if self.integer_8_columns_csv:
+            canonical_columns.extend(
+                canonical_columns_from_columns_csv(
+                    GOE_TYPE_INTEGER_8,
+                    self.integer_8_columns_csv,
+                    canonical_columns,
+                    reference_columns,
+                )
+            )
+        if self.integer_38_columns_csv:
+            canonical_columns.extend(
+                canonical_columns_from_columns_csv(
+                    GOE_TYPE_INTEGER_38,
+                    self.integer_38_columns_csv,
+                    canonical_columns,
+                    reference_columns,
+                )
+            )
+        if self.date_columns_csv:
+            canonical_columns.extend(
+                canonical_columns_from_columns_csv(
+                    GOE_TYPE_DATE,
+                    self.date_columns_csv,
+                    canonical_columns,
+                    reference_columns,
+                )
+            )
+        if self.decimal_columns_csv_list:
+            assert type(self.decimal_columns_csv_list) is list, "%s is not list" % type(self.decimal_columns_csv_list)
+            assert type(self.decimal_columns_type_list) is list, "%s is not list" % type(self.decimal_columns_type_list)
+            if not self.decimal_columns_type_list or len(self.decimal_columns_csv_list) != len(
+                self.decimal_columns_type_list
+            ):
+                log(
+                    "--decimal-columns unbalanced list: %s" % str(self.decimal_columns_csv_list),
+                    detail=vverbose,
+                )
+                log(
+                    "--decimal-columns-type unbalanced list: %s" % str(self.decimal_columns_type_list),
+                    detail=vverbose,
+                )
+                raise OffloadException(
+                    "Unbalanced --decimal-columns, --decimal-columns-type pairs (--decimal-columns * %d, --decimal-columns-type * %d)"
+                    % (
+                        len(self.decimal_columns_csv_list),
+                        len(self.decimal_columns_type_list or []),
+                    )
+                )
+            for col_csv, spec_csv in zip(self.decimal_columns_csv_list, self.decimal_columns_type_list):
+                if len(spec_csv.split(",")) != 2 or not re.match(r"^([1-9][0-9]?)\s*,\s*([0-9][0-9]?)$", spec_csv):
+                    raise OffloadException(
+                        "--decimal-columns-type "
+                        + DECIMAL_COL_TYPE_SYNTAX_TEMPLATE.format(p=max_decimal_precision, s=max_decimal_scale)
+                    )
+                spec = [int(num) for num in spec_csv.split(",")]
+                if not valid_canonical_decimal_spec(spec[0], spec[1], max_decimal_precision, max_decimal_scale):
+                    raise OffloadException(
+                        "--decimal-columns-type "
+                        + DECIMAL_COL_TYPE_SYNTAX_TEMPLATE.format(p=max_decimal_precision, s=max_decimal_scale)
+                    )
+                if spec[0] > backend_table.max_decimal_precision():
+                    raise OffloadException(
+                        "--decimal-columns-type precision is beyond backend maximum: %s > %s"
+                        % (spec[0], backend_table.max_decimal_precision())
+                    )
+                if spec[1] > backend_table.max_decimal_scale():
+                    raise OffloadException(
+                        "--decimal-columns-type scale is beyond backend maximum: %s > %s"
+                        % (spec[1], backend_table.max_decimal_scale())
+                    )
+                canonical_columns.extend(
+                    canonical_columns_from_columns_csv(
+                        GOE_TYPE_DECIMAL,
+                        col_csv,
+                        canonical_columns,
+                        reference_columns,
+                        precision=spec[0],
+                        scale=spec[1],
+                    )
+                )
+        if self.timestamp_tz_columns_csv:
+            canonical_columns.extend(
+                canonical_columns_from_columns_csv(
+                    GOE_TYPE_TIMESTAMP_TZ,
+                    self.timestamp_tz_columns_csv,
+                    canonical_columns,
+                    reference_columns,
+                    scale=backend_table.max_datetime_scale(),
+                )
+            )
+        return canonical_columns
+
+    def _setup_offload_step(self, messages):
+        assert messages
+        messages.setup_offload_step(
+            skip=self.skip,
+            error_before_step=self.error_before_step,
+            error_after_step=self.error_after_step,
+            repo_client=self.repo_client,
+        )
+
+    def _vars(self, expected_args):
+        """Return a dictionary of official attributes, none of the convenience attributes/methods we also store"""
+        return {k: v for k, v in vars(self).items() if k in expected_args}
 
 
 class OffloadOperation(BaseOperation):

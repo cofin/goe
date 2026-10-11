@@ -197,8 +197,6 @@ def normalise_listener_options(options):
         goe_key = pass_tool.get_password_key_from_key_file(options.password_key_file)
         if options.listener_shared_token:
             options.listener_shared_token = pass_tool.b64decrypt(options.listener_shared_token, goe_key)
-        if options.listener_redis_password:
-            options.listener_redis_password = pass_tool.b64decrypt(options.listener_redis_password, goe_key)
 
 
 def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigException):

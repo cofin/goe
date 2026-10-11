@@ -13,11 +13,9 @@ from datetime import datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from goe.listener.utils.cache import MemorySyncCache as cache
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.command_steps import STEP_TITLES, step_title
 from goe.util.goe_log_fh import GOELogFileHandle
-from goe.util.json_tools import serialize_object
 from goe.util.misc_functions import standard_log_name
 
 if TYPE_CHECKING:
@@ -81,9 +79,8 @@ class OffloadMessages:
         execution_id=None,
         repo_client=None,
         command_type=None,
-        cache_enabled: bool = False,
     ):
-        """Client for Offload logging that also provides step instrumentation, repo logging and Console updates.
+        """Client for Offload logging that also provides step instrumentation and repo logging.
 
         log_fh: Allows init of the log using an existing file handle for integration with existing tools, e.g.: Offload.
                 For stand-alone use the init_log method makes more sense.
@@ -103,10 +100,8 @@ class OffloadMessages:
         self._error_before_step = error_before_step
         self._error_after_step = error_after_step
         self.execution_id = execution_id
-        self.cache_enabled = cache_enabled
         self._repo_client = repo_client
         self._command_type = command_type
-        self._redis_in_error = False
         self._stdout_in_error = False
 
     ###########################################################################
@@ -124,7 +119,6 @@ class OffloadMessages:
         execution_id=None,
         repo_client=None,
         command_type=None,
-        cache_enabled: bool = False,
     ):
         assert hasattr(opts, "quiet")
         assert hasattr(opts, "verbose")
@@ -140,8 +134,6 @@ class OffloadMessages:
             detail = SUPPRESS_STDOUT
         else:
             detail = NORMAL
-        if cache_enabled:
-            cache.get_client()
         return OffloadMessages(
             detail=detail,
             log_fh=log_fh,
@@ -152,7 +144,6 @@ class OffloadMessages:
             execution_id=execution_id,
             repo_client=repo_client,
             command_type=command_type,
-            cache_enabled=cache_enabled,
         )
 
     @staticmethod
@@ -162,7 +153,6 @@ class OffloadMessages:
         execution_id=None,
         repo_client=None,
         command_type=None,
-        cache_enabled: bool = False,
     ):
         if opts_dict.get("quiet"):
             detail = QUIET
@@ -174,8 +164,6 @@ class OffloadMessages:
             detail = SUPPRESS_STDOUT
         else:
             detail = NORMAL
-        if cache_enabled:
-            cache.get_client()
         return OffloadMessages(
             detail=detail,
             log_fh=log_fh,
@@ -186,7 +174,6 @@ class OffloadMessages:
             execution_id=execution_id,
             repo_client=repo_client,
             command_type=command_type,
-            cache_enabled=cache_enabled,
         )
 
     @staticmethod
@@ -310,20 +297,6 @@ class OffloadMessages:
         elif (detail is None or detail <= self._detail) and (self._detail != SUPPRESS_STDOUT):
             line = self.ansi_wrap(line, ansi_code, self._ansi)
             stdout_log(line)
-        if self.cache_enabled and not self._redis_in_error:
-            try:
-                cache.rpush(
-                    f"goe:run:{self.execution_id}",
-                    serialize_object(
-                        {
-                            "message": line,
-                        }
-                    ),
-                    ttl=timedelta(hours=48),
-                )
-            except Exception as exc:
-                fh_log(f"Disabling Redis integration due to: {exc!s}")
-                self._redis_in_error = True
 
     def info(self, line, detail=NORMAL, ansi_code=None):
         if self._detail >= NORMAL:

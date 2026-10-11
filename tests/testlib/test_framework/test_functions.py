@@ -109,8 +109,8 @@ def goe_wide_max_columns(frontend_api, backend_api_or_count):
 
 
 def log(line: str, detail: int = normal, ansi_code=None):
-    """Write log entry but without Redis interaction."""
-    offload_log(line, detail=detail, ansi_code=ansi_code, redis_publish=False)
+    """Write a log entry through goe.goe.log."""
+    offload_log(line, detail=detail, ansi_code=ansi_code)
 
 
 def text_in_events(messages, message_token):

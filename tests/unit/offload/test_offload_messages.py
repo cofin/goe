@@ -35,31 +35,6 @@ class FakeOpts:
         return vars(self)
 
 
-def _std_messages_actions(messages):
-    """Shake down messages calls.
-    It would be better if we actually checked what was written a log file vs stdout but, at the moment,
-    all we are doing is ensuring no unexpected exceptions.
-    """
-    messages.log("msg")
-    messages.log("vmsg", detail=VERBOSE)
-    messages.log("vvmsg", detail=VVERBOSE)
-    messages.info("info", detail=VVERBOSE)
-    messages.info("vinfo", detail=VERBOSE)
-    messages.info("vvinfo", detail=VVERBOSE)
-    messages.debug("debug", detail=VVERBOSE)
-    messages.debug("vdebug", detail=VERBOSE)
-    messages.debug("vvdebug", detail=VVERBOSE)
-    messages.notice("a-notice")
-    assert "a-notice" in messages.get_notices()
-    assert "a-notice" in messages.get_messages()
-    messages.warning("a-warning")
-    assert "a-warning" in messages.get_warnings()
-    assert "a-warning" in messages.get_messages()
-    messages.warning("Honk honk", ansi_code="red")
-    messages.event("an-event")
-    assert "an-event" in messages.get_events()
-
-
 def test_from_options():
     log_file = "/tmp/test_from_options.tmp"
     with GOELogFileHandle(log_file) as fh:
@@ -164,3 +139,28 @@ def test_offload_step():
                 do_divzero,
                 command_type=orchestration_constants.COMMAND_TEST,
             )
+
+
+def _std_messages_actions(messages):
+    """Shake down messages calls.
+    It would be better if we actually checked what was written a log file vs stdout but, at the moment,
+    all we are doing is ensuring no unexpected exceptions.
+    """
+    messages.log("msg")
+    messages.log("vmsg", detail=VERBOSE)
+    messages.log("vvmsg", detail=VVERBOSE)
+    messages.info("info", detail=VVERBOSE)
+    messages.info("vinfo", detail=VERBOSE)
+    messages.info("vvinfo", detail=VVERBOSE)
+    messages.debug("debug", detail=VVERBOSE)
+    messages.debug("vdebug", detail=VERBOSE)
+    messages.debug("vvdebug", detail=VVERBOSE)
+    messages.notice("a-notice")
+    assert "a-notice" in messages.get_notices()
+    assert "a-notice" in messages.get_messages()
+    messages.warning("a-warning")
+    assert "a-warning" in messages.get_warnings()
+    assert "a-warning" in messages.get_messages()
+    messages.warning("Honk honk", ansi_code="red")
+    messages.event("an-event")
+    assert "an-event" in messages.get_events()
