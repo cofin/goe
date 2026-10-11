@@ -2,16 +2,17 @@
 type: Spec
 flow_id: typed_msgspec_option_model_20261010
 title: "Chapter 2.1: Typed msgspec Option Model & optparse Elimination"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 2
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: complete
+operation_targets:
+  - typed_msgspec_option_model_20261010
+last_verified_checkpoint: 436b31f
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T22:30:00Z
+updated_at: 2026-10-11T17:39:00Z
 description: "Replace legacy optparse.OptionParser builders and optparse.Values option bags with typed msgspec.Struct option models in src/goe/config/options.py, delete every superseded builder and optparse import, and share canonical offload keys and listener alias tables from one module."
 tags:
   - refactor
@@ -142,19 +143,19 @@ classDiagram
 
 ## Implementation Plan
 
-- [ ] 1.1 [Typed option structs, shared offload constants & exception unification](tasks/1.1.md) — create `src/goe/config/options.py`, alias `OptionValueError`, migrate five modules and one test off `optparse.OptionValueError`.
-- [ ] 1.2 [Migrate connect/report/sync/validate entrypoints and delete their builders](tasks/1.2.md) — construct `ConnectOptions`/`StatusReportOptions`/`SchemaSyncOptions`/`AggValidateOptions` and delete `get_connect_opts`, `get_offload_status_report_opts`, `get_schema_sync_opts`, `GOE_OPTIONS`, `get_agg_validate_options`, `parse_args`, `main`.
-- [ ] 1.3 [Migrate offload entrypoint, delete core builders, share listener constants](tasks/1.3.md) — construct `OffloadOperationOptions`, delete `check_posint`, `GOEOptionTypes`, `get_common_options`, `get_oracle_options`, `get_options`, `get_options_from_list`, `get_offload_options`, and reach zero `optparse` imports.
+- [x] 1.1 [Typed option structs, shared offload constants & exception unification](tasks/1.1.md) — create `src/goe/config/options.py`, alias `OptionValueError`, migrate five modules and one test off `optparse.OptionValueError` (`99f519c`).
+- [x] 1.2 [Migrate connect/report/sync/validate entrypoints and delete their builders](tasks/1.2.md) — construct `ConnectOptions`/`StatusReportOptions`/`SchemaSyncOptions`/`AggValidateOptions` and delete `get_connect_opts`, `get_offload_status_report_opts`, `get_schema_sync_opts`, `GOE_OPTIONS`, `get_agg_validate_options`, `parse_args`, `main` (`3daeb3b`).
+- [x] 1.3 [Migrate offload entrypoint, delete core builders, share listener constants](tasks/1.3.md) — construct `OffloadOperationOptions`, delete `check_posint`, `GOEOptionTypes`, `get_common_options`, `get_oracle_options`, `get_options`, `get_options_from_list`, `get_offload_options`, and reach zero `optparse` imports (`436b31f`).
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `typed_msgspec_option_model_20261010` (`state: planned`).
+- **Flow / lifecycle**: `typed_msgspec_option_model_20261010` (`state: completed`).
 - **Current task / claimant**: `current_task: null` / `claimed_by: null`.
-- **Last verified checkpoint**: `none`.
+- **Last verified checkpoint**: `436b31f`.
 - **Plan identity**: `plan_revision: 3`, `plan_commit: null`.
-- **State identity**: `state_revision: 0`.
+- **State identity**: `state_revision: 2`.
 - **Decisions**: `D-2.1-A` resolved (keep REST wire defaults `execute=True` + `None` unset sentinels on `OffloadOptions`, share canonical keys/aliases from `goe.config.options`, add `to_operation_options()` to hydrate canonical `OffloadOperationOptions` defaults, and enforce field parity via drift test).
-- **Recent discoveries**: All 85 `EXPECTED_OFFLOAD_ARGS` keys, 40 + 7 `TableOperationOptions` fields, and 42 + 1 `OffloadOperationOptions` fields are written out in full in Task 1.1 with widened normaliser annotations so Chapter 2.3 strict mypy passes cleanly.
-- **Blockers**: PRD 1 must be complete (Chapter 1.1 deletes `bin/*`, Redis shims and code, and 10 dead modules; Chapter 1.3 adds the golden characterization suite).
-- **Next exact step**: claim Task 1.1 and run its Step 1 failing test.
+- **Recent discoveries**: All 3 tasks (`1.1`, `1.2`, `1.3`) completed and verified; zero `optparse` references remain under `src/goe/`.
+- **Blockers**: none.
+- **Next exact step**: Proceed to Chapter 2.2 (`core_god_module_decomposition_20261010:1.1`).
 - **Relevant knowledge**: `.agents/bundles/knowledge/patterns/cli-architecture.md` (lazy CLI imports), `.agents/bundles/knowledge/patterns/serialization-and-utils.md` (msgspec conventions), `research/option_inventory.md`.

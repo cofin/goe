@@ -2,16 +2,17 @@
 type: Spec
 flow_id: prd_02_core_typing_options_and_decomposition_20261010
 title: "Master PRD 2: Typed Option Models, Core God-Module Decomposition & Strict Mypy Type Safety"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 4
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: complete
+operation_targets:
+  - prd_02_core_typing_options_and_decomposition_20261010
+last_verified_checkpoint: 40d76b0
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T22:30:00Z
+updated_at: 2026-10-11T20:34:34Z
 description: "Master roadmap governing the replacement of legacy optparse.Values bags with typed msgspec.Struct option models, decomposition of core GOE god-modules into cohesive domain packages, and a five-wave plus global ratchet to strict mypy type checking with 100% feature parity and zero dead code."
 tags:
   - refactor
@@ -131,19 +132,20 @@ Every task across Chapters 2.1, 2.2, and 2.3 is gated by:
 
 ## Implementation Plan
 
-- [ ] 2.1 [Chapter 2.1: Typed msgspec Option Model & optparse Elimination](../typed_msgspec_option_model_20261010/spec.md) — 3 tasks (`1.1`–`1.3`): create `src/goe/config/options.py` and alias `OptionValueError` (`1.1`), migrate `connect`/`report`/`sync`/`validate` and delete their builders (`1.2`), migrate `offload`, delete core builders in `goe.py`/`offload.py`, and share listener constants (`1.3`).
-- [ ] 2.2 [Chapter 2.2: Core God-Module Decomposition](../core_god_module_decomposition_20261010/spec.md) — 4 tasks (`1.1`–`1.4`): decompose `goe.py` into `src/goe/orchestration/` (`1.1`), `offload_status_report.py` into `src/goe/report/` (`1.2`), `offload_source_data.py` into `src/goe/offload/source_data/` (`1.3`), and `offload_transport.py` + `offload_transport_factory.py` into `src/goe/offload/transport/` (`1.4`).
-- [ ] 2.3 [Chapter 2.3: Strict Mypy Type Safety Ratchet](../strict_mypy_type_safety_ratchet_20261010/spec.md) — 6 tasks (`1.1`–`1.6`): five package waves covering foundation (`1.1`), service/CLI/orchestration (`1.2`), offload core/report (`1.3`), RDBMS frontends & Synapse (`1.4`), and cloud/Hadoop/Spark backends (`1.5`), followed by the global `pyproject.toml` strict mypy and `F401`/`F841`/`ERA001` ratchet (`1.6`).
+- [x] 2.1 [Chapter 2.1: Typed msgspec Option Model & optparse Elimination](../typed_msgspec_option_model_20261010/spec.md) — 3 tasks (`1.1`–`1.3`): create `src/goe/config/options.py` and alias `OptionValueError` (`1.1`), migrate `connect`/`report`/`sync`/`validate` and delete their builders (`1.2`), migrate `offload`, delete core builders in `goe.py`/`offload.py`, and share listener constants (`1.3`).
+- [x] 2.2 [Chapter 2.2: Core God-Module Decomposition](../core_god_module_decomposition_20261010/spec.md) — 4 tasks (`1.1`–`1.4`): decompose `goe.py` into `src/goe/orchestration/` (`1.1`), `offload_status_report.py` into `src/goe/report/` (`1.2`), `offload_source_data.py` into `src/goe/offload/source_data/` (`1.3`), and `offload_transport.py` + `offload_transport_factory.py` into `src/goe/offload/transport/` (`1.4`).
+- [x] 2.3 [Chapter 2.3: Strict Mypy Type Safety Ratchet](../strict_mypy_type_safety_ratchet_20261010/spec.md) — 6 tasks (`1.1`–`1.6`): five package waves covering foundation (`1.1`), service/CLI/orchestration (`1.2`), offload core/report (`1.3`), RDBMS frontends & Synapse (`1.4`), and cloud/Hadoop/Spark backends (`1.5`), followed by the global `pyproject.toml` strict mypy and `F401`/`F841`/`ERA001` ratchet (`1.6`).
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `prd_02_core_typing_options_and_decomposition_20261010` (`state: planned`).
+- **Flow / lifecycle**: `prd_02_core_typing_options_and_decomposition_20261010` (`state: completed`).
 - **Current task / claimant**: `current_task: null` / `claimed_by: null`.
-- **Last verified checkpoint**: `none`.
+- **Last verified checkpoint**: `40d76b0`.
 - **Plan identity**: `plan_revision: 3`, `plan_commit: null`.
-- **State identity**: `state_revision: 0`.
+- **State identity**: `state_revision: 4`.
 - **Decisions**: `D-2.1-A`, `D-2.2-A`, and `D-2.2-B` resolved.
-- **Recent discoveries**: All 13 task worksheets across Chapters 2.1, 2.2, and 2.3 have been verified against `HEAD` (`46890a8`), including full `src/goe/config/options.py` struct definitions, deterministic SHA-256 report rendering digests, and strict mypy wave partitions.
-- **Blockers**: PRD 1 (`prd_01_foundation_adc_and_ci_harness_20261010`) must complete first.
-- **Next exact step**: execute Chapter 2.1 (`typed_msgspec_option_model_20261010`), Task `1.1` ([../typed_msgspec_option_model_20261010/tasks/1.1.md](../typed_msgspec_option_model_20261010/tasks/1.1.md)).
+- **Recent discoveries**: All 13 tasks across Chapters 2.1, 2.2, and 2.3 completed and verified with 0 lint/mypy errors across 245 source files and 668 passing unit tests.
+- **Blockers**: none.
+- **Next exact step**: none (Master PRD 2 completed).
 - **Relevant knowledge**: `.agents/bundles/knowledge/workflow.md`, `.agents/bundles/knowledge/patterns/cli-architecture.md`, `.agents/bundles/knowledge/patterns/serialization-and-utils.md`, `.agents/bundles/knowledge/patterns/offload-and-typing.md`.
+

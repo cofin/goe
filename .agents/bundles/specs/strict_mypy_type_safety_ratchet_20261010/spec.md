@@ -2,16 +2,17 @@
 type: Spec
 flow_id: strict_mypy_type_safety_ratchet_20261010
 title: "Chapter 2.3: Strict Mypy Type Safety Ratchet"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 7
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: complete
+operation_targets:
+  - strict_mypy_type_safety_ratchet_20261010
+last_verified_checkpoint: 40d76b0
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-11T00:10:00Z
+updated_at: 2026-10-11T20:34:34Z
 description: "Ratchet mypy across every live package in src/goe in five package waves, then remove all 14 disable_error_code suppressions and production ignore_errors overrides, enable check_untyped_defs/disallow_incomplete_defs, and enforce F401/F841/ERA001 in make lint."
 tags:
   - refactor
@@ -79,18 +80,19 @@ The previous three-task plan put 660 offload errors and the global switch in one
 
 ## Implementation Plan
 
-- [ ] 1.1 [Wave 1: foundation packages](tasks/1.1.md)
-- [ ] 1.2 [Wave 2: CLI, listener, connect, schema sync, scripts, orchestration](tasks/1.2.md)
-- [ ] 1.3 [Wave 3: offload core, factories, operations, staging, source data, transport, report](tasks/1.3.md)
-- [ ] 1.4 [Wave 4: Oracle, Teradata, Microsoft frontends](tasks/1.4.md)
-- [ ] 1.5 [Wave 5: BigQuery, Hadoop, Snowflake, Spark backends](tasks/1.5.md)
-- [ ] 1.6 [Global strict mypy and dead-code ratchet in pyproject.toml](tasks/1.6.md)
+- [x] 1.1 [Wave 1: foundation packages](tasks/1.1.md)
+- [x] 1.2 [Wave 2: CLI, listener, connect, schema sync, scripts, orchestration](tasks/1.2.md)
+- [x] 1.3 [Wave 3: offload core, factories, operations, staging, source data, transport, report](tasks/1.3.md)
+- [x] 1.4 [Wave 4: Oracle, Teradata, Microsoft frontends](tasks/1.4.md)
+- [x] 1.5 [Wave 5: BigQuery, Hadoop, Snowflake, Spark backends](tasks/1.5.md)
+- [x] 1.6 [Global strict mypy and dead-code ratchet in pyproject.toml](tasks/1.6.md)
 
 ## Continuity Snapshot
 
-- **State**: `planned`; current task: none; claimant: none; last verified checkpoint: none.
+- **State**: `completed`; current task: none; claimant: none; last verified checkpoint: `40d76b0`.
 - **Decisions**: none pending.
-- **Blockers**: Chapter 2.2 complete (new module layout exists); PRD 1 dead modules deleted.
-- **Next exact step**: claim Task 1.1 and run its canonical wave gate to record the initial error count.
-- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Blockers**: none.
+- **Next exact step**: none (Chapter 2.3 and Master PRD 2 completed).
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 7`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/workflow.md` (lint/test commands), `.agents/bundles/knowledge/patterns/cli-architecture.md` (lazy imports), `.agents/bundles/product/tech-stack.md`.
+
