@@ -26,6 +26,7 @@ from goe.offload.oracle.oracle_column import (
     OracleColumn,
 )
 from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
+from goe.offload.spark.dataproc_offload_transport import DATAPROC_CLUSTER_SERVICE_ACCOUNT_IGNORED
 from tests.unit.test_functions import (
     FAKE_ORACLE_BQ_ENV,
     build_mock_offload_operation,
@@ -40,6 +41,8 @@ FRONTEND_COLUMNS = [
         data_length=100,
     )
 ]
+CALLER_SA = "goe-caller@dp-project.iam.gserviceaccount.com"
+DATAPROC_CALLER_SA = "dp-caller@dp-project.iam.gserviceaccount.com"
 
 
 @pytest.fixture
@@ -458,3 +461,91 @@ def test_dataproc_batches_canary_construct():
     config = build_mock_options(FAKE_ORACLE_BQ_ENV)
     messages = OffloadMessages()
     _ = spark_dataproc_batches_jdbc_connectivity_checker(config, messages)
+
+
+@pytest.fixture
+def no_ambient_impersonation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remove caller impersonation variables inherited from the developer shell."""
+    monkeypatch.delenv("GOOGLE_IMPERSONATE_SERVICE_ACCOUNT", raising=False)
+    monkeypatch.delenv("GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT", raising=False)
+
+
+@pytest.fixture
+def impersonating_config(no_ambient_impersonation: None):
+    """Return a BigQuery config whose gcloud caller impersonates CALLER_SA."""
+    return build_mock_options({**FAKE_ORACLE_BQ_ENV, "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT": CALLER_SA})
+
+
+def test_dataproc_batches_cmd_separates_runtime_and_caller_identity(
+    impersonating_config, messages, oracle_table, fake_operation
+):
+    client = offload_transport_factory(
+        OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
+        oracle_table,
+        Mock(),
+        fake_operation,
+        impersonating_config,
+        messages,
+        Mock(),
+    )
+    submit_cmd = client._gcloud_dataproc_submit_command()
+    describe_cmd = client._gcloud_dataproc_describe_command("my-unit-batch")
+    assert f"--service-account={impersonating_config.google_dataproc_service_account}" in submit_cmd
+    assert f"--impersonate-service-account={CALLER_SA}" in submit_cmd
+    assert f"--impersonate-service-account={CALLER_SA}" in describe_cmd
+
+
+def test_dataproc_cluster_cmd_impersonates_caller_not_runtime_sa(
+    impersonating_config, messages, oracle_table, fake_operation
+):
+    client = offload_transport_factory(
+        OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
+        oracle_table,
+        Mock(),
+        fake_operation,
+        impersonating_config,
+        messages,
+        Mock(),
+    )
+    cmd = client._gcloud_dataproc_submit_command()
+    assert f"--impersonate-service-account={CALLER_SA}" in cmd
+    assert f"--impersonate-service-account={impersonating_config.google_dataproc_service_account}" not in cmd
+
+
+def test_dataproc_cluster_cmd_warns_when_only_runtime_sa_is_set(
+    config, messages, oracle_table, fake_operation, no_ambient_impersonation
+):
+    client = offload_transport_factory(
+        OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
+        oracle_table,
+        Mock(),
+        fake_operation,
+        config,
+        messages,
+        Mock(),
+    )
+    cmd = client._gcloud_dataproc_submit_command()
+    assert all(not _.startswith("--impersonate-service-account=") for _ in cmd), cmd
+    assert DATAPROC_CLUSTER_SERVICE_ACCOUNT_IGNORED in messages.messages["warnings"]
+
+
+def test_dataproc_specific_caller_overrides_general_impersonation(
+    messages, oracle_table, fake_operation, no_ambient_impersonation
+):
+    config = build_mock_options(
+        {
+            **FAKE_ORACLE_BQ_ENV,
+            "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT": CALLER_SA,
+            "GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT": DATAPROC_CALLER_SA,
+        }
+    )
+    client = offload_transport_factory(
+        OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
+        oracle_table,
+        Mock(),
+        fake_operation,
+        config,
+        messages,
+        Mock(),
+    )
+    assert f"--impersonate-service-account={DATAPROC_CALLER_SA}" in client._gcloud_dataproc_submit_command()

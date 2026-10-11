@@ -24,6 +24,7 @@ from goe.offload.offload_transport import (
     OffloadTransportSpark,
 )
 from goe.orchestration import command_steps
+from goe.util.gcp_credentials import resolve_gcloud_impersonation_principal
 from goe.util.misc_functions import write_temp_file
 
 if TYPE_CHECKING:
@@ -37,6 +38,11 @@ GCLOUD_PROPERTY_SEPARATOR = ",GSEP,"
 GCLOUD_BATCHES_STATE_CANCELLED = "CANCELLED"
 GCLOUD_BATCHES_STATE_FAILED = "FAILED"
 GCLOUD_BATCHES_STATE_MESSAGE_TASK_NOT_ACQUIRED = "Task was not acquired"
+DATAPROC_CLUSTER_SERVICE_ACCOUNT_IGNORED = (
+    "GOOGLE_DATAPROC_SERVICE_ACCOUNT is the Managed Spark serverless runtime service account and is not used to "
+    "submit jobs to a permanent cluster. Set GOOGLE_IMPERSONATE_SERVICE_ACCOUNT or "
+    "GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT for gcloud caller impersonation"
+)
 
 
 class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
@@ -73,6 +79,31 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
         self._dataproc_batches_version = offload_options.google_dataproc_batches_version
 
     ###########################################################################
+    # PUBLIC METHODS
+    ###########################################################################
+
+    def transport(self, partition_chunk=None) -> int | None:
+        """Spark by gcloud batches transport"""
+        self._reset_transport_context()
+
+        def step_fn():
+            row_count = self._spark_gcloud_import(partition_chunk)
+            staged_bytes = self._check_and_log_transported_files(row_count)
+            self._transport_context[TRANSPORT_CXT_BYTES] = staged_bytes
+            self._transport_context[TRANSPORT_CXT_ROWS] = row_count
+            self._target_table.post_transport_tasks(self._staging_file)
+            return row_count
+
+        return self._messages.offload_step(
+            command_steps.STEP_STAGING_TRANSPORT,
+            step_fn,
+            execute=(not self._dry_run),
+        )
+
+    def ping_source_rdbms(self):
+        return self._verify_rdbms_connectivity()
+
+    ###########################################################################
     # PRIVATE METHODS
     ###########################################################################
 
@@ -90,6 +121,16 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
             suffix=suffix,
         )
 
+    def _gcloud_impersonation_options(self) -> list[str]:
+        """Return the gcloud caller impersonation flag, or an empty list to use the active gcloud account.
+
+        gcloud keeps a credential store distinct from ADC, so the caller identity is passed on every command.
+        The flag is used instead of CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT because commands run through
+        run_os_cmd, optionally prefixed with SSH, which does not forward environment variables.
+        """
+        principal = resolve_gcloud_impersonation_principal(self._offload_options)
+        return [f"--impersonate-service-account={principal}"] if principal else []
+
     def _gcloud_dataproc_describe_command(self, batch_name: str) -> list:
         gcloud_cmd = [
             OFFLOAD_TRANSPORT_SPARK_GCLOUD_EXECUTABLE,
@@ -103,6 +144,7 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
             gcloud_cmd.append(f"--project={self._dataproc_project}")
         if self._dataproc_region:
             gcloud_cmd.append(f"--region={self._dataproc_region}")
+        gcloud_cmd.extend(self._gcloud_impersonation_options())
         return gcloud_cmd
 
     def _gcloud_dataproc_submit_command(self, id: str = None) -> list:
@@ -120,6 +162,7 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
         gcloud_cmd.append(f"--batch={id}")
         if self._dataproc_service_account:
             gcloud_cmd.append(f"--service-account={self._dataproc_service_account}")
+        gcloud_cmd.extend(self._gcloud_impersonation_options())
         if self._dataproc_batches_version:
             gcloud_cmd.append(f"--version={self._dataproc_batches_version}")
         if self._dataproc_batches_subnet:
@@ -351,31 +394,6 @@ class OffloadTransportSparkBatchesGcloud(OffloadTransportSpark):
         # If we got this far then we're in good shape
         return True
 
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def transport(self, partition_chunk=None) -> int | None:
-        """Spark by gcloud batches transport"""
-        self._reset_transport_context()
-
-        def step_fn():
-            row_count = self._spark_gcloud_import(partition_chunk)
-            staged_bytes = self._check_and_log_transported_files(row_count)
-            self._transport_context[TRANSPORT_CXT_BYTES] = staged_bytes
-            self._transport_context[TRANSPORT_CXT_ROWS] = row_count
-            self._target_table.post_transport_tasks(self._staging_file)
-            return row_count
-
-        return self._messages.offload_step(
-            command_steps.STEP_STAGING_TRANSPORT,
-            step_fn,
-            execute=(not self._dry_run),
-        )
-
-    def ping_source_rdbms(self):
-        return self._verify_rdbms_connectivity()
-
 
 class OffloadTransportSparkBatchesGcloudCanary(OffloadTransportSparkBatchesGcloud):
     """Validate Managed Spark serverless connectivity"""
@@ -434,17 +452,17 @@ class OffloadTransportSparkBatchesGcloudCanary(OffloadTransportSparkBatchesGclou
         self._rdbms_table = None
         self._staging_format = None
 
-    def _get_batch_name(self) -> str:
-        """Return a Managed Spark serverless batch name for canary check."""
-        # Managed Spark serverless batch names only accept a simple set of characters and 4-63 characters in length
-        return self._get_transport_app_name(sep="-", ts=True, name_override="canary").lower()[:64]
-
     ###########################################################################
     # PUBLIC METHODS
     ###########################################################################
 
     def ping_source_rdbms(self):
         return self._verify_rdbms_connectivity()
+
+    def _get_batch_name(self) -> str:
+        """Return a Managed Spark serverless batch name for canary check."""
+        # Managed Spark serverless batch names only accept a simple set of characters and 4-63 characters in length
+        return self._get_transport_app_name(sep="-", ts=True, name_override="canary").lower()[:64]
 
 
 class OffloadTransportSparkDataprocGcloud(OffloadTransportSparkBatchesGcloud):
@@ -465,8 +483,10 @@ class OffloadTransportSparkDataprocGcloud(OffloadTransportSparkBatchesGcloud):
             gcloud_cmd.append(f"--project={self._dataproc_project}")
         if self._dataproc_region:
             gcloud_cmd.append(f"--region={self._dataproc_region}")
-        if self._dataproc_service_account:
-            gcloud_cmd.append(f"--impersonate-service-account={self._dataproc_service_account}")
+        impersonation_options = self._gcloud_impersonation_options()
+        if self._dataproc_service_account and not impersonation_options:
+            self._messages.warning(DATAPROC_CLUSTER_SERVICE_ACCOUNT_IGNORED)
+        gcloud_cmd.extend(impersonation_options)
         return gcloud_cmd
 
     def _tune_dataproc_for_parallelism(self) -> list:
@@ -531,14 +551,14 @@ class OffloadTransportSparkDataprocGcloudCanary(OffloadTransportSparkDataprocGcl
         self._rdbms_table = None
         self._staging_format = None
 
-    def _get_batch_name(self) -> str:
-        """Return a Managed Spark serverless batch name for canary check."""
-        # Managed Spark serverless batch names only accept a simple set of characters and 4-63 characters in length
-        return self._get_transport_app_name(sep="-", ts=True, name_override="canary").lower()[:64]
-
     ###########################################################################
     # PUBLIC METHODS
     ###########################################################################
 
     def ping_source_rdbms(self):
         return self._verify_rdbms_connectivity()
+
+    def _get_batch_name(self) -> str:
+        """Return a Managed Spark serverless batch name for canary check."""
+        # Managed Spark serverless batch names only accept a simple set of characters and 4-63 characters in length
+        return self._get_transport_app_name(sep="-", ts=True, name_override="canary").lower()[:64]
