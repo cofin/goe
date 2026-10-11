@@ -12,11 +12,22 @@ import re
 from os.path import exists as file_exists
 
 from google.api_core import retry
-from hdfs.ext.kerberos import KerberosClient
-from hdfs.util import HdfsError
+
+try:
+    from hdfs.ext.kerberos import KerberosClient
+    from hdfs.util import HdfsError
+except ModuleNotFoundError:
+    KerberosClient = object
+    HdfsError = Exception
 from requests import Session
-from requests_kerberos import OPTIONAL, HTTPKerberosAuth
-from requests_kerberos.exceptions import MutualAuthenticationError
+
+try:
+    from requests_kerberos import OPTIONAL, HTTPKerberosAuth
+    from requests_kerberos.exceptions import MutualAuthenticationError
+except ModuleNotFoundError:
+    OPTIONAL = None
+    HTTPKerberosAuth = None
+    MutualAuthenticationError = Exception
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 
