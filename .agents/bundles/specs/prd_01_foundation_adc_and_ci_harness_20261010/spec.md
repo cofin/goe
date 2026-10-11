@@ -2,16 +2,16 @@
 type: Spec
 flow_id: prd_01_foundation_adc_and_ci_harness_20261010
 title: "Master PRD 1: Foundation, GCP Credential Unification & Automated Test Harness"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 3
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: 20261011T155835Z-flow-executor-close-prd-01-00
+operation_targets: ["legacy_shim_removal_and_repo_hygiene_20261010", "gcp_adc_credential_unification_20261010", "oracle_ci_and_bigquery_test_harness_20261010"]
+last_verified_checkpoint: bc6fc94
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T22:20:00Z
+updated_at: 2026-10-11T15:58:35Z
 description: "Master roadmap establishing Phase 1 foundation: remove deprecated bin/* and Redis shims, port upstream gluent/goe #275 and #278, purge 9 unimported dead modules, unify GCP authentication around keyless Application Default Credentials and service account impersonation, and stand up an automated Oracle 23ai Free CI pipeline and offline BigQuery golden dry-run characterization suite."
 tags:
   - prd
@@ -114,21 +114,21 @@ GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only
 
 ## Implementation Plan
 
-- [ ] 1.1 [Chapter 1.1: Remove Deprecated Shims, Port Upstream `#278`/`#275`, Purge Dead Modules, and Clean Up Dependencies](../legacy_shim_removal_and_repo_hygiene_20261010/spec.md) — 6 tasks (`1.1`–`1.6`): remove `bin/*` wrappers and Redis shims (`1.1`), port `#278` Redis cleanup and remove `PRODUCT_NAME_GEL`/`ping.py` (`1.2`), port `#278` `ExecutionId.from_uuid` validation (`1.3`), purge 9 dead modules (`1.4`), port `#275` `release-please` and migrate dependencies/Dockerfile (`1.5`), and sync docs/OKF bundles (`1.6`).
-- [ ] 1.2 [Chapter 1.2: Unified GCP Application Default Credentials & Service Account Impersonation](../gcp_adc_credential_unification_20261010/spec.md) — 6 tasks (`1.1`–`1.6`): create `src/goe/util/gcp_credentials.py` and config options (`1.1`), wire BigQuery/KMS/`GOEGcs`/`GOELogFileHandle` (`1.2`), separate Managed Spark runtime SA from caller impersonation (`1.3`), add `goe connect` GCP preflight (`1.4`), upgrade `gcs-connector` to `3.0.20` (`1.5`), and update templates/docs (`1.6`).
-- [ ] 1.3 [Chapter 1.3: Oracle 23ai Free CI Container, BigQuery Integration Harness, and Golden Dry-Run Characterization Suite](../oracle_ci_and_bigquery_test_harness_20261010/spec.md) — 3 tasks (`1.1`–`1.3`): fix integration collection crash, latent test bugs, and `conftest.py` (`1.1`), create `sql/oracle/source/bootstrap_ci.sh` and CI jobs (`1.2`), and build `tests/unit/characterization/test_offload_bigquery_golden.py` (`1.3`).
+- [x] 1.1 [Chapter 1.1: Remove Deprecated Shims, Port Upstream `#278`/`#275`, Purge Dead Modules, and Clean Up Dependencies](../legacy_shim_removal_and_repo_hygiene_20261010/spec.md) — 6 tasks (`1.1`–`1.6`): remove `bin/*` wrappers and Redis shims (`1.1`), port `#278` Redis cleanup and remove `PRODUCT_NAME_GEL`/`ping.py` (`1.2`), port `#278` `ExecutionId.from_uuid` validation (`1.3`), purge 9 dead modules (`1.4`), port `#275` `release-please` and migrate dependencies/Dockerfile (`1.5`), and sync docs/OKF bundles (`1.6`).
+- [x] 1.2 [Chapter 1.2: Unified GCP Application Default Credentials & Service Account Impersonation](../gcp_adc_credential_unification_20261010/spec.md) — 6 tasks (`1.1`–`1.6`): create `src/goe/util/gcp_credentials.py` and config options (`1.1`), wire BigQuery/KMS/`GOEGcs`/`GOELogFileHandle` (`1.2`), separate Managed Spark runtime SA from caller impersonation (`1.3`), add `goe connect` GCP preflight (`1.4`), upgrade `gcs-connector` to `3.0.20` (`1.5`), and update templates/docs (`1.6`).
+- [x] 1.3 [Chapter 1.3: Oracle 23ai Free CI Container, BigQuery Integration Harness, and Golden Dry-Run Characterization Suite](../oracle_ci_and_bigquery_test_harness_20261010/spec.md) — 3 tasks (`1.1`–`1.3`): fix integration collection crash, latent test bugs, and `conftest.py` (`1.1`), create `sql/oracle/source/bootstrap_ci.sh` and CI jobs (`1.2`), and build `tests/unit/characterization/test_offload_bigquery_golden.py` (`1.3`).
 
 ---
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `prd_01_foundation_adc_and_ci_harness_20261010` (`state: planned`).
+- **Flow / lifecycle**: `prd_01_foundation_adc_and_ci_harness_20261010` (`state: completed`).
 - **Current task / claimant**: `current_task: null` / `claimed_by: null`.
-- **Last verified checkpoint**: `none`.
+- **Last verified checkpoint**: `bc6fc94`.
 - **Plan identity**: `plan_revision: 3`, `plan_commit: null`.
-- **State identity**: `state_revision: 0`.
+- **State identity**: `state_revision: 3`.
 - **Decisions**: `D-1.1-GEL` resolved (delete `PRODUCT_NAME_GEL` and `src/goe/listener/utils/ping.py` in Chapter 1.1 Task `1.2`) and `D2` resolved (BigQuery job project precedence: `GOOGLE_CLOUD_PROJECT` -> ADC default project -> `BIGQUERY_DATASET_PROJECT`).
-- **Recent discoveries**: All three child flows (15 tasks total: `6` in 1.1, `6` in 1.2, `3` in 1.3) have been audited against `HEAD` (`46890a8`), cross-checked against PRDs 2–4, and dry-run verified.
+- **Recent discoveries**: All 15 tasks across Chapters 1.1 (`4ecf09f`), 1.2 (`a3397e7`), and 1.3 (`bc6fc94`) are completed and verified (`644 passed` in `tests/unit`, `147 collected` in `tests/integration --collect-only`, `0` Ruff/Mypy errors).
 - **Blockers**: `none`.
-- **Next exact step**: Execute Chapter 1.1 (`legacy_shim_removal_and_repo_hygiene_20261010`), Task `1.1` ([../legacy_shim_removal_and_repo_hygiene_20261010/tasks/1.1.md](../legacy_shim_removal_and_repo_hygiene_20261010/tasks/1.1.md)), followed sequentially by Chapter 1.2 and Chapter 1.3.
+- **Next exact step**: Complete Flow review and proceed to Master PRD 2 (`prd_02_core_typing_options_and_decomposition_20261010`).
 - **Relevant knowledge**: `.agents/bundles/knowledge/patterns/cli-architecture.md`, `.agents/bundles/knowledge/operations/configuration-and-env.md`, `.agents/bundles/knowledge/backends/bigquery.md`, `.agents/bundles/knowledge/storage/gcs.md`, `.agents/bundles/knowledge/transport/spark-dataproc.md`, `.agents/bundles/knowledge/standards/testing.md`.

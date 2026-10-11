@@ -42,12 +42,15 @@ GOE loads environment variables using a 4-tier discovery architecture via `pytho
 - `USE_ORACLE_WALLET`: `true` to authenticate via Oracle Wallet instead of plaintext passwords.
 - `ORACLEDB_THICK_MODE`: Enables Oracle Instant Client for thick mode features.
 
-### Backend (Google BigQuery) Settings
+### Backend (Google BigQuery & GCP Auth) Settings
 - `BACKEND_DISTRIBUTION`: Target cloud distribution (`GCP`, `SNOWFLAKE`, `MSAZURE`, `CDH`).
 - `QUERY_ENGINE`: Target engine (`BIGQUERY`, `IMPALA`, `HIVE`).
 - `BIGQUERY_DATASET_PROJECT`: GCP Project ID hosting BigQuery datasets.
 - `BIGQUERY_DATASET_LOCATION`: Region for dataset creation (e.g. `US`, `EU`, `us-central1`).
-- `GOOGLE_APPLICATION_CREDENTIALS`: Service account key file path (if not using GCE instance SA).
+- `GOOGLE_CLOUD_PROJECT`: Explicit Google Cloud project ID for API calls and BigQuery job billing (precedence: `GOOGLE_CLOUD_PROJECT` -> ADC default project -> `BIGQUERY_DATASET_PROJECT`).
+- `GOOGLE_CLOUD_QUOTA_PROJECT`: Optional Google Cloud quota/billing project override applied to resolved ADC credentials.
+- `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`: Optional target service account email (or comma-separated chain) for keyless Application Default Credentials (`impersonated_credentials.Credentials`) and `gcloud` control-plane impersonation.
+- `GOOGLE_APPLICATION_CREDENTIALS`: Optional ADC override pointing to Workload Identity Federation external account configuration JSON (avoid static service account private key JSON files).
 - `GOOGLE_KMS_KEY_NAME`: Cloud KMS key resource ID for CMEK encryption.
 
 ### Cloud Storage Settings
@@ -64,6 +67,8 @@ GOE loads environment variables using a 4-tier discovery architecture via `pytho
 - `GOOGLE_DATAPROC_CLUSTER`: Dataproc cluster name for persistent cluster execution.
 - `GOOGLE_DATAPROC_BATCHES_VERSION`: Dataproc Serverless runtime version (e.g. `2.0`, `2.1`).
 - `GOOGLE_DATAPROC_BATCHES_SUBNET`: Subnet URI with Private Google Access enabled.
+- `GOOGLE_DATAPROC_SERVICE_ACCOUNT`: Workload runtime service account attached to Dataproc Serverless batches (`gcloud dataproc batches submit pyspark --service-account=...`). Does not control `gcloud` caller impersonation.
+- `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT`: Optional service account email for `gcloud dataproc` control-plane caller impersonation (`--impersonate-service-account`, falling back to `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`).
 
 ### Listener Settings (Embedded Architecture)
 - `OFFLOAD_LISTENER_HOST` / `PORT`: Bind host and port (default `0.0.0.0:8085`).

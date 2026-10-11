@@ -2,16 +2,16 @@
 type: Spec
 flow_id: legacy_shim_removal_and_repo_hygiene_20261010
 title: "Chapter 1.1: Remove Deprecated Shims, Port Upstream #278/#275, Purge Dead Modules, and Clean Up Dependencies"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 9
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: 20261011T151100Z-flow-executor-close-1-6-00
+operation_targets: ["1.6"]
+last_verified_checkpoint: 4ecf09f
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T22:20:00Z
+updated_at: 2026-10-11T15:11:00Z
 description: "Remove the bin/* and Redis deprecation shims, port the non-listener parts of upstream gluent/goe #278 and the release-please workflow of #275, fix ExecutionId.from_uuid validation, purge 9 unimported dead modules, migrate stale dependencies (configparser, lark-parser, termcolor, sqlspec mypyc extra), modernize the Cloud Run image, and synchronize documentation and OKF knowledge."
 tags: [chore, cli, dependencies]
 parent: prd_01_foundation_adc_and_ci_harness_20261010
@@ -70,21 +70,21 @@ research: []
 
 ## Implementation Plan
 
-- [ ] 1.1 Remove `bin/*` wrappers and Redis deprecation shims ([tasks/1.1.md](tasks/1.1.md)) [P1, characterization]
-- [ ] 1.2 Port upstream `#278` Redis/listener-config cleanup, frontend stubs, and legacy `tools/` scripts ([tasks/1.2.md](tasks/1.2.md)) (depends on: 1.1) [P1, characterization]
-- [ ] 1.3 Port upstream `#278` `ExecutionId.from_uuid` validation ([tasks/1.3.md](tasks/1.3.md)) (depends on: 1.2) [P2, regression_tdd]
-- [ ] 1.4 Purge 9 unimported dead modules ([tasks/1.4.md](tasks/1.4.md)) (depends on: 1.3) [P2, characterization]
-- [ ] 1.5 Port upstream `#275` release-please, migrate dependencies, and modernize the Cloud Run image ([tasks/1.5.md](tasks/1.5.md)) (depends on: 1.4) [P2, static_validation]
-- [ ] 1.6 Synchronize docs, `AGENTS.md`, project skill nuance, and OKF knowledge ([tasks/1.6.md](tasks/1.6.md)) (depends on: 1.1, 1.2, 1.3, 1.4, 1.5) [P2, documentation_validation]
+- [x] 1.1 Remove `bin/*` wrappers and Redis deprecation shims ([tasks/1.1.md](tasks/1.1.md)) [P1, characterization]
+- [x] 1.2 Port upstream `#278` Redis/listener-config cleanup, frontend stubs, and legacy `tools/` scripts ([tasks/1.2.md](tasks/1.2.md)) (depends on: 1.1) [P1, characterization]
+- [x] 1.3 Port upstream `#278` `ExecutionId.from_uuid` validation ([tasks/1.3.md](tasks/1.3.md)) (depends on: 1.2) [P2, regression_tdd]
+- [x] 1.4 Purge 9 unimported dead modules ([tasks/1.4.md](tasks/1.4.md)) (depends on: 1.3) [P2, characterization]
+- [x] 1.5 Port upstream `#275` release-please, migrate dependencies, and modernize the Cloud Run image ([tasks/1.5.md](tasks/1.5.md)) (depends on: 1.4) [P2, static_validation]
+- [x] 1.6 Synchronize docs, `AGENTS.md`, project skill nuance, and OKF knowledge ([tasks/1.6.md](tasks/1.6.md)) (depends on: 1.1, 1.2, 1.3, 1.4, 1.5) [P2, documentation_validation]
 
 ---
 
 ## Continuity Snapshot
 
-- **Lifecycle**: `state: planned`; current task: none; claimant: none; last verified checkpoint: none.
-- **Plan identity**: `plan_revision: 3`, `plan_commit: null`; state identity `state_revision: 0`.
+- **Lifecycle**: `state: completed`; current task: `null`; claimant: `null`; last verified checkpoint: `4ecf09f`.
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`; state identity `state_revision: 9`.
 - **Decisions**: `D-1.1-GEL` resolved (delete `PRODUCT_NAME_GEL` and `src/goe/listener/utils/ping.py` in Task `1.2`); `release-please` runs on `push` to `main` (matches upstream `#275` and `.github/workflows/ci.yaml:7-9`).
-- **Recent discoveries**: (1) `tests/unit/cli/test_bin_wrappers.py` and `tests/unit/test_migrate_spdx_headers.py` must be deleted with the code they test; (2) `lark` 1.3.1 needs no code change; (3) `goe.util.json_tools` does not export `DEFAULT_TYPE_ENCODERS` (import it from `sqlspec.utils.serializers`); (4) repo-wide `ruff format --check` fails at baseline on Markdown code blocks; (5) `src/goe/listener/utils/ping.py` has zero callers once `test_listener()` is removed and is deleted alongside `PRODUCT_NAME_GEL`.
+- **Recent discoveries**: (1) `tests/unit/cli/test_bin_wrappers.py` and `tests/unit/test_migrate_spdx_headers.py` deleted with the code they tested; (2) `lark` 1.3.1 resolved cleanly with zero deprecation warnings; (3) `goe.util.json_tools` uses `DEFAULT_TYPE_ENCODERS` from `sqlspec.utils.serializers`; (4) all touched Python files in Tasks `1.1`–`1.5` passed AST public-before-private ordering; (5) all 18 docs, skill, and OKF knowledge/product files synchronized in `4ecf09f`.
 - **Blockers**: none.
-- **Next exact step**: claim Task `1.1` and record the characterization baseline `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit/cli tests/unit/listener --deselect tests/unit/cli/test_bin_wrappers.py::test_bin_wrappers_executable`.
+- **Next exact step**: Proceed to Chapter 1.2 (`gcp_adc_credential_unification_20261010`).
 - **Relevant knowledge**: `.agents/bundles/knowledge/patterns/cli-architecture.md`, `.agents/bundles/knowledge/listener/worker-and-redis.md`, `.agents/bundles/knowledge/patterns/serialization-and-utils.md`, `.agents/bundles/knowledge/workflow.md`, `.agents/bundles/knowledge/standards/testing.md`.

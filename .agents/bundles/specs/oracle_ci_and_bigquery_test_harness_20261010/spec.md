@@ -2,16 +2,16 @@
 type: Spec
 flow_id: oracle_ci_and_bigquery_test_harness_20261010
 title: "Chapter 1.3: Oracle 23ai Free CI Container, BigQuery Integration Harness, and Golden Dry-Run Characterization Suite"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 4
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: 20261011T155835Z-flow-executor-close-1-3-00
+operation_targets: ["1.3"]
+last_verified_checkpoint: bc6fc94
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T22:20:00Z
+updated_at: 2026-10-11T15:58:35Z
 description: "Fix integration test collection and latent test framework bugs, provision a non-interactive Oracle 23ai Free CI container and WIF-authenticated BigQuery workflow, and establish a deterministic golden dry-run (execute=False) characterization test suite."
 tags: [testing, ci, oracle, bigquery]
 parent: prd_01_foundation_adc_and_ci_harness_20261010
@@ -56,21 +56,21 @@ research: []
 
 ## Implementation Plan
 
-- [ ] 1.1 Fix integration test collection crash, repair latent test framework bugs, and add `tests/integration/conftest.py` ([tasks/1.1.md](tasks/1.1.md)) [P0, regression_tdd]
-- [ ] 1.2 Create `sql/oracle/source/bootstrap_ci.sh` and configure Oracle 23ai Free + WIF BigQuery CI jobs ([tasks/1.2.md](tasks/1.2.md)) (depends on: 1.1) [P1, static_validation]
-- [ ] 1.3 Create golden dry-run (`execute=False`) characterization test suite for Oracle-to-BigQuery offloads ([tasks/1.3.md](tasks/1.3.md)) (depends on: 1.1) [P0, characterization]
+- [x] 1.1 Fix integration test collection crash, repair latent test framework bugs, and add `tests/integration/conftest.py` ([tasks/1.1.md](tasks/1.1.md)) [P0, regression_tdd]
+- [x] 1.2 Create `sql/oracle/source/bootstrap_ci.sh` and configure Oracle 23ai Free + WIF BigQuery CI jobs ([tasks/1.2.md](tasks/1.2.md)) (depends on: 1.1) [P1, static_validation]
+- [x] 1.3 Create golden dry-run (`execute=False`) characterization test suite for Oracle-to-BigQuery offloads ([tasks/1.3.md](tasks/1.3.md)) (depends on: 1.1) [P0, characterization]
 
 ---
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `oracle_ci_and_bigquery_test_harness_20261010` (`state: planned`).
+- **Flow / lifecycle**: `oracle_ci_and_bigquery_test_harness_20261010` (`state: completed`).
 - **Current task / claimant**: `current_task: null` / `claimed_by: null`.
-- **Last verified checkpoint**: `none`.
+- **Last verified checkpoint**: `bc6fc94`.
 - **Plan identity**: `plan_revision: 3`, `plan_commit: null`.
-- **State identity**: `state_revision: 0`.
+- **State identity**: `state_revision: 4`.
 - **Decisions**: All decisions resolved (Oracle 23ai Free container `gvenzl/oracle-free:23-slim-faststart` on `FREEPDB1`; WIF keyless BigQuery CI gated by `vars.GCP_WIF_PROVIDER != ''`; integration jobs run once on `inputs.python-version == '3.12'`).
-- **Recent discoveries**: Audited against `HEAD` (`46890a8`); all test helpers, SQL script filenames, predicate DSL syntax, `ci.yaml` reusable-workflow matrix interactions, and cross-chapter conflicts with Chapter 1.1 have been verified.
-- **Blockers**: Chapter 1.2 (`gcp_adc_credential_unification_20261010`) must be completed first.
-- **Next exact step**: Claim and execute Task `1.1` ([tasks/1.1.md](tasks/1.1.md)) once Chapter 1.2 (`gcp_adc_credential_unification_20261010`) completes.
+- **Recent discoveries**: All 3 tasks (`1.1`, `1.2`, `1.3`) completed and verified (`4f3b91d`, `a01672e`, `bc6fc94`).
+- **Blockers**: `none`.
+- **Next exact step**: Review and archive `oracle_ci_and_bigquery_test_harness_20261010` alongside Master PRD 1 (`prd_01_foundation_adc_and_ci_harness_20261010`).
 - **Relevant knowledge**: `.agents/bundles/knowledge/standards/testing.md`, `.agents/bundles/knowledge/patterns/index.md`, `.agents/bundles/knowledge/workflow.md`.

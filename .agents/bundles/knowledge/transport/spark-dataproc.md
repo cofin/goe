@@ -33,3 +33,13 @@ To distribute data extraction across Spark executors, GOE slices source tables:
    - Queries `MIN(id_col)` and `MAX(id_col)` and configures PySpark JDBC options: `lowerBound`, `upperBound`, `numPartitions`, `partitionColumn`.
 3. **Native Range Slicing (`SPLIT_BY_NATIVE_RANGE`)**:
    - Direct partition querying per executor task.
+
+## Authentication & Service Account Separation
+
+- **Control-Plane Caller Impersonation (`--impersonate-service-account`)**:
+  - Resolved via `resolve_gcloud_impersonation_principal(config)` (`GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT` falling back to `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`).
+  - Applied consistently across `gcloud dataproc batches submit pyspark`, `gcloud dataproc batches describe`, and `gcloud dataproc jobs submit pyspark --cluster=...`.
+- **Workload Runtime Identity (`--service-account`)**:
+  - `GOOGLE_DATAPROC_SERVICE_ACCOUNT` specifies only the Dataproc Serverless batch workload execution identity (`gcloud dataproc batches submit pyspark --service-account=...`) and is never conflated with `gcloud` control-plane caller impersonation.
+- **Standalone Spark GCS Connector**:
+  - Non-Dataproc `spark-submit` and Livy sessions use `gcs-connector-3.0.20-shaded.jar` configured with `spark.hadoop.fs.gs.auth.type=APPLICATION_DEFAULT` and optional `spark.hadoop.fs.gs.auth.impersonation.service.account`.

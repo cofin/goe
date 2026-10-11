@@ -2,16 +2,16 @@
 type: Spec
 flow_id: gcp_adc_credential_unification_20261010
 title: "Chapter 1.2: Unified GCP Application Default Credentials & Service Account Impersonation"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 7
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: 20261011T154515Z-flow-executor-close-1-6-00
+operation_targets: ["1.6"]
+last_verified_checkpoint: a3397e7
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-10T22:20:00Z
+updated_at: 2026-10-11T15:45:15Z
 description: "Unify GCP authentication across BigQuery, Cloud KMS, Cloud Storage, gcsfs log files, and gcloud Managed Spark commands around Application Default Credentials with optional service account impersonation, without service account key files."
 tags: [feature, security, gcp, bigquery]
 parent: prd_01_foundation_adc_and_ci_harness_20261010
@@ -94,26 +94,26 @@ Every code task also runs the AST public-before-private ordering check on its to
 
 ## Implementation Plan
 
-- [ ] 1.1 Create the shared GCP credential resolver and register ADC/impersonation config options ([tasks/1.1.md](tasks/1.1.md)) [P1, behavior_tdd]
-- [ ] 1.2 Wire the shared credential bundle into BigQuery, Cloud KMS, GOEGcs, and GOELogFileHandle ([tasks/1.2.md](tasks/1.2.md)) (depends on: 1.1) [P1, behavior_tdd]
-- [ ] 1.3 Separate the Managed Spark runtime service account from gcloud caller impersonation ([tasks/1.3.md](tasks/1.3.md)) (depends on: 1.1) [P1, behavior_tdd]
-- [ ] 1.4 Add goe connect Google Cloud credential preflight and Managed Spark identity report ([tasks/1.4.md](tasks/1.4.md)) (depends on: 1.1, 1.3) [P2, behavior_tdd]
-- [ ] 1.5 Upgrade the bundled Cloud Storage Hadoop connector to 3.0.20 with ADC authentication ([tasks/1.5.md](tasks/1.5.md)) [P2, static_validation]
-- [ ] 1.6 Document keyless ADC and impersonation in offload.env templates, gcp_setup.md, and user_guide.md ([tasks/1.6.md](tasks/1.6.md)) (depends on: 1.1, 1.2, 1.3, 1.4, 1.5) [P2, documentation_validation]
+- [x] 1.1 Create the shared GCP credential resolver and register ADC/impersonation config options ([tasks/1.1.md](tasks/1.1.md)) [P1, behavior_tdd]
+- [x] 1.2 Wire the shared credential bundle into BigQuery, Cloud KMS, GOEGcs, and GOELogFileHandle ([tasks/1.2.md](tasks/1.2.md)) (depends on: 1.1) [P1, behavior_tdd]
+- [x] 1.3 Separate the Managed Spark runtime service account from gcloud caller impersonation ([tasks/1.3.md](tasks/1.3.md)) (depends on: 1.1) [P1, behavior_tdd]
+- [x] 1.4 Add goe connect Google Cloud credential preflight and Managed Spark identity report ([tasks/1.4.md](tasks/1.4.md)) (depends on: 1.1, 1.3) [P2, behavior_tdd]
+- [x] 1.5 Upgrade the bundled Cloud Storage Hadoop connector to 3.0.20 with ADC authentication ([tasks/1.5.md](tasks/1.5.md)) [P2, static_validation]
+- [x] 1.6 Document keyless ADC and impersonation in offload.env templates, gcp_setup.md, and user_guide.md ([tasks/1.6.md](tasks/1.6.md)) (depends on: 1.1, 1.2, 1.3, 1.4, 1.5) [P2, documentation_validation]
 
 ---
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `gcp_adc_credential_unification_20261010` (`state: planned`).
-- **Current task / claimant**: `current_task: null` / `claimed_by: null`, and all six tasks are `open`.
-- **Last verified checkpoint**: `none`.
+- **Flow / lifecycle**: `gcp_adc_credential_unification_20261010` (`state: completed`).
+- **Current task / claimant**: `current_task: null` / `claimed_by: null`, and all six tasks are `closed`.
+- **Last verified checkpoint**: `a3397e7`.
 - **Plan identity**: `plan_revision: 3`, `plan_commit: null`.
-- **State identity**: `state_revision: 0`.
+- **State identity**: `state_revision: 7`.
 - **Decisions**: `D2` resolved (project precedence: `GOOGLE_CLOUD_PROJECT` -> ADC default project -> `BIGQUERY_DATASET_PROJECT`).
 - **Recent discoveries**: (1) `gcloud` runs via `OffloadTransport._run_os_cmd` (optionally over SSH), so caller impersonation uses `--impersonate-service-account` rather than process env vars; (2) `storage.Client(project=None)` disables project resolution, so `project` is passed only when resolved; (3) `gcs-connector-3.0.20-shaded.jar` uses `spark.hadoop.fs.gs.auth.type APPLICATION_DEFAULT`.
-- **Blockers**: Chapter 1.1 (`legacy_shim_removal_and_repo_hygiene_20261010`) must be completed first.
-- **Next exact step**: once every Chapter 1.1 task is closed, claim Task `1.1` and run its Step 1. Create `tests/unit/util/test_gcp_credentials.py` and confirm the `ImportError: cannot import name 'gcp_credentials' from 'goe.util'` red symptom.
+- **Blockers**: None.
+- **Next exact step**: Proceed to Chapter 1.3 (`oracle_ci_and_bigquery_test_harness_20261010`).
 - **Relevant knowledge**:
   - [configuration-and-env.md](../../knowledge/operations/configuration-and-env.md).
   - [backends/bigquery.md](../../knowledge/backends/bigquery.md).

@@ -23,6 +23,10 @@ The BigQuery backend adapter (`src/goe/offload/bigquery/`) manages target datase
 ## Connection & Security
 
 - **SDK**: `google-cloud-bigquery` (`bigquery.Client`), `google-cloud-kms` (`kms.KeyManagementServiceClient`).
+- **Unified Keyless ADC & Impersonation (`src/goe/util/gcp_credentials.py`)**:
+  - Both `bigquery.Client` and `kms.KeyManagementServiceClient` obtain credentials via `resolve_gcp_credentials(self._config, component="bigquery" | "kms")`.
+  - Job billing project precedence resolves `GOOGLE_CLOUD_PROJECT` -> ADC default project -> `BIGQUERY_DATASET_PROJECT`, while dataset/table DDL identifiers remain scoped to `BIGQUERY_DATASET_PROJECT`.
+  - Supports keyless Application Default Credentials (attached VM/GKE/Cloud Run service accounts, Workload Identity Federation, developer `gcloud auth application-default login`) and service account impersonation chains via `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` (`impersonated_credentials.Credentials`).
 - **Timezone**: Normalized to UTC via `bigquery.ConnectionProperty("time_zone", "UTC")`.
 - **Encryption**: Customer-Managed Encryption Keys (CMEK) via Google Cloud KMS configured on dataset, table options (`OPTIONS(kms_key_name=...)`), and query jobs (`QueryJobConfig.destination_encryption_configuration`).
 
