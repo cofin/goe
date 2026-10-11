@@ -1,14 +1,11 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-import pytest
-
 from goe.persistence.schemas import (
     ColumnDetail,
     CommandExecutionSchema,
     LogEventSchema,
     OffloadMetadataSchema,
-    PartitionMetadataSchema,
     StepDetailSchema,
     SubPartitionDetail,
     decode_schema,

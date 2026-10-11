@@ -212,6 +212,7 @@ select = [
     "I",   # isort
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
+    "ERA", # eradicate
     "RUF", # ruff-specific rules
     "CPY", # flake8-copyright
 ]
@@ -237,11 +238,9 @@ ignore = [
     "B034",    # re.sub should pass count and flags as keyword arguments
     "B904",    # Within an except clause, raise exceptions with raise ... from err
     "B905",    # `zip()` without an explicit `strict=` parameter
-    "F401",    # Module imported but unused
     "F504",    # %-format string has unused named argument(s)
     "F507",    # %-format string placeholder mismatch
     "F811",    # Redefinition of unused name
-    "F841",    # Local variable is assigned to but never used
     "UP031",   # Use format specifiers instead of percent format
     "UP035",   # Deprecated imports
     "UP037",   # Remove quotes from type annotation
@@ -275,8 +274,9 @@ min-file-size = 10
 "tests/**/*" = ["ANN001", "ANN201", "D103", "D104", "ERA001", "PLR2004", "S101", "S404", "T201", "TID252"]
 
 [tool.mypy]
+check_untyped_defs = true
 disallow_any_generics = false
-disallow_incomplete_defs = false
+disallow_incomplete_defs = true
 disallow_untyped_decorators = false
 disallow_untyped_defs = false
 exclude = [
@@ -290,32 +290,14 @@ follow_imports = "silent"
 ignore_missing_imports = true
 pretty = true
 show_column_numbers = true
-warn_no_return = false
-warn_redundant_casts = false
-warn_unused_configs = false
-warn_unused_ignores = false
-disable_error_code = [
-    "attr-defined",
-    "assignment",
-    "arg-type",
-    "has-type",
-    "union-attr",
-    "misc",
-    "call-arg",
-    "call-overload",
-    "override",
-    "index",
-    "return-value",
-    "var-annotated",
-    "operator",
-    "name-defined",
-]
+warn_no_return = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unused_ignores = true
+disable_error_code = []
 
 [[tool.mypy.overrides]]
 module = [
-    "goe.listener.*",
-    "goe.connect.*",
-    "goe.schema_sync.*",
     "tests.*",
 ]
 ignore_errors = true

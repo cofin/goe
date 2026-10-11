@@ -5,7 +5,6 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from litestar.di import Provide
 from litestar.testing import TestClient
 from litestar_queues import QueueService
 

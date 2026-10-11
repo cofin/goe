@@ -208,10 +208,7 @@ class TestTeradataPartitionExpression(TestCase):
                 self.assertEqual(actual_r[2], expected_r[2])
 
     def test_single_range_n_on_string(self):
-        partition_check_clauses = [
-            "CHECK ((RANGE_N(flag  BETWEEN 'A','B','C','D' AND 'Z', NO RANGE, UNKNOWN)) BETWEEN 1 AND 00006)",
-        ]
-        # We don't support this yet so don't test anything
+        """String RANGE_N expressions are not yet supported."""
 
     def test_columnar_with_range_n(self):
         partition_check_clauses = [

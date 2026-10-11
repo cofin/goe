@@ -37,10 +37,7 @@ def gen_char(
     no_newlines=False,
 ):
     if from_list:
-        # Just return a value from the list provided by the user
         return from_list[(row_index + 1) % len(from_list)]
-    if const == ordered:
-        row = "".join(chr(row_index % 2**8) for _ in range(length // 2))
     s = ""
     if ordered and ascii7_only and notnull:
         c = (row_index % ((2**7) - 2)) + 1

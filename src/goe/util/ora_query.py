@@ -37,7 +37,7 @@ def output_type_handler(cursor, name, defaultType, size, precision, scale):
     """
     if defaultType == oracledb.DB_TYPE_CLOB:
         return cursor.var(
-            getattr(oracledb, "DB_TYPE_LONG_STRING", oracledb.DB_TYPE_LONG_VARCHAR),
+            getattr(oracledb, "DB_TYPE_LONG_STRING", None),
             arraysize=cursor.arraysize,
         )
     if defaultType == oracledb.DB_TYPE_BLOB:

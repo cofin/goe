@@ -42,9 +42,7 @@ from goe.util.misc_functions import id_generator
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
-    from goe.offload.column_metadata import ColumnMetadataInterface
     from goe.offload.offload_messages import OffloadMessages
-    from goe.offload.offload_source_table import OffloadSourceTableInterface
 
 
 class OffloadTransportTeradataApi(OffloadTransportRdbmsApiInterface):
