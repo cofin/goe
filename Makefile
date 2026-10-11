@@ -102,6 +102,18 @@ test-integration:                                   ## Run parallel integration 
 	@uv run pytest tests/integration -n 4
 	@echo "${OK} Integration tests completed ✓"
 
+.PHONY: test-integration-oracle
+test-integration-oracle:                            ## Run Oracle persistence and frontend integration tests
+	@echo "${INFO} Running Oracle integration tests..."
+	@uv run pytest tests/integration/persistence/test_orchestration_metadata.py tests/integration/persistence/test_orchestration_repo_client.py -v
+	@echo "${OK} Oracle integration tests completed ✓"
+
+.PHONY: test-integration-gcp
+test-integration-gcp:                               ## Run BigQuery and GCS integration tests using ADC
+	@echo "${INFO} Running BigQuery/GCS integration tests..."
+	@uv run pytest tests/integration -m "bigquery or gcs" -n 4
+	@echo "${OK} BigQuery/GCS integration tests completed ✓"
+
 .PHONY: build
 build: clean                                        ## Build wheel and source distribution into dist/
 	@echo "${INFO} Building wheel and sdist with uv..."

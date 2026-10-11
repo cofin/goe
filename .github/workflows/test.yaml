@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   PYTHONUNBUFFERED: "1"
@@ -69,3 +70,103 @@ jobs:
         with:
           name: coverage-xml
           path: coverage.xml
+
+  integration-oracle:
+    name: Oracle 23ai Free + Dry-Run Backend Suite
+    if: ${{ inputs.python-version == '3.12' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      oracle:
+        image: gvenzl/oracle-free:23-slim-faststart
+        env:
+          ORACLE_PASSWORD: OracleFree23ai
+        ports:
+          - 1521:1521
+        options: >-
+          --health-cmd "healthcheck.sh"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      GOOGLE_API_USE_CLIENT_CERTIFICATE: "false"
+      GOE_NO_AUTOLOAD_ENV: "1"
+      FRONTEND_DISTRIBUTION: "ORACLE"
+      ORA_CONN: "localhost:1521/FREEPDB1"
+      ORA_ADM_USER: "GOE_ADM"
+      ORA_ADM_PASS: "goe_ci_pass"
+      ORA_APP_USER: "GOE_APP"
+      ORA_APP_PASS: "goe_ci_pass"
+      ORA_REPO_USER: "GOE_REPO"
+      ORA_REPO_PASS: "goe_ci_pass"
+      GOE_TEST_USER: "GOE_TEST"
+      GOE_TEST_USER_PASS: "goe_ci_pass"
+      BACKEND_DISTRIBUTION: "GCP"
+      QUERY_ENGINE: "BIGQUERY"
+      BIGQUERY_DATASET_PROJECT: "ci-dryrun-project"
+      OFFLOAD_FS_SCHEME: "gs"
+      OFFLOAD_FS_CONTAINER: "ci-dryrun-bucket"
+      OFFLOAD_FS_PREFIX: "goe_ci"
+      DB_NAME_PREFIX: "ci"
+      OFFLOAD_TRANSPORT_USER: "runner"
+      OFFLOAD_TRANSPORT_CMD_HOST: "localhost"
+      OFFLOAD_TRANSPORT_SPARK_SUBMIT_EXECUTABLE: "spark-submit"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install dependencies
+        run: uv sync --all-extras --dev --locked
+      - name: Bootstrap GOE Oracle schemas inside container
+        run: |
+          ORACLE_CID="$(docker ps -qf 'ancestor=gvenzl/oracle-free:23-slim-faststart')"
+          docker cp sql/oracle/source "${ORACLE_CID}:/tmp/goe_sql"
+          docker cp pyproject.toml "${ORACLE_CID}:/tmp/pyproject.toml"
+          docker exec \
+            -e ORA_SYS_PASS=OracleFree23ai \
+            -e ORA_CONN=localhost:1521/FREEPDB1 \
+            -e GOE_USER_PREFIX=GOE \
+            -e GOE_USER_PASS=goe_ci_pass \
+            -e GOE_TEST_USER=GOE_TEST \
+            "${ORACLE_CID}" bash -c "mkdir -p /tmp/repo/sql/oracle && mv /tmp/goe_sql /tmp/repo/sql/oracle/source && mv /tmp/pyproject.toml /tmp/repo/pyproject.toml && /tmp/repo/sql/oracle/source/bootstrap_ci.sh"
+      - name: Prepare runtime directories
+        run: |
+          mkdir -p /tmp/offload/run /tmp/offload/log
+          echo "OFFLOAD_HOME=/tmp/offload" >> "$GITHUB_ENV"
+          echo "OFFLOAD_LOG=/tmp/offload/log" >> "$GITHUB_ENV"
+      - name: Run Oracle persistence & frontend integration tests
+        run: |
+          uv run pytest \
+            tests/integration/persistence/test_orchestration_metadata.py \
+            tests/integration/persistence/test_orchestration_repo_client.py \
+            -v
+
+  integration-bigquery:
+    name: BigQuery & GCS Keyless WIF Integration Suite
+    if: ${{ inputs.python-version == '3.12' && vars.GCP_WIF_PROVIDER != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GOE_IT_SA }}
+      - name: Install dependencies
+        run: uv sync --all-extras --dev --locked
+      - name: Run BigQuery & GCS integration tests
+        run: uv run pytest tests/integration -m "bigquery or gcs" -n 2
