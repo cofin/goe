@@ -37,13 +37,13 @@ class ListenerSettings:
 
     def __post_init__(self) -> None:
         if self.global_config:
-            if getattr(self.global_config, "listener_host", None):
+            if self.global_config.listener_host:
                 self.host = self.global_config.listener_host
-            if getattr(self.global_config, "listener_port", None):
+            if self.global_config.listener_port is not None:
                 self.port = self.global_config.listener_port
-            if getattr(self.global_config, "listener_shared_token", None):
+            if self.global_config.listener_shared_token:
                 self.shared_token = str(self.global_config.listener_shared_token)
-            if getattr(self.global_config, "listener_heartbeat_interval", None):
+            if self.global_config.listener_heartbeat_interval:
                 self.heartbeat_interval = self.global_config.listener_heartbeat_interval
 
         if self.static_path is None:

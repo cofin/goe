@@ -13,13 +13,15 @@ from goe.goe import ansi, normal
 from goe.goe import log as offload_log
 from goe.offload.offload_messages import VVERBOSE
 
+failures: bool = False
+warnings: bool = False
+
 
 class FatalTestFailure(Exception):
-    # Use this instead of sys.exit(1)
-    pass
+    """Exception raised instead of sys.exit(1) during fatal connectivity checks."""
 
 
-def log(line: str, detail: int = normal, ansi_code=None):
+def log(line: str, detail: int = normal, ansi_code: str | None = None) -> None:
     """Write a log entry through goe.goe.log."""
     offload_log(line, detail=detail, ansi_code=ansi_code)
 

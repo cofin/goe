@@ -5,6 +5,7 @@ import copy
 import socket
 import sys
 import traceback
+from typing import Any
 
 from google.auth.exceptions import DefaultCredentialsError, RefreshError, TransportError
 from google.auth.transport.requests import Request
@@ -36,8 +37,7 @@ from goe.filesystem.goe_dfs import (
     uri_component_split,
 )
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
-
-# from goe.util.better_impyla import BetterImpylaException
+from goe.filesystem.web_hdfs import WebHdfs
 from goe.goe import get_log_fh, verbose
 from goe.offload.backend_api import BackendApiConnectionException
 from goe.offload.factory.backend_api_factory import backend_api_factory
@@ -87,7 +87,7 @@ def get_backend_api(options, orchestration_config, messages=None, dry_run=False)
     return backend_api_factory(orchestration_config.target, orchestration_config, api_messages, dry_run=dry_run)
 
 
-def uses_google_cloud(orchestration_config) -> bool:
+def uses_google_cloud(orchestration_config: Any) -> bool:
     """Return True when the configuration talks to BigQuery or stages data in Cloud Storage."""
     return bool(
         orchestration_config.backend_distribution == BACKEND_DISTRO_GCP
@@ -95,7 +95,7 @@ def uses_google_cloud(orchestration_config) -> bool:
     )
 
 
-def test_gcp_credentials(orchestration_config) -> None:
+def test_gcp_credentials(orchestration_config: Any) -> None:
     """Report the resolved Google Cloud identity and prove an access token can be minted.
 
     Runs before the BigQuery connectivity test so ADC and impersonation failures surface with an actionable hint
@@ -166,7 +166,6 @@ def test_raw_conn(hadoop_host, hadoop_port):
 
 
 def get_cli_hdfs(orchestration_config, host, messages):
-    # dry_run always = False in connect.
     return CliHdfs(
         host,
         orchestration_config.hadoop_ssh_user,
@@ -213,11 +212,9 @@ def test_hdfs_dirs(
     test_name = "%s: %s directory" % (test_host, service_name)
     test_header(test_name)
 
-    # Setting this up for each host to prove directories visible regardless of WebHDFS usage.
-    # WebHDFS will only test namenode knows of them, not test each node is configured correctly.
     use_hdfs = hdfs or get_cli_hdfs(orchestration_config, test_host, messages)
     passed = True
-    msgs = []
+    msgs: list[str] = []
     test_hdfs_home = (
         False
         if (
@@ -254,10 +251,10 @@ def test_webhdfs_config(orchestration_config, messages):
         warning(test_name)
         return
 
-    webhdfs_security = (["Kerberos"] if orchestration_config.kerberos_service else []) + (
+    webhdfs_security_parts = (["Kerberos"] if orchestration_config.kerberos_service else []) + (
         [] if orchestration_config.webhdfs_verify_ssl is None else ["SSL"]
     )
-    webhdfs_security = ("using " + " and ".join(webhdfs_security)) if webhdfs_security else "unsecured"
+    webhdfs_security = ("using " + " and ".join(webhdfs_security_parts)) if webhdfs_security_parts else "unsecured"
     detail(
         "HDFS operations will use WebHDFS (%s:%s) %s"
         % (
@@ -267,9 +264,6 @@ def test_webhdfs_config(orchestration_config, messages):
         )
     )
     success(test_name)
-
-    # Lazy import of WebHdfs to avoid pulling in dependencies unnecessarily.
-    from goe.filesystem.web_hdfs import WebHdfs
 
     hdfs = WebHdfs(
         orchestration_config.webhdfs_host,
@@ -357,6 +351,12 @@ def test_sentry_privs(orchestration_config, backend_api, messages):
 
 
 def test_ranger_privs(orchestration_config, backend_api, messages):
+    """Remove any @REALM from Kerberos principal
+
+    Check if we have ALL ON SERVER
+    We have ALL ON SERVER so can do what we need to
+    Can we create GOE databases
+    """
     if not backend_api.ranger_supported():
         log("Skipping Ranger steps due to backend system", detail=VVERBOSE)
         return
@@ -364,7 +364,6 @@ def test_ranger_privs(orchestration_config, backend_api, messages):
     passed = True
     test_name = "%s: Ranger privileges" % orchestration_config.hadoop_host
     test_header(test_name)
-    # Remove any @REALM from Kerberos principal
     user = backend_api.get_user_name().split("@")[0]
     debug("Backend username: %s" % user)
     dfs_client = get_cli_hdfs(orchestration_config, orchestration_config.hdfs_host, messages)
@@ -404,7 +403,6 @@ def test_ranger_privs(orchestration_config, backend_api, messages):
             failure(test_name)
             raise
 
-    # Check if we have ALL ON SERVER
     all_required = [
         {"database": "*", "privilege": "all"},
         {"table": "*", "privilege": "all"},
@@ -420,10 +418,8 @@ def test_ranger_privs(orchestration_config, backend_api, messages):
         return
     detail("Ranger is enabled")
     if not all_result:
-        # We have ALL ON SERVER so can do what we need to
         detail("Able to perform all required operations")
     else:
-        # Can we create GOE databases
         detail("\nDatabase Creation")
         db_required = [{"privilege": "create", "database": "*", "table": "*", "column": "*"}]
         db_query = "SHOW GRANT USER %s ON SERVER" % backend_api.enclose_identifier(user)
@@ -454,7 +450,10 @@ def test_ranger_privs(orchestration_config, backend_api, messages):
 
 
 def run_hs2_tests(options, orchestration_config, messages):
-    # Tests required to pass for all listed hosts
+    """Tests required to pass for all listed hosts
+
+    if hdfs_host is not specified then check directories from all Hadoop nodes
+    """
     detail("HS2 hosts: %s" % ", ".join(orchestration_defaults.hadoop_host_default().split(",")))
     original_host_option = orchestration_config.hadoop_host
     first_host = True
@@ -466,7 +465,6 @@ def run_hs2_tests(options, orchestration_config, messages):
             test_sentry_privs(orchestration_config, backend_api, messages)
             test_ranger_privs(orchestration_config, backend_api, messages)
         if not orchestration_config.hdfs_host:
-            # if hdfs_host is not specified then check directories from all Hadoop nodes
             test_hdfs_dirs(orchestration_config, messages)
         first_host = False
     orchestration_config.hadoop_host = original_host_option

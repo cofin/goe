@@ -3,11 +3,6 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-##########################################################################
-# agg_validate: Check data consistency between Oracle and backend
-#     by comparing "column aggregate_functions" (min, max, count, ...) between the two
-#
-##########################################################################
 
 import logging
 import re
@@ -42,31 +37,16 @@ from goe.util.misc_functions import (
 )
 
 
-# -----------------------------------------------------------------------
-# EXCEPTIONS
-# -----------------------------------------------------------------------
 class AggValidateException(Exception):
     pass
 
-
-# -----------------------------------------------------------------------
-# CONSTANTS
-# -----------------------------------------------------------------------
 
 PROG_BANNER = "Validate (agg_validate) v%s" % version()
 
 REGEX_FILTER = re.compile(r"(\S+)\s+(%s)\s+(\S+)" % "|".join(SUPPORTED_OPERATIONS), re.IGNORECASE)
 
 
-# -----------------------------------------------------------------------
-# Logging
-# -----------------------------------------------------------------------
 logger = logging.getLogger("agg_validate")
-
-
-# -----------------------------------------------------------------------
-# SCRIPT ROUTINES
-# -----------------------------------------------------------------------
 
 
 def validate_table(args, messages):
@@ -139,16 +119,20 @@ def post_process_args(args: AggValidateOptions) -> None:
 
         return [parse_single_filter(_.strip()) for _ in filters.split(",")]
 
-    if args.filters:
+    if isinstance(args.filters, str) and args.filters:
         args.filters = parse_filters(args.filters)
     if args.selects:
-        if len(args.selects) == 1 and is_number(args.selects[0]):
+        if isinstance(args.selects, (list, str)) and len(args.selects) == 1 and is_number(args.selects[0]):
             args.selects = args.selects[0]
-        else:
-            args.selects = csv_split(args.selects)
-    if args.group_bys and args.group_bys != GROUPBY_PARTITIONS:
+        elif isinstance(args.selects, str):
+            args.selects = list[str | int](csv_split(args.selects))
+    if isinstance(args.group_bys, str) and args.group_bys and args.group_bys != GROUPBY_PARTITIONS:
         args.group_bys = csv_split(args.group_bys)
-    if args.aggregate_functions and args.aggregate_functions != DEFAULT_AGGS:
+    if (
+        isinstance(args.aggregate_functions, str)
+        and args.aggregate_functions
+        and args.aggregate_functions != DEFAULT_AGGS
+    ):
         args.aggregate_functions = csv_split(args.aggregate_functions)
     if args.frontend_parallelism:
         if not is_pos_int(args.frontend_parallelism):

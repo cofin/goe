@@ -44,6 +44,7 @@ def static_frontend_name(orchestration_config):
 
 
 def test_frontend_db_connectivity(orchestration_config, messages):
+    """Ignore the client returned below, it is no use to us in connect."""
     frontend_api = None
     test_name = "%s connectivity" % static_frontend_name(orchestration_config)
     try:
@@ -66,7 +67,6 @@ def test_frontend_db_connectivity(orchestration_config, messages):
         test_name = "%s transport user connectivity" % static_frontend_name(orchestration_config)
         try:
             test_header(test_name)
-            # Ignore the client returned below, it is no use to us in connect.
             frontend_api_factory(
                 orchestration_config.db_type,
                 orchestration_config,
@@ -85,6 +85,7 @@ def test_frontend_db_connectivity(orchestration_config, messages):
 
 
 def test_oracle_connectivity(orchestration_config):
+    """success -> cx is a goe_adm connection"""
     test_name = "Oracle connectivity"
     test_header(test_name)
     try:
@@ -107,13 +108,8 @@ def test_oracle_connectivity(orchestration_config):
         failure(test_name)
         raise FatalTestFailure
 
-    # success -> cx is a goe_adm connection
     success(test_name)
     return cx
-
-
-def _oracle_version_supported(oracle_version: str) -> bool:
-    return GOEVersion(oracle_version) >= GOEVersion(GOE_MINIMUM_ORACLE_VERSION)
 
 
 def test_oracle(orchestration_config, messages):
@@ -205,3 +201,7 @@ def run_frontend_tests(orchestration_config, messages):
         test_name = f"{static_frontend_name(orchestration_config)} version"
         test_header(test_name)
         detail(frontend_api.frontend_version())
+
+
+def _oracle_version_supported(oracle_version: str) -> bool:
+    return GOEVersion(oracle_version) >= GOEVersion(GOE_MINIMUM_ORACLE_VERSION)

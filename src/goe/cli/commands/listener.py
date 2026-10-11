@@ -26,35 +26,6 @@ _LAZY_IMPORTS: LazyImportMap = {
 }
 
 
-def _start_listener_server(
-    host: str | None = None,
-    port: int | None = None,
-    workers: int | None = None,
-    reload: bool = False,
-    worker_only: bool = False,
-) -> None:
-    """Start the Granian ASGI server or background worker process."""
-    bind_lazy_imports(__name__, _LAZY_IMPORTS)
-    resolved_host = host if host is not None else settings.host
-    resolved_port = port if port is not None else int(settings.port)
-    resolved_workers = workers if workers is not None else int(settings.http_workers)
-
-    if worker_only:
-        print_info("Starting GOE Listener worker process...")
-        return
-
-    print_info(f"Starting GOE Listener on http://{resolved_host}:{resolved_port} with {resolved_workers} worker(s)...")
-    server = Granian(
-        "goe.listener.asgi:app",
-        address=resolved_host,
-        port=resolved_port,
-        interface=Interfaces.ASGI,
-        workers=resolved_workers,
-        reload=reload,
-    )
-    server.serve()
-
-
 @click.group(
     name="listener",
     help="Manage GOE Listener REST service and background workers.",
@@ -202,3 +173,32 @@ def status(ctx: click.Context, **kwargs: Any) -> None:
 def __getattr__(name: str) -> Any:
     """Lazily import Granian, httpx, and listener settings on first attribute access."""
     return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)
+
+
+def _start_listener_server(
+    host: str | None = None,
+    port: int | None = None,
+    workers: int | None = None,
+    reload: bool = False,
+    worker_only: bool = False,
+) -> None:
+    """Start the Granian ASGI server or background worker process."""
+    bind_lazy_imports(__name__, _LAZY_IMPORTS)
+    resolved_host = host if host is not None else settings.host
+    resolved_port = port if port is not None else int(settings.port)
+    resolved_workers = workers if workers is not None else int(settings.http_workers)
+
+    if worker_only:
+        print_info("Starting GOE Listener worker process...")
+        return
+
+    print_info(f"Starting GOE Listener on http://{resolved_host}:{resolved_port} with {resolved_workers} worker(s)...")
+    server = Granian(
+        "goe.listener.asgi:app",
+        address=resolved_host,
+        port=resolved_port,
+        interface=Interfaces.ASGI,
+        workers=resolved_workers,
+        reload=reload,
+    )
+    server.serve()

@@ -19,18 +19,6 @@ from goe.util.sync_tools import async_
 logger = logging.getLogger(__name__)
 
 
-def _resolve_context(
-    context: dict[str, Any] | None = None,
-    system_service: SystemService | None = None,
-) -> tuple[SystemService, UUID, UUID]:
-    """Resolve the active SystemService and listener group/endpoint identifiers."""
-    service = system_service or get_system_service()
-    ctx = context or {}
-    listener_group_id: UUID = ctx.get("listener_group_id") or service.generate_listener_group_id()
-    endpoint_id_val: UUID = ctx.get("endpoint_id") or service.generate_listener_endpoint_id()
-    return service, listener_group_id, endpoint_id_val
-
-
 async def publish_heartbeat(
     context: dict[str, Any] | None = None,
     system_service: SystemService | None = None,
@@ -103,8 +91,9 @@ async def publish_command_executions(
     command_executions = await async_(service.get_command_executions)()
     all_steps = await async_(service.get_command_execution_steps)(execution_id=None)
     for step in all_steps:
-        if isinstance(step.get("execution_id"), bytes):
-            step["execution_id"] = ExecutionId.from_bytes(step["execution_id"]).as_str()
+        raw_step_exec_id = step.get("execution_id")
+        if isinstance(raw_step_exec_id, bytes):
+            step["execution_id"] = ExecutionId.from_bytes(raw_step_exec_id).as_str()
     steps_by_execution_id = utils.groupby(
         lambda pair: str(pair.get("execution_id")),
         all_steps,
@@ -126,6 +115,18 @@ async def publish_command_executions(
         payload,
         ttl=10000,
     )
+
+
+def _resolve_context(
+    context: dict[str, Any] | None = None,
+    system_service: SystemService | None = None,
+) -> tuple[SystemService, UUID, UUID]:
+    """Resolve the active SystemService and listener group/endpoint identifiers."""
+    service = system_service or get_system_service()
+    ctx = context or {}
+    listener_group_id: UUID = ctx.get("listener_group_id") or service.generate_listener_group_id()
+    endpoint_id_val: UUID = ctx.get("endpoint_id") or service.generate_listener_endpoint_id()
+    return service, listener_group_id, endpoint_id_val
 
 
 async def _publish_schema(

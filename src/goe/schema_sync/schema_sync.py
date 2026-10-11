@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.goe import log
 from goe.orchestration import command_steps
@@ -37,11 +37,11 @@ def normalise_schema_sync_options(options):
 
 
 def schema_sync(
-    options,
+    options: Any,
     messages: "OffloadMessages",
     execution_id: "ExecutionId",
     repo_client: "OrchestrationRepoClientInterface",
-):
+) -> int:
     messages.setup_offload_step(
         error_before_step=options.error_before_step,
         error_after_step=options.error_after_step,
@@ -106,7 +106,7 @@ def schema_sync(
         else:
             log("No changes detected")
 
-    if options.command_file:
+    if options.command_file and cmd_file is not None:
         if tables_in_scope and cmd_file.commands_in_file():
             messages.notice('Command file written to "%s"' % options.command_file)
         else:

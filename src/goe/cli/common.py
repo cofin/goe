@@ -35,14 +35,6 @@ COMMON_OPTION_KEYS: tuple[str, ...] = (
 )
 
 
-def _print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> None:
-    """Print the GOE version banner and exit when --version is passed."""
-    if not value or ctx.resilient_parsing:
-        return
-    click.echo(f"goe version {goe_version()}")
-    ctx.exit(0)
-
-
 def common_options(func: Callable[..., Any]) -> Callable[..., Any]:
     """Attach standard GOE global and hidden diagnostic options to a Click command or group."""
     options = [
@@ -224,3 +216,11 @@ def extract_common_options(ctx: click.Context | None, kwargs: dict[str, Any]) ->
 def __getattr__(name: str) -> Any:
     """Lazily import orchestration_defaults on first attribute access."""
     return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)
+
+
+def _print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> None:
+    """Print the GOE version banner and exit when --version is passed."""
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo(f"goe version {goe_version()}")
+    ctx.exit(0)

@@ -3,7 +3,7 @@
 
 """Offload data verification, operation logic, and target table orchestration entrypoints."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.exceptions import OffloadException, OffloadOptionError
 from goe.filesystem.goe_dfs import (
@@ -206,11 +206,11 @@ def verify_row_count_by_aggs(
 def offload_data_verification(
     offload_source_table: OffloadSourceTableInterface,
     offload_target_table: "BackendTableInterface",
-    offload_operation,
+    offload_operation: OffloadOperation,
     offload_options: "OrchestrationConfig",
     messages: OffloadMessages,
     source_data_client: "OffloadSourceDataInterface",
-):
+) -> None:
     """Verify offloaded data by either rowcount or sampling aggregation functions.
     Boundary conditions used to verify only those partitions offloaded by the current operation.
 
@@ -307,7 +307,7 @@ def offload_operation_logic(
     offload_target_table: "BackendTableInterface",
     offload_options: "OrchestrationConfig",
     source_data_client: "OffloadSourceDataInterface",
-    existing_metadata,
+    existing_metadata: Any,
     messages: OffloadMessages,
 ) -> bool:
     """Logic defining what will be offloaded and what the final objects will look like
@@ -426,7 +426,7 @@ def offload_table(
     offload_source_table: OffloadSourceTableInterface,
     offload_target_table: "BackendTableInterface",
     messages: OffloadMessages,
-):
+) -> bool:
     """As of GOE-2334 we only support BigQuery as a target. We need to pickup defaults for an existing table here, BEFORE we start looking for data to offload (get_offload_data_manager()). Call validate_offload_by_subpartition early so we can switch it on before any partition related information is requested. The ipa_predicate_type checks are intertwined with offload_by_subpartition. Write ipa_predicate_type back to operation in case the source_data_client has defined a new one. source_data_client may modify offload-predicate provided as input, this variable contains those changes for transport and verification. We need to set defaults for a fresh offload here, AFTER get_offload_data_manager() has decided what type of offload we'll do. This happens inside offload_operation_logic(). For a fresh offload we may have tuned offload_operation attributes For DDL file creation we need to drop out early, before we concern ourselves with database creation or table drop commands. Pre-offload SCN will be stored in metadata. Only run verification if data has been transferred"""
     if offload_options.db_type == offload_constants.DBTYPE_ORACLE:
         abort, v_goe, v_ora = version_abort(offload_operation.ver_check, offload_source_table.get_frontend_api())
@@ -487,7 +487,7 @@ def offload_table(
                 offload_operation.execute,
             )
 
-    existing_metadata = None
+    existing_metadata: Any = None
     if offload_target_table.exists() and not offload_operation.reset_backend_table:
         existing_metadata = offload_operation.defaults_for_existing_table(offload_target_table, messages)
         check_table_structure(offload_source_table, offload_target_table, messages)

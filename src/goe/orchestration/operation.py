@@ -8,7 +8,7 @@ import os
 import os.path
 import re
 import traceback
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.config import orchestration_defaults
 from goe.config.config_validation_functions import normalise_size_option
@@ -172,8 +172,10 @@ def nls_lang_exists():
 
 
 def nls_lang_has_charset():
-    if nls_lang_exists():
-        return "." in os.environ.get("NLS_LANG")
+    nls_lang = nls_lang_exists()
+    if nls_lang:
+        return "." in nls_lang
+    return False
 
 
 def set_nls_lang_default(opts):
@@ -546,7 +548,105 @@ class BaseOperation:
     to completely merge them, using this base class to centralise some code.
     """
 
+    allow_decimal_scale_rounding: Any
+    allow_floating_point_conversions: Any
+    allow_nanosecond_timestamp_columns: Any
+    base_name: Any
+    base_owner: Any
+    base_owner_name: Any
+    bucket_hash_col: Any
+    column_transformation_list: Any
+    compress_load_table: Any
+    compute_load_table_stats: Any
+    create_backend_db: Any
+    data_sample_parallelism: Any
+    data_sample_pct: Any
+    date_columns_csv: Any
+    ddl_file: Any
+    decimal_columns_csv_list: Any
+    decimal_columns_type_list: Any
+    decimal_padding_digits: Any
+    double_columns_csv: Any
+    equal_to_values: Any
+    error_after_step: Any
+    error_before_step: Any
     execute: bool
+    force: Any
+    hive_column_stats: Any
+    hwm_in_hybrid_view: Any
+    impala_insert_hint: Any
+    inflight_offload_predicate: Any
+    integer_1_columns_csv: Any
+    integer_2_columns_csv: Any
+    integer_4_columns_csv: Any
+    integer_8_columns_csv: Any
+    integer_38_columns_csv: Any
+    ipa_predicate_type: Any
+    less_or_equal_value: Any
+    less_than_value: Any
+    max_offload_chunk_count: Any
+    max_offload_chunk_size: Any
+    not_null_columns_csv: Any
+    offload_by_subpartition: Any
+    offload_chunk_column: Any
+    offload_distribute_enabled: Any
+    offload_fs_container: Any
+    offload_fs_prefix: Any
+    offload_fs_scheme: Any
+    offload_partition_columns: Any
+    offload_partition_functions: Any
+    offload_partition_granularity: Any
+    offload_partition_lower_value: Any
+    offload_partition_upper_value: Any
+    offload_predicate: Any
+    offload_predicate_modify_hybrid_view: Any
+    offload_stats_method: Any
+    offload_transport_consistent_read: Any
+    offload_transport_dsn: Any
+    offload_transport_fetch_size: Any
+    offload_transport_jvm_overrides: Any
+    offload_transport_method: Any
+    offload_transport_parallelism: Any
+    offload_transport_queue_name: Any
+    offload_transport_small_table_threshold: Any
+    offload_transport_snapshot: Any
+    offload_transport_spark_properties: Any
+    offload_transport_validation_polling_interval: Any
+    offload_type: Any
+    older_than_date: Any
+    older_than_days: Any
+    operation_name: Any
+    owner: Any
+    owner_table: Any
+    partition_names: list[str]
+    partition_names_csv: Any
+    pre_offload_hybrid_metadata: Any
+    preserve_load_table: Any
+    purge_backend_table: Any
+    reset_backend_table: Any
+    reset_hybrid_view: Any
+    reuse_backend_table: Any
+    skip: Any
+    sort_columns: Any
+    sort_columns_csv: Any
+    sqoop_additional_options: Any
+    sqoop_mapreduce_map_java_opts: Any
+    sqoop_mapreduce_map_memory_mb: Any
+    storage_compression: Any
+    storage_format: Any
+    suppress_stdout: Any
+    synthetic_partition_digits: Any
+    table_name: Any
+    target_name: Any
+    target_owner: Any
+    target_owner_name: Any
+    target_table_name: Any
+    timestamp_tz_columns_csv: Any
+    unicode_string_columns_csv: Any
+    variable_string_columns_csv: Any
+    ver_check: Any
+    verify_parallelism: Any
+    verify_row_count: Any
 
     def __init__(
         self,
@@ -643,6 +743,9 @@ class BaseOperation:
 
     def vars(self):
         raise NotImplementedError("vars() has not been implemented for this operation")
+
+    def default_bucket_hash_col(self, source_table, messages):
+        raise NotImplementedError("default_bucket_hash_col() has not been implemented for this operation")
 
     def override_bucket_hash_col(self, new_bucket_hash_col, messages):
         """Pass messages as None to suppress any warnings/notices"""
@@ -743,7 +846,7 @@ class BaseOperation:
         self,
         offload_target_table: "BackendTableInterface",
         messages: OffloadMessages,
-    ):
+    ) -> OrchestrationMetadata | None:
         """Default bucket hash column and datatype mappings from existing table
         This is required for setting up a pre-existing table and is used by
         incremental partition append.
@@ -1053,10 +1156,10 @@ class BaseOperation:
         offload_source_table: OffloadSourceTableInterface,
         messages: OffloadMessages,
         offload_options: "OrchestrationConfig",
-        backend_cols,
-        hybrid_metadata,
-        backend_api=None,
-    ):
+        backend_cols: Any,
+        hybrid_metadata: Any,
+        backend_api: Any = None,
+    ) -> None:
         """Default sort_columns for storage index benefit if not specified by the user.
         sort_columns_csv: The incoming option string which can be a CSV list of column names or:
             - the special token SORT_COLUMNS_NO_CHANGE which identifies the user has not asked for a change.
@@ -1112,7 +1215,7 @@ class BaseOperation:
         max_decimal_precision = max_decimal_precision or 38
         max_decimal_scale = max_decimal_scale or 38
         reference_columns = columns_override or backend_table.get_columns()
-        canonical_columns = []
+        canonical_columns: list[Any] = []
         if self.integer_1_columns_csv:
             canonical_columns.extend(
                 canonical_columns_from_columns_csv(

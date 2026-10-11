@@ -6,6 +6,7 @@
 from typing import TYPE_CHECKING, Any
 
 import rich_click as click
+from click.core import ParameterSource
 
 from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
 from goe.cli.common import common_options, extract_common_options
@@ -65,7 +66,7 @@ def report(ctx: click.Context, **kwargs: Any) -> None:
     for key, value in kwargs.items():
         if value is None:
             continue
-        if key == "output_format" and ctx.get_parameter_source(key) == click.core.ParameterSource.DEFAULT:
+        if key == "output_format" and ctx.get_parameter_source(key) == ParameterSource.DEFAULT:
             overrides[key] = value.lower()
         else:
             overrides[key] = value
