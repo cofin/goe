@@ -25,19 +25,8 @@ from goe.offload.offload_constants import (
 )
 from goe.util.goe_version import GOEVersion
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# BackendImpalaTable
-###########################################################################
 
 
 class BackendImpalaTable(BackendHadoopTable):
@@ -76,18 +65,17 @@ class BackendImpalaTable(BackendHadoopTable):
         logger.info("BackendImpalaTable setup: (%s, %s)" % (db_name, table_name))
         if dry_run:
             logger.info("* Dry run *")
-        self._log_profile_after_final_table_load = True
-        # Impala profiles are pretty big so we don't log after verification queries, only INSERT
-        self._log_profile_after_verification_queries = False
+        setattr(self, "_log_profile_after_final_table_load", True)
+        setattr(self, "_log_profile_after_verification_queries", False)
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def compute_final_table_stats(self, incremental_stats, materialized_join=False):
+        if self.table_stats_compute_supported():
+            self._compute_impala_table_statistics(incremental_stats)
 
     def _cast_verification_query_options(self):
         return self._disable_decimal_v2_query_option()
 
-    def _create_new_backend_table(self, sort_column_names=None):
+    def _create_new_backend_table(self, sort_column_names=None, with_terminator=False):
         """Generate & execute DDL to create a table in Impala.
         The table doesn't exist but self._columns should have been set and
         be ready to drive both columns and partition details.
@@ -97,6 +85,7 @@ class BackendImpalaTable(BackendHadoopTable):
         partition_column_names = get_column_names(self.get_partition_columns())
 
         location = self._get_data_table_hdfs_dir()
+        storage_format: str | None
         if self._user_requested_storage_format == FILE_STORAGE_FORMAT_PARQUET:
             storage_format = FILE_STORAGE_FORMAT_PARQUET_IMPALA
         else:
@@ -120,16 +109,19 @@ class BackendImpalaTable(BackendHadoopTable):
             table_properties=table_properties,
             sort_column_names=sort_column_names,
             sync=True,
+            with_terminator=with_terminator,
         )
 
     def _compute_impala_table_statistics(self, incremental_stats):
         self._db_api.compute_stats(self.db_name, self.table_name, incremental=incremental_stats)
 
     def _disable_decimal_v2_query_option(self):
-        # For consistency we want to insert data using DECIMAL V1 which is no longer the default from Impala v3.
-        # This is to avoid issues such as being unable to reduce a 34 digit number:
-        #   select cast(lpad('9',34,'9') as decimal(38,0)) / 10;
-        #   ERROR: UDF ERROR: Decimal expression overflowed
+        """For consistency we want to insert data using DECIMAL V1 which is no longer the default from Impala v3.
+
+        This is to avoid issues such as being unable to reduce a 34 digit number:
+        select cast(lpad('9',34,'9') as decimal(38,0)) / 10;
+        ERROR: UDF ERROR: Decimal expression overflowed
+        """
         if bool(GOEVersion(self.target_version()) >= GOEVersion("3.0.0")):
             return {"DECIMAL_V2": "FALSE"}
         return {}
@@ -186,21 +178,22 @@ class BackendImpalaTable(BackendHadoopTable):
         synthetic_partition_digits,
         with_padding=True,
     ):
+        """There are a number of values around 15-18 digits that round weirdly when using BIGINT, for example:
+
+        > select FLOOR(CAST(99999999999999992 AS BIGINT)/1000);
+        +-------------------------------------------------+
+        | floor(cast(99999999999999992 as bigint) / 1000) |
+        | 100000000000000                                 |
+        Therefore we use DECIMAL instead, at the cost of extra CPU
+        Apply the granularity division/floor/multiplication to generate synthetic value
+        There is scope for the division above to change the data type again so let's fix it (again)
+        On Hadoop all synthetic values are strings
+        """
         to_synth_expr = column_expr
         if backend_col.data_type == HADOOP_TYPE_BIGINT:
-            # There are a number of values around 15-18 digits that round weirdly when using BIGINT, for example:
-            # > select FLOOR(CAST(99999999999999992 AS BIGINT)/1000);
-            # +-------------------------------------------------+
-            # | floor(cast(99999999999999992 as bigint) / 1000) |
-            # +-------------------------------------------------+
-            # | 100000000000000                                 |
-            # +-------------------------------------------------+
-            # Therefore we use DECIMAL instead, at the cost of extra CPU
             to_synth_expr = f"CAST({to_synth_expr} AS DECIMAL(19))"
 
-        # Apply the granularity division/floor/multiplication to generate synthetic value
         to_synth_expr = f"FLOOR({to_synth_expr}/{granularity})"
-        # There is scope for the division above to change the data type again so let's fix it (again)
         if backend_col.data_type in (
             HADOOP_TYPE_BIGINT,
             HADOOP_TYPE_INT,
@@ -213,7 +206,6 @@ class BackendImpalaTable(BackendHadoopTable):
         to_synth_expr = f"CAST({to_synth_expr} AS {recast_type})"
         to_synth_expr = f"{to_synth_expr} * {granularity}"
 
-        # On Hadoop all synthetic values are strings
         to_synth_expr = f"CAST({to_synth_expr} AS STRING)"
         if with_padding:
             return "LPAD(%s, %s, '0')" % (to_synth_expr, synthetic_partition_digits)
@@ -230,15 +222,3 @@ class BackendImpalaTable(BackendHadoopTable):
 
     def _validate_staged_data_query_options(self):
         return self._disable_decimal_v2_query_option()
-
-    ###########################################################################
-    # PUBLIC METHODS - HIGH LEVEL STEP METHODS
-    ###########################################################################
-
-    def compute_final_table_stats(self, incremental_stats, materialized_join=False):
-        if self.table_stats_compute_supported():
-            self._compute_impala_table_statistics(incremental_stats)
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################

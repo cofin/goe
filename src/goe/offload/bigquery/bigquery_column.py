@@ -10,30 +10,19 @@ from goe.offload.column_metadata import (
     ColumnMetadataInterface,
 )
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 BIGQUERY_TYPE_BIGNUMERIC = "BIGNUMERIC"
 BIGQUERY_TYPE_BOOLEAN = "BOOLEAN"
 BIGQUERY_TYPE_BYTES = "BYTES"
 BIGQUERY_TYPE_DATE = "DATE"
 BIGQUERY_TYPE_DATETIME = "DATETIME"
-# BIGQUERY_TYPE_FLOAT for translation purposes only, not a supported type
 BIGQUERY_TYPE_FLOAT = "FLOAT"
 BIGQUERY_TYPE_FLOAT64 = "FLOAT64"
 BIGQUERY_TYPE_INT64 = "INT64"
-# BIGQUERY_TYPE_INTEGER for translation purposes only, not a supported type
 BIGQUERY_TYPE_INTEGER = "INTEGER"
 BIGQUERY_TYPE_NUMERIC = "NUMERIC"
 BIGQUERY_TYPE_STRING = "STRING"
 BIGQUERY_TYPE_TIME = "TIME"
 BIGQUERY_TYPE_TIMESTAMP = "TIMESTAMP"
-
-
-###########################################################################
-# CLASSES
-###########################################################################
 
 
 class BigQueryColumn(ColumnMetadataInterface):
@@ -54,10 +43,12 @@ class BigQueryColumn(ColumnMetadataInterface):
         partition_info=None,
         char_length=None,
     ):
+        """Confusingly the API uses BIGQUERY_TYPE_FLOAT/BIGQUERY_TYPE_INTEGER but SQL uses the *64 names.
+
+        We have standardised on the SQL names.
+        """
         if data_length and char_length is None:
             char_length = data_length
-        # Confusingly the API uses BIGQUERY_TYPE_FLOAT/BIGQUERY_TYPE_INTEGER but SQL uses the *64 names.
-        # We have standardised on the SQL names.
         if data_type == BIGQUERY_TYPE_FLOAT:
             data_type = BIGQUERY_TYPE_FLOAT64
         elif data_type == BIGQUERY_TYPE_INTEGER:

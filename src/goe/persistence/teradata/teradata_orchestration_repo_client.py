@@ -236,10 +236,9 @@ class TeradataOrchestrationRepoClient(OrchestrationRepoClientInterface):
             return v
 
         assert metadata
-        if isinstance(metadata, OrchestrationMetadata):
-            metadata = metadata.as_dict()
+        metadata_dict: dict = metadata.as_dict() if isinstance(metadata, OrchestrationMetadata) else metadata
 
-        logger.debug(f"Writing metadata: {metadata[OFFLOADED_OWNER]}, {metadata[OFFLOADED_TABLE]}")
+        logger.debug(f"Writing metadata: {metadata_dict[OFFLOADED_OWNER]}, {metadata_dict[OFFLOADED_TABLE]}")
         source_alias = "src"
         target_alias = "tgt"
         parameter_markers = ",".join("?" for _ in ALL_METADATA_ATTRIBUTES)
@@ -248,7 +247,7 @@ class TeradataOrchestrationRepoClient(OrchestrationRepoClientInterface):
         update_columns = "\n            ,    ".join(
             f"{_} = {source_alias}.{_}" for _ in ALL_METADATA_ATTRIBUTES if _ not in [OFFLOADED_OWNER, OFFLOADED_TABLE]
         )
-        insert_parameters = [prep_value(_, metadata) for _ in ALL_METADATA_ATTRIBUTES]
+        insert_parameters = [prep_value(_, metadata_dict) for _ in ALL_METADATA_ATTRIBUTES]
         sql = dedent(
             f"""\
             MERGE INTO {self._repo_user}.offload_metadata {target_alias}

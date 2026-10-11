@@ -11,9 +11,9 @@ from os.path import basename
 from os.path import exists as file_exists
 from typing import Any
 
+import google.cloud.storage as storage
 from google.api_core import exceptions as google_exceptions
 from google.api_core import retry
-from google.cloud import storage
 from requests import ConnectionError
 
 from goe.filesystem.goe_dfs import (

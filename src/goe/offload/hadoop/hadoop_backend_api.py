@@ -32,8 +32,6 @@ import re
 import traceback
 from datetime import datetime
 
-# Importing TTransportException from impala.hiveserver2 because Cloudera have switched the underlying
-# thrift module in the past preventing the exception from being caught.
 from impala.hiveserver2 import TTransportException
 
 from goe.connect.connect_constants import CONNECT_DETAIL, CONNECT_STATUS, CONNECT_TEST
@@ -132,31 +130,13 @@ from goe.util.hive_table_stats import HiveTableStats
 from goe.util.hs2_connection import HS2_OPTIONS, hs2_connection
 from goe.util.misc_functions import backtick_sandwich
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 HADOOP_DECIMAL_MAX_PRECISION = 38
 
-# This re is looking for:
-#   A column name group        : ^([a-z0-9_]+)
-#   An optional opening bracket: [\(]?
-#   An optional precision group: ([0-9]*)?
-#   An optional comma          : [\,]?
-#   An optional scale group    : ([0-9]*)?
-#   An optional closing bracket: [\)]?
-# It could be more precise using lookahead/lookbehinds but was getting much harder to read
 HADOOP_DATA_TYPE_DECODE_RE = re.compile(r"^([a-z0-9_]+)[\(]?([0-9]*)?[\,]?([0-9]*)?[\)]?$", re.IGNORECASE)
 
-# Regular expression matching invalid identifier characters, constant to ensure compiled only once
 HADOOP_INVALID_IDENTIFIER_CHARS_RE = re.compile(r"[^A-Z0-9_]", re.IGNORECASE)
 
 IMPALA_PROFILE_LOG_LENGTH = 1024 * 32
-
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
 
 
 def format_hive_set_command(attribute, value):
@@ -167,7 +147,7 @@ def hive_enable_dynamic_partitions_for_insert_sqls(
     max_dynamic_partitions=None, max_dynamic_partitions_pernode=None, as_dict=False
 ):
     """Hive session options for use when inserting into a partitioned table."""
-    hive_settings = {
+    hive_settings: dict[str, str | int] = {
         "hive.exec.dynamic.partition": "true",
         "hive.exec.dynamic.partition.mode": "nonstrict",
     }
@@ -184,13 +164,7 @@ def hive_enable_dynamic_partitions_for_insert_sqls(
 
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# BackendHadoopApi
-###########################################################################
 
 
 class BackendHadoopApi(BackendApiInterface):
@@ -228,317 +202,10 @@ class BackendHadoopApi(BackendApiInterface):
         else:
             self._validate_connection_options(HS2_OPTIONS)
             self._hive_conn = self._connect_to_backend()
-            # Whenever we make a new connection we should set global session parameters
             self._execute_global_session_parameters()
 
         self._cached_hive_tables = {}
         self._cached_hive_table_stats = {}
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _align_decimal_scale_to_udfs(self, column_name, data_precision, data_scale):
-        """Pad/round up decimal precision and scale in a number of ways:
-        1) If precision is unset then assume it is the max possible for Hadoop
-        2) UDFs are on even numbered scales only, increase if applicable and if precision has headroom
-        3) Increase precision to accommodate any scale increases in 2
-        4) The precision we end up with is finally increased to either 18 or 38 as appropriate
-        Returns a tuple of the adjusted precision & scale
-        """
-        self._debug("Aligning decimal scale to UDFs: %s (%s,%s)" % (column_name, data_precision, data_scale))
-
-        if not data_precision and not data_scale:
-            return data_precision, data_scale
-
-        private_precision = data_precision or self.max_decimal_precision()
-        new_precision = data_precision
-        new_scale = data_scale
-
-        # Round precision and scale up to even numbers
-        if private_precision < self.max_decimal_precision():
-            # Change scale after precision
-            if new_precision:
-                new_precision += new_scale % 2
-            new_scale += new_scale % 2
-        return new_precision, new_scale
-
-    def _align_decimal_precision_to_udfs(self, column_name, data_precision, data_scale):
-        self._debug("Aligning decimal precision to UDFs: %s (%s,%s)" % (column_name, data_precision, data_scale))
-        new_precision = data_precision or self.max_decimal_precision()
-        # Precision should be 18 or self.max_decimal_precision()
-        new_precision = (
-            max(new_precision, 18) if new_precision < 19 else max(new_precision, self.max_decimal_precision())
-        )
-        return new_precision, data_scale
-
-    def _alter_table_external(self, db_name, table_name, external=True):
-        """Execute Hive SQL to switch a table to external or managed"""
-        assert db_name and table_name
-        alter_sql = "ALTER TABLE {}.{} SET TBLPROPERTIES ('EXTERNAL'='{}')".format(
-            self.enclose_identifier(db_name),
-            self.enclose_identifier(table_name),
-            "TRUE" if external else "FALSE",
-        )
-        return self.execute_ddl(alter_sql)
-
-    def _backend_capabilities(self):
-        raise NotImplementedError("_backend_capabilities() is not implemented for common Hadoop class")
-
-    def _connect_to_backend(self, host_override=None, port_override=None):
-        # Create a connection to backend HiveServer
-        host = host_override or self._connection_options.hadoop_host
-        port = port_override or self._connection_options.hadoop_port
-        try:
-            return HiveConnection.fromconnection(
-                hs2_connection(self._connection_options, host_override=host, port_override=port),
-                db_type=self._backend_type,
-            )
-        except (OSError, TTransportException) as exc:
-            self._log(traceback.format_exc(), detail=VERBOSE)
-            if "TSocket read 0 bytes" in str(exc) or "Bad status: 3 (Error validating the login)" in str(exc):
-                encryption_text = "ly encrypted" if self._connection_options.password_key_file else ""
-                raise BackendApiConnectionException(
-                    self._get_hadoop_connection_exception_message_template()
-                    % {"host": host, "port": port, "enc_text": encryption_text}
-                )
-            if "Credentials cache file" in str(exc):
-                raise BackendApiConnectionException(
-                    "Check klist output - orchestration tools require a kerberos authenticated session"
-                )
-            raise
-
-    def _decode_hadoop_data_type_spec(self, data_type_spec):
-        """Takes a data type spec as output by DESCRIBE, e.g. DECIMAL(10,2), and
-        returns 4 components:
-            (data type, data_length, data_precision, data_scale)
-        """
-        m = HADOOP_DATA_TYPE_DECODE_RE.match(data_type_spec.upper())
-        if not m:
-            raise NotImplementedError("Unsupported backend datatype: %s" % data_type_spec.upper())
-        data_type, precision, scale = m.groups()
-        precision = None if precision == "" else precision
-        scale = None if scale == "" else scale
-        if not self.is_supported_data_type(data_type):
-            raise NotImplementedError("Unsupported backend datatype: %s" % data_type)
-        if data_type == HADOOP_TYPE_DECIMAL:
-            return (data_type, None, int(precision), int(scale))
-        if data_type in (HADOOP_TYPE_VARCHAR, HADOOP_TYPE_CHAR):
-            return (data_type, int(precision), None, None)
-        return (data_type, None, None, None)
-
-    def _execute_query_fetch_x(
-        self,
-        sql,
-        fetch_action=FETCH_ACTION_ALL,
-        query_options=None,
-        log_level=None,
-        time_sql=False,
-        not_when_dry_running=False,
-        query_params=None,
-        profile=None,
-        as_dict=False,
-    ):
-        """Run a query and fetch results
-        query_options: key/value pairs for session settings
-        query_params: Not applicable on Hadoop
-        log_level: None = no logging. Otherwise VERBOSE/VVERBOSE etc
-        time_sql: If logging then log SQL elapsed time
-        not_when_dry_running: Some SQL will only work in execute mode, such as queries on a load table
-        as_dict: When True each row is returned as a dict keyed by column name rather than a tuple/list.
-        """
-        assert sql
-
-        self._execute_session_options(query_options, log_level=log_level)
-
-        self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
-
-        if self._dry_run and not_when_dry_running:
-            return None
-
-        t1 = datetime.now().replace(microsecond=0)
-        if fetch_action == FETCH_ACTION_ALL:
-            cursor_fn = lambda c: c.fetchall()
-        elif fetch_action == FETCH_ACTION_ONE:
-            cursor_fn = lambda c: c.fetchone()
-        else:
-            cursor_fn = lambda c: c
-
-        rows = self._hive_conn.execute(sql, cursor_fn=cursor_fn)
-
-        if as_dict:
-            columns = self._cursor_projection(self._hive_conn.cursor)
-            if fetch_action == FETCH_ACTION_ALL:
-                rows = [self._cursor_row_to_dict(columns, _) for _ in rows]
-            else:
-                rows = self._cursor_row_to_dict(columns, rows)
-
-        if time_sql:
-            t2 = datetime.now().replace(microsecond=0)
-            self._log("Elapsed time: %s" % (t2 - t1), detail=VVERBOSE)
-
-        if profile:
-            sql_profile = self._get_query_profile()
-            if sql_profile:
-                self._log(sql_profile[:IMPALA_PROFILE_LOG_LENGTH], detail=VVERBOSE)
-        return rows
-
-    def _execute_global_session_parameters(self, log_level=VVERBOSE):
-        """Execute global backend session parameters.
-        We do this outside of _execute_session_options() so that global settings can be applied before any
-        localised requirements. If we merged the dicts we would lose the order, I (NJ) made the call that localised
-        settings should take precedence over global settings, this may prove to be the wrong way around, only
-        time will tell.
-        """
-        if self._global_session_parameters:
-            if log_level is not None:
-                self._log("Setting global session options:", detail=log_level)
-            return self._execute_session_options(self._global_session_parameters, log_level=log_level)
-        return []
-
-    def _execute_session_options(self, query_options, log_level):
-        """Sharing code between Hive and Impala"""
-        return_list = []
-        if query_options:
-            for prep_sql in self._format_query_options(query_options):
-                self._log_or_not(
-                    "%s SQL: %s" % (self._sql_engine_name, prep_sql),
-                    log_level=log_level,
-                )
-                if self._hive_conn:
-                    self._hive_conn.execute(prep_sql)
-                return_list.append(prep_sql)
-            if self._hive_conn:
-                self._hive_conn._cursor.execute("set")
-        return return_list
-
-    def _execute_sqls(self, sql, log_level=VERBOSE, profile=None, no_log_items=None):
-        """Sharing code between Hive and Impala"""
-        return_list = []
-        sqls = [sql] if isinstance(sql, str) else sql
-        for i, run_sql in enumerate(sqls):
-            self._log_or_not(
-                "%s SQL: %s" % (self._sql_engine_name, run_sql),
-                log_level=log_level,
-                no_log_items=no_log_items,
-            )
-            return_list.append(run_sql)
-            if not self._dry_run:
-                self._hive_conn.execute(run_sql)
-                if profile and i == 0:
-                    # Log a backend profile
-                    sql_profile = self._get_query_profile()
-                    if sql_profile:
-                        self._log(sql_profile[:IMPALA_PROFILE_LOG_LENGTH], detail=VVERBOSE)
-                    return_list.append("PROFILE")
-        return return_list
-
-    def _format_partition_clause(self, partition_tuples, sep_char="/"):
-        """Formats a partition clause as a HDFS style string"""
-
-        def str_value_fn(val):
-            return self._partition_clause_null_constant() if val is None else val
-
-        if not partition_tuples:
-            return None
-        return sep_char.join(f"{_[0]}={str_value_fn(_[1])}" for _ in partition_tuples)
-
-    def _format_partition_clause_for_sql(self, db_name, table_name, partition_tuples):
-        """Formats a partition clause as a SQL style string
-        Requires db/table info in order to get the data types and format the literal correctly
-        """
-        assert db_name and table_name
-        if not partition_tuples:
-            return None
-        assert isinstance(partition_tuples, list)
-        assert isinstance(partition_tuples[0], tuple), "%s is not tuple" % type(partition_tuples[0])
-
-        part_cols = self.get_partition_columns(db_name, table_name)
-        formatted_partition_tuples = []
-        for part_name, part_val in partition_tuples:
-            part_col = match_table_column(part_name, part_cols)
-            part_val = self.to_backend_literal(part_val) if part_col.is_string_based() else part_val
-            formatted_partition_tuples.append((backtick_sandwich(part_name), part_val))
-        return self._format_partition_clause(formatted_partition_tuples, sep_char=",")
-
-    def _format_query_options(self, query_options=None):
-        """Format options for Hive & Impala
-        query_options: key/value pairs for session settings
-        """
-        if not query_options:
-            return []
-        assert isinstance(query_options, dict)
-        return [format_hive_set_command(k, v) for k, v in query_options.items()]
-
-    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
-        """No Query SAMPLE clause on Hadoop"""
-        return
-
-    def _get_hive_stats_table(self, db_name, table_name):
-        """Instantiates HiveTableStats if required or retrieves from cache"""
-        ht_id = (db_name + "_" + table_name).lower()
-        if ht_id not in self._cached_hive_table_stats:
-            self._hive_conn.refresh_cursor()
-            hive_stats = HiveTableStats.construct(db_name, table_name, self._hive_conn)
-            if self._no_caching:
-                return hive_stats
-            self._cached_hive_table_stats[ht_id] = hive_stats
-        return self._cached_hive_table_stats[ht_id]
-
-    def _get_hadoop_connection_exception_message_template(self):
-        raise NotImplementedError(
-            "_get_hadoop_connection_exception_message_template() is not implemented for common Hadoop class"
-        )
-
-    def _get_hive_table(self, db_name, table_name, no_cache=False):
-        """Instantiates HiveTable if required or retrieves from cache"""
-        ht_id = (db_name + "_" + table_name).lower()
-        if ht_id not in self._cached_hive_tables or no_cache:
-            hive_table = HiveTable(db_name, table_name, self._hive_conn)
-            if self._no_caching:
-                return hive_table
-            self._cached_hive_tables[ht_id] = hive_table
-        return self._cached_hive_tables[ht_id]
-
-    def _get_query_profile(self, query_identifier=None):
-        raise NotImplementedError("_get_query_profile() is not implemented for common Hadoop class")
-
-    def _get_table_stats(self, hive_stats, as_dict=False, part_stats=False):
-        raise NotImplementedError("_get_table_stats() is not implemented for common Hadoop class")
-
-    def _invalid_identifier_character_re(self):
-        return HADOOP_INVALID_IDENTIFIER_CHARS_RE
-
-    def _legacy_column_list_to_type(self, legacy_columns):
-        backend_columns = []
-        if not legacy_columns:
-            return backend_columns
-        for col_name, data_type_spec, _ in legacy_columns:
-            (
-                data_type,
-                data_length,
-                precision,
-                scale,
-            ) = self._decode_hadoop_data_type_spec(data_type_spec)
-            backend_columns.append(
-                HadoopColumn(
-                    col_name,
-                    data_type=data_type,
-                    data_length=data_length,
-                    data_precision=precision,
-                    data_scale=scale,
-                    nullable=None,
-                    data_default=None,
-                )
-            )
-        return backend_columns
-
-    def _partition_clause_null_constant(self):
-        raise NotImplementedError("_partition_clause_null_constant() is not implemented for common Hadoop class")
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def add_columns(self, db_name, table_name, column_tuples, sync=None):
         """See interface spec for description"""
@@ -626,8 +293,6 @@ class BackendHadoopApi(BackendApiInterface):
 
     def close(self):
         if self._hive_conn:
-            # We don't properly close better_impyla connections because there is connection sharing occurring
-            # which I (NJ) cannot fully track down. Instead I drop state so we'll start afresh if required.
             self.drop_state()
 
     def create_database(self, db_name, comment=None, properties=None, with_terminator=False):
@@ -680,6 +345,7 @@ FROM   %(from_tables)s%(where_clause)s""" % {
 
     def database_exists(self, db_name):
         assert db_name
+        assert self._hive_conn is not None
         return self._hive_conn.database_exists(db_name.lower())
 
     def db_name_label(self, initcap=False):
@@ -708,7 +374,6 @@ FROM   %(from_tables)s%(where_clause)s""" % {
     def detect_column_has_fractional_seconds(self, db_name, table_name, column):
         assert db_name and table_name
         assert isinstance(column, HadoopColumn)
-        # we can rule out anything other than timestamp in Hadoop
         if column.data_type != HADOOP_TYPE_TIMESTAMP:
             return False
         sql = """SELECT %(col)s
@@ -836,6 +501,7 @@ LIMIT 1""" % {
         """
         assert db_name
         assert object_name
+        assert self._hive_conn is not None
         return self._hive_conn.table_exists(db_name.lower(), object_name.lower())
 
     def format_hadoop_partition_clause(self, partition_tuples, sep_char="/"):
@@ -996,13 +662,14 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
     def get_table_ddl(self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False):
         """Return table DDL as a string (or a list of strings split on CR if as_list=True)
         for_replace ignored on Hadoop
+
+        Convert BetterImpylaExceptions to BackendApi
         """
         assert db_name and table_name
         self._log("Fetching table DDL: %s.%s" % (db_name, table_name), detail=VVERBOSE)
         try:
             hive_table = self._get_hive_table(db_name, table_name)
         except BetterImpylaException as exc:
-            # Convert BetterImpylaExceptions to BackendApi
             raise BackendApiException(str(exc)) from exc
         ddl_str = hive_table.table_ddl(terminate_sql=terminate_sql)
         if not ddl_str:
@@ -1072,9 +739,9 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
         return hive_stats.table_partitions()
 
     def is_valid_partitioning_data_type(self, data_type):
+        """TODO Add HADOOP_TYPE_DATE to list below when GOE-1458 is complete"""
         if not data_type:
             return False
-        # TODO Add HADOOP_TYPE_DATE to list below when GOE-1458 is complete
         return bool(
             data_type.upper()
             in [
@@ -1113,11 +780,11 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
         return False
 
     def is_view(self, db_name, object_name):
+        """view does not exist"""
         try:
             hive_table = self._get_hive_table(db_name, object_name)
             return hive_table.is_view()
         except BetterImpylaException:
-            # view does not exist
             return False
 
     def length_sql_expression(self, column_expression):
@@ -1311,9 +978,9 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
         return bool(row)
 
     def target_version(self):
+        """Only get sql_engine_version if _hive_conn is set, won't be in unit tests"""
         if self._target_version is None:
             if self._hive_conn is None:
-                # Only get sql_engine_version if _hive_conn is set, won't be in unit tests
                 self._target_version = "0.0.0"
             else:
                 self._target_version = self._hive_conn.sql_engine_version()
@@ -1474,6 +1141,10 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
     def from_canonical_column(self, column, decimal_padding_digits=0):
         """Translate an internal GOE column to a Hadoop column.
         Note that Impala has its own override.
+
+        Honour the canonical type because it is from a user override or a staging file
+        On Hadoop all 4 native integer types map to BIGINT
+        On Hadoop we have UDFs for each even scale but need to mix decimal_padding_digits with UDF alignment
         """
 
         def new_column(
@@ -1517,7 +1188,6 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
             GOE_TYPE_INTEGER_8,
         ):
             if column.from_override:
-                # Honour the canonical type because it is from a user override or a staging file
                 if column.data_type == GOE_TYPE_INTEGER_1:
                     return new_column(column, HADOOP_TYPE_TINYINT, safe_mapping=True)
                 if column.data_type == GOE_TYPE_INTEGER_2:
@@ -1525,7 +1195,6 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
                 if column.data_type == GOE_TYPE_INTEGER_4:
                     return new_column(column, HADOOP_TYPE_INT, safe_mapping=True)
                 return new_column(column, HADOOP_TYPE_BIGINT, safe_mapping=True)
-            # On Hadoop all 4 native integer types map to BIGINT
             return new_column(column, HADOOP_TYPE_BIGINT, safe_mapping=True)
         if column.data_type == GOE_TYPE_INTEGER_38:
             return new_column(
@@ -1539,7 +1208,6 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
             if column.data_precision is None and column.data_scale is None:
                 new_col = self.gen_default_numeric_column(column.name)
             else:
-                # On Hadoop we have UDFs for each even scale but need to mix decimal_padding_digits with UDF alignment
                 new_precision, new_scale = self._align_decimal_scale_to_udfs(
                     column.name, column.data_precision, column.data_scale
                 )
@@ -1593,3 +1261,299 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
         if column.data_type == GOE_TYPE_BOOLEAN:
             return new_column(column, HADOOP_TYPE_BOOLEAN, safe_mapping=True)
         raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
+
+    def _align_decimal_scale_to_udfs(self, column_name, data_precision, data_scale):
+        """Pad/round up decimal precision and scale in a number of ways:
+        1) If precision is unset then assume it is the max possible for Hadoop
+        2) UDFs are on even numbered scales only, increase if applicable and if precision has headroom
+        3) Increase precision to accommodate any scale increases in 2
+        4) The precision we end up with is finally increased to either 18 or 38 as appropriate
+        Returns a tuple of the adjusted precision & scale
+        """
+        self._debug("Aligning decimal scale to UDFs: %s (%s,%s)" % (column_name, data_precision, data_scale))
+
+        if not data_precision and not data_scale:
+            return data_precision, data_scale
+
+        private_precision = data_precision or self.max_decimal_precision()
+        new_precision = data_precision
+        new_scale = data_scale
+
+        if private_precision < self.max_decimal_precision():
+            if new_precision:
+                new_precision += new_scale % 2
+            new_scale += new_scale % 2
+        return new_precision, new_scale
+
+    def _align_decimal_precision_to_udfs(self, column_name, data_precision, data_scale):
+        self._debug("Aligning decimal precision to UDFs: %s (%s,%s)" % (column_name, data_precision, data_scale))
+        new_precision = data_precision or self.max_decimal_precision()
+        new_precision = (
+            max(new_precision, 18) if new_precision < 19 else max(new_precision, self.max_decimal_precision())
+        )
+        return new_precision, data_scale
+
+    def _alter_table_external(self, db_name, table_name, external=True):
+        """Execute Hive SQL to switch a table to external or managed"""
+        assert db_name and table_name
+        alter_sql = "ALTER TABLE {}.{} SET TBLPROPERTIES ('EXTERNAL'='{}')".format(
+            self.enclose_identifier(db_name),
+            self.enclose_identifier(table_name),
+            "TRUE" if external else "FALSE",
+        )
+        return self.execute_ddl(alter_sql)
+
+    def _backend_capabilities(self):
+        raise NotImplementedError("_backend_capabilities() is not implemented for common Hadoop class")
+
+    def _connect_to_backend(self, host_override=None, port_override=None):
+        host = host_override or self._connection_options.hadoop_host
+        port = port_override or self._connection_options.hadoop_port
+        try:
+            return HiveConnection.fromconnection(
+                hs2_connection(self._connection_options, host_override=host, port_override=port),
+                db_type=self._backend_type,
+            )
+        except (OSError, TTransportException) as exc:
+            self._log(traceback.format_exc(), detail=VERBOSE)
+            if "TSocket read 0 bytes" in str(exc) or "Bad status: 3 (Error validating the login)" in str(exc):
+                encryption_text = "ly encrypted" if self._connection_options.password_key_file else ""
+                raise BackendApiConnectionException(
+                    self._get_hadoop_connection_exception_message_template()
+                    % {"host": host, "port": port, "enc_text": encryption_text}
+                )
+            if "Credentials cache file" in str(exc):
+                raise BackendApiConnectionException(
+                    "Check klist output - orchestration tools require a kerberos authenticated session"
+                )
+            raise
+
+    def _decode_hadoop_data_type_spec(self, data_type_spec):
+        """Takes a data type spec as output by DESCRIBE, e.g. DECIMAL(10,2), and
+        returns 4 components:
+            (data type, data_length, data_precision, data_scale)
+        """
+        m = HADOOP_DATA_TYPE_DECODE_RE.match(data_type_spec.upper())
+        if not m:
+            raise NotImplementedError("Unsupported backend datatype: %s" % data_type_spec.upper())
+        data_type, precision, scale = m.groups()
+        precision = None if precision == "" else precision
+        scale = None if scale == "" else scale
+        if not self.is_supported_data_type(data_type):
+            raise NotImplementedError("Unsupported backend datatype: %s" % data_type)
+        if data_type == HADOOP_TYPE_DECIMAL:
+            return (data_type, None, int(precision or 0), int(scale or 0))
+        if data_type in (HADOOP_TYPE_VARCHAR, HADOOP_TYPE_CHAR):
+            return (data_type, int(precision or 0), None, None)
+        return (data_type, None, None, None)
+
+    def _execute_query_fetch_x(
+        self,
+        sql,
+        fetch_action=FETCH_ACTION_ALL,
+        query_options=None,
+        log_level=None,
+        time_sql=False,
+        not_when_dry_running=False,
+        query_params=None,
+        profile=None,
+        as_dict=False,
+    ):
+        """Run a query and fetch results
+        query_options: key/value pairs for session settings
+        query_params: Not applicable on Hadoop
+        log_level: None = no logging. Otherwise VERBOSE/VVERBOSE etc
+        time_sql: If logging then log SQL elapsed time
+        not_when_dry_running: Some SQL will only work in execute mode, such as queries on a load table
+        as_dict: When True each row is returned as a dict keyed by column name rather than a tuple/list.
+        """
+        assert sql
+
+        self._execute_session_options(query_options, log_level=log_level)
+
+        self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
+
+        if self._dry_run and not_when_dry_running:
+            return None
+
+        t1 = datetime.now().replace(microsecond=0)
+        if fetch_action == FETCH_ACTION_ALL:
+            cursor_fn = lambda c: c.fetchall()
+        elif fetch_action == FETCH_ACTION_ONE:
+            cursor_fn = lambda c: c.fetchone()
+        else:
+            cursor_fn = lambda c: c
+
+        assert self._hive_conn is not None
+        rows = self._hive_conn.execute(sql, cursor_fn=cursor_fn)
+
+        if as_dict:
+            columns = self._cursor_projection(self._hive_conn.cursor)
+            if fetch_action == FETCH_ACTION_ALL:
+                rows = [self._cursor_row_to_dict(columns, _) for _ in rows]
+            else:
+                rows = self._cursor_row_to_dict(columns, rows)
+
+        if time_sql:
+            t2 = datetime.now().replace(microsecond=0)
+            self._log("Elapsed time: %s" % (t2 - t1), detail=VVERBOSE)
+
+        if profile:
+            sql_profile = self._get_query_profile()
+            if sql_profile:
+                self._log(sql_profile[:IMPALA_PROFILE_LOG_LENGTH], detail=VVERBOSE)
+        return rows
+
+    def _execute_global_session_parameters(self, log_level=VVERBOSE):
+        """Execute global backend session parameters.
+        We do this outside of _execute_session_options() so that global settings can be applied before any
+        localised requirements. If we merged the dicts we would lose the order, I (NJ) made the call that localised
+        settings should take precedence over global settings, this may prove to be the wrong way around, only
+        time will tell.
+        """
+        if self._global_session_parameters:
+            if log_level is not None:
+                self._log("Setting global session options:", detail=log_level)
+            return self._execute_session_options(self._global_session_parameters, log_level=log_level)
+        return []
+
+    def _execute_session_options(self, query_options, log_level):
+        """Sharing code between Hive and Impala"""
+        return_list = []
+        if query_options:
+            for prep_sql in self._format_query_options(query_options):
+                self._log_or_not(
+                    "%s SQL: %s" % (self._sql_engine_name, prep_sql),
+                    log_level=log_level,
+                )
+                if self._hive_conn:
+                    self._hive_conn.execute(prep_sql)
+                return_list.append(prep_sql)
+            if self._hive_conn:
+                self._hive_conn._cursor.execute("set")
+        return return_list
+
+    def _execute_sqls(self, sql, log_level=VERBOSE, profile=None, no_log_items=None):
+        """Sharing code between Hive and Impala"""
+        return_list = []
+        sqls = [sql] if isinstance(sql, str) else sql
+        for i, run_sql in enumerate(sqls):
+            self._log_or_not(
+                "%s SQL: %s" % (self._sql_engine_name, run_sql),
+                log_level=log_level,
+                no_log_items=no_log_items,
+            )
+            return_list.append(run_sql)
+            if not self._dry_run:
+                assert self._hive_conn is not None
+                self._hive_conn.execute(run_sql)
+                if profile and i == 0:
+                    sql_profile = self._get_query_profile()
+                    if sql_profile:
+                        self._log(sql_profile[:IMPALA_PROFILE_LOG_LENGTH], detail=VVERBOSE)
+                    return_list.append("PROFILE")
+        return return_list
+
+    def _format_partition_clause(self, partition_tuples, sep_char="/"):
+        """Formats a partition clause as a HDFS style string"""
+
+        def str_value_fn(val):
+            return self._partition_clause_null_constant() if val is None else val
+
+        if not partition_tuples:
+            return None
+        return sep_char.join(f"{_[0]}={str_value_fn(_[1])}" for _ in partition_tuples)
+
+    def _format_partition_clause_for_sql(self, db_name, table_name, partition_tuples):
+        """Formats a partition clause as a SQL style string
+        Requires db/table info in order to get the data types and format the literal correctly
+        """
+        assert db_name and table_name
+        if not partition_tuples:
+            return None
+        assert isinstance(partition_tuples, list)
+        assert isinstance(partition_tuples[0], tuple), "%s is not tuple" % type(partition_tuples[0])
+
+        part_cols = self.get_partition_columns(db_name, table_name)
+        formatted_partition_tuples = []
+        for part_name, part_val in partition_tuples:
+            part_col = match_table_column(part_name, part_cols)
+            part_val = self.to_backend_literal(part_val) if (part_col and part_col.is_string_based()) else part_val
+            formatted_partition_tuples.append((backtick_sandwich(part_name), part_val))
+        return self._format_partition_clause(formatted_partition_tuples, sep_char=",")
+
+    def _format_query_options(self, query_options=None):
+        """Format options for Hive & Impala
+        query_options: key/value pairs for session settings
+        """
+        if not query_options:
+            return []
+        assert isinstance(query_options, dict)
+        return [format_hive_set_command(k, v) for k, v in query_options.items()]
+
+    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
+        """No Query SAMPLE clause on Hadoop"""
+        return
+
+    def _get_hive_stats_table(self, db_name, table_name):
+        """Instantiates HiveTableStats if required or retrieves from cache"""
+        ht_id = (db_name + "_" + table_name).lower()
+        if ht_id not in self._cached_hive_table_stats:
+            assert self._hive_conn is not None
+            self._hive_conn.refresh_cursor()
+            hive_stats = HiveTableStats.construct(db_name, table_name, self._hive_conn)
+            if self._no_caching:
+                return hive_stats
+            self._cached_hive_table_stats[ht_id] = hive_stats
+        return self._cached_hive_table_stats[ht_id]
+
+    def _get_hadoop_connection_exception_message_template(self):
+        raise NotImplementedError(
+            "_get_hadoop_connection_exception_message_template() is not implemented for common Hadoop class"
+        )
+
+    def _get_hive_table(self, db_name, table_name, no_cache=False):
+        """Instantiates HiveTable if required or retrieves from cache"""
+        ht_id = (db_name + "_" + table_name).lower()
+        if ht_id not in self._cached_hive_tables or no_cache:
+            hive_table = HiveTable(db_name, table_name, self._hive_conn)
+            if self._no_caching:
+                return hive_table
+            self._cached_hive_tables[ht_id] = hive_table
+        return self._cached_hive_tables[ht_id]
+
+    def _get_query_profile(self, query_identifier=None):
+        raise NotImplementedError("_get_query_profile() is not implemented for common Hadoop class")
+
+    def _get_table_stats(self, hive_stats, as_dict=False, part_stats=False):
+        raise NotImplementedError("_get_table_stats() is not implemented for common Hadoop class")
+
+    def _invalid_identifier_character_re(self):
+        return HADOOP_INVALID_IDENTIFIER_CHARS_RE
+
+    def _legacy_column_list_to_type(self, legacy_columns):
+        backend_columns: list = []
+        if not legacy_columns:
+            return backend_columns
+        for col_name, data_type_spec, _ in legacy_columns:
+            (
+                data_type,
+                data_length,
+                precision,
+                scale,
+            ) = self._decode_hadoop_data_type_spec(data_type_spec)
+            backend_columns.append(
+                HadoopColumn(
+                    col_name,
+                    data_type=data_type,
+                    data_length=data_length,
+                    data_precision=precision,
+                    data_scale=scale,
+                    nullable=None,
+                    data_default=None,
+                )
+            )
+        return backend_columns
+
+    def _partition_clause_null_constant(self):
+        raise NotImplementedError("_partition_clause_null_constant() is not implemented for common Hadoop class")

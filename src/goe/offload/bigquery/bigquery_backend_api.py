@@ -14,6 +14,7 @@ import traceback
 from datetime import datetime
 from math import ceil
 from textwrap import dedent
+from typing import Any
 
 from google.cloud import bigquery, kms
 from google.cloud.exceptions import NotFound
@@ -98,25 +99,13 @@ from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.util.gcp_credentials import resolve_gcp_credentials
 from goe.util.misc_functions import backtick_sandwich, format_list_for_logging
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# Regular expression matching invalid identifier characters, constant to ensure compiled only once
 BIGQUERY_INVALID_IDENTIFIER_CHARS_RE = re.compile(r"[^A-Z0-9_ ]", re.IGNORECASE)
 
 SUPPORTED_BQ_DATE_PARTITIONING_TYPES = ["DAY", "MONTH", "YEAR"]
-# This is a surrogate for the lack of a type exposed within BigQuery RangePartitioning() object
 SUPPORTED_BQ_RANGE_PARTITIONING_TYPE = "RANGE"
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# BackendBigQueryApi
-###########################################################################
 
 
 class BackendBigQueryApi(BackendApiInterface):
@@ -174,10 +163,6 @@ class BackendBigQueryApi(BackendApiInterface):
     def __del__(self):
         self.close()
 
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def backend_db_name(self):
         """Override required for BigQuery due to stylistic formatting vs "capitalize()" """
         return "BigQuery"
@@ -216,6 +201,7 @@ class BackendBigQueryApi(BackendApiInterface):
         )
         self._log("BigQuery call: %s" % log_cmd, detail=VERBOSE)
         if not self._dry_run:
+            assert self._client is not None
             table = self._client.update_table(table, ["clustering_fields"])
         self._forget_bq_table(db_name, table_name)
         return [log_cmd]
@@ -249,7 +235,14 @@ class BackendBigQueryApi(BackendApiInterface):
 
         if self._kms_key_name:
             try:
+                assert self._kms_client is not None
                 key = self._kms_client.get_crypto_key(request={"name": self._kms_key_name})
+                encrypt_decrypt_name = kms.CryptoKey.CryptoKeyPurpose(
+                    kms.CryptoKey.CryptoKeyPurpose.ENCRYPT_DECRYPT
+                ).name
+                enabled_state_name = kms.CryptoKeyVersion.CryptoKeyVersionState(
+                    kms.CryptoKeyVersion.CryptoKeyVersionState.ENABLED
+                ).name
                 if key.purpose == kms.CryptoKey.CryptoKeyPurpose.ENCRYPT_DECRYPT:
                     if key.primary.state == kms.CryptoKeyVersion.CryptoKeyVersionState.ENABLED:
                         results.append(
@@ -259,8 +252,8 @@ class BackendBigQueryApi(BackendApiInterface):
                                 CONNECT_DETAIL: "KMS key: %s is an %s key and is %s"
                                 % (
                                     key.name,
-                                    kms.CryptoKey.CryptoKeyPurpose.ENCRYPT_DECRYPT.name,
-                                    kms.CryptoKeyVersion.CryptoKeyVersionState.ENABLED.name,
+                                    encrypt_decrypt_name,
+                                    enabled_state_name,
                                 ),
                             }
                         )
@@ -272,8 +265,8 @@ class BackendBigQueryApi(BackendApiInterface):
                                 CONNECT_DETAIL: "KMS key: %s has incorrect state: %s, expected key state is: %s"
                                 % (
                                     key.name,
-                                    key.primary.state.name,
-                                    kms.CryptoKeyVersion.CryptoKeyVersionState.ENABLED.name,
+                                    kms.CryptoKeyVersion.CryptoKeyVersionState(key.primary.state).name,
+                                    enabled_state_name,
                                 ),
                             }
                         )
@@ -285,8 +278,8 @@ class BackendBigQueryApi(BackendApiInterface):
                             CONNECT_DETAIL: "KMS key: %s has incorrect purpose: %s, expected key purpose is: %s"
                             % (
                                 key.name,
-                                key.purpose.name,
-                                kms.CryptoKey.CryptoKeyPurpose.ENCRYPT_DECRYPT.name,
+                                kms.CryptoKey.CryptoKeyPurpose(key.purpose).name,
+                                encrypt_decrypt_name,
                             ),
                         }
                     )
@@ -388,6 +381,9 @@ class BackendBigQueryApi(BackendApiInterface):
         location: Only used for external table
         without_db_name: Ignored for BigQuery
         See abstract method for more description
+
+        Normal (non-external) table
+        Check table was created with KMS encryption if requested
         """
         if external:
             return self._create_external_table(
@@ -398,7 +394,6 @@ class BackendBigQueryApi(BackendApiInterface):
                 with_terminator=with_terminator,
             )
 
-        # Normal (non-external) table
         sql = self._gen_bigquery_create_table_sql_text(
             db_name,
             table_name,
@@ -411,8 +406,8 @@ class BackendBigQueryApi(BackendApiInterface):
             sql += ";"
         cmds = self.execute_ddl(sql, sync=sync)
 
-        # Check table was created with KMS encryption if requested
         if self._kms_key_name and not self._dry_run:
+            assert self._client is not None
             table_id = f"{self._backend_project_name()}.{db_name}.{table_name}"
             table = self._client.get_table(table_id)
             self._check_kms_key_name(table.encryption_configuration.kms_key_name, key_type="table")
@@ -490,7 +485,7 @@ FROM   %(from_tables)s%(where_clause)s""" % {
             return False
 
         try:
-            dataset = self._client.get_dataset(self._bq_dataset_id(db_name))
+            self._client.get_dataset(self._bq_dataset_id(db_name))
             return True
         except NotFound:
             return False
@@ -520,6 +515,8 @@ FROM   %(from_tables)s%(where_clause)s""" % {
         BigQuery only allows a single partition column so we could, in theory, ignore
         both column and position parameters. We don't do this though and use column as a
         sanity check and position because then we're behaving like other backends.
+
+        column_name should always be table.time_partitioning.field on BigQuery
         """
         assert db_name and table_name
         assert column
@@ -531,7 +528,6 @@ FROM   %(from_tables)s%(where_clause)s""" % {
 
         if self._get_bq_table_partition_type(table) in SUPPORTED_BQ_DATE_PARTITIONING_TYPES:
             granularity = self._get_goe_granularity_for_bq_partitioning_type(table)
-            # column_name should always be table.time_partitioning.field on BigQuery
             if self._get_bq_table_partition_field(table).upper() != column_name.upper():
                 raise BackendApiException(
                     "Partition columns do not match: %s != %s"
@@ -904,11 +900,11 @@ FROM   %(from_db_table)s%(where)s""" % {
         return BIGQUERY_TYPE_STRING
 
     def get_columns(self, db_name, table_name):
+        """Using str() on attributes from BigQuery below because in Python2 unicode() is preventing comparisons"""
         assert db_name and table_name
         table = self._get_bq_table(db_name, table_name)
         backend_columns = []
         for col in table.schema:
-            # Using str() on attributes from BigQuery below because in Python2 unicode() is preventing comparisons
             backend_columns.append(
                 BigQueryColumn(
                     str(col.name),
@@ -978,6 +974,9 @@ FROM   %(from_db_table)s%(where)s""" % {
         As of bigquery client version 1.24.0 integer range partitioning
         is not visible, therefore we're falling back on the raw JSON until
         the partition scheme moves past beta and presumably becomes visible.
+
+        Not partitioned
+        BigQuery only supports a single partition column but GOE supports a list, therefore return a list:
         """
         assert db_name and table_name
         table = self._get_bq_table(db_name, table_name)
@@ -989,9 +988,7 @@ FROM   %(from_db_table)s%(where)s""" % {
                 self.get_columns(db_name, table_name),
             )
         else:
-            # Not partitioned
             return None
-        # BigQuery only supports a single partition column but GOE supports a list, therefore return a list:
         return [part_col]
 
     def get_session_option(self, option_name):
@@ -1050,6 +1047,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         not_when_dry_running=False,
         log_level=VVERBOSE,
     ):
+        """Forget the table before getting a count because metadata is cached"""
         if self._dry_run and not_when_dry_running:
             return None
         if (
@@ -1066,7 +1064,6 @@ FROM   %(from_db_table)s%(where)s""" % {
                 not_when_dry_running=not_when_dry_running,
             )
             return row[0] if row else None
-        # Forget the table before getting a count because metadata is cached
         self._forget_bq_table(db_name, table_name)
         self._log_or_not(
             "%s call: %s.num_rows" % (self._sql_engine_name, self._bq_table_id(db_name, table_name)),
@@ -1156,7 +1153,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         )
 
     def is_valid_sort_data_type(self, data_type):
-        # As of 2021-01-29 DATETIME is supported for clustering
+        """As of 2021-01-29 DATETIME is supported for clustering"""
         return True
 
     def is_valid_storage_compression(self, user_requested_codec, user_requested_format):
@@ -1185,6 +1182,7 @@ FROM   %(from_db_table)s%(where)s""" % {
 
     def list_databases(self, db_name_filter=None, case_sensitive=True):
         self._debug("list_databases(%s)" % db_name_filter)
+        assert self._client is not None
         datasets = list(self._client.list_datasets())
         if not datasets:
             return []
@@ -1202,7 +1200,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         assert db_name
         self._debug("list_tables(%s)" % table_name_filter)
         try:
-            # Use list() below to consume all rows straight away
+            assert self._client is not None
             tables = list(self._client.list_tables(self._bq_dataset_id(db_name)))
         except NotFound as exc:
             self._log(f"NotFound exception: {exc!s}")
@@ -1308,8 +1306,10 @@ FROM   %(from_db_table)s%(where)s""" % {
         return [BIGQUERY_TYPE_INT64]
 
     def partition_column_requires_synthetic_column(self, backend_column, granularity):
-        # There's no native NUMERIC partition so it requires a synthetic column.
-        # It should be noted that NUMERIC can hold up to 29 integral digits which exceeds INT64 at 18.
+        """There's no native NUMERIC partition so it requires a synthetic column.
+
+        It should be noted that NUMERIC can hold up to 29 integral digits which exceeds INT64 at 18.
+        """
         return bool(backend_column.data_type in [BIGQUERY_TYPE_BIGNUMERIC, BIGQUERY_TYPE_NUMERIC])
 
     def partition_range_max(self):
@@ -1458,7 +1458,12 @@ FROM   %(from_db_table)s%(where)s""" % {
         raise NotImplementedError("Translation function is not supported on BigQuery")
 
     def udf_details(self, db_name, udf_name):
-        """Get details of a BigQuery UDF"""
+        """Get details of a BigQuery UDF
+
+        Most of the time we expect the UDF to exist and suit GOE so check parameters first, only go for an
+        extra round trip if things aren't looking good.
+        ordinal_position 0 is the return data type
+        """
         sql = dedent(
             """\
                 SELECT ordinal_position, parameter_name, data_type
@@ -1479,15 +1484,12 @@ FROM   %(from_db_table)s%(where)s""" % {
             self._log(f"NotFound exception: {exc!s}")
             raise BackendApiException("BigQuery dataset not found: %s" % self._bq_dataset_id(db_name)) from None
         if not rows:
-            # Most of the time we expect the UDF to exist and suit GOE so check parameters first, only go for an
-            # extra round trip if things aren't looking good.
             if not self.udf_exists(db_name, udf_name):
                 return []
         parameters = []
         return_type = None
         for row in rows:
             if row[0] == 0:
-                # ordinal_position 0 is the return data type
                 return_type = row[2]
             else:
                 parameters.append(UdfParameter(row[1], row[2]))
@@ -1606,8 +1608,15 @@ FROM   %(from_db_table)s%(where)s""" % {
             return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=self.max_datetime_scale())
         raise NotImplementedError("Unsupported backend data type: %s" % column.data_type)
 
-    def from_canonical_column(self, column: CanonicalColumn, decimal_padding_digits=0) -> BigQueryColumn:
-        """Translate an internal GOE column to a BigQuery column."""
+    def from_canonical_column(self, column: CanonicalColumn, decimal_padding_digits: int = 0) -> BigQueryColumn:
+        """Translate an internal GOE column to a BigQuery column.
+
+        On BigQuery all 4 native integer types map to BIGINT
+        On BigQuery there is no integral type > INT64 but BIGNUMERIC can hold 38 integral digits
+        We should round an unsafe mapping up to the max for NUMERIC.
+        We can do this by removing the precision and scale settings.
+        We should round an unsafe mapping up to the max for BIGNUMERIC.
+        """
 
         def new_column(
             col,
@@ -1661,10 +1670,8 @@ FROM   %(from_db_table)s%(where)s""" % {
             GOE_TYPE_INTEGER_4,
             GOE_TYPE_INTEGER_8,
         ):
-            # On BigQuery all 4 native integer types map to BIGINT
             return new_column(column, BIGQUERY_TYPE_INT64, safe_mapping=True)
         if column.data_type == GOE_TYPE_INTEGER_38:
-            # On BigQuery there is no integral type > INT64 but BIGNUMERIC can hold 38 integral digits
             if column.data_precision and column.data_precision <= 29:
                 return new_column(
                     column,
@@ -1693,8 +1700,6 @@ FROM   %(from_db_table)s%(where)s""" % {
                 new_precision = column.data_precision
                 new_scale = column.data_scale
                 if not column.safe_mapping:
-                    # We should round an unsafe mapping up to the max for NUMERIC.
-                    # We can do this by removing the precision and scale settings.
                     self._log(
                         f"Switching unsafe NUMERIC mapping to BIGNUMERIC: {column.name}",
                         detail=VVERBOSE,
@@ -1712,8 +1717,6 @@ FROM   %(from_db_table)s%(where)s""" % {
             new_precision = column.data_precision
             new_scale = column.data_scale
             if not column.safe_mapping:
-                # We should round an unsafe mapping up to the max for BIGNUMERIC.
-                # We can do this by removing the precision and scale settings.
                 self._log(
                     f"Removing precision/scale decorators for unsafe BIGNUMERIC mapping: {column.name}",
                     detail=VVERBOSE,
@@ -1746,10 +1749,6 @@ FROM   %(from_db_table)s%(where)s""" % {
         if column.data_type == GOE_TYPE_INTERVAL_YM:
             return new_column(column, BIGQUERY_TYPE_STRING, safe_mapping=False)
         raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
 
     def _add_kms_key_to_job_config(self, job_config):
         """Add kms key details (if set) to job config"""
@@ -1785,18 +1784,19 @@ FROM   %(from_db_table)s%(where)s""" % {
     def _bq_dataset_id(self, db_name: str) -> str:
         """Return a dataset id for a db name.
         Returns str() because dataset drop/exists calls were failing when passing in unicode.
+
+        Non-connecting calls (for unit tests) will not have set _client
         """
         assert db_name
         if self._backend_project_name():
             return str("%s.%s" % (self._backend_project_name(), db_name))
-        # Non-connecting calls (for unit tests) will not have set _client
         return str("%s.%s" % ("a-test-project", db_name))
 
     def _bq_table_id(self, db_name: str, table_name: str) -> str:
         assert db_name and table_name
         return self._bq_dataset_id(db_name) + "." + table_name
 
-    def _check_kms_key_name(self, kms_key_name: str, key_type="job"):
+    def _check_kms_key_name(self, kms_key_name: str, key_type: str = "job") -> None:
         """Use startswith() to verify custom key for key name.
         Example of custom key name:
             projects/goe-test/locations/us-west3/keyRings/krname/cryptoKeys/etl5
@@ -1811,11 +1811,11 @@ FROM   %(from_db_table)s%(where)s""" % {
 
     def _create_external_table(
         self,
-        db_name,
-        table_name,
-        storage_format,
-        location=None,
-        with_terminator=False,
+        db_name: Any,
+        table_name: Any,
+        storage_format: Any,
+        location: Any = None,
+        with_terminator: bool = False,
     ) -> list:
         """Create a BigQuery external table using SQL"""
         assert db_name
@@ -1836,7 +1836,11 @@ OPTIONS (format ='{storage_format}',
         return self.execute_ddl(sql)
 
     def _create_table_properties_clause(self, table_properties):
-        """Build OPTIONS clause for CREATE TABLE statements from table_properties dict. Add kms key details (if set)"""
+        """Build OPTIONS clause for CREATE TABLE statements from table_properties dict. Add kms key details (if set)
+
+        We don't enforce literals for values as they can be of different forms, see the following for examples:
+        https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#table_option_list
+        """
         if table_properties:
             assert isinstance(table_properties, dict)
         else:
@@ -1846,17 +1850,17 @@ OPTIONS (format ='{storage_format}',
             table_properties["kms_key_name"] = self.to_backend_literal(self._kms_key_name)
 
         if table_properties:
-            # We don't enforce literals for values as they can be of different forms, see the following for examples:
-            # https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#table_option_list
             table_prop_clause = "\nOPTIONS (%s)" % ", ".join("%s=%s" % (k, v) for k, v in table_properties.items())
         else:
             table_prop_clause = ""
         return table_prop_clause
 
-    def _default_job_config(self, query_options: dict = None) -> bigquery.QueryJobConfig:
-        """All connections are normalized to UTC to match data extractions."""
+    def _default_job_config(self, query_options: dict | None = None) -> bigquery.QueryJobConfig:
+        """All connections are normalized to UTC to match data extractions.
+
+        No time_zone manipulation for legacy_sql.
+        """
         if query_options and "use_legacy_sql" in query_options:
-            # No time_zone manipulation for legacy_sql.
             return bigquery.QueryJobConfig()
         return bigquery.QueryJobConfig(connection_properties=[bigquery.ConnectionProperty("time_zone", "UTC")])
 
@@ -1887,6 +1891,7 @@ OPTIONS (format ='{storage_format}',
             )
             return_list.append(run_sql)
             if not self._dry_run:
+                assert self._client is not None
                 query_job = self._client.query(run_sql, job_config=job_config)
                 self._log(
                     "%s: %s" % (self._log_query_id_tag, query_job.job_id),
@@ -1923,7 +1928,7 @@ OPTIONS (format ='{storage_format}',
             return job_config
         return None
 
-    def _cursor_projection(self, cursor) -> list:
+    def _cursor_projection(self, cursor: Any) -> list:
         """Returns a list of strings describing the projection of a BigQuery result set.
         Matches behaviour of interface _cursor_projection().
         """
@@ -1948,6 +1953,9 @@ OPTIONS (format ='{storage_format}',
         time_sql: If logging then log SQL elapsed time
         not_when_dry_running: Some SQL will only work in execute mode, such as queries on a load table
         as_dict: When True each row is returned as a dict keyed by column name rather than a tuple/list.
+
+        Convert the result set from a RowIterator to a list of tuples, matching other backends
+        lower() matching
         """
         assert sql
         assert fetch_action in (FETCH_ACTION_ALL, FETCH_ACTION_ONE)
@@ -1963,12 +1971,14 @@ OPTIONS (format ='{storage_format}',
         self._add_kms_key_to_job_config(job_config)
         self._add_query_options_to_job_config(query_options, job_config)
         self._add_query_params_to_job_config(query_params, job_config)
+        assert self._client is not None
         query_job = self._client.query(sql, job_config=job_config)
         self._log("%s: %s" % (self._log_query_id_tag, query_job.job_id), detail=VVERBOSE)
 
         if query_options and "destination_encryption_configuration" in query_options:
             self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
 
+        rows: Any
         if fetch_action == FETCH_ACTION_ALL:
             results = query_job.result()
             if query_job.state != "DONE":
@@ -1978,11 +1988,9 @@ OPTIONS (format ='{storage_format}',
                 columns = self._cursor_projection(results)
                 rows = [self._cursor_row_to_dict(columns, _) for _ in rows]
             else:
-                # Convert the result set from a RowIterator to a list of tuples, matching other backends
                 rows = [tuple(_) for _ in rows]
         else:
             results = query_job.result(max_results=1)
-            # lower() matching
             if query_job.state != "DONE":
                 raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
             if results and results.total_rows == 0:
@@ -1994,7 +2002,6 @@ OPTIONS (format ='{storage_format}',
                     columns = self._cursor_projection(results)
                     rows = self._cursor_row_to_dict(columns, rows)
                 else:
-                    # Convert the result set from a RowIterator to a list of tuples, matching other backends
                     rows = tuple(rows)
 
         if time_sql:
@@ -2093,6 +2100,7 @@ OPTIONS (format ='{storage_format}',
     def _get_bq_job(self, job_id):
         """Retrieve BigQuery job"""
         try:
+            assert self._client is not None
             job_details = self._client.get_job(job_id)
         except NotFound:
             raise BackendApiException("Backend job not found for job id: %s" % job_id)
@@ -2102,6 +2110,7 @@ OPTIONS (format ='{storage_format}',
         """Instantiates bigquery.Table() if required or retrieves from cache"""
         table_id = self._bq_table_id(db_name, table_name)
         if table_id not in self._cached_bq_tables:
+            assert self._client is not None
             bq_table = self._client.get_table(table_id)
             if self._no_caching:
                 return bq_table
@@ -2161,12 +2170,13 @@ OPTIONS (format ='{storage_format}',
     def _get_goe_granularity_for_bq_partitioning_type(self, table):
         """Return the goe granularity for a BigQuery date partition type.
         table is a table object as returned by self._get_bq_table().
+
+        BQ granularities start with same letter as GOE granularities
         """
         assert table
         partitioning_type = self._get_bq_table_partition_type(table)
         if partitioning_type not in SUPPORTED_BQ_DATE_PARTITIONING_TYPES:
             raise NotImplementedError("BigQuery partitioning type is not supported: %s" % partitioning_type)
-        # BQ granularities start with same letter as GOE granularities
         return partitioning_type[0]
 
     def _get_table_ddl(self, db_name, table_name, terminate_sql=False):
@@ -2214,6 +2224,7 @@ OPTIONS (format ='{storage_format}',
         If table_type is set then we look for specific type, otherwise either will do.
         """
         try:
+            assert self._client is not None
             table = self._client.get_table(self._bq_table_id(db_name, table_name))
             if not table_type:
                 return True
@@ -2228,7 +2239,7 @@ OPTIONS (format ='{storage_format}',
         except NotFound:
             return False
 
-    def _add_query_options_to_job_config(self, query_options: dict, job_config: bigquery.QueryJobConfig):
+    def _add_query_options_to_job_config(self, query_options: dict | None, job_config: bigquery.QueryJobConfig) -> None:
         """Convert query_options dict to QueryJobConfig attribute."""
         if query_options:
             assert isinstance(query_options, dict)
@@ -2236,7 +2247,7 @@ OPTIONS (format ='{storage_format}',
                 setattr(job_config, k, v)
                 self._log("Setting job session option: %s=%s" % (k, v), detail=VVERBOSE)
 
-    def _table_is_partitioned(self, db_name: str, table_name: str):
+    def _table_is_partitioned(self, db_name: str, table_name: str) -> bool:
         """BigQuery specific helper to identify if a table is partitioned"""
         assert db_name and table_name
         table = self._get_bq_table(db_name, table_name)

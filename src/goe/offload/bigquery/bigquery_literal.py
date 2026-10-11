@@ -21,43 +21,19 @@ from goe.offload.bigquery.bigquery_column import (
 )
 from goe.offload.format_literal import FormatLiteralInterface
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
 
-###########################################################################
-# BigQueryLiteral
-###########################################################################
-
-
 class BigQueryLiteral(FormatLiteralInterface):
-    @classmethod
-    def _format_data_type_with_prefix(cls, str_val, data_type):
-        if data_type == BIGQUERY_TYPE_NUMERIC:
-            return "NUMERIC '%s'" % str_val
-        if data_type == BIGQUERY_TYPE_BIGNUMERIC:
-            return "BIGNUMERIC '%s'" % str_val
-        if data_type == BIGQUERY_TYPE_DATE:
-            return "DATE '%s'" % str_val[:10]
-        if data_type == BIGQUERY_TYPE_DATETIME:
-            return "DATETIME '%s'" % cls._strip_unused_time_scale(str_val)
-        if data_type == BIGQUERY_TYPE_TIMESTAMP:
-            return "TIMESTAMP '%s'" % str_val
-        if data_type == BIGQUERY_TYPE_TIME:
-            return "TIME '%s'" % str_val
-        return str_val
-
     @classmethod
     def format_literal(cls, python_value, data_type=None):
         """Return a string containing a correctly formatted literal for data_type.
         Without a data type the code should infer a literal from the Python type.
         See link below for more detail:
         https://cloud.google.com/bigquery/docs/reference/standard-sql/lexical#literals
+
+        Assuming DATETIME if no data_type specified
         """
         logger.debug("Formatting %s literal: %r" % (type(python_value), python_value))
         logger.debug("For backend datatype: %s" % data_type)
@@ -68,7 +44,6 @@ class BigQueryLiteral(FormatLiteralInterface):
             elif data_type:
                 new_py_val = cls._format_data_type_with_prefix(str(python_value).replace("T", " "), data_type)
             else:
-                # Assuming DATETIME if no data_type specified
                 new_py_val = "DATETIME '%s'" % cls._strip_unused_time_scale(str(python_value).replace("T", " "))
         elif isinstance(python_value, date):
             if data_type == BIGQUERY_TYPE_DATE:
@@ -82,7 +57,6 @@ class BigQueryLiteral(FormatLiteralInterface):
             elif data_type:
                 new_py_val = cls._format_data_type_with_prefix(python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type)
             else:
-                # Assuming DATETIME if no data_type specified
                 new_py_val = "DATETIME '%s'" % python_value.strftime("%Y-%m-%d %H:%M:%S.%f")
         elif python_value is None:
             return "NULL"
@@ -104,3 +78,19 @@ class BigQueryLiteral(FormatLiteralInterface):
             new_py_val = str(python_value)
 
         return new_py_val
+
+    @classmethod
+    def _format_data_type_with_prefix(cls, str_val, data_type):
+        if data_type == BIGQUERY_TYPE_NUMERIC:
+            return "NUMERIC '%s'" % str_val
+        if data_type == BIGQUERY_TYPE_BIGNUMERIC:
+            return "BIGNUMERIC '%s'" % str_val
+        if data_type == BIGQUERY_TYPE_DATE:
+            return "DATE '%s'" % str_val[:10]
+        if data_type == BIGQUERY_TYPE_DATETIME:
+            return "DATETIME '%s'" % cls._strip_unused_time_scale(str_val)
+        if data_type == BIGQUERY_TYPE_TIMESTAMP:
+            return "TIMESTAMP '%s'" % str_val
+        if data_type == BIGQUERY_TYPE_TIME:
+            return "TIME '%s'" % str_val
+        return str_val

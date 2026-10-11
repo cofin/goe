@@ -11,7 +11,6 @@ try:
     from requests_kerberos import REQUIRED, HTTPKerberosAuth
 except ModuleNotFoundError as e:
     if "requests_kerberos" in str(e):
-        # We expect the hadoop dependencies when using Kerberos
         HTTPKerberosAuth = None
         REQUIRED = None
     else:
@@ -26,19 +25,11 @@ class OffloadTransportLivyRequestsException(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
 class OffloadTransportLivyRequests:
     """Helper class to handle requests calls for Livy REST API calls"""
 
     def __init__(self, offload_options, messages):
+        """including "X-Requested-By" header because of exception: Missing Required Header for CSRF protection"""
         self._messages = messages
         self._api_user = offload_options.offload_transport_user
         self._api_verify_ssl = offload_options.offload_transport_livy_api_verify_ssl
@@ -49,7 +40,6 @@ class OffloadTransportLivyRequests:
                 "Livy API using SSL, SSL verification: %s" % self._api_verify_ssl,
                 detail=VVERBOSE,
             )
-        # including "X-Requested-By" header because of exception: Missing Required Header for CSRF protection
         self._api_headers = {
             "Content-Type": "application/json",
             "X-Requested-By": self._api_user,
@@ -59,14 +49,6 @@ class OffloadTransportLivyRequests:
         if offload_options.kerberos_service:
             messages.log("Livy transport is kerberized", detail=VVERBOSE)
         disable_warnings(InsecureRequestWarning)
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def get(self, url):
         """Issue requests.get() with Livy config"""

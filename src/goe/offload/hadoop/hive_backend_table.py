@@ -25,21 +25,11 @@ from goe.offload.offload_constants import (
     OFFLOAD_STATS_METHOD_NONE,
 )
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 HASH_BUCKET_EXPRESSION = "CAST(COALESCE(PMOD(HASH(%(dividend)s),%(divisor)s),0) AS SMALLINT)"
 
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# BackendHiveTable
-###########################################################################
 
 
 class BackendHiveTable(BackendHadoopTable):
@@ -77,15 +67,14 @@ class BackendHiveTable(BackendHadoopTable):
         logger.info("BackendHiveTable setup: (%s, %s)" % (db_name, table_name))
         if dry_run:
             logger.info("* Dry run *")
-        # We can't get at an execution profile on Hive
-        self._log_profile_after_final_table_load = False
-        self._log_profile_after_verification_queries = False
+        setattr(self, "_log_profile_after_final_table_load", False)
+        setattr(self, "_log_profile_after_verification_queries", False)
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def compute_final_table_stats(self, incremental_stats, materialized_join=False):
+        if self.table_stats_compute_supported():
+            self._compute_hive_table_statistics(incremental_stats, materialized_join=materialized_join)
 
-    def _create_new_backend_table(self, sort_column_names=None):
+    def _create_new_backend_table(self, sort_column_names=None, with_terminator=False):
         """Generate & execute DDL to create a table in Hive.
         The table doesn't exist but self._columns should have been set and
         be ready to drive both columns and partition details.
@@ -96,7 +85,8 @@ class BackendHiveTable(BackendHadoopTable):
         partition_column_names = get_column_names(self.get_partition_columns())
 
         location = self._get_data_table_hdfs_dir()
-        if self._orchestration_config.storage_format == FILE_STORAGE_FORMAT_ORC:
+        storage_format = getattr(self._orchestration_config, "storage_format", None)
+        if storage_format == FILE_STORAGE_FORMAT_ORC:
             table_properties = {
                 "orc.compress": (self._user_requested_storage_compression or FILE_STORAGE_COMPRESSION_CODEC_ZLIB)
             }
@@ -107,9 +97,10 @@ class BackendHiveTable(BackendHadoopTable):
             self.table_name,
             self.get_columns(),
             partition_column_names,
-            storage_format=self._orchestration_config.storage_format,
+            storage_format=storage_format,
             location=location,
             table_properties=table_properties,
+            with_terminator=with_terminator,
         )
 
     def _final_insert_format_sql(
@@ -125,8 +116,7 @@ class BackendHiveTable(BackendHadoopTable):
         if filter_clauses:
             assert isinstance(filter_clauses, list)
 
-        # Data is already distributed to reducers (shuffled) based on "hive.optimize.sort.dynamic.partition"
-        dist_cols = get_column_names(self.get_partition_columns()) if self._offload_distribute_enabled else []
+        dist_cols: list = get_column_names(self.get_partition_columns()) if self._offload_distribute_enabled else []
 
         partition_expr_tuples = [
             (self.get_final_table_cast(_), _) for _ in get_column_names(self.get_partition_columns())
@@ -162,7 +152,6 @@ class BackendHiveTable(BackendHadoopTable):
         ):
             query_options["hive.stats.autogather"] = "true"
         if self._db_api.get_session_option("hive.enforce.sorting") == "false":
-            # hive.enforce.sorting defaults to false in older Hive versions
             query_options["hive.enforce.sorting"] = "true"
         return query_options
 
@@ -193,32 +182,9 @@ class BackendHiveTable(BackendHadoopTable):
     def _tzoffset_to_timestamp_sql_expression(self, col_name):
         """Hive tzoffset SQL expression"""
         raise NotImplementedError("_tzoffset_to_timestamp_sql_expression() is not implemented for Hive class")
-        # The original code for this method is below.
-        # If we decide to ressurect Hive support we'll need to revisit this but for
-        # now it has been removed because it was a blocker to removing UDF_DB configuration.
-        #
-        # udf_db_prefix = (
-        #    self.enclose_identifier(self._udf_db) + "." if self._udf_db else ""
-        # )
-        # return "%(udf_db_prefix)sGOE_TZOFFSET_TO_TIMESTAMP(%(tstz)s)" % {
-        #    "udf_db_prefix": udf_db_prefix,
-        #    "tstz": col_name,
-        # }
 
     def _validate_staged_data_query_options(self):
         """Hive override facilitating Load Table stats."""
         if not self._user_requested_compute_load_table_stats:
             return {"hive.compute.query.using.stats": "false"}
         return {}
-
-    ###########################################################################
-    # PUBLIC METHODS - HIGH LEVEL STEP METHODS
-    ###########################################################################
-
-    def compute_final_table_stats(self, incremental_stats, materialized_join=False):
-        if self.table_stats_compute_supported():
-            self._compute_hive_table_statistics(incremental_stats, materialized_join=materialized_join)
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################

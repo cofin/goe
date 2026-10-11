@@ -76,8 +76,8 @@ def parse_stats_into_tab_col(stats):
     Complete the tab stats by summing up the average column sizes
     to generate a notional table size and avg row length...
     """
-    tab_stats = EMPTY_BACKEND_TABLE_STATS_DICT
-    col_stats = EMPTY_BACKEND_COLUMN_STATS_DICT
+    tab_stats: dict[Any, Any] = EMPTY_BACKEND_TABLE_STATS_DICT
+    col_stats: dict[Any, Any] = EMPTY_BACKEND_COLUMN_STATS_DICT
 
     tab_stats["num_rows"], stats = int(stats[0]), stats[1:]
 

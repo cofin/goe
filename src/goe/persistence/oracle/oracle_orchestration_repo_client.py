@@ -987,16 +987,15 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         metadata: dict | OrchestrationMetadata,
     ) -> None:
         assert metadata
-        if isinstance(metadata, OrchestrationMetadata):
-            metadata = metadata.as_dict()
-        frontend_owner = metadata[OFFLOADED_OWNER].upper()
-        frontend_name = metadata[OFFLOADED_TABLE].upper()
+        metadata_dict: dict = metadata.as_dict() if isinstance(metadata, OrchestrationMetadata) else metadata
+        frontend_owner = metadata_dict[OFFLOADED_OWNER].upper()
+        frontend_name = metadata_dict[OFFLOADED_TABLE].upper()
         logger.debug(f"Writing metadata: {frontend_owner}, {frontend_name}")
-        ora_metadata = self._metadata_dict_to_ora_object(metadata)
+        ora_metadata = self._metadata_dict_to_ora_object(metadata_dict)
         self._frontend_api.execute_function(
             "offload_repo.save_offload_metadata",
             arg_list=[frontend_owner, frontend_name, ora_metadata],
             not_when_dry_running=True,
             commit=True,
         )
-        self._log(f"Saved metadata: {metadata!s}", detail=VERBOSE)
+        self._log(f"Saved metadata: {metadata_dict!s}", detail=VERBOSE)

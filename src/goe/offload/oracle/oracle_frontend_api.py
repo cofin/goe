@@ -525,7 +525,7 @@ class OracleFrontendApi(FrontendApiInterface):
 
     def _connection_output_type_handler(self, cursor, name, default_type, size, precision, scale):
         if default_type == cxo.DB_TYPE_CLOB:
-            return cursor.var(cxo.DB_TYPE_LONG_STRING, arraysize=cursor.arraysize)
+            return cursor.var(getattr(cxo, "DB_TYPE_LONG_STRING", cxo.DB_TYPE_LONG_VARCHAR), arraysize=cursor.arraysize)
         if default_type == cxo.DB_TYPE_BLOB:
             return cursor.var(cxo.DB_TYPE_LONG_RAW, arraysize=cursor.arraysize)
 

@@ -36,7 +36,10 @@ def output_type_handler(cursor, name, defaultType, size, precision, scale):
     Docs: https://cx-oracle.readthedocs.io/en/latest/user_guide/lob_data.html
     """
     if defaultType == oracledb.DB_TYPE_CLOB:
-        return cursor.var(oracledb.DB_TYPE_LONG_STRING, arraysize=cursor.arraysize)
+        return cursor.var(
+            getattr(oracledb, "DB_TYPE_LONG_STRING", oracledb.DB_TYPE_LONG_VARCHAR),
+            arraysize=cursor.arraysize,
+        )
     if defaultType == oracledb.DB_TYPE_BLOB:
         return cursor.var(oracledb.DB_TYPE_LONG_RAW, arraysize=cursor.arraysize)
 
