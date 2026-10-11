@@ -25,6 +25,7 @@ from goe.filesystem.goe_dfs import (
     GOEDfsException,
     gen_fs_uri,
 )
+from goe.util.gcp_credentials import resolve_gcp_credentials
 
 ###############################################################################
 # EXCEPTIONS
@@ -55,7 +56,13 @@ class GOEGcs(GOEDfs):
     do_not_connect: Do not even connect, used for unit testing.
     """
 
-    def __init__(self, messages, dry_run=False, do_not_connect=False, db_path_suffix=None):
+    def __init__(self, messages, dry_run=False, do_not_connect=False, db_path_suffix=None, config=None):
+        """Build the Cloud Storage client from the shared GOE Google Cloud credentials.
+
+        config: Optional OrchestrationConfig forwarded to resolve_gcp_credentials; environment variables are used
+        when it is None. The project is only passed when resolved because storage.Client treats an explicit None
+        project as "no project" instead of inferring one.
+        """
         assert messages
 
         logger.info("Client setup: GOEGcs")
@@ -65,7 +72,9 @@ class GOEGcs(GOEDfs):
         if do_not_connect:
             self._client = None
         else:
-            self._client = storage.Client()
+            gcp = resolve_gcp_credentials(config)
+            client_kwargs = {"project": gcp.project} if gcp.project else {}
+            self._client = storage.Client(credentials=gcp.credentials, **client_kwargs)
         self._db_path_suffix = db_path_suffix
         self.dfs_mechanism = GOE_DFS_GCS
         self.backend_dfs = "GCS"

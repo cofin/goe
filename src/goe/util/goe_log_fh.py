@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
+from goe.util.gcp_credentials import resolve_gcp_credentials
 
 if TYPE_CHECKING:
     from gcsfs.core import GCS_MIN_BLOCK_SIZE
@@ -39,24 +40,6 @@ class GOELogFileHandle:
     def __exit__(self, type, value, traceback):
         self.close()
 
-    def _get_fs(self, path: str) -> fsspec.AbstractFileSystem:
-        """Get fsspec filesystem for path.
-
-        Do not pass in the token for gs:// paths so that gcsfs will try and get the
-        application default credentials from a number of sources. This will raise an
-        exception if it cannot authenticate with GCS.
-        https://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.core.GCSFileSystem
-        """
-        if path.startswith("gs://"):
-            bind_lazy_imports(__name__, _LAZY_IMPORTS)
-            fs = fsspec.filesystem("gs", block_size=GCS_MIN_BLOCK_SIZE)
-        else:
-            fs = fsspec.filesystem("file")
-        return fs
-
-    def _open(self, path: str, mode="w"):
-        return self._fs.open(path, mode=mode)
-
     def close(self):
         if not self._fh.closed:
             return self._fh.close()
@@ -71,6 +54,28 @@ class GOELogFileHandle:
 
     def write(self, *args, **kwargs):
         return self._fh.write(*args, **kwargs)
+
+    def _get_fs(self, path: str) -> fsspec.AbstractFileSystem:
+        """Get fsspec filesystem for path.
+
+        gs:// paths pass the shared GOE Google Cloud credentials object as the gcsfs token. With token=None gcsfs
+        walks google_default -> cache -> cloud -> anon and silently degrades to anonymous access, so an ADC or
+        impersonation failure would surface later as a misleading 401/403 on the first log write.
+        GOELogFileHandle has no OrchestrationConfig, so resolution reads the same environment variables
+        OrchestrationConfig defaults read.
+        https://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.core.GCSFileSystem
+        """
+        if path.startswith("gs://"):
+            bind_lazy_imports(__name__, _LAZY_IMPORTS)
+            gcp = resolve_gcp_credentials()
+            fs_kwargs = {"project": gcp.project} if gcp.project else {}
+            fs = fsspec.filesystem("gs", block_size=GCS_MIN_BLOCK_SIZE, token=gcp.credentials, **fs_kwargs)
+        else:
+            fs = fsspec.filesystem("file")
+        return fs
+
+    def _open(self, path: str, mode="w"):
+        return self._fs.open(path, mode=mode)
 
 
 def __getattr__(name: str) -> Any:
