@@ -3,11 +3,9 @@
 
 from unittest.mock import patch
 
-import pytest
 from click.testing import CliRunner
 
 from goe.cli.main import cli
-from goe.scripts import agg_validate
 
 
 def test_validate_help() -> None:
@@ -102,22 +100,3 @@ def test_validate_exits_nonzero_on_failure(mock_validate) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["validate", "-t", "SH.SALES"])
     assert result.exit_code == 1
-
-
-def test_agg_validate_main_loads_env_before_check_config_path(monkeypatch) -> None:
-    """Verify agg_validate.main() calls config_file.load_env() before config_file.check_config_path()."""
-    call_order: list[str] = []
-    monkeypatch.setattr(agg_validate.config_file, "load_env", lambda: call_order.append("load_env"))
-    monkeypatch.setattr(
-        agg_validate.config_file,
-        "check_config_path",
-        lambda: call_order.append("check_config_path"),
-    )
-    monkeypatch.setattr(agg_validate, "parse_args", lambda: object())
-    monkeypatch.setattr(agg_validate, "run_agg_validate", lambda _args: True)
-
-    with pytest.raises(SystemExit) as exc_info:
-        agg_validate.main()
-
-    assert exc_info.value.code == 0
-    assert call_order == ["load_env", "check_config_path"]

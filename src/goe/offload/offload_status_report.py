@@ -8,15 +8,14 @@ import sys
 import traceback
 from copy import copy
 from datetime import datetime
-from optparse import SUPPRESS_HELP, OptionGroup
 
 from jinja2 import Environment, FileSystemLoader
 from numpy import datetime64
 
+from goe.config.options import StatusReportOptions
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.exceptions import OffloadOptionError
 from goe.goe import (
-    get_common_options,
     get_log_fh,
     get_log_fh_name,
     get_rdbms_db_name,
@@ -254,6 +253,169 @@ class OffloadStatusReport:
         """Destructor."""
         if hasattr(self, "_ora_conn"):
             self._ora_conn.close()
+
+    ###############################################################################
+    # PROPERTIES
+    ###############################################################################
+    @property
+    def metadata(self):
+        """Return metadata about the report."""
+        return self._initialise_metadata_dict()
+
+    @property
+    def report_file(self):
+        """Return name of the report being saved if applicable."""
+        return self._report_file if hasattr(self, "_report_file") else None
+
+    @property
+    def as_json(self):
+        """Return whether the data is to be returned as JSON."""
+        return self._output_format == JSON
+
+    @property
+    def as_raw(self):
+        """Return whether the data is to be returned as Python raw data."""
+        return self._output_format == RAW
+
+    @property
+    def is_summary(self):
+        """Return whether the output format is at summary level."""
+        return self._output_level == SUMMARY_LEVEL
+
+    @property
+    def is_detail(self):
+        """Return whether the output format is at detail level."""
+        return self._output_level == DETAIL_LEVEL
+
+    ###############
+    # PUBLIC API
+    ###############
+    def get_offload_status_report_data(
+        self,
+        schema=None,
+        table=None,
+        output_level=DEFAULT_OUTPUT_LEVEL,
+        demo_mode=DEFAULT_DEMO_MODE,
+    ):
+        """Fetch and pre-process all of the data required for either the Offload Status Report or API consumer."""
+        if schema is not None:
+            assert self._valid_sql_name(schema), "invalid value for schema parameter"
+            self._schema = schema.upper()
+        else:
+            self._schema = schema
+
+        if table is not None:
+            assert self._valid_sql_name(table), "invalid value for table parameter"
+            self._table = table.upper()
+        else:
+            self._table = table
+
+        self._output_level = output_level.lower() if output_level is not None else DEFAULT_OUTPUT_LEVEL
+        self._demo_mode = demo_mode
+
+        self._messages.debug("%-30s : %s" % ("_schema", self._schema), detail=SUPPRESS_STDOUT)
+        self._messages.debug("%-30s : %s" % ("_table", self._table), detail=SUPPRESS_STDOUT)
+        self._messages.debug("%-30s : %s" % ("_output_level", self._output_level), detail=SUPPRESS_STDOUT)
+        self._messages.debug("%-30s : %s" % ("_demo_mode", self._demo_mode), detail=SUPPRESS_STDOUT)
+
+        assert self._output_level in (
+            SUMMARY_LEVEL,
+            DETAIL_LEVEL,
+        ), "output_level parameter must be either %s or %s" % (
+            SUMMARY_LEVEL,
+            DETAIL_LEVEL,
+        )
+
+        if not self._demo_mode:
+            offloaded_tables = self._messages.offload_step(
+                command_steps.STEP_OSR_FIND_TABLES,
+                lambda: self._get_offloaded_tables(),
+                self._execute,
+            )
+            table_data = self._messages.offload_step(
+                command_steps.STEP_OSR_FETCH_DATA,
+                lambda: self._get_table_data(offloaded_tables),
+                self._execute,
+            )
+        else:
+            table_data = self._messages.offload_step(
+                command_steps.STEP_OSR_DEMO_DATA,
+                lambda: self._get_demo_table_data(),
+                self._execute,
+            )
+
+        report_data = self._messages.offload_step(
+            command_steps.STEP_OSR_PROCESS_DATA,
+            lambda: self._process_report_data(table_data),
+            self._execute,
+        )
+
+        return report_data
+
+    def gen_offload_status_report(
+        self,
+        report_data,
+        output_format=DEFAULT_OUTPUT_FORMAT,
+        report_name=DEFAULT_REPORT_NAME,
+        report_directory=DEFAULT_REPORT_DIRECTORY,
+        csv_delimiter=DEFAULT_CSV_DELIMITER,
+        csv_enclosure=DEFAULT_CSV_ENCLOSURE,
+    ):
+        """Fetch and pre-process all of the data required for either the Offload Status Report or API consumer."""
+        self._output_format = output_format.lower() if output_format is not None else DEFAULT_OUTPUT_FORMAT
+        self._report_name = report_name or DEFAULT_REPORT_NAME
+        self._report_directory = report_directory or DEFAULT_REPORT_DIRECTORY
+        self._csv_delimiter = csv_delimiter or DEFAULT_CSV_DELIMITER
+        self._csv_enclosure = csv_enclosure or DEFAULT_CSV_ENCLOSURE
+
+        self._messages.debug(
+            "%-30s : %s" % ("_output_format", self._output_format),
+            detail=SUPPRESS_STDOUT,
+        )
+        self._messages.debug("%-30s : %s" % ("_report_name", self._report_name), detail=SUPPRESS_STDOUT)
+        self._messages.debug(
+            "%-30s : %s" % ("_report_directory", self._report_directory),
+            detail=SUPPRESS_STDOUT,
+        )
+        self._messages.debug(
+            "%-30s : %s" % ("_csv_delimiter", self._csv_delimiter),
+            detail=SUPPRESS_STDOUT,
+        )
+        self._messages.debug(
+            "%-30s : %s" % ("_csv_enclosure", self._csv_enclosure),
+            detail=SUPPRESS_STDOUT,
+        )
+
+        assert self._output_format in (
+            CSV,
+            TEXT,
+            HTML,
+            JSON,
+            RAW,
+        ), "output_format parameter must be one of [%s, %s, %s, %s, %s]" % (
+            CSV,
+            TEXT,
+            HTML,
+            JSON,
+            RAW,
+        )
+        assert " " not in self._report_name, "report_name parameter cannot contain spaces"
+        assert " " not in self._report_directory, "report_directory parameter cannot contain spaces"
+        assert len(self._csv_delimiter) == 1, "csv_delimiter parameter must be a single character"
+        assert len(self._csv_enclosure) == 1, "csv_enclosure parameter must be a single character"
+
+        if self._output_format == CSV:
+            rep_fn = lambda: self._gen_csv_report(report_data)
+        elif self._output_format == TEXT:
+            rep_fn = lambda: self._gen_text_report(report_data)
+        elif self._output_format == HTML:
+            rep_fn = lambda: self._gen_html_report(report_data)
+        elif self._output_format == JSON:
+            rep_fn = lambda: self._gen_json_report(report_data)
+        elif self._output_format == RAW:
+            rep_fn = lambda: self._gen_raw_report(report_data)
+        status = self._messages.offload_step(command_steps.STEP_OSR_GENERATE_REPORT, rep_fn, execute=self._execute)
+        return status
 
     def _set_module(self, module):
         """Set V$SESSION.MODULE."""
@@ -3435,243 +3597,6 @@ ORDER  BY
             for k in SUMMARY_KEYS:
                 print("   %-50s: %s" % (k.strip("_"), report_data[k]))
 
-    ###############################################################################
-    # PROPERTIES
-    ###############################################################################
-    @property
-    def metadata(self):
-        """Return metadata about the report."""
-        return self._initialise_metadata_dict()
-
-    @property
-    def report_file(self):
-        """Return name of the report being saved if applicable."""
-        return self._report_file if hasattr(self, "_report_file") else None
-
-    @property
-    def as_json(self):
-        """Return whether the data is to be returned as JSON."""
-        return self._output_format == JSON
-
-    @property
-    def as_raw(self):
-        """Return whether the data is to be returned as Python raw data."""
-        return self._output_format == RAW
-
-    @property
-    def is_summary(self):
-        """Return whether the output format is at summary level."""
-        return self._output_level == SUMMARY_LEVEL
-
-    @property
-    def is_detail(self):
-        """Return whether the output format is at detail level."""
-        return self._output_level == DETAIL_LEVEL
-
-    ###############
-    # PUBLIC API
-    ###############
-    def get_offload_status_report_data(
-        self,
-        schema=None,
-        table=None,
-        output_level=DEFAULT_OUTPUT_LEVEL,
-        demo_mode=DEFAULT_DEMO_MODE,
-    ):
-        """Fetch and pre-process all of the data required for either the Offload Status Report or API consumer."""
-        if schema is not None:
-            assert self._valid_sql_name(schema), "invalid value for schema parameter"
-            self._schema = schema.upper()
-        else:
-            self._schema = schema
-
-        if table is not None:
-            assert self._valid_sql_name(table), "invalid value for table parameter"
-            self._table = table.upper()
-        else:
-            self._table = table
-
-        self._output_level = output_level.lower() if output_level is not None else DEFAULT_OUTPUT_LEVEL
-        self._demo_mode = demo_mode
-
-        self._messages.debug("%-30s : %s" % ("_schema", self._schema), detail=SUPPRESS_STDOUT)
-        self._messages.debug("%-30s : %s" % ("_table", self._table), detail=SUPPRESS_STDOUT)
-        self._messages.debug("%-30s : %s" % ("_output_level", self._output_level), detail=SUPPRESS_STDOUT)
-        self._messages.debug("%-30s : %s" % ("_demo_mode", self._demo_mode), detail=SUPPRESS_STDOUT)
-
-        assert self._output_level in (
-            SUMMARY_LEVEL,
-            DETAIL_LEVEL,
-        ), "output_level parameter must be either %s or %s" % (
-            SUMMARY_LEVEL,
-            DETAIL_LEVEL,
-        )
-
-        if not self._demo_mode:
-            offloaded_tables = self._messages.offload_step(
-                command_steps.STEP_OSR_FIND_TABLES,
-                lambda: self._get_offloaded_tables(),
-                self._execute,
-            )
-            table_data = self._messages.offload_step(
-                command_steps.STEP_OSR_FETCH_DATA,
-                lambda: self._get_table_data(offloaded_tables),
-                self._execute,
-            )
-        else:
-            table_data = self._messages.offload_step(
-                command_steps.STEP_OSR_DEMO_DATA,
-                lambda: self._get_demo_table_data(),
-                self._execute,
-            )
-
-        report_data = self._messages.offload_step(
-            command_steps.STEP_OSR_PROCESS_DATA,
-            lambda: self._process_report_data(table_data),
-            self._execute,
-        )
-
-        return report_data
-
-    def gen_offload_status_report(
-        self,
-        report_data,
-        output_format=DEFAULT_OUTPUT_FORMAT,
-        report_name=DEFAULT_REPORT_NAME,
-        report_directory=DEFAULT_REPORT_DIRECTORY,
-        csv_delimiter=DEFAULT_CSV_DELIMITER,
-        csv_enclosure=DEFAULT_CSV_ENCLOSURE,
-    ):
-        """Fetch and pre-process all of the data required for either the Offload Status Report or API consumer."""
-        self._output_format = output_format.lower() if output_format is not None else DEFAULT_OUTPUT_FORMAT
-        self._report_name = report_name or DEFAULT_REPORT_NAME
-        self._report_directory = report_directory or DEFAULT_REPORT_DIRECTORY
-        self._csv_delimiter = csv_delimiter or DEFAULT_CSV_DELIMITER
-        self._csv_enclosure = csv_enclosure or DEFAULT_CSV_ENCLOSURE
-
-        self._messages.debug(
-            "%-30s : %s" % ("_output_format", self._output_format),
-            detail=SUPPRESS_STDOUT,
-        )
-        self._messages.debug("%-30s : %s" % ("_report_name", self._report_name), detail=SUPPRESS_STDOUT)
-        self._messages.debug(
-            "%-30s : %s" % ("_report_directory", self._report_directory),
-            detail=SUPPRESS_STDOUT,
-        )
-        self._messages.debug(
-            "%-30s : %s" % ("_csv_delimiter", self._csv_delimiter),
-            detail=SUPPRESS_STDOUT,
-        )
-        self._messages.debug(
-            "%-30s : %s" % ("_csv_enclosure", self._csv_enclosure),
-            detail=SUPPRESS_STDOUT,
-        )
-
-        assert self._output_format in (
-            CSV,
-            TEXT,
-            HTML,
-            JSON,
-            RAW,
-        ), "output_format parameter must be one of [%s, %s, %s, %s, %s]" % (
-            CSV,
-            TEXT,
-            HTML,
-            JSON,
-            RAW,
-        )
-        assert " " not in self._report_name, "report_name parameter cannot contain spaces"
-        assert " " not in self._report_directory, "report_directory parameter cannot contain spaces"
-        assert len(self._csv_delimiter) == 1, "csv_delimiter parameter must be a single character"
-        assert len(self._csv_enclosure) == 1, "csv_enclosure parameter must be a single character"
-
-        if self._output_format == CSV:
-            rep_fn = lambda: self._gen_csv_report(report_data)
-        elif self._output_format == TEXT:
-            rep_fn = lambda: self._gen_text_report(report_data)
-        elif self._output_format == HTML:
-            rep_fn = lambda: self._gen_html_report(report_data)
-        elif self._output_format == JSON:
-            rep_fn = lambda: self._gen_json_report(report_data)
-        elif self._output_format == RAW:
-            rep_fn = lambda: self._gen_raw_report(report_data)
-        status = self._messages.offload_step(command_steps.STEP_OSR_GENERATE_REPORT, rep_fn, execute=self._execute)
-        return status
-
-
-def get_offload_status_report_opts():
-    opt = get_common_options(usage="usage: %prog [options]")
-
-    osr_group = OptionGroup(opt, "Offload Status Report Options", "Options for Offload Status Report.")
-    osr_group.add_option(
-        "-s",
-        "--schema",
-        dest="schema",
-        help="Optional name of schema to run the Offload Status Report for",
-    )
-    osr_group.add_option(
-        "-t",
-        "--table",
-        dest="table",
-        help="Optional name of table to run the Offload Status Report for",
-    )
-    osr_group.add_option(
-        "-o",
-        "--output-format",
-        dest="output_format",
-        default=DEFAULT_OUTPUT_FORMAT,
-        choices=[HTML, TEXT, JSON, RAW, CSV],
-        help="Output format for the Offload Status Report data. Default: %s" % DEFAULT_OUTPUT_FORMAT,
-    )
-    osr_group.add_option(
-        "-d",
-        "--demo",
-        dest="demo_mode",
-        action="store_true",
-        default=DEFAULT_DEMO_MODE,
-        help=SUPPRESS_HELP,
-    )
-    osr_group.add_option(
-        "--output-level",
-        dest="output_level",
-        default=DEFAULT_OUTPUT_LEVEL,
-        choices=[DETAIL_LEVEL, SUMMARY_LEVEL],
-        help="Level of detail required for the Offload Status Report. Default: %s" % DEFAULT_OUTPUT_LEVEL,
-    )
-    osr_group.add_option(
-        "--report-name",
-        dest="report_name",
-        default=DEFAULT_REPORT_NAME,
-        help="Name of report. Default: %s_{DB_NAME}_{YYYY}-{MM}-{DD}_{HH}-{MI}-{SS}.[html|txt|csv]"
-        % DEFAULT_REPORT_NAME,
-    )
-    osr_group.add_option(
-        "--report-directory",
-        dest="report_directory",
-        default=DEFAULT_REPORT_DIRECTORY,
-        help="Directory to save the report in. Default: %s" % DEFAULT_REPORT_DIRECTORY,
-    )
-    osr_group.add_option(
-        "--csv-delimiter",
-        dest="csv_delimiter",
-        default=DEFAULT_CSV_DELIMITER,
-        help="Field delimiter character for CSV output. Must be a single character. Default: %s"
-        % DEFAULT_CSV_DELIMITER,
-    )
-    osr_group.add_option(
-        "--csv-enclosure",
-        dest="csv_enclosure",
-        default=DEFAULT_CSV_ENCLOSURE,
-        help="Enclosure character for string fields in CSV output. Default: %s" % DEFAULT_CSV_ENCLOSURE,
-    )
-    opt.add_option_group(osr_group)
-
-    # Strip away the options we don't need
-    remove_options = ["--skip-steps", "--log-path", "-x"]
-    [opt.remove_option(option) for option in remove_options]
-
-    return opt
-
 
 def normalise_offload_status_report_options(options):
     if options.vverbose:
@@ -3731,14 +3656,8 @@ def incremental_partition_match(row_high_value, table_high_value, incremental_pr
     return bool(row_high_value <= table_high_value)
 
 
-def offload_status_report_run(options=None):
+def offload_status_report_run(options: StatusReportOptions) -> None:
     try:
-        if options is None:
-            opt = get_offload_status_report_opts()
-            (options, args) = opt.parse_args()
-        else:
-            opt = get_offload_status_report_opts()
-
         init(options)
         init_log("offload_status_report")
 
@@ -3785,7 +3704,6 @@ def offload_status_report_run(options=None):
     except OffloadOptionError as exc:
         log("Option error: %s" % exc.detail, ansi_code="red")
         log("")
-        opt.print_help()
         sys.exit(FAILURE)
     except Exception as exc:
         log("Exception caught at top-level", ansi_code="red")

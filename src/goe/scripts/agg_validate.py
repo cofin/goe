@@ -13,12 +13,11 @@ import logging
 import re
 import sys
 
-from goe.config import config_file, option_descriptions, orchestration_defaults
+from goe.config.options import AggValidateOptions
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.goe import (
     get_log_fh,
     get_log_fh_name,
-    get_options_from_list,
     init,
     init_log,
     log,
@@ -29,14 +28,12 @@ from goe.goe import (
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_validation import (
     DEFAULT_AGGS,
-    DEFAULT_SELECT_COLS,
     GROUPBY_PARTITIONS,
     SUPPORTED_OPERATIONS,
     CrossDbValidator,
 )
 from goe.orchestration import command_steps
 from goe.util.goe_log import log_exception
-from goe.util.hs2_connection import HS2_OPTIONS
 from goe.util.misc_functions import (
     csv_split,
     is_number,
@@ -59,23 +56,6 @@ class AggValidateException(Exception):
 PROG_BANNER = "Validate (agg_validate) v%s" % version()
 
 REGEX_FILTER = re.compile(r"(\S+)\s+(%s)\s+(\S+)" % "|".join(SUPPORTED_OPERATIONS), re.IGNORECASE)
-
-# GOE.py options "imported" by this tool
-GOE_OPTIONS = (
-    "owner_table",
-    "dev_log_level",
-    "execute",
-    "target_owner_name",
-    "base_owner_name",
-    "target_name",
-    "ora_app_user",
-    "ora_app_pass",
-    "oracle_dsn",
-    "backend_session_parameters",
-    "quiet",
-    "verbose",
-    "vverbose",
-)
 
 
 # -----------------------------------------------------------------------
@@ -143,7 +123,7 @@ def print_title():
     print("%s\n" % (PROG_BANNER))
 
 
-def post_process_args(args):
+def post_process_args(args: AggValidateOptions) -> None:
     """Post process arguments"""
 
     def parse_filters(filters):
@@ -176,66 +156,7 @@ def post_process_args(args):
         args.frontend_parallelism = int(args.frontend_parallelism)
 
 
-def get_agg_validate_options():
-    """Build and return option parser for agg_validate."""
-    parser = get_options_from_list(GOE_OPTIONS + HS2_OPTIONS)
-
-    parser.add_option(
-        "--as-of-scn",
-        type=int,
-        default=None,
-        help="Execute validation on front-end site as-of specified SCN (assumes 'ORACLE' front-end)",
-    )
-    parser.add_option(
-        "-S",
-        "--selects",
-        default=[DEFAULT_SELECT_COLS],
-        help="SELECTs: <List of columns> OR <Number of columns> to run aggregations on. If <number> is specified -> the first and last columns and the <number>-2 highests cardinality columns will be selected. Default: %s"
-        % DEFAULT_SELECT_COLS,
-    )
-    parser.add_option(
-        "-F",
-        "--filters",
-        default=None,
-        help="FILTERs: List of: (<column> <operation> <value>) expressions, separated by ',' e.g. PROD_ID < 12, CUST_ID >= 1000. Expressions must be supported in both FRONT-END and BACK-END databases",
-    )
-    parser.add_option(
-        "-G",
-        "--group-bys",
-        default=None,
-        help="GROUP BYs: List of group by expressions, separated by ',' e.g. COL1, COL2. Expressions must be supported in both FRONT-END and BACK-END databases. Default: %s"
-        % None,
-    )
-    parser.add_option(
-        "-A",
-        "--aggregate-functions",
-        default=DEFAULT_AGGS,
-        help="AGGREGATE FUNCTIONSs: List of aggregate functions to apply, separated by ',' e.g. max, min, count. Functions need to be available and use the same arguments in both FRONT-END and BACK-END databases. Default: %s"
-        % [DEFAULT_AGGS],
-    )
-    parser.add_option(
-        "--frontend-parallelism",
-        default=orchestration_defaults.verify_parallelism_default(),
-        type=int,
-        help=option_descriptions.VERIFY_PARALLELISM,
-    )
-    parser.add_option(
-        "--skip-boundary-check",
-        action="store_true",
-        help="Do NOT include 'offloaded boundary check' in the list of filters 'offloaded boundary check' filter defines data that was offloaded to BACK-END database (as opposed to data that 'is sourced' from FRONT-END). For example: WHERE TIME_ID < timestamp '2015-07-01 00:00:00' which resulted from applying e.g. --older-than-date=2015-07-01 filter during offload.",
-    )
-    return parser
-
-
-def parse_args():
-    """Parse arguments and return "options" object"""
-    parser = get_agg_validate_options()
-    args, _ = parser.parse_args()
-    post_process_args(args)
-    return args
-
-
-def run_agg_validate(args):
+def run_agg_validate(args: AggValidateOptions) -> bool:
     """Run aggregate validation with parsed args namespace."""
     init(args)
     init_log("agg_validate_%s" % args.owner_table)
@@ -254,18 +175,3 @@ def run_agg_validate(args):
         log_timestamp()
         log_exception(exc, log_fh=get_log_fh(), options=args)
         sys.exit(1)
-
-
-def main():
-    """MAIN ROUTINE"""
-    config_file.load_env()
-    config_file.check_config_path()
-
-    args = parse_args()
-    ret = run_agg_validate(args)
-    sys.exit(0 if ret else 1)
-
-
-#### MAIN PROGRAM BEGINS HERE
-if __name__ == "__main__":
-    main()

@@ -3,7 +3,6 @@
 
 """'goe connect' subcommand for pre-flight connectivity and environment validation."""
 
-from optparse import Values
 from typing import TYPE_CHECKING, Any
 
 import rich_click as click
@@ -13,12 +12,12 @@ from goe.cli.common import common_options, extract_common_options
 
 if TYPE_CHECKING:
     from goe.config.config_file import check_config_path
+    from goe.config.options import ConnectOptions
     from goe.connect.connect import connect as run_connect
-    from goe.connect.connect import get_connect_opts
 
 _LAZY_IMPORTS: LazyImportMap = {
+    "ConnectOptions": ("goe.config.options", "ConnectOptions"),
     "check_config_path": ("goe.config.config_file", "check_config_path"),
-    "get_connect_opts": ("goe.connect.connect", "get_connect_opts"),
     "run_connect": ("goe.connect.connect", "connect"),
 }
 
@@ -55,15 +54,11 @@ def connect(
     bind_lazy_imports(__name__, _LAZY_IMPORTS)
     common_opts = extract_common_options(ctx, kwargs)
     check_config_path()
-    parser = get_connect_opts()
-    defaults = parser.get_default_values()
-    options_dict = defaults.__dict__.copy()
-    options_dict.update(common_opts)
-
-    options_dict["upgrade_environment_file"] = upgrade_environment_file
+    options = ConnectOptions.from_mapping(common_opts)
+    options.upgrade_environment_file = upgrade_environment_file
     if create_backend_db is not None:
-        options_dict["create_backend_db"] = create_backend_db
-    run_connect(Values(options_dict))
+        options.create_backend_db = create_backend_db
+    run_connect(options)
 
 
 def __getattr__(name: str) -> Any:

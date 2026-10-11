@@ -90,8 +90,11 @@ def test_owner_table_normalisation_populates_derived_fields() -> None:
     assert (opts.base_owner, opts.base_name) == ("SH", "SALES")
 
 
-def test_literal_defaults_track_their_source_constants() -> None:
+def test_literal_defaults_track_their_source_constants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Literal defaults stay equal to the constants they mirror."""
+    monkeypatch.delenv("OFFLOAD_HOME", raising=False)
     report = StatusReportOptions()
     assert report.output_format == offload_status_report.DEFAULT_OUTPUT_FORMAT
     assert report.output_level == offload_status_report.DEFAULT_OUTPUT_LEVEL

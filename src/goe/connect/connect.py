@@ -7,9 +7,9 @@ import sys
 import traceback
 from datetime import datetime
 from getpass import getuser
-from optparse import SUPPRESS_HELP
 
 from goe.config import config_file, orchestration_defaults
+from goe.config.options import ConnectOptions
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.connect.connect_backend import (
     is_hadoop_environment,
@@ -36,17 +36,15 @@ from goe.connect.connect_transport import (
     run_sqoop_tests,
     test_credential_api_alias,
 )
+from goe.exceptions import OptionValueError
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.goe import (
-    OptionValueError,
-    get_common_options,
     get_log_fh,
     get_log_fh_name,
     init,
     init_log,
     log_command_line,
     log_timestamp,
-    verbose,
     version,
 )
 from goe.offload.offload_messages import OffloadMessages
@@ -359,39 +357,10 @@ def get_config_with_connect_overrides(connect_options):
     return config
 
 
-def get_connect_opts():
-    opt = get_common_options()
-
-    opt.remove_option("--execute")
-
-    opt.add_option(
-        "--upgrade-environment-file",
-        dest="upgrade_environment_file",
-        default=False,
-        action="store_true",
-        help="Adds missing configuration variables from the environment file template to the environment file",
-    )
-    # Hidden options to keep TeamCity testing functioning
-    opt.add_option(
-        "--create-backend-db",
-        dest="create_backend_db",
-        action="store_true",
-        help=SUPPRESS_HELP,
-    )
-
-    return opt
-
-
-def connect(options_override=None):
-    options = None
+def connect(options: ConnectOptions) -> None:
+    """Run goe connect checks for the supplied options and exit with the check status."""
     try:
         config_file.load_env()
-        if options_override is not None:
-            options = options_override
-        else:
-            opt = get_connect_opts()
-            options, args = opt.parse_args()
-
         init(options)
         init_log("connect")
         section_header("Connect v%s" % version())

@@ -4,7 +4,6 @@
 """'goe sync' subcommand for schema drift detection and DDL synchronization."""
 
 import sys
-from optparse import Values
 from typing import TYPE_CHECKING, Any
 
 import rich_click as click
@@ -13,6 +12,7 @@ from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribu
 from goe.cli.common import common_options, extract_common_options
 
 if TYPE_CHECKING:
+    from goe.config.options import SchemaSyncOptions
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.goe import get_log_fh, init, init_log, log_close
     from goe.offload.offload_messages import OffloadMessages
@@ -21,7 +21,6 @@ if TYPE_CHECKING:
         orchestration_repo_client_factory,
     )
     from goe.schema_sync.schema_sync import (
-        get_schema_sync_opts,
         normalise_schema_sync_options,
     )
     from goe.schema_sync.schema_sync import (
@@ -32,8 +31,8 @@ _LAZY_IMPORTS: LazyImportMap = {
     "ExecutionId": ("goe.orchestration.execution_id", "ExecutionId"),
     "OffloadMessages": ("goe.offload.offload_messages", "OffloadMessages"),
     "OrchestrationConfig": ("goe.config.orchestration_config", "OrchestrationConfig"),
+    "SchemaSyncOptions": ("goe.config.options", "SchemaSyncOptions"),
     "get_log_fh": ("goe.goe", "get_log_fh"),
-    "get_schema_sync_opts": ("goe.schema_sync.schema_sync", "get_schema_sync_opts"),
     "init": ("goe.goe", "init"),
     "init_log": ("goe.goe", "init_log"),
     "log_close": ("goe.goe", "log_close"),
@@ -72,16 +71,9 @@ def sync(ctx: click.Context, **kwargs: Any) -> None:
     """Execute schema drift analysis and target evolution."""
     bind_lazy_imports(__name__, _LAZY_IMPORTS)
     common_opts = extract_common_options(ctx, kwargs)
-    parser = get_schema_sync_opts()
-    defaults = parser.get_default_values()
-    options_dict = defaults.__dict__.copy()
-    options_dict.update(common_opts)
-
-    for k, v in kwargs.items():
-        if v is not None:
-            options_dict[k] = v
-
-    options = Values(options_dict)
+    overrides: dict[str, Any] = dict(common_opts)
+    overrides.update({key: value for key, value in kwargs.items() if value is not None})
+    options = SchemaSyncOptions.from_mapping(overrides)
     normalise_schema_sync_options(options)
 
     init(options)

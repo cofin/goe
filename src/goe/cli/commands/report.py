@@ -3,7 +3,6 @@
 
 """'goe report' subcommand for generating offload status reports."""
 
-from optparse import Values
 from typing import TYPE_CHECKING, Any
 
 import rich_click as click
@@ -12,13 +11,11 @@ from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribu
 from goe.cli.common import common_options, extract_common_options
 
 if TYPE_CHECKING:
-    from goe.offload.offload_status_report import (
-        get_offload_status_report_opts,
-        offload_status_report_run,
-    )
+    from goe.config.options import StatusReportOptions
+    from goe.offload.offload_status_report import offload_status_report_run
 
 _LAZY_IMPORTS: LazyImportMap = {
-    "get_offload_status_report_opts": ("goe.offload.offload_status_report", "get_offload_status_report_opts"),
+    "StatusReportOptions": ("goe.config.options", "StatusReportOptions"),
     "offload_status_report_run": ("goe.offload.offload_status_report", "offload_status_report_run"),
 }
 
@@ -64,20 +61,15 @@ def report(ctx: click.Context, **kwargs: Any) -> None:
     """Generate offload status report."""
     bind_lazy_imports(__name__, _LAZY_IMPORTS)
     common_opts = extract_common_options(ctx, kwargs)
-    parser = get_offload_status_report_opts()
-    defaults = parser.get_default_values()
-    options_dict = defaults.__dict__.copy()
-    options_dict.update(common_opts)
-
-    for k, v in kwargs.items():
-        if v is not None:
-            if k == "output_format" and ctx.get_parameter_source(k) == click.core.ParameterSource.DEFAULT:
-                options_dict[k] = v.lower()
-            else:
-                options_dict[k] = v
-
-    options = Values(options_dict)
-    offload_status_report_run(options)
+    overrides: dict[str, Any] = dict(common_opts)
+    for key, value in kwargs.items():
+        if value is None:
+            continue
+        if key == "output_format" and ctx.get_parameter_source(key) == click.core.ParameterSource.DEFAULT:
+            overrides[key] = value.lower()
+        else:
+            overrides[key] = value
+    offload_status_report_run(StatusReportOptions.from_mapping(overrides))
 
 
 def __getattr__(name: str) -> Any:
