@@ -49,10 +49,8 @@ from goe.goe import (
     verbose,
     version,
 )
-from goe.listener.utils.cache import MemorySyncCache as RedisClient
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_transport_functions import ssh_cmd_prefix
-from goe.orchestration import orchestration_constants
 from goe.util.goe_log import log_exception
 from goe.util.misc_functions import unsurround
 
@@ -115,31 +113,6 @@ def test_ssh(orchestration_config):
     except:
         failure(test_name)
         raise
-
-
-def _os_release_file_exists() -> str | None:
-    existing_files = [_ for _ in OS_RELEASE_FILES if os.path.isfile(_)]
-    return existing_files[0] if existing_files else None
-
-
-def _os_version_from_file_content(os_release_file: str, file_content: str) -> str:
-    if os_release_file == OS_RELEASE_FILE_SUSE:
-        os_ver = file_content.splitlines()
-        os_ver = "%s (%s)" % (os_ver[:1][0], ", ".join([o for o in os_ver[1:]]))
-        return os_ver
-    if os_release_file == OS_RELEASE_FILE_DEBIAN:
-        os_ver = file_content.splitlines()
-        tokens = os_ver[0].split("=")
-        os_ver = tokens[0] if len(tokens) == 1 else " ".join(tokens[1:])
-        os_ver = unsurround(os_ver, '"')
-        return os_ver
-    return file_content
-
-
-def _os_version_from_file(os_release_file: str) -> str:
-    with open(os_release_file) as f:
-        file_content = f.read().strip()
-        return _os_version_from_file_content(os_release_file, file_content)
 
 
 def test_os_version():
@@ -222,57 +195,6 @@ def test_dir(dir_name, expected_perms):
         failure(test_name, hint)
     else:
         success(test_name)
-
-
-def test_listener(orchestration_config):
-    test_name = orchestration_constants.PRODUCT_NAME_GEL
-    # For the time being this has been disabled, pending:
-    # https://github.com/gluent/goe/issues/109
-    return
-    test_header(test_name)
-    if not orchestration_config.listener_host and orchestration_config.listener_port is None:
-        detail(f"{orchestration_constants.PRODUCT_NAME_GEL} not configured")
-        success(test_name)
-        return
-
-    try:
-        # Avoid importing Listener modules if the listener is not configured.
-        from goe.listener.utils.ping import ping as ping_listener
-
-        # Check Listener is up.
-        if ping_listener(orchestration_config):
-            detail(
-                f"Listener ping successful: {orchestration_config.listener_host}:{orchestration_config.listener_port}"
-            )
-        else:
-            detail("Listener ping unsuccessful")
-            # If the listener status failed then no need to check the cache status
-            failure(test_name)
-            return
-    except Exception as exc:
-        detail(str(exc))
-        log(traceback.format_exc(), detail=verbose)
-        # If the listener status failed then no need to check the cache status
-        failure(test_name)
-        return
-
-    try:
-        # Check Redis is up
-        if orchestration_defaults.cache_enabled():
-            # We're expecting to interact with Redis.
-            cache = RedisClient.connect()
-            if cache.ping():
-                detail(
-                    f"Listener cache found: {orchestration_defaults.listener_redis_host_default()}:{orchestration_defaults.listener_redis_port_default()}"
-                )
-                success(test_name)
-            else:
-                detail("Cache ping unsuccessful")
-                warning(test_name)
-    except Exception as exc:
-        detail(str(exc))
-        log(traceback.format_exc(), detail=verbose)
-        failure(test_name)
 
 
 def dict_from_environment_file(environment_file):
@@ -402,7 +324,6 @@ def check_environment(options, orchestration_config):
     section_header("Local")
     test_os_version()
     test_krb_bin(orchestration_config)
-    test_listener(orchestration_config)
     if failures:
         sys.exit(2)
     if warnings:
@@ -504,3 +425,28 @@ def connect(options_override=None):
         log_timestamp()
         log_exception(exc, log_fh=get_log_fh(), options=options)
         sys.exit(1)
+
+
+def _os_release_file_exists() -> str | None:
+    existing_files = [_ for _ in OS_RELEASE_FILES if os.path.isfile(_)]
+    return existing_files[0] if existing_files else None
+
+
+def _os_version_from_file_content(os_release_file: str, file_content: str) -> str:
+    if os_release_file == OS_RELEASE_FILE_SUSE:
+        os_ver = file_content.splitlines()
+        os_ver = "%s (%s)" % (os_ver[:1][0], ", ".join([o for o in os_ver[1:]]))
+        return os_ver
+    if os_release_file == OS_RELEASE_FILE_DEBIAN:
+        os_ver = file_content.splitlines()
+        tokens = os_ver[0].split("=")
+        os_ver = tokens[0] if len(tokens) == 1 else " ".join(tokens[1:])
+        os_ver = unsurround(os_ver, '"')
+        return os_ver
+    return file_content
+
+
+def _os_version_from_file(os_release_file: str) -> str:
+    with open(os_release_file) as f:
+        file_content = f.read().strip()
+        return _os_version_from_file_content(os_release_file, file_content)

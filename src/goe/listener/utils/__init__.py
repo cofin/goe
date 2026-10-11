@@ -12,16 +12,14 @@ from goe.listener.utils.group_by import groupby
 
 if TYPE_CHECKING:
     from goe.listener.utils import orchestrate
-    from goe.listener.utils.ping import ping
 
-__all__ = ["cache", "groupby", "orchestrate", "ping", "system"]
+__all__ = ["cache", "groupby", "orchestrate", "system"]
 
 _LAZY_IMPORTS: LazyImportMap = {
     "orchestrate": ("goe.listener.utils.orchestrate", None),
-    "ping": ("goe.listener.utils.ping", "ping"),
 }
 
 
 def __getattr__(name: str) -> Any:
-    """Lazily resolve heavy listener orchestration and HTTP ping utilities on attribute access."""
+    """Lazily resolve heavy listener orchestration utilities on attribute access."""
     return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)

@@ -59,13 +59,17 @@ EXPECTED_CONFIG_ARGS = [
     "dev_log_level",
     "error_on_token",
     "frontend_odbc_driver_name",
+    "google_cloud_project",
+    "google_cloud_quota_project",
     "google_dataproc_batches_subnet",
     "google_dataproc_batches_ttl",
     "google_dataproc_batches_version",
     "google_dataproc_cluster",
+    "google_dataproc_impersonate_service_account",
     "google_dataproc_project",
     "google_dataproc_region",
     "google_dataproc_service_account",
+    "google_impersonate_service_account",
     "google_kms_key_ring_location",
     "google_kms_key_ring_name",
     "google_kms_key_ring_project",
@@ -95,13 +99,6 @@ EXPECTED_CONFIG_ARGS = [
     "listener_port",
     "listener_heartbeat_interval",
     "listener_shared_token",
-    "listener_redis_host",
-    "listener_redis_port",
-    "listener_redis_db",
-    "listener_redis_username",
-    "listener_redis_password",
-    "listener_redis_ssl_cert",
-    "listener_redis_use_ssl",
     "log_path",
     "log_level",
     "kerberos_principal",
@@ -227,13 +224,17 @@ class OrchestrationConfig:
     dev_log_level: str
     error_on_token: str | None
     frontend_odbc_driver_name: str | None
+    google_cloud_project: str | None
+    google_cloud_quota_project: str | None
     google_dataproc_batches_subnet: str | None
     google_dataproc_batches_ttl: str | None
     google_dataproc_batches_version: str | None
     google_dataproc_cluster: str | None
+    google_dataproc_impersonate_service_account: str | None
     google_dataproc_project: str | None
     google_dataproc_region: str | None
     google_dataproc_service_account: str | None
+    google_impersonate_service_account: str | None
     google_kms_key_ring_project: str | None
     google_kms_key_ring_location: str | None
     google_kms_key_ring_name: str | None
@@ -253,13 +254,6 @@ class OrchestrationConfig:
     listener_port: int | None
     listener_heartbeat_interval: int
     listener_shared_token: str | None
-    listener_redis_db: int
-    listener_redis_host: str | None
-    listener_redis_port: int | None
-    listener_redis_username: str | None
-    listener_redis_password: str | None
-    listener_redis_ssl_cert: str | None
-    listener_redis_use_ssl: bool | None
     log_level: str | None
     log_path: str
     not_null_propagation: str | None
@@ -358,6 +352,14 @@ class OrchestrationConfig:
                 "frontend_odbc_driver_name",
                 orchestration_defaults.frontend_odbc_driver_name_default(),
             ),
+            google_cloud_project=config_dict.get(
+                "google_cloud_project",
+                orchestration_defaults.google_cloud_project_default(),
+            ),
+            google_cloud_quota_project=config_dict.get(
+                "google_cloud_quota_project",
+                orchestration_defaults.google_cloud_quota_project_default(),
+            ),
             google_dataproc_batches_subnet=config_dict.get(
                 "google_dataproc_batches_subnet",
                 orchestration_defaults.google_dataproc_batches_subnet_default(),
@@ -374,6 +376,10 @@ class OrchestrationConfig:
                 "google_dataproc_cluster",
                 orchestration_defaults.google_dataproc_cluster_default(),
             ),
+            google_dataproc_impersonate_service_account=config_dict.get(
+                "google_dataproc_impersonate_service_account",
+                orchestration_defaults.google_dataproc_impersonate_service_account_default(),
+            ),
             google_dataproc_project=config_dict.get(
                 "google_dataproc_project",
                 orchestration_defaults.google_dataproc_project_default(),
@@ -385,6 +391,10 @@ class OrchestrationConfig:
             google_dataproc_service_account=config_dict.get(
                 "google_dataproc_service_account",
                 orchestration_defaults.google_dataproc_service_account_default(),
+            ),
+            google_impersonate_service_account=config_dict.get(
+                "google_impersonate_service_account",
+                orchestration_defaults.google_impersonate_service_account_default(),
             ),
             google_kms_key_ring_location=config_dict.get(
                 "google_kms_key_ring_location",
@@ -457,31 +467,6 @@ class OrchestrationConfig:
             listener_shared_token=config_dict.get(
                 "listener_shared_token",
                 orchestration_defaults.listener_shared_token_default(),
-            ),
-            listener_redis_db=config_dict.get("listener_redis_db", orchestration_defaults.listener_redis_db_default()),
-            listener_redis_host=config_dict.get(
-                "listener_redis_host",
-                orchestration_defaults.listener_redis_host_default(),
-            ),
-            listener_redis_port=config_dict.get(
-                "listener_redis_port",
-                orchestration_defaults.listener_redis_port_default(),
-            ),
-            listener_redis_username=config_dict.get(
-                "listener_redis_username",
-                orchestration_defaults.listener_redis_username_default(),
-            ),
-            listener_redis_password=config_dict.get(
-                "listener_redis_password",
-                orchestration_defaults.listener_redis_password_default(),
-            ),
-            listener_redis_ssl_cert=config_dict.get(
-                "listener_redis_ssl_cert",
-                orchestration_defaults.listener_redis_ssl_cert_default(),
-            ),
-            listener_redis_use_ssl=config_dict.get(
-                "listener_redis_use_ssl",
-                orchestration_defaults.listener_redis_use_ssl_default(),
             ),
             log_level=config_dict.get("log_level", orchestration_defaults.log_level_default()),
             log_path=config_dict.get("log_path", orchestration_defaults.log_path_default()),
@@ -721,32 +706,6 @@ class OrchestrationConfig:
         )
 
     ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _frontend_api_required(self):
-        return bool(
-            not self._do_not_connect
-            and ((self.db_type == DBTYPE_ORACLE and self.use_oracle_wallet) or self.db_name_prefix is None)
-        )
-
-    def _get_frontend_connection(self):
-        """We cannot run some validations until after this object has been constructed because it is needed to create
-        a frontend connection. This method can be called once we have a fully formed object.
-        NJ@2022-01-13 I'm really not keen on this, getting config should be a lightweight operations, but I don't
-                      see a way to maintain previous functionality without creating a connection.
-        """
-        messages = OffloadMessages.from_options(self)
-        frontend_api = frontend_api_factory(
-            self.db_type,
-            self,
-            messages,
-            dry_run=True,
-            trace_action=self.__class__.__name__,
-        )
-        return frontend_api
-
-    ###########################################################################
     # PUBLIC METHODS
     ###########################################################################
 
@@ -792,3 +751,29 @@ class OrchestrationConfig:
         if offload_fs_prefix is not None:
             self.offload_fs_prefix = offload_fs_prefix
         normalise_filesystem_options(self)
+
+    ###########################################################################
+    # PRIVATE METHODS
+    ###########################################################################
+
+    def _frontend_api_required(self):
+        return bool(
+            not self._do_not_connect
+            and ((self.db_type == DBTYPE_ORACLE and self.use_oracle_wallet) or self.db_name_prefix is None)
+        )
+
+    def _get_frontend_connection(self):
+        """We cannot run some validations until after this object has been constructed because it is needed to create
+        a frontend connection. This method can be called once we have a fully formed object.
+        NJ@2022-01-13 I'm really not keen on this, getting config should be a lightweight operations, but I don't
+                      see a way to maintain previous functionality without creating a connection.
+        """
+        messages = OffloadMessages.from_options(self)
+        frontend_api = frontend_api_factory(
+            self.db_type,
+            self,
+            messages,
+            dry_run=True,
+            trace_action=self.__class__.__name__,
+        )
+        return frontend_api

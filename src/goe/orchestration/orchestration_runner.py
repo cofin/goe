@@ -11,7 +11,6 @@ import sys
 import traceback
 from typing import TYPE_CHECKING
 
-from goe.config import orchestration_defaults
 from goe.config.orchestration_config import OrchestrationConfig
 
 # GOE
@@ -21,7 +20,6 @@ from goe.goe import (
     get_offload_target_table,
     init,
     init_log,
-    init_redis_execution_id,
     offload_table,
 )
 from goe.offload.factory.frontend_api_factory import frontend_api_factory
@@ -86,6 +84,86 @@ class OrchestrationRunner:
         self._execution_id: ExecutionId | None = None
         self._messages: OffloadMessages | None = None
         self._max_hybrid_name_length: int | None = None
+
+    ###########################################################################
+    # PUBLIC METHODS
+    ###########################################################################
+
+    def offload(
+        self,
+        params,
+        execution_id: ExecutionId | None = None,
+        reuse_log: bool = False,
+        messages_override: OffloadMessages | None = None,
+    ):
+        """Run an offload based on incoming params.
+        params: Can be a dict or an OptParse object.
+        execution_id: A UUID used to uniquely identify the Offload. Can be generted internally or provided as
+                      an override.
+        reuse_log: True indicates that there is already a log file installed in goe.py for us to integrate with.
+        messages_override: Allows us to pass in an existing messages object so a parent can inspect the messages,
+                           used for testing.
+        """
+        dry_run = bool(not self._execute_from_params(params))
+        repo_client = self._init_command(
+            orchestration_constants.COMMAND_OFFLOAD,
+            params,
+            execution_id=execution_id,
+            reuse_log=reuse_log,
+            messages_override=messages_override,
+        )
+
+        operation = self._gen_offload_operation(params, repo_client)
+        command_id = self._command_begin(orchestration_constants.COMMAND_OFFLOAD, params, repo_client, operation)
+        try:
+            offload_source_table = self._build_offload_source_table(operation)
+            offload_target_table = get_offload_target_table(operation, self._config, self._messages)
+
+            self._log(f"Offloading to {self._target_version_string(offload_target_table)}")
+
+            status = self._offload(operation, offload_source_table, offload_target_table)
+            self._log_final_messages(orchestration_constants.COMMAND_OFFLOAD, dry_run)
+
+            self._command_end(command_id, repo_client)
+            self._cleanup_objects(
+                repo_client,
+                frontend_table=offload_source_table,
+                backend_table=offload_target_table,
+            )
+        except Exception as exc:
+            self._command_fail(command_id, exc, repo_client)
+            repo_client.close(force=True)
+            raise
+        finally:
+            if not reuse_log:
+                self._messages.close_log()
+
+        return status
+
+    def schema_sync(
+        self,
+        params,
+        execution_id: ExecutionId | None = None,
+        reuse_log: bool = False,
+        messages_override: OffloadMessages | None = None,
+    ):
+        """Run Schema Sync using incoming params."""
+        repo_client = self._init_command(
+            orchestration_constants.COMMAND_SCHEMA_SYNC,
+            params,
+            execution_id=execution_id,
+            reuse_log=reuse_log,
+            messages_override=messages_override,
+        )
+
+        # TODO schema_sync() currently only supports params of type Opt/Argparse, not a dict. When we
+        #      add Schema Sync to Listener we'll need to change this.
+        command_id = self._command_begin(orchestration_constants.COMMAND_SCHEMA_SYNC, params, repo_client)
+        try:
+            raise OrchestrationRunnerException("Schema Sync no longer exists")
+        except Exception as exc:
+            self._command_fail(command_id, exc, repo_client)
+            raise
 
     ###########################################################################
     # PRIVATE METHODS
@@ -207,7 +285,6 @@ class OrchestrationRunner:
             self._config,
             log_fh=get_log_fh(),
             execution_id=execution_id,
-            cache_enabled=orchestration_defaults.cache_enabled(),
             command_type=command_type,
         )
 
@@ -302,7 +379,6 @@ class OrchestrationRunner:
                 ),
                 detail=VVERBOSE,
             )
-            init_redis_execution_id(self._execution_id)
             return self._build_repo_client(self._messages, dry_run=(not self._execute_from_params(params)))
         except Exception as exc:
             self._log_error(f"Exception initializing command {command}: {exc!s}", detail=VVERBOSE)
@@ -388,83 +464,3 @@ class OrchestrationRunner:
         target_version = backend_table.target_version()
         ver_str = f" ({target_version})" if target_version else ""
         return "%s%s" % (backend_table.backend_db_name(), ver_str)
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def offload(
-        self,
-        params,
-        execution_id: ExecutionId | None = None,
-        reuse_log: bool = False,
-        messages_override: OffloadMessages | None = None,
-    ):
-        """Run an offload based on incoming params.
-        params: Can be a dict or an OptParse object.
-        execution_id: A UUID used to uniquely identify the Offload. Can be generted internally or provided as
-                      an override.
-        reuse_log: True indicates that there is already a log file installed in goe.py for us to integrate with.
-        messages_override: Allows us to pass in an existing messages object so a parent can inspect the messages,
-                           used for testing.
-        """
-        dry_run = bool(not self._execute_from_params(params))
-        repo_client = self._init_command(
-            orchestration_constants.COMMAND_OFFLOAD,
-            params,
-            execution_id=execution_id,
-            reuse_log=reuse_log,
-            messages_override=messages_override,
-        )
-
-        operation = self._gen_offload_operation(params, repo_client)
-        command_id = self._command_begin(orchestration_constants.COMMAND_OFFLOAD, params, repo_client, operation)
-        try:
-            offload_source_table = self._build_offload_source_table(operation)
-            offload_target_table = get_offload_target_table(operation, self._config, self._messages)
-
-            self._log(f"Offloading to {self._target_version_string(offload_target_table)}")
-
-            status = self._offload(operation, offload_source_table, offload_target_table)
-            self._log_final_messages(orchestration_constants.COMMAND_OFFLOAD, dry_run)
-
-            self._command_end(command_id, repo_client)
-            self._cleanup_objects(
-                repo_client,
-                frontend_table=offload_source_table,
-                backend_table=offload_target_table,
-            )
-        except Exception as exc:
-            self._command_fail(command_id, exc, repo_client)
-            repo_client.close(force=True)
-            raise
-        finally:
-            if not reuse_log:
-                self._messages.close_log()
-
-        return status
-
-    def schema_sync(
-        self,
-        params,
-        execution_id: ExecutionId | None = None,
-        reuse_log: bool = False,
-        messages_override: OffloadMessages | None = None,
-    ):
-        """Run Schema Sync using incoming params."""
-        repo_client = self._init_command(
-            orchestration_constants.COMMAND_SCHEMA_SYNC,
-            params,
-            execution_id=execution_id,
-            reuse_log=reuse_log,
-            messages_override=messages_override,
-        )
-
-        # TODO schema_sync() currently only supports params of type Opt/Argparse, not a dict. When we
-        #      add Schema Sync to Listener we'll need to change this.
-        command_id = self._command_begin(orchestration_constants.COMMAND_SCHEMA_SYNC, params, repo_client)
-        try:
-            raise OrchestrationRunnerException("Schema Sync no longer exists")
-        except Exception as exc:
-            self._command_fail(command_id, exc, repo_client)
-            raise

@@ -22,7 +22,7 @@ tags:
 ## Pattern Chapters
 
 - [Serialization & Utility Re-Export Patterns](serialization-and-utils.md) - `sqlspec.utils` re-export conventions in `src/goe/util/` and typed `msgspec.Struct` persistence/DTO schemas.
-- [Centralized Rich-Click CLI & Legacy Delegators](cli-architecture.md) - Unified `goe` entrypoint (`src/goe/cli/`), Google Cloud color palette, subcommand option groups, and `bin/` deprecation delegators.
+- [Centralized Rich-Click CLI](cli-architecture.md) - Unified `goe` entrypoint (`src/goe/cli/`), Google Cloud color palette, subcommand option groups (sole entrypoint; no `bin/` wrappers).
 - [Data Offload, Canonical Typing & Storage Gotchas](offload-and-typing.md) - Three-tier column mapping, two-phase staged ingestion, RDBMS precision sampling, and cloud storage eventual consistency defenses.
 
 ## Cross-Cutting Operational Skills

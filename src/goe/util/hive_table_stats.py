@@ -10,8 +10,6 @@ import random
 import re
 from collections import defaultdict
 
-from termcolor import colored, cprint
-
 from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_DOUBLE,
@@ -28,7 +26,7 @@ from goe.offload.offload_constants import (
     EMPTY_BACKEND_COLUMN_STATS_DICT,
     EMPTY_BACKEND_TABLE_STATS_DICT,
 )
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessages
 from goe.util.better_impyla import HiveConnection, HiveTable
 from goe.util.goe_version import GOEVersion
 from goe.util.hive_ddl_transform import DDLTransform
@@ -194,6 +192,254 @@ class HiveTableStats:
         hive_table = HiveTable(db_name, table_name, hive_conn)
 
         return cls(hive_table, date_columns)
+
+    ###########################################################################
+    # PROPERTIES
+    ###########################################################################
+
+    @property
+    def db_table(self):
+        return "%s.%s" % (self._table.db_name, self._table.table_name)
+
+    @property
+    def hive(self):
+        return self._table.connection
+
+    ###########################################################################
+    # PUBLIC ROUTINES
+    ###########################################################################
+
+    def sample_partitions(
+        self,
+        percent=0.1,
+        as_dict=False,
+        num_bytes_fudge=FUDGE_NUM_BYTES,
+        scan_if_sample_fails=False,
+    ):
+        """Detect object type (table or view) and call appropriate partition sampling routine
+
+        scan_if_sample_fails: Switch to full scan if sample fails for any reason
+        """
+        percent = float(percent)
+        object_type = "VIEW" if self._table.is_view() else "TABLE"
+        logger.info("Determined object: %s for be a: %s" % (self.db_table, object_type))
+        tab_final, col_final = None, None
+
+        if object_type == "VIEW":
+            tab_final, col_final = self.sample_partitions_view(percent, as_dict, num_bytes_fudge)
+        elif len(self._table.table_partitions()) > 0:
+            # Partitioned table
+            tab_final, col_final = self.sample_partitions_table(percent, as_dict, num_bytes_fudge)
+        else:
+            # Non-Partitioned table
+            logger.warning("Object: %s is NOT partitioned. Can't partition-sample" % self.db_table)
+
+        if not tab_final and scan_if_sample_fails:
+            logger.warning("Switching to full scan for 'stats' as sampling failed")
+            tab_final, col_final = self.scan(as_dict)
+
+        return tab_final, col_final
+
+    def sample_partitions_table(self, percent=0.1, as_dict=False, num_bytes_fudge=FUDGE_NUM_BYTES):
+        """Scan specific percentage of 'partitions' in a table and 'project' statistics from them"""
+        percent = float(percent)
+        logger.info(
+            "Sampling statistics for %.2f%% of partitions for table: %s with: %.2f num_stats fudge factor"
+            % (percent, self.db_table, num_bytes_fudge)
+        )
+        tab_final, col_final = None, None
+
+        if self._table.is_view():
+            raise HiveTableStatsException("Object: %s is NOT a table" % self.db_table)
+
+        try:
+            tab_results, col_results = [], []
+            for partition_spec in self._choose_partitions_to_sample(percent, self._table):
+                tab_stats, col_stats = self._collect_partition_stats(partition_spec, self._table)
+
+                tab_results.append(tab_stats)
+                col_results.append(col_stats)
+
+            total_partitions = len(self._table.table_partitions())
+            tab_final, col_final = self._project_stats_from_samples(
+                tab_results,
+                col_results,
+                as_dict,
+                self._table,
+                total_partitions,
+                len(tab_stats),
+                num_bytes_fudge,
+            )
+            if not as_dict:
+                tab_final, col_final = self._transform_stats_as_tuples(tab_final, col_final, self._table)
+        except Exception as e:
+            logger.warning(
+                "Exception: %s detected while sampling stats on a partitioned table: %s" % (e, self.db_table),
+                exc_info=True,
+            )
+            raise HiveTableStatsException(e)
+        finally:
+            # Replace stats with sensible structures if they are empty
+            tab_final = self._nvl_table_stats(tab_final, as_dict)
+            col_final = self._nvl_column_stats(col_final, as_dict)
+
+        return tab_final, col_final
+
+    def sample_partitions_view(self, percent=0.1, as_dict=False, num_bytes_fudge=FUDGE_NUM_BYTES):
+        """If the view is based on partitioned tables:
+
+        1. Randomly select 'percent' of partitions to sample
+        2. Create temporary view by injecting 'partition sample' where clause
+        3. Collect statistics on a temp view and 'project' overall statistics from the numbers
+        4. Drop temp view
+        """
+        percent = float(percent)
+        logger.info(
+            "Sampling statistics for %.2f%% of partitions for view: %s with: %.2f num_stats fudge factor"
+            % (percent, self.db_table, num_bytes_fudge)
+        )
+        tab_final, col_final = None, None
+
+        if not self._table.is_view():
+            raise HiveTableStatsException("Object: %s is NOT a view" % self.db_table)
+
+        temp_db_view = None
+        try:
+            (
+                temp_where_clause,
+                partitioned_table,
+                total_partitions,
+                partitions_to_scan,
+            ) = self._get_view_sample_where_clause(percent)
+            if not temp_where_clause:
+                logger.warning("Unable to construct partition-wise WHERE clause injection for view: %s" % self.db_table)
+            else:
+                temp_view, temp_view_ddl = self._get_temp_view_ddl(temp_where_clause)
+                temp_db_view = "%s.%s" % (self._table.db_name, temp_view)
+                self._create_temp_view(temp_db_view, temp_view_ddl)
+
+                # HiveTable() object for a temporary stats view
+                temp_view_obj = HiveTable(self._table.db_name, temp_view, self.hive)
+                tab_stats, col_stats = self._scan_object_stats(temp_view_obj)
+                tab_final, col_final = self._project_stats_from_samples(
+                    [tab_stats],
+                    [col_stats],
+                    as_dict,
+                    partitioned_table,
+                    total_partitions,
+                    partitions_to_scan,
+                    num_bytes_fudge,
+                )
+                if not as_dict:
+                    tab_final, col_final = self._transform_stats_as_tuples(tab_final, col_final, temp_view_obj)
+        except Exception as e:
+            logger.warning(
+                "Exception: %s detected while sampling stats on a temporary view: %s" % (e, temp_db_view),
+                exc_info=True,
+            )
+            raise HiveTableStatsException(e)
+        finally:
+            # Drop temporary view whether stat collection was successful or not
+            self._drop_temp_view(temp_db_view)
+            # Replace stats with sensible structures if they are empty
+            tab_final = self._nvl_table_stats(tab_final, as_dict)
+            col_final = self._nvl_column_stats(col_final, as_dict)
+
+        return tab_final, col_final
+
+    def scan(self, as_dict=False):
+        """(full) Scan table/view and calculate statistics"""
+        logger.info("Calculating (exact) statistics for table: %s" % self.db_table)
+        tab_final, col_final = None, None
+
+        try:
+            tab_final, col_final = self._scan_object_stats(self._table)
+
+            if not as_dict:
+                tab_final, col_final = self._transform_stats_as_tuples(tab_final, col_final, self._table)
+        except Exception as e:
+            logger.warning(
+                "Exception: %s detected while full scanning object: %s" % (e, self._table.db_name),
+                exc_info=True,
+            )
+            raise HiveTableStatsException(e)
+        finally:
+            # Replace stats with sensible structures if they are empty
+            tab_final = self._nvl_table_stats(tab_final, as_dict)
+            col_final = self._nvl_column_stats(col_final, as_dict)
+
+        return tab_final, col_final
+
+    def compare(self, percent=0.1, num_bytes_fudge=FUDGE_NUM_BYTES):
+        """Partition sample AND full scan for statistics
+
+        and print comparison results
+        """
+        logger.info("Comparing scan vs sample statistics collection for table: %s" % self.db_table)
+
+        tab_sample, col_sample = self.sample_partitions(percent, as_dict=True, num_bytes_fudge=num_bytes_fudge)
+        tab_scan, col_scan = self.scan(as_dict=True)
+
+        tab_comp, col_comp = self._compare_stats(tab_scan, col_scan, tab_sample, col_sample)
+        self._report_stats(tab_comp, col_comp)
+
+    def get_table_stats(
+        self,
+        db_type,
+        as_dict=False,
+        messages=None,
+        missing=False,
+        colstats=False,
+        partstats=False,
+    ):
+        if db_type == DBTYPE_IMPALA:
+            return self._get_impala_table_stats(as_dict=as_dict, messages=messages, partstats=partstats)
+        if db_type == DBTYPE_HIVE:
+            return self._get_hive_table_stats(as_dict=as_dict, messages=messages, missing=missing, colstats=colstats)
+        raise NotImplementedError("Fetch of table/column stats not implemented for %s" % db_type)
+
+    def set_table_stats(self, tab_stats, db_type, additive=False, dry_run=False, messages=None):
+        if db_type == DBTYPE_IMPALA:
+            self._set_impala_table_stats(tab_stats, additive=additive, dry_run=dry_run, messages=messages)
+        else:
+            raise NotImplementedError("Manual setting table column stats not valid for %s" % db_type)
+
+    def set_column_stats(
+        self,
+        col_stats,
+        db_type,
+        ndv_cap=None,
+        num_null_factor=None,
+        dry_run=False,
+        messages=None,
+    ):
+        if db_type == DBTYPE_IMPALA:
+            self._set_impala_column_stats(
+                col_stats,
+                ndv_cap=ndv_cap,
+                num_null_factor=num_null_factor,
+                dry_run=dry_run,
+                messages=messages,
+            )
+        else:
+            raise NotImplementedError("Manual setting of column stats not valid for %s" % db_type)
+
+    def set_partition_stats(self, part_stats, db_type, additive=False, dry_run=False, messages=None):
+        if db_type == DBTYPE_IMPALA:
+            self._set_impala_partition_stats(part_stats, additive=additive, dry_run=dry_run, messages=messages)
+        else:
+            raise NotImplementedError("Manual setting of partition stats not valid for %s" % db_type)
+
+    def table_partitions(self):
+        partitions = self._table.table_partitions()
+        return {
+            part_str: {
+                "partition_spec": self._table.partition_str_to_spec(part_str),
+                "formal_part_spec": self._table.make_formal_partition_spec(self._table.partition_str_to_spec(part_str)),
+                "num_rows": partitions[part_str].get("#Rows", -1),
+            }
+            for part_str in partitions
+        }
 
     ###########################################################################
     # PRIVATE ROUTINES
@@ -634,29 +880,29 @@ class HiveTableStats:
             elif abs(diff["pct"]) <= 10:
                 ret = "%-12d\t(%s%%)" % (
                     diff["diff"],
-                    colored(f_round(diff["pct"]), "green"),
+                    OffloadMessages.ansi_wrap(f_round(diff["pct"]), "green", True),
                 )
             elif abs(diff["pct"]) <= 50:
                 ret = "%-12d\t(%s%%)" % (
                     diff["diff"],
-                    colored(f_round(diff["pct"]), "yellow"),
+                    OffloadMessages.ansi_wrap(f_round(diff["pct"]), "yellow", True),
                 )
             elif diff["pct"] == 10000:
                 ret = "%-12d\t(%s%%)" % (
                     diff["diff"],
-                    colored(f_round(diff["pct"]), "red", attrs=["reverse", "blink"]),
+                    OffloadMessages.ansi_wrap(f_round(diff["pct"]), ["red", "bold"], True),
                 )
             else:
                 ret = "%-12d\t(%s%%)" % (
                     diff["diff"],
-                    colored(f_round(diff["pct"]), "red"),
+                    OffloadMessages.ansi_wrap(f_round(diff["pct"]), "red", True),
                 )
 
             if ret:
                 ret = "Diff: " + ret
             return ret
 
-        cprint("\nTABLE statistics", "blue", attrs=["bold"])
+        print(OffloadMessages.ansi_wrap("\nTABLE statistics", ["blue", "bold"], True))
 
         for stat in tab_comp:
             print(
@@ -669,7 +915,7 @@ class HiveTableStats:
                 )
             )
 
-        cprint("\nCOLUMN statistics", "blue", attrs=["bold"])
+        print(OffloadMessages.ansi_wrap("\nCOLUMN statistics", ["blue", "bold"], True))
         for col in col_comp:
             print("\n%s" % col.upper())
             for stat in col_comp[col]:
@@ -1103,251 +1349,3 @@ class HiveTableStats:
             col_stats = new_col_stats
 
         return tab_stats, part_stats, col_stats
-
-    ###########################################################################
-    # PROPERTIES
-    ###########################################################################
-
-    @property
-    def db_table(self):
-        return "%s.%s" % (self._table.db_name, self._table.table_name)
-
-    @property
-    def hive(self):
-        return self._table.connection
-
-    ###########################################################################
-    # PUBLIC ROUTINES
-    ###########################################################################
-
-    def sample_partitions(
-        self,
-        percent=0.1,
-        as_dict=False,
-        num_bytes_fudge=FUDGE_NUM_BYTES,
-        scan_if_sample_fails=False,
-    ):
-        """Detect object type (table or view) and call appropriate partition sampling routine
-
-        scan_if_sample_fails: Switch to full scan if sample fails for any reason
-        """
-        percent = float(percent)
-        object_type = "VIEW" if self._table.is_view() else "TABLE"
-        logger.info("Determined object: %s for be a: %s" % (self.db_table, object_type))
-        tab_final, col_final = None, None
-
-        if object_type == "VIEW":
-            tab_final, col_final = self.sample_partitions_view(percent, as_dict, num_bytes_fudge)
-        elif len(self._table.table_partitions()) > 0:
-            # Partitioned table
-            tab_final, col_final = self.sample_partitions_table(percent, as_dict, num_bytes_fudge)
-        else:
-            # Non-Partitioned table
-            logger.warning("Object: %s is NOT partitioned. Can't partition-sample" % self.db_table)
-
-        if not tab_final and scan_if_sample_fails:
-            logger.warning("Switching to full scan for 'stats' as sampling failed")
-            tab_final, col_final = self.scan(as_dict)
-
-        return tab_final, col_final
-
-    def sample_partitions_table(self, percent=0.1, as_dict=False, num_bytes_fudge=FUDGE_NUM_BYTES):
-        """Scan specific percentage of 'partitions' in a table and 'project' statistics from them"""
-        percent = float(percent)
-        logger.info(
-            "Sampling statistics for %.2f%% of partitions for table: %s with: %.2f num_stats fudge factor"
-            % (percent, self.db_table, num_bytes_fudge)
-        )
-        tab_final, col_final = None, None
-
-        if self._table.is_view():
-            raise HiveTableStatsException("Object: %s is NOT a table" % self.db_table)
-
-        try:
-            tab_results, col_results = [], []
-            for partition_spec in self._choose_partitions_to_sample(percent, self._table):
-                tab_stats, col_stats = self._collect_partition_stats(partition_spec, self._table)
-
-                tab_results.append(tab_stats)
-                col_results.append(col_stats)
-
-            total_partitions = len(self._table.table_partitions())
-            tab_final, col_final = self._project_stats_from_samples(
-                tab_results,
-                col_results,
-                as_dict,
-                self._table,
-                total_partitions,
-                len(tab_stats),
-                num_bytes_fudge,
-            )
-            if not as_dict:
-                tab_final, col_final = self._transform_stats_as_tuples(tab_final, col_final, self._table)
-        except Exception as e:
-            logger.warning(
-                "Exception: %s detected while sampling stats on a partitioned table: %s" % (e, self.db_table),
-                exc_info=True,
-            )
-            raise HiveTableStatsException(e)
-        finally:
-            # Replace stats with sensible structures if they are empty
-            tab_final = self._nvl_table_stats(tab_final, as_dict)
-            col_final = self._nvl_column_stats(col_final, as_dict)
-
-        return tab_final, col_final
-
-    def sample_partitions_view(self, percent=0.1, as_dict=False, num_bytes_fudge=FUDGE_NUM_BYTES):
-        """If the view is based on partitioned tables:
-
-        1. Randomly select 'percent' of partitions to sample
-        2. Create temporary view by injecting 'partition sample' where clause
-        3. Collect statistics on a temp view and 'project' overall statistics from the numbers
-        4. Drop temp view
-        """
-        percent = float(percent)
-        logger.info(
-            "Sampling statistics for %.2f%% of partitions for view: %s with: %.2f num_stats fudge factor"
-            % (percent, self.db_table, num_bytes_fudge)
-        )
-        tab_final, col_final = None, None
-
-        if not self._table.is_view():
-            raise HiveTableStatsException("Object: %s is NOT a view" % self.db_table)
-
-        temp_db_view = None
-        try:
-            (
-                temp_where_clause,
-                partitioned_table,
-                total_partitions,
-                partitions_to_scan,
-            ) = self._get_view_sample_where_clause(percent)
-            if not temp_where_clause:
-                logger.warning("Unable to construct partition-wise WHERE clause injection for view: %s" % self.db_table)
-            else:
-                temp_view, temp_view_ddl = self._get_temp_view_ddl(temp_where_clause)
-                temp_db_view = "%s.%s" % (self._table.db_name, temp_view)
-                self._create_temp_view(temp_db_view, temp_view_ddl)
-
-                # HiveTable() object for a temporary stats view
-                temp_view_obj = HiveTable(self._table.db_name, temp_view, self.hive)
-                tab_stats, col_stats = self._scan_object_stats(temp_view_obj)
-                tab_final, col_final = self._project_stats_from_samples(
-                    [tab_stats],
-                    [col_stats],
-                    as_dict,
-                    partitioned_table,
-                    total_partitions,
-                    partitions_to_scan,
-                    num_bytes_fudge,
-                )
-                if not as_dict:
-                    tab_final, col_final = self._transform_stats_as_tuples(tab_final, col_final, temp_view_obj)
-        except Exception as e:
-            logger.warning(
-                "Exception: %s detected while sampling stats on a temporary view: %s" % (e, temp_db_view),
-                exc_info=True,
-            )
-            raise HiveTableStatsException(e)
-        finally:
-            # Drop temporary view whether stat collection was successful or not
-            self._drop_temp_view(temp_db_view)
-            # Replace stats with sensible structures if they are empty
-            tab_final = self._nvl_table_stats(tab_final, as_dict)
-            col_final = self._nvl_column_stats(col_final, as_dict)
-
-        return tab_final, col_final
-
-    def scan(self, as_dict=False):
-        """(full) Scan table/view and calculate statistics"""
-        logger.info("Calculating (exact) statistics for table: %s" % self.db_table)
-        tab_final, col_final = None, None
-
-        try:
-            tab_final, col_final = self._scan_object_stats(self._table)
-
-            if not as_dict:
-                tab_final, col_final = self._transform_stats_as_tuples(tab_final, col_final, self._table)
-        except Exception as e:
-            logger.warning(
-                "Exception: %s detected while full scanning object: %s" % (e, self._table.db_name),
-                exc_info=True,
-            )
-            raise HiveTableStatsException(e)
-        finally:
-            # Replace stats with sensible structures if they are empty
-            tab_final = self._nvl_table_stats(tab_final, as_dict)
-            col_final = self._nvl_column_stats(col_final, as_dict)
-
-        return tab_final, col_final
-
-    def compare(self, percent=0.1, num_bytes_fudge=FUDGE_NUM_BYTES):
-        """Partition sample AND full scan for statistics
-
-        and print comparison results
-        """
-        logger.info("Comparing scan vs sample statistics collection for table: %s" % self.db_table)
-
-        tab_sample, col_sample = self.sample_partitions(percent, as_dict=True, num_bytes_fudge=num_bytes_fudge)
-        tab_scan, col_scan = self.scan(as_dict=True)
-
-        tab_comp, col_comp = self._compare_stats(tab_scan, col_scan, tab_sample, col_sample)
-        self._report_stats(tab_comp, col_comp)
-
-    def get_table_stats(
-        self,
-        db_type,
-        as_dict=False,
-        messages=None,
-        missing=False,
-        colstats=False,
-        partstats=False,
-    ):
-        if db_type == DBTYPE_IMPALA:
-            return self._get_impala_table_stats(as_dict=as_dict, messages=messages, partstats=partstats)
-        if db_type == DBTYPE_HIVE:
-            return self._get_hive_table_stats(as_dict=as_dict, messages=messages, missing=missing, colstats=colstats)
-        raise NotImplementedError("Fetch of table/column stats not implemented for %s" % db_type)
-
-    def set_table_stats(self, tab_stats, db_type, additive=False, dry_run=False, messages=None):
-        if db_type == DBTYPE_IMPALA:
-            self._set_impala_table_stats(tab_stats, additive=additive, dry_run=dry_run, messages=messages)
-        else:
-            raise NotImplementedError("Manual setting table column stats not valid for %s" % db_type)
-
-    def set_column_stats(
-        self,
-        col_stats,
-        db_type,
-        ndv_cap=None,
-        num_null_factor=None,
-        dry_run=False,
-        messages=None,
-    ):
-        if db_type == DBTYPE_IMPALA:
-            self._set_impala_column_stats(
-                col_stats,
-                ndv_cap=ndv_cap,
-                num_null_factor=num_null_factor,
-                dry_run=dry_run,
-                messages=messages,
-            )
-        else:
-            raise NotImplementedError("Manual setting of column stats not valid for %s" % db_type)
-
-    def set_partition_stats(self, part_stats, db_type, additive=False, dry_run=False, messages=None):
-        if db_type == DBTYPE_IMPALA:
-            self._set_impala_partition_stats(part_stats, additive=additive, dry_run=dry_run, messages=messages)
-        else:
-            raise NotImplementedError("Manual setting of partition stats not valid for %s" % db_type)
-
-    def table_partitions(self):
-        partitions = self._table.table_partitions()
-        return {
-            part_str: {
-                "partition_spec": self._table.partition_str_to_spec(part_str),
-                "formal_part_spec": self._table.make_formal_partition_spec(self._table.partition_str_to_spec(part_str)),
-                "num_rows": partitions[part_str].get("#Rows", -1),
-            }
-            for part_str in partitions
-        }

@@ -61,6 +61,7 @@ def get_dfs_from_options(
             dry_run=dry_run,
             do_not_connect=do_not_connect,
             db_path_suffix=config.hdfs_db_path_suffix,
+            config=config,
         )
     if config.offload_fs_scheme in (
         OFFLOAD_FS_SCHEME_S3,

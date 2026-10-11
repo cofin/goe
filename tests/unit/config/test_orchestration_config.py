@@ -81,3 +81,36 @@ def test_config_file_env_key_value_pair(input: str, expected_key: str, expected_
         k, v = output
         assert k == expected_key
         assert v == expected_value
+
+
+GCP_AUTH_ENV = {
+    "GOOGLE_CLOUD_PROJECT": "env-project",
+    "GOOGLE_CLOUD_QUOTA_PROJECT": "env-quota",
+    "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT": "goe-sa@env-project.iam.gserviceaccount.com",
+    "GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT": "dp-caller@env-project.iam.gserviceaccount.com",
+}
+
+
+def test_gcp_auth_options_from_environment():
+    with mock.patch.dict(os.environ, {**FAKE_ORACLE_BQ_ENV, **GCP_AUTH_ENV}):
+        config = OrchestrationConfig.from_dict({})
+    assert config.google_cloud_project == "env-project"
+    assert config.google_cloud_quota_project == "env-quota"
+    assert config.google_impersonate_service_account == "goe-sa@env-project.iam.gserviceaccount.com"
+    assert config.google_dataproc_impersonate_service_account == "dp-caller@env-project.iam.gserviceaccount.com"
+
+
+def test_gcp_auth_options_from_dict_override_environment():
+    with mock.patch.dict(os.environ, {**FAKE_ORACLE_BQ_ENV, **GCP_AUTH_ENV}):
+        config = OrchestrationConfig.from_dict(
+            {
+                "google_cloud_project": "dict-project",
+                "google_cloud_quota_project": "dict-quota",
+                "google_impersonate_service_account": "dict-sa@dict-project.iam.gserviceaccount.com",
+                "google_dataproc_impersonate_service_account": "dict-dp@dict-project.iam.gserviceaccount.com",
+            }
+        )
+    assert config.google_cloud_project == "dict-project"
+    assert config.google_cloud_quota_project == "dict-quota"
+    assert config.google_impersonate_service_account == "dict-sa@dict-project.iam.gserviceaccount.com"
+    assert config.google_dataproc_impersonate_service_account == "dict-dp@dict-project.iam.gserviceaccount.com"

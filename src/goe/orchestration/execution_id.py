@@ -34,7 +34,7 @@ class ExecutionId:
         elif "from_bytes" in kwargs:
             self.id = self._bytes_as_uuid(kwargs["from_bytes"])
         elif "from_uuid" in kwargs:
-            self.id = kwargs["from_uuid"]
+            self.id = self._uuid_as_uuid(kwargs["from_uuid"])
         else:
             self.id = self._new_id()
 
@@ -43,6 +43,24 @@ class ExecutionId:
 
     def __bytes__(self):
         return self.as_bytes()
+
+    @staticmethod
+    def from_str(s: str):
+        return ExecutionId(from_str=s)
+
+    @staticmethod
+    def from_bytes(b: bytes):
+        return ExecutionId(from_bytes=b)
+
+    @staticmethod
+    def from_uuid(u: uuid.UUID):
+        return ExecutionId(from_uuid=u)
+
+    def as_str(self):
+        return str(self.id)
+
+    def as_bytes(self):
+        return self.id.bytes
 
     @staticmethod
     def _bytes_as_uuid(b):
@@ -61,23 +79,12 @@ class ExecutionId:
         return uuid.UUID(s)
 
     @staticmethod
+    def _uuid_as_uuid(u):
+        if u is None:
+            return None
+        assert isinstance(u, uuid.UUID)
+        return u
+
+    @staticmethod
     def _new_id():
         return uuid.uuid4()
-
-    @staticmethod
-    def from_str(s: str):
-        return ExecutionId(from_str=s)
-
-    @staticmethod
-    def from_bytes(b: bytes):
-        return ExecutionId(from_bytes=b)
-
-    @staticmethod
-    def from_uuid(b: uuid.UUID):
-        return ExecutionId(from_uuid=b)
-
-    def as_str(self):
-        return str(self.id)
-
-    def as_bytes(self):
-        return self.id.bytes

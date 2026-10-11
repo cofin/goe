@@ -3,6 +3,7 @@
 - [Overview](#overview)
 - [Example Commands](#example-commands)
 - [Managed Spark version implications](#managed-spark-version-implications)
+- [Self-managed Spark and the Cloud Storage connector](#self-managed-spark-and-the-cloud-storage-connector)
 - [Compute Engine Virtual Machine](#compute-engine-virtual-machine)
 - [Generating Dataset DDL](#generating-dataset-ddl)
 
@@ -14,23 +15,35 @@ This page details Google Cloud Platform (GCP) components required, with recommen
 
 A service account should be provisioned from the GCP project. This service account can be used by any service that will execute GOE commands, for example it could be attached to a Google Compute Engine (GCE) virtual machine (VM).
 
-#### Service Account Authentication & Troubleshooting
+#### Authentication (Application Default Credentials)
 
-To verify which GCP account or service account is active in your current shell session, use:
+GOE does not need service account private key files. BigQuery, Cloud KMS, Cloud Storage, and GOE's `gs://` log files all authenticate with [Application Default Credentials (ADC)](https://cloud.google.com/docs/authentication/application-default-credentials), optionally impersonating the GOE service account:
+
+| Where GOE runs | ADC source | Additional configuration |
+| :------------- | :--------- | :----------------------- |
+| Compute Engine VM, GKE with Workload Identity, Cloud Run | Attached service account (metadata server) | None (recommended) |
+| Operator workstation or CI runner | `gcloud auth application-default login`, or the credential file created by the CI system | `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=<GOE service account email>` |
+| On-premises host or another cloud | [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation-with-other-providers) credential configuration file (`"type": "external_account"`, not a key) referenced by `GOOGLE_APPLICATION_CREDENTIALS` | Optionally `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` |
+
+GOE reads these `offload.env` settings:
+
+- `GOOGLE_CLOUD_PROJECT`: project for BigQuery jobs and Cloud Storage requests. When unset GOE uses the ADC project, then `BIGQUERY_DATASET_PROJECT`.
+- `GOOGLE_CLOUD_QUOTA_PROJECT`: optional quota/billing project for user or impersonated credentials.
+- `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`: optional service account that GOE impersonates for BigQuery, Cloud KMS, Cloud Storage, and `gcloud dataproc` commands. The ADC principal needs `roles/iam.serviceAccountTokenCreator` on that service account and the `iamcredentials.googleapis.com` API must be enabled.
+- `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT`: optional service account that `gcloud dataproc` commands impersonate instead of `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`.
+- `GOOGLE_DATAPROC_SERVICE_ACCOUNT`: runtime service account for Managed Spark serverless batches (`--service-account`). It is not used for permanent clusters, whose jobs run as the cluster VM service account.
+
+The `gcloud` CLI keeps its own credentials, separate from ADC. When an impersonation service account is configured GOE adds `--impersonate-service-account` to every `gcloud dataproc` command; otherwise `gcloud` uses its active account.
+
+Check the active identities and run the GOE credential preflight with:
 
 ```shell
 gcloud auth list
+gcloud auth application-default print-access-token > /dev/null && echo "ADC OK"
+goe connect
 ```
 
-If you are executing GOE on an external node using a service account key file, you must activate the service account and set your default project. Run:
-
-```shell
-gcloud auth activate-service-account SERVICE_ACCOUNT_EMAIL \
-  --key-file=/path/to/service-account-key.json \
-  --project=GOOGLE_PROJECT_ID
-```
-
-Replace `SERVICE_ACCOUNT_EMAIL` with your service account's email, `/path/to/service-account-key.json` with the path to your credentials file, and `GOOGLE_PROJECT_ID` with the ID of your GCP project.
+`goe connect` prints the credential type, principal, impersonated service account, project, and quota project under "Google Cloud credentials", and warns when ADC resolves to a service account key.
 
 ### Cloud Storage Bucket
 
@@ -86,9 +99,16 @@ gcloud iam service-accounts create ${SVC_ACCOUNT} \
 --project ${PROJECT} \
 --description="GOE service account"
 
-gcloud projects add-iam-policy-binding ${PROJECT} \
---member=serviceAccount:${SVC_ACCOUNT}@${PROJECT}.iam.gserviceaccount.com \
---role=roles/iam.serviceAccountUser
+gcloud services enable iamcredentials.googleapis.com --project=${PROJECT}
+```
+
+Optionally allow an operator or CI identity to impersonate the GOE service account with `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`:
+
+```shell
+gcloud iam service-accounts add-iam-policy-binding ${SVC_ACCOUNT}@${PROJECT}.iam.gserviceaccount.com \
+--project=${PROJECT} \
+--member=user:<operator-email> \
+--role=roles/iam.serviceAccountTokenCreator
 ```
 
 ### Cloud Storage Bucket
@@ -111,6 +131,15 @@ gcloud compute networks subnets update ${SUBNET} \
 gcloud projects add-iam-policy-binding ${PROJECT} \
 --member=serviceAccount:${SVC_ACCOUNT}@${PROJECT}.iam.gserviceaccount.com \
 --role=roles/dataproc.worker
+```
+
+In this example the GOE service account is also the serverless runtime service account (`GOOGLE_DATAPROC_SERVICE_ACCOUNT`). The identity that submits a batch needs `roles/iam.serviceAccountUser` on the runtime service account only, not project-wide:
+
+```shell
+gcloud iam service-accounts add-iam-policy-binding ${SVC_ACCOUNT}@${PROJECT}.iam.gserviceaccount.com \
+--project=${PROJECT} \
+--member=serviceAccount:${SVC_ACCOUNT}@${PROJECT}.iam.gserviceaccount.com \
+--role=roles/iam.serviceAccountUser
 ```
 
 ### Managed Service for Apache Spark (permanent)
@@ -268,18 +297,15 @@ TO \"serviceAccount:${SVC_ACCOUNT}@${PROJECT}.iam.gserviceaccount.com\";
 gcloud iam roles create goe_spark_role --project ${PROJECT} \
 --title="GOE Managed Spark Access" --description="GOE Managed Spark Access" \
 --permissions=dataproc.clusters.get,dataproc.clusters.use,\
-dataproc.jobs.create,dataproc.jobs.get,\
-iam.serviceAccounts.getAccessToken \
+dataproc.jobs.create,dataproc.jobs.get \
 --stage=GA
 
 gcloud projects add-iam-policy-binding ${PROJECT} \
 --member=serviceAccount:${SVC_ACCOUNT}@${PROJECT}.iam.gserviceaccount.com \
 --role=projects/${PROJECT}/roles/goe_spark_role
-
-gcloud projects add-iam-policy-binding ${PROJECT} \
---member=serviceAccount:${SVC_ACCOUNT}@${PROJECT}.iam.gserviceaccount.com \
---role=roles/iam.serviceAccountUser
 ```
+
+Jobs submitted to a permanent cluster run as the cluster VM service account, so this role grants no `iam.serviceAccounts.*` permissions. If GOE impersonates a different service account for `gcloud` commands (`GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` or `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT`), grant `goe_spark_role` to that service account instead.
 
 #### goe_spark_serverless_role
 
@@ -326,6 +352,21 @@ The correct JAR file should be copied into place inside the `$OFFLOAD_HOME/lib/`
 cp ${OFFLOAD_HOME}/lib/goe-spark-3.5.3-listener_2.13-1.0.jar ${OFFLOAD_HOME}/lib/goe-spark-listener.jar
 ```
 
+## Self-managed Spark and the Cloud Storage connector
+
+Managed Spark already includes a Cloud Storage connector that authenticates as the runtime or cluster service account. Spark clusters outside Managed Spark (`spark-submit`, Livy, or Spark Thrift Server transports) need the [Cloud Storage connector](https://github.com/GoogleCloudDataproc/hadoop-connectors/blob/branch-3.0.x/gcs/CONFIGURATION.md#authentication) 3.0.x (`gcs-connector-3.0.20-shaded.jar`, Java 11 or later) with ADC:
+
+```text
+spark.hadoop.fs.gs.auth.type=APPLICATION_DEFAULT
+spark.hadoop.fs.gs.auth.impersonation.service.account=<GOE service account email>
+```
+
+- `fs.gs.auth.type=APPLICATION_DEFAULT` uses the metadata server on Google Cloud, or the file named by `GOOGLE_APPLICATION_CREDENTIALS`. Off Google Cloud, distribute a Workload Identity Federation credential configuration file to every node and set `spark.executorEnv.GOOGLE_APPLICATION_CREDENTIALS` and `spark.yarn.appMasterEnv.GOOGLE_APPLICATION_CREDENTIALS` to its path.
+- `fs.gs.auth.impersonation.service.account` is optional; the ADC principal needs `roles/iam.serviceAccountTokenCreator` on that service account.
+- The 2.x key properties (`fs.gs.auth.service.account.enable`, `.email`, `.keyfile`, `.private.key`, `.private.key.id`) were removed in connector 3.0.0 and must not be used.
+
+Set these through `OFFLOAD_TRANSPORT_SPARK_PROPERTIES`. The Spark distribution built by `make spark-target` (`tools/transport/Makefile`) already sets `spark.hadoop.fs.gs.auth.type APPLICATION_DEFAULT`.
+
 ## Compute Engine Virtual Machine
 
 Values supplied below are examples only. Changes are likely to be required for each use case:
@@ -358,7 +399,7 @@ gcloud compute instances create ${INSTANCE_NAME} \
 DDL to create BigQuery datasets can be generated using the `--ddl-file` Offload option. For example:
 
 ```shell
-$OFFLOAD_HOME/bin/offload -t schema1.table1 --create-backend-db --ddl-file=/tmp/schema1.table1.sql
+goe offload -t schema1.table1 --create-backend-db --ddl-file=/tmp/schema1.table1.sql
 ```
 
 After running the command above the file `/tmp/schema1.table1.sql` will contain:

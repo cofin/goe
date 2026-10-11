@@ -95,6 +95,7 @@ from goe.offload.offload_constants import (
     PART_COL_GRANULARITY_YEAR,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.util.gcp_credentials import resolve_gcp_credentials
 from goe.util.misc_functions import backtick_sandwich, format_list_for_logging
 
 ###############################################################################
@@ -172,496 +173,6 @@ class BackendBigQueryApi(BackendApiInterface):
 
     def __del__(self):
         self.close()
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _add_kms_key_to_job_config(self, job_config):
-        """Add kms key details (if set) to job config"""
-        if self._kms_key_name:
-            self._log(
-                "Setting job session option: kms_key_name=%s" % self._kms_key_name,
-                detail=VVERBOSE,
-            )
-            encryption_config = bigquery.EncryptionConfiguration(kms_key_name=self._kms_key_name)
-            job_config.destination_encryption_configuration = encryption_config
-
-    def _add_query_params_to_job_config(self, query_params, job_config):
-        """Convert query_params dict to QueryJobConfig attribute."""
-        if query_params:
-            assert isinstance(query_params, list)
-            assert isinstance(query_params[0], tuple)
-            param_list = []
-            for param_name, param_type, param_value in query_params:
-                param_list.append(bigquery.ScalarQueryParameter(param_name, param_type, param_value))
-            job_config.query_parameters = param_list
-
-    def _backend_capabilities(self) -> dict:
-        return BIGQUERY_BACKEND_CAPABILITIES
-
-    def _backend_project_name(self):
-        """Get name of BigQuery project from client"""
-        if self._bigquery_dataset_project:
-            return self._bigquery_dataset_project
-        if self._client:
-            return self._client.project
-        return None
-
-    def _bq_dataset_id(self, db_name: str) -> str:
-        """Return a dataset id for a db name.
-        Returns str() because dataset drop/exists calls were failing when passing in unicode.
-        """
-        assert db_name
-        if self._backend_project_name():
-            return str("%s.%s" % (self._backend_project_name(), db_name))
-        # Non-connecting calls (for unit tests) will not have set _client
-        return str("%s.%s" % ("a-test-project", db_name))
-
-    def _bq_table_id(self, db_name: str, table_name: str) -> str:
-        assert db_name and table_name
-        return self._bq_dataset_id(db_name) + "." + table_name
-
-    def _check_kms_key_name(self, kms_key_name: str, key_type="job"):
-        """Use startswith() to verify custom key for key name.
-        Example of custom key name:
-            projects/goe-test/locations/us-west3/keyRings/krname/cryptoKeys/etl5
-        Example of what we get from a query_job object:
-            projects/goe-test/locations/us-west3/keyRings/krname/cryptoKeys/etl5/cryptoKeyVersions/1
-        It's worth noting that this has not always been the case, BigQuery behaviour has changed in the past.
-        """
-        if self._kms_key_name and not (kms_key_name or "").startswith(self._kms_key_name):
-            self._warning(
-                "BigQuery %s KMS key: %s\n != expected KMS key: %s" % (key_type, kms_key_name, self._kms_key_name)
-            )
-
-    def _create_external_table(
-        self,
-        db_name,
-        table_name,
-        storage_format,
-        location=None,
-        with_terminator=False,
-    ) -> list:
-        """Create a BigQuery external table using SQL"""
-        assert db_name
-        assert table_name
-        assert storage_format in (
-            FILE_STORAGE_FORMAT_AVRO,
-            FILE_STORAGE_FORMAT_PARQUET,
-        ), f"Unsupported staging format: {storage_format}"
-        assert location
-
-        sql = f"""CREATE EXTERNAL TABLE {self.enclose_object_reference(db_name, table_name)}
-OPTIONS (format ='{storage_format}',
-         uris = ['{location}'],
-         description = 'GOE staging table');
-"""
-        if with_terminator:
-            sql += ";"
-        return self.execute_ddl(sql)
-
-    def _create_table_properties_clause(self, table_properties):
-        """Build OPTIONS clause for CREATE TABLE statements from table_properties dict. Add kms key details (if set)"""
-        if table_properties:
-            assert isinstance(table_properties, dict)
-        else:
-            table_properties = {}
-
-        if self._kms_key_name:
-            table_properties["kms_key_name"] = self.to_backend_literal(self._kms_key_name)
-
-        if table_properties:
-            # We don't enforce literals for values as they can be of different forms, see the following for examples:
-            # https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#table_option_list
-            table_prop_clause = "\nOPTIONS (%s)" % ", ".join("%s=%s" % (k, v) for k, v in table_properties.items())
-        else:
-            table_prop_clause = ""
-        return table_prop_clause
-
-    def _default_job_config(self, query_options: dict = None) -> bigquery.QueryJobConfig:
-        """All connections are normalized to UTC to match data extractions."""
-        if query_options and "use_legacy_sql" in query_options:
-            # No time_zone manipulation for legacy_sql.
-            return bigquery.QueryJobConfig()
-        return bigquery.QueryJobConfig(connection_properties=[bigquery.ConnectionProperty("time_zone", "UTC")])
-
-    def _execute_ddl_or_dml(
-        self,
-        sql,
-        sync=None,
-        query_options=None,
-        log_level=VERBOSE,
-        profile=None,
-        no_log_items=None,
-    ):
-        """See interface for parameter descriptions
-        sync: No concept of sync vs async on BigQuery
-        """
-
-        assert sql
-        assert isinstance(sql, (str, list))
-        return_list = []
-        job_config = self._default_job_config(query_options=query_options)
-        self._add_query_options_to_job_config(query_options, job_config)
-        sqls = [sql] if isinstance(sql, str) else sql
-        for i, run_sql in enumerate(sqls):
-            self._log_or_not(
-                "%s SQL: %s" % (self._sql_engine_name, run_sql),
-                log_level=log_level,
-                no_log_items=no_log_items,
-            )
-            return_list.append(run_sql)
-            if not self._dry_run:
-                query_job = self._client.query(run_sql, job_config=job_config)
-                self._log(
-                    "%s: %s" % (self._log_query_id_tag, query_job.job_id),
-                    detail=VVERBOSE,
-                )
-                query_job.result()
-                if query_job.state != "DONE":
-                    raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
-
-                if query_options and "destination_encryption_configuration" in query_options:
-                    self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
-
-                if profile:
-                    self._log(self._get_query_profile(query_job), detail=VVERBOSE)
-        return return_list
-
-    def _execute_global_session_parameters(self, log_level=VVERBOSE):
-        """Build and return a default QueryJobConfig object for global backend session parameters.
-        As per docs:
-            default_query_job_config – (Optional) Will be merged into job configs passed into the query method.
-        """
-        default_config_white_list = ["maximum_bytes_billed", "use_query_cache"]
-        if self._global_session_parameters:
-            job_config = self._default_job_config()
-            self._log("Setting global session options:", detail=log_level)
-            for k, v in [(str(k).lower(), v) for k, v in self._global_session_parameters.items()]:
-                if k not in default_config_white_list:
-                    raise BackendApiException(
-                        "Modification of job configuration %s is not permitted, valid values: %s"
-                        % (k, ", ".join(default_config_white_list))
-                    )
-                self._log("%s: %s" % (k, v), detail=log_level)
-                setattr(job_config, k, v)
-            return job_config
-        return None
-
-    def _cursor_projection(self, cursor) -> list:
-        """Returns a list of strings describing the projection of a BigQuery result set.
-        Matches behaviour of interface _cursor_projection().
-        """
-        return [_.name.lower() for _ in cursor.schema]
-
-    def _execute_query_fetch_x(
-        self,
-        sql,
-        fetch_action=FETCH_ACTION_ALL,
-        query_options=None,
-        log_level=None,
-        time_sql=False,
-        not_when_dry_running=False,
-        query_params=None,
-        profile=None,
-        as_dict=False,
-    ):
-        """Run a query and fetch results
-        query_options: key/value pairs for session settings
-        query_params: list of (param, type, value) tuples matching params in sql
-        log_level: None = no logging. Otherwise VERBOSE/VVERBOSE etc
-        time_sql: If logging then log SQL elapsed time
-        not_when_dry_running: Some SQL will only work in execute mode, such as queries on a load table
-        as_dict: When True each row is returned as a dict keyed by column name rather than a tuple/list.
-        """
-        assert sql
-        assert fetch_action in (FETCH_ACTION_ALL, FETCH_ACTION_ONE)
-
-        self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
-
-        if self._dry_run and not_when_dry_running:
-            return None
-
-        t1 = datetime.now().replace(microsecond=0)
-
-        job_config = self._default_job_config(query_options=query_options)
-        self._add_kms_key_to_job_config(job_config)
-        self._add_query_options_to_job_config(query_options, job_config)
-        self._add_query_params_to_job_config(query_params, job_config)
-        query_job = self._client.query(sql, job_config=job_config)
-        self._log("%s: %s" % (self._log_query_id_tag, query_job.job_id), detail=VVERBOSE)
-
-        if query_options and "destination_encryption_configuration" in query_options:
-            self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
-
-        if fetch_action == FETCH_ACTION_ALL:
-            results = query_job.result()
-            if query_job.state != "DONE":
-                raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
-            rows = list(results)
-            if as_dict:
-                columns = self._cursor_projection(results)
-                rows = [self._cursor_row_to_dict(columns, _) for _ in rows]
-            else:
-                # Convert the result set from a RowIterator to a list of tuples, matching other backends
-                rows = [tuple(_) for _ in rows]
-        else:
-            results = query_job.result(max_results=1)
-            # lower() matching
-            if query_job.state != "DONE":
-                raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
-            if results and results.total_rows == 0:
-                rows = None
-            else:
-                row_iter = iter(results)
-                rows = tuple(next(row_iter))
-                if as_dict:
-                    columns = self._cursor_projection(results)
-                    rows = self._cursor_row_to_dict(columns, rows)
-                else:
-                    # Convert the result set from a RowIterator to a list of tuples, matching other backends
-                    rows = tuple(rows)
-
-        if time_sql:
-            t2 = datetime.now().replace(microsecond=0)
-            self._log("Elapsed time: %s" % (t2 - t1), detail=VVERBOSE)
-
-        if profile:
-            self._log(self._get_query_profile(query_job), detail=VVERBOSE)
-
-        return rows
-
-    def _forget_bq_table(self, db_name, table_name):
-        """Remove a cached table from state"""
-        table_id = self._bq_table_id(db_name, table_name)
-        if table_id in self._cached_bq_tables:
-            del self._cached_bq_tables[table_id]
-
-    def _get_bq_client(self):
-        # Whenever we make a new connection we should set global session parameters
-        return bigquery.Client(
-            default_query_job_config=self._execute_global_session_parameters(),
-            location=self._bigquery_dataset_location,
-        )
-
-    def _get_kms_client(self):
-        return kms.KeyManagementServiceClient()
-
-    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
-        """No Query SAMPLE clause on BigQuery"""
-        return
-
-    def _gen_bigquery_create_table_sql_text(
-        self,
-        db_name,
-        table_name,
-        column_list,
-        partition_column_names,
-        table_properties=None,
-        sort_column_names=None,
-        for_replace=False,
-    ):
-        """Build a CREATE TABLE SQL statement."""
-        assert db_name
-        assert table_name
-        assert column_list
-        assert valid_column_list(column_list), "Incorrectly formed column_list: %s" % column_list
-        if partition_column_names:
-            assert isinstance(partition_column_names, list)
-            assert len(partition_column_names) == 1, "Only a single partition column is supported"
-        if table_properties:
-            assert isinstance(table_properties, dict)
-
-        col_projection = self._create_table_columns_clause_common(column_list, external=False)
-
-        if partition_column_names:
-            real_col = match_table_column(partition_column_names[0], column_list)
-            if not real_col:
-                self._log(
-                    "Proposed table columns: %s" % str_list_of_columns(column_list),
-                    detail=VERBOSE,
-                )
-                raise BackendApiException("Partition column is not in table columns: %s" % partition_column_names[0])
-            self._debug("Partitioning by: %s %s" % (real_col.name, real_col.data_type))
-            part_clause = "\nPARTITION BY %s" % self.gen_native_range_partition_key_cast(real_col)
-        else:
-            part_clause = ""
-
-        if sort_column_names:
-            sort_csv = ",".join([self.enclose_identifier(_) for _ in sort_column_names])
-            cluster_by_clause = ("\nCLUSTER BY %s" % sort_csv) if sort_csv else ""
-        else:
-            cluster_by_clause = ""
-
-        table_prop_clause = self._create_table_properties_clause(table_properties)
-
-        sql = """CREATE%(or_replace)s TABLE %(db_table)s (
-%(col_projection)s
-)%(part_clause)s%(cluster_by_clause)s%(table_prop_clause)s""" % {
-            "or_replace": " OR REPLACE" if for_replace else "",
-            "db_table": self.enclose_object_reference(db_name, table_name),
-            "col_projection": col_projection,
-            "part_clause": part_clause,
-            "cluster_by_clause": cluster_by_clause,
-            "table_prop_clause": table_prop_clause,
-        }
-        return sql
-
-    def _get_bq_job(self, job_id):
-        """Retrieve BigQuery job"""
-        try:
-            job_details = self._client.get_job(job_id)
-        except NotFound:
-            raise BackendApiException("Backend job not found for job id: %s" % job_id)
-        return job_details
-
-    def _get_bq_table(self, db_name, table_name):
-        """Instantiates bigquery.Table() if required or retrieves from cache"""
-        table_id = self._bq_table_id(db_name, table_name)
-        if table_id not in self._cached_bq_tables:
-            bq_table = self._client.get_table(table_id)
-            if self._no_caching:
-                return bq_table
-            self._cached_bq_tables[table_id] = bq_table
-        return self._cached_bq_tables[table_id]
-
-    def _get_bq_table_partition_field(self, table):
-        """Return the partition field name for a BigQuery client table object as returned by self._get_bq_table()."""
-        assert table
-        if table.time_partitioning and table.time_partitioning.field:
-            return table.time_partitioning.field
-        if table.range_partitioning and table.range_partitioning.field:
-            return table.range_partitioning.field
-        return None
-
-    def _get_bq_table_partition_type(self, table):
-        """Return the partition type for a BigQuery client table object as returned by self._get_bq_table()."""
-        assert table
-        if table.time_partitioning and table.time_partitioning.type_:
-            return table.time_partitioning.type_
-        if table.range_partitioning and table.range_partitioning.range_:
-            return SUPPORTED_BQ_RANGE_PARTITIONING_TYPE
-        return None
-
-    def _get_query_profile(self, query_identifier=None):
-        """On BigQuery query_identifier is a QueryJob object.
-        Slot Usage: This is a statistic derived by us. Text from GOE-1797:
-            When looking at QueryStatistics, slot usage is defined as:
-                ceil(slotMillis/(endTime-creationTime))
-            Using the attributes available from this API, the calculation would be:
-                ceil(slot_millis-(ended-created))
-            Where ended and created are DATETIME, meaning that the interval will need to be converted to ms.
-        """
-        stats = [
-            ("Statistic", "Value"),
-            ("Job id", query_identifier.job_id),
-            ("Started", str(query_identifier.started)),
-            ("Ended", str(query_identifier.ended)),
-            ("Bytes processed", query_identifier.total_bytes_processed),
-            ("Bytes billed", query_identifier.total_bytes_billed),
-            ("Slot milliseconds", str(query_identifier.slot_millis)),
-        ]
-        if query_identifier.num_dml_affected_rows is not None:
-            stats.append(("Num DML affected rows", query_identifier.num_dml_affected_rows))
-        try:
-            if query_identifier.slot_millis and query_identifier.started and query_identifier.ended:
-                elapsed_ms = (query_identifier.ended - query_identifier.started).total_seconds() * 1000
-                stats.append(("Slot usage", str(ceil(query_identifier.slot_millis / elapsed_ms))))
-        except Exception as exc:
-            self._log(
-                "Exception formatting BigQuery profile (non-fatal): %s" % str(exc),
-                detail=VERBOSE,
-            )
-            self._log(traceback.format_exc(), detail=VVERBOSE)
-        return format_list_for_logging(stats)
-
-    def _get_goe_granularity_for_bq_partitioning_type(self, table):
-        """Return the goe granularity for a BigQuery date partition type.
-        table is a table object as returned by self._get_bq_table().
-        """
-        assert table
-        partitioning_type = self._get_bq_table_partition_type(table)
-        if partitioning_type not in SUPPORTED_BQ_DATE_PARTITIONING_TYPES:
-            raise NotImplementedError("BigQuery partitioning type is not supported: %s" % partitioning_type)
-        # BQ granularities start with same letter as GOE granularities
-        return partitioning_type[0]
-
-    def _get_table_ddl(self, db_name, table_name, terminate_sql=False):
-        """Return DDL string for a table or view."""
-        assert db_name and table_name
-        self._log("Fetching DDL: %s.%s" % (db_name, table_name), detail=VVERBOSE)
-        sql = dedent(
-            """\
-                                SELECT ddl
-                                FROM   `%s`.INFORMATION_SCHEMA.TABLES
-                                WHERE  table_catalog = @project
-                                AND    table_schema = @db_name
-                                AND    table_name = @table_name"""
-        ) % self._bq_dataset_id(db_name)
-        query_params = [
-            ("project", BIGQUERY_TYPE_STRING, self._backend_project_name()),
-            ("db_name", BIGQUERY_TYPE_STRING, db_name),
-            ("table_name", BIGQUERY_TYPE_STRING, table_name),
-        ]
-        try:
-            row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=query_params)
-        except NotFound as exc:
-            self._log(f"NotFound exception: {exc!s}")
-            raise BackendApiException("BigQuery dataset not found: %s" % self._bq_dataset_id(db_name)) from None
-        if not row:
-            raise BackendApiException("Object does not exist for DDL retrieval: %s.%s" % (db_name, table_name))
-        ddl_str = row[0]
-        if not terminate_sql:
-            ddl_str = ddl_str.rstrip(";")
-        return ddl_str
-
-    def _has_outstanding_streaming_inserts(self, db_name, table_name):
-        table = self._get_bq_table(db_name, table_name)
-        return bool(table.streaming_buffer and table.streaming_buffer.estimated_rows)
-
-    def _invalid_identifier_character_re(self):
-        return BIGQUERY_INVALID_IDENTIFIER_CHARS_RE
-
-    def _is_external_table(self, db_name, table_name):
-        table = self._get_bq_table(db_name, table_name)
-        return bool(table.table_type == "EXTERNAL")
-
-    def _object_exists(self, db_name, table_name, table_type=None):
-        """Test if an object (TABLE or VIEW) exists.
-        If table_type is set then we look for specific type, otherwise either will do.
-        """
-        try:
-            table = self._client.get_table(self._bq_table_id(db_name, table_name))
-            if not table_type:
-                return True
-            if table_type.upper() == "TABLE" and table.table_type.upper() in [
-                "TABLE",
-                "EXTERNAL",
-            ]:
-                return True
-            if table.table_type.upper() == table_type.upper():
-                return True
-            return False
-        except NotFound:
-            return False
-
-    def _add_query_options_to_job_config(self, query_options: dict, job_config: bigquery.QueryJobConfig):
-        """Convert query_options dict to QueryJobConfig attribute."""
-        if query_options:
-            assert isinstance(query_options, dict)
-            for k, v in query_options.items():
-                setattr(job_config, k, v)
-                self._log("Setting job session option: %s=%s" % (k, v), detail=VVERBOSE)
-
-    def _table_is_partitioned(self, db_name: str, table_name: str):
-        """BigQuery specific helper to identify if a table is partitioned"""
-        assert db_name and table_name
-        table = self._get_bq_table(db_name, table_name)
-        return bool(
-            self._get_bq_table_partition_type(table)
-            in (SUPPORTED_BQ_DATE_PARTITIONING_TYPES + [SUPPORTED_BQ_RANGE_PARTITIONING_TYPE])
-        )
 
     ###########################################################################
     # PUBLIC METHODS
@@ -2235,3 +1746,501 @@ FROM   %(from_db_table)s%(where)s""" % {
         if column.data_type == GOE_TYPE_INTERVAL_YM:
             return new_column(column, BIGQUERY_TYPE_STRING, safe_mapping=False)
         raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
+
+    ###########################################################################
+    # PRIVATE METHODS
+    ###########################################################################
+
+    def _add_kms_key_to_job_config(self, job_config):
+        """Add kms key details (if set) to job config"""
+        if self._kms_key_name:
+            self._log(
+                "Setting job session option: kms_key_name=%s" % self._kms_key_name,
+                detail=VVERBOSE,
+            )
+            encryption_config = bigquery.EncryptionConfiguration(kms_key_name=self._kms_key_name)
+            job_config.destination_encryption_configuration = encryption_config
+
+    def _add_query_params_to_job_config(self, query_params, job_config):
+        """Convert query_params dict to QueryJobConfig attribute."""
+        if query_params:
+            assert isinstance(query_params, list)
+            assert isinstance(query_params[0], tuple)
+            param_list = []
+            for param_name, param_type, param_value in query_params:
+                param_list.append(bigquery.ScalarQueryParameter(param_name, param_type, param_value))
+            job_config.query_parameters = param_list
+
+    def _backend_capabilities(self) -> dict:
+        return BIGQUERY_BACKEND_CAPABILITIES
+
+    def _backend_project_name(self):
+        """Get name of BigQuery project from client"""
+        if self._bigquery_dataset_project:
+            return self._bigquery_dataset_project
+        if self._client:
+            return self._client.project
+        return None
+
+    def _bq_dataset_id(self, db_name: str) -> str:
+        """Return a dataset id for a db name.
+        Returns str() because dataset drop/exists calls were failing when passing in unicode.
+        """
+        assert db_name
+        if self._backend_project_name():
+            return str("%s.%s" % (self._backend_project_name(), db_name))
+        # Non-connecting calls (for unit tests) will not have set _client
+        return str("%s.%s" % ("a-test-project", db_name))
+
+    def _bq_table_id(self, db_name: str, table_name: str) -> str:
+        assert db_name and table_name
+        return self._bq_dataset_id(db_name) + "." + table_name
+
+    def _check_kms_key_name(self, kms_key_name: str, key_type="job"):
+        """Use startswith() to verify custom key for key name.
+        Example of custom key name:
+            projects/goe-test/locations/us-west3/keyRings/krname/cryptoKeys/etl5
+        Example of what we get from a query_job object:
+            projects/goe-test/locations/us-west3/keyRings/krname/cryptoKeys/etl5/cryptoKeyVersions/1
+        It's worth noting that this has not always been the case, BigQuery behaviour has changed in the past.
+        """
+        if self._kms_key_name and not (kms_key_name or "").startswith(self._kms_key_name):
+            self._warning(
+                "BigQuery %s KMS key: %s\n != expected KMS key: %s" % (key_type, kms_key_name, self._kms_key_name)
+            )
+
+    def _create_external_table(
+        self,
+        db_name,
+        table_name,
+        storage_format,
+        location=None,
+        with_terminator=False,
+    ) -> list:
+        """Create a BigQuery external table using SQL"""
+        assert db_name
+        assert table_name
+        assert storage_format in (
+            FILE_STORAGE_FORMAT_AVRO,
+            FILE_STORAGE_FORMAT_PARQUET,
+        ), f"Unsupported staging format: {storage_format}"
+        assert location
+
+        sql = f"""CREATE EXTERNAL TABLE {self.enclose_object_reference(db_name, table_name)}
+OPTIONS (format ='{storage_format}',
+         uris = ['{location}'],
+         description = 'GOE staging table');
+"""
+        if with_terminator:
+            sql += ";"
+        return self.execute_ddl(sql)
+
+    def _create_table_properties_clause(self, table_properties):
+        """Build OPTIONS clause for CREATE TABLE statements from table_properties dict. Add kms key details (if set)"""
+        if table_properties:
+            assert isinstance(table_properties, dict)
+        else:
+            table_properties = {}
+
+        if self._kms_key_name:
+            table_properties["kms_key_name"] = self.to_backend_literal(self._kms_key_name)
+
+        if table_properties:
+            # We don't enforce literals for values as they can be of different forms, see the following for examples:
+            # https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#table_option_list
+            table_prop_clause = "\nOPTIONS (%s)" % ", ".join("%s=%s" % (k, v) for k, v in table_properties.items())
+        else:
+            table_prop_clause = ""
+        return table_prop_clause
+
+    def _default_job_config(self, query_options: dict = None) -> bigquery.QueryJobConfig:
+        """All connections are normalized to UTC to match data extractions."""
+        if query_options and "use_legacy_sql" in query_options:
+            # No time_zone manipulation for legacy_sql.
+            return bigquery.QueryJobConfig()
+        return bigquery.QueryJobConfig(connection_properties=[bigquery.ConnectionProperty("time_zone", "UTC")])
+
+    def _execute_ddl_or_dml(
+        self,
+        sql,
+        sync=None,
+        query_options=None,
+        log_level=VERBOSE,
+        profile=None,
+        no_log_items=None,
+    ):
+        """See interface for parameter descriptions
+        sync: No concept of sync vs async on BigQuery
+        """
+
+        assert sql
+        assert isinstance(sql, (str, list))
+        return_list = []
+        job_config = self._default_job_config(query_options=query_options)
+        self._add_query_options_to_job_config(query_options, job_config)
+        sqls = [sql] if isinstance(sql, str) else sql
+        for i, run_sql in enumerate(sqls):
+            self._log_or_not(
+                "%s SQL: %s" % (self._sql_engine_name, run_sql),
+                log_level=log_level,
+                no_log_items=no_log_items,
+            )
+            return_list.append(run_sql)
+            if not self._dry_run:
+                query_job = self._client.query(run_sql, job_config=job_config)
+                self._log(
+                    "%s: %s" % (self._log_query_id_tag, query_job.job_id),
+                    detail=VVERBOSE,
+                )
+                query_job.result()
+                if query_job.state != "DONE":
+                    raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
+
+                if query_options and "destination_encryption_configuration" in query_options:
+                    self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
+
+                if profile:
+                    self._log(self._get_query_profile(query_job), detail=VVERBOSE)
+        return return_list
+
+    def _execute_global_session_parameters(self, log_level=VVERBOSE):
+        """Build and return a default QueryJobConfig object for global backend session parameters.
+        As per docs:
+            default_query_job_config – (Optional) Will be merged into job configs passed into the query method.
+        """
+        default_config_white_list = ["maximum_bytes_billed", "use_query_cache"]
+        if self._global_session_parameters:
+            job_config = self._default_job_config()
+            self._log("Setting global session options:", detail=log_level)
+            for k, v in [(str(k).lower(), v) for k, v in self._global_session_parameters.items()]:
+                if k not in default_config_white_list:
+                    raise BackendApiException(
+                        "Modification of job configuration %s is not permitted, valid values: %s"
+                        % (k, ", ".join(default_config_white_list))
+                    )
+                self._log("%s: %s" % (k, v), detail=log_level)
+                setattr(job_config, k, v)
+            return job_config
+        return None
+
+    def _cursor_projection(self, cursor) -> list:
+        """Returns a list of strings describing the projection of a BigQuery result set.
+        Matches behaviour of interface _cursor_projection().
+        """
+        return [_.name.lower() for _ in cursor.schema]
+
+    def _execute_query_fetch_x(
+        self,
+        sql,
+        fetch_action=FETCH_ACTION_ALL,
+        query_options=None,
+        log_level=None,
+        time_sql=False,
+        not_when_dry_running=False,
+        query_params=None,
+        profile=None,
+        as_dict=False,
+    ):
+        """Run a query and fetch results
+        query_options: key/value pairs for session settings
+        query_params: list of (param, type, value) tuples matching params in sql
+        log_level: None = no logging. Otherwise VERBOSE/VVERBOSE etc
+        time_sql: If logging then log SQL elapsed time
+        not_when_dry_running: Some SQL will only work in execute mode, such as queries on a load table
+        as_dict: When True each row is returned as a dict keyed by column name rather than a tuple/list.
+        """
+        assert sql
+        assert fetch_action in (FETCH_ACTION_ALL, FETCH_ACTION_ONE)
+
+        self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
+
+        if self._dry_run and not_when_dry_running:
+            return None
+
+        t1 = datetime.now().replace(microsecond=0)
+
+        job_config = self._default_job_config(query_options=query_options)
+        self._add_kms_key_to_job_config(job_config)
+        self._add_query_options_to_job_config(query_options, job_config)
+        self._add_query_params_to_job_config(query_params, job_config)
+        query_job = self._client.query(sql, job_config=job_config)
+        self._log("%s: %s" % (self._log_query_id_tag, query_job.job_id), detail=VVERBOSE)
+
+        if query_options and "destination_encryption_configuration" in query_options:
+            self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
+
+        if fetch_action == FETCH_ACTION_ALL:
+            results = query_job.result()
+            if query_job.state != "DONE":
+                raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
+            rows = list(results)
+            if as_dict:
+                columns = self._cursor_projection(results)
+                rows = [self._cursor_row_to_dict(columns, _) for _ in rows]
+            else:
+                # Convert the result set from a RowIterator to a list of tuples, matching other backends
+                rows = [tuple(_) for _ in rows]
+        else:
+            results = query_job.result(max_results=1)
+            # lower() matching
+            if query_job.state != "DONE":
+                raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
+            if results and results.total_rows == 0:
+                rows = None
+            else:
+                row_iter = iter(results)
+                rows = tuple(next(row_iter))
+                if as_dict:
+                    columns = self._cursor_projection(results)
+                    rows = self._cursor_row_to_dict(columns, rows)
+                else:
+                    # Convert the result set from a RowIterator to a list of tuples, matching other backends
+                    rows = tuple(rows)
+
+        if time_sql:
+            t2 = datetime.now().replace(microsecond=0)
+            self._log("Elapsed time: %s" % (t2 - t1), detail=VVERBOSE)
+
+        if profile:
+            self._log(self._get_query_profile(query_job), detail=VVERBOSE)
+
+        return rows
+
+    def _forget_bq_table(self, db_name, table_name):
+        """Remove a cached table from state"""
+        table_id = self._bq_table_id(db_name, table_name)
+        if table_id in self._cached_bq_tables:
+            del self._cached_bq_tables[table_id]
+
+    def _get_bq_client(self):
+        """Return a BigQuery client bound to the shared GOE Google Cloud credentials and job project.
+
+        Global session parameters are applied as the default query job config whenever a new client is created.
+        The quota project travels on the credentials object, so no client_options override is needed.
+        """
+        gcp = resolve_gcp_credentials(self._connection_options)
+        return bigquery.Client(
+            project=gcp.project,
+            credentials=gcp.credentials,
+            default_query_job_config=self._execute_global_session_parameters(),
+            location=self._bigquery_dataset_location,
+        )
+
+    def _get_kms_client(self):
+        """Return a Cloud KMS client bound to the shared GOE Google Cloud credentials."""
+        return kms.KeyManagementServiceClient(credentials=resolve_gcp_credentials(self._connection_options).credentials)
+
+    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
+        """No Query SAMPLE clause on BigQuery"""
+        return
+
+    def _gen_bigquery_create_table_sql_text(
+        self,
+        db_name,
+        table_name,
+        column_list,
+        partition_column_names,
+        table_properties=None,
+        sort_column_names=None,
+        for_replace=False,
+    ):
+        """Build a CREATE TABLE SQL statement."""
+        assert db_name
+        assert table_name
+        assert column_list
+        assert valid_column_list(column_list), "Incorrectly formed column_list: %s" % column_list
+        if partition_column_names:
+            assert isinstance(partition_column_names, list)
+            assert len(partition_column_names) == 1, "Only a single partition column is supported"
+        if table_properties:
+            assert isinstance(table_properties, dict)
+
+        col_projection = self._create_table_columns_clause_common(column_list, external=False)
+
+        if partition_column_names:
+            real_col = match_table_column(partition_column_names[0], column_list)
+            if not real_col:
+                self._log(
+                    "Proposed table columns: %s" % str_list_of_columns(column_list),
+                    detail=VERBOSE,
+                )
+                raise BackendApiException("Partition column is not in table columns: %s" % partition_column_names[0])
+            self._debug("Partitioning by: %s %s" % (real_col.name, real_col.data_type))
+            part_clause = "\nPARTITION BY %s" % self.gen_native_range_partition_key_cast(real_col)
+        else:
+            part_clause = ""
+
+        if sort_column_names:
+            sort_csv = ",".join([self.enclose_identifier(_) for _ in sort_column_names])
+            cluster_by_clause = ("\nCLUSTER BY %s" % sort_csv) if sort_csv else ""
+        else:
+            cluster_by_clause = ""
+
+        table_prop_clause = self._create_table_properties_clause(table_properties)
+
+        sql = """CREATE%(or_replace)s TABLE %(db_table)s (
+%(col_projection)s
+)%(part_clause)s%(cluster_by_clause)s%(table_prop_clause)s""" % {
+            "or_replace": " OR REPLACE" if for_replace else "",
+            "db_table": self.enclose_object_reference(db_name, table_name),
+            "col_projection": col_projection,
+            "part_clause": part_clause,
+            "cluster_by_clause": cluster_by_clause,
+            "table_prop_clause": table_prop_clause,
+        }
+        return sql
+
+    def _get_bq_job(self, job_id):
+        """Retrieve BigQuery job"""
+        try:
+            job_details = self._client.get_job(job_id)
+        except NotFound:
+            raise BackendApiException("Backend job not found for job id: %s" % job_id)
+        return job_details
+
+    def _get_bq_table(self, db_name, table_name):
+        """Instantiates bigquery.Table() if required or retrieves from cache"""
+        table_id = self._bq_table_id(db_name, table_name)
+        if table_id not in self._cached_bq_tables:
+            bq_table = self._client.get_table(table_id)
+            if self._no_caching:
+                return bq_table
+            self._cached_bq_tables[table_id] = bq_table
+        return self._cached_bq_tables[table_id]
+
+    def _get_bq_table_partition_field(self, table):
+        """Return the partition field name for a BigQuery client table object as returned by self._get_bq_table()."""
+        assert table
+        if table.time_partitioning and table.time_partitioning.field:
+            return table.time_partitioning.field
+        if table.range_partitioning and table.range_partitioning.field:
+            return table.range_partitioning.field
+        return None
+
+    def _get_bq_table_partition_type(self, table):
+        """Return the partition type for a BigQuery client table object as returned by self._get_bq_table()."""
+        assert table
+        if table.time_partitioning and table.time_partitioning.type_:
+            return table.time_partitioning.type_
+        if table.range_partitioning and table.range_partitioning.range_:
+            return SUPPORTED_BQ_RANGE_PARTITIONING_TYPE
+        return None
+
+    def _get_query_profile(self, query_identifier=None):
+        """On BigQuery query_identifier is a QueryJob object.
+        Slot Usage: This is a statistic derived by us. Text from GOE-1797:
+            When looking at QueryStatistics, slot usage is defined as:
+                ceil(slotMillis/(endTime-creationTime))
+            Using the attributes available from this API, the calculation would be:
+                ceil(slot_millis-(ended-created))
+            Where ended and created are DATETIME, meaning that the interval will need to be converted to ms.
+        """
+        stats = [
+            ("Statistic", "Value"),
+            ("Job id", query_identifier.job_id),
+            ("Started", str(query_identifier.started)),
+            ("Ended", str(query_identifier.ended)),
+            ("Bytes processed", query_identifier.total_bytes_processed),
+            ("Bytes billed", query_identifier.total_bytes_billed),
+            ("Slot milliseconds", str(query_identifier.slot_millis)),
+        ]
+        if query_identifier.num_dml_affected_rows is not None:
+            stats.append(("Num DML affected rows", query_identifier.num_dml_affected_rows))
+        try:
+            if query_identifier.slot_millis and query_identifier.started and query_identifier.ended:
+                elapsed_ms = (query_identifier.ended - query_identifier.started).total_seconds() * 1000
+                stats.append(("Slot usage", str(ceil(query_identifier.slot_millis / elapsed_ms))))
+        except Exception as exc:
+            self._log(
+                "Exception formatting BigQuery profile (non-fatal): %s" % str(exc),
+                detail=VERBOSE,
+            )
+            self._log(traceback.format_exc(), detail=VVERBOSE)
+        return format_list_for_logging(stats)
+
+    def _get_goe_granularity_for_bq_partitioning_type(self, table):
+        """Return the goe granularity for a BigQuery date partition type.
+        table is a table object as returned by self._get_bq_table().
+        """
+        assert table
+        partitioning_type = self._get_bq_table_partition_type(table)
+        if partitioning_type not in SUPPORTED_BQ_DATE_PARTITIONING_TYPES:
+            raise NotImplementedError("BigQuery partitioning type is not supported: %s" % partitioning_type)
+        # BQ granularities start with same letter as GOE granularities
+        return partitioning_type[0]
+
+    def _get_table_ddl(self, db_name, table_name, terminate_sql=False):
+        """Return DDL string for a table or view."""
+        assert db_name and table_name
+        self._log("Fetching DDL: %s.%s" % (db_name, table_name), detail=VVERBOSE)
+        sql = dedent(
+            """\
+                                SELECT ddl
+                                FROM   `%s`.INFORMATION_SCHEMA.TABLES
+                                WHERE  table_catalog = @project
+                                AND    table_schema = @db_name
+                                AND    table_name = @table_name"""
+        ) % self._bq_dataset_id(db_name)
+        query_params = [
+            ("project", BIGQUERY_TYPE_STRING, self._backend_project_name()),
+            ("db_name", BIGQUERY_TYPE_STRING, db_name),
+            ("table_name", BIGQUERY_TYPE_STRING, table_name),
+        ]
+        try:
+            row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=query_params)
+        except NotFound as exc:
+            self._log(f"NotFound exception: {exc!s}")
+            raise BackendApiException("BigQuery dataset not found: %s" % self._bq_dataset_id(db_name)) from None
+        if not row:
+            raise BackendApiException("Object does not exist for DDL retrieval: %s.%s" % (db_name, table_name))
+        ddl_str = row[0]
+        if not terminate_sql:
+            ddl_str = ddl_str.rstrip(";")
+        return ddl_str
+
+    def _has_outstanding_streaming_inserts(self, db_name, table_name):
+        table = self._get_bq_table(db_name, table_name)
+        return bool(table.streaming_buffer and table.streaming_buffer.estimated_rows)
+
+    def _invalid_identifier_character_re(self):
+        return BIGQUERY_INVALID_IDENTIFIER_CHARS_RE
+
+    def _is_external_table(self, db_name, table_name):
+        table = self._get_bq_table(db_name, table_name)
+        return bool(table.table_type == "EXTERNAL")
+
+    def _object_exists(self, db_name, table_name, table_type=None):
+        """Test if an object (TABLE or VIEW) exists.
+        If table_type is set then we look for specific type, otherwise either will do.
+        """
+        try:
+            table = self._client.get_table(self._bq_table_id(db_name, table_name))
+            if not table_type:
+                return True
+            if table_type.upper() == "TABLE" and table.table_type.upper() in [
+                "TABLE",
+                "EXTERNAL",
+            ]:
+                return True
+            if table.table_type.upper() == table_type.upper():
+                return True
+            return False
+        except NotFound:
+            return False
+
+    def _add_query_options_to_job_config(self, query_options: dict, job_config: bigquery.QueryJobConfig):
+        """Convert query_options dict to QueryJobConfig attribute."""
+        if query_options:
+            assert isinstance(query_options, dict)
+            for k, v in query_options.items():
+                setattr(job_config, k, v)
+                self._log("Setting job session option: %s=%s" % (k, v), detail=VVERBOSE)
+
+    def _table_is_partitioned(self, db_name: str, table_name: str):
+        """BigQuery specific helper to identify if a table is partitioned"""
+        assert db_name and table_name
+        table = self._get_bq_table(db_name, table_name)
+        return bool(
+            self._get_bq_table_partition_type(table)
+            in (SUPPORTED_BQ_DATE_PARTITIONING_TYPES + [SUPPORTED_BQ_RANGE_PARTITIONING_TYPE])
+        )

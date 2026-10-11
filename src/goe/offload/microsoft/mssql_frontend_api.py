@@ -128,6 +128,266 @@ class MSSQLFrontendApi(FrontendApiInterface):
             pass
 
     ###########################################################################
+    # PUBLIC METHODS
+    ###########################################################################
+
+    def close(self, force=False):
+        self._disconnect(force=force)
+
+    def agg_validate_sample_column_names(self, schema, table_name, num_required: int = 5) -> list:
+        raise NotImplementedError("MSSQL agg_validate_sample_column_names() not implemented.")
+
+    def create_new_connection(self, user_name, user_password, trace_action_override=None):
+        self._debug("Making new connection with user %s" % user_name)
+        server, port, database = extract_connection_details_from_dsn(self._connection_options.rdbms_dsn)
+        client = setup_mssql_session(server, port, database, user_name, user_password)
+        # client.autocommit = True
+        return client
+
+    def enclose_identifier(self, identifier):
+        if identifier is None:
+            return None
+        return "[%s]" % identifier
+
+    def enclose_query_hints(self, hint_contents):
+        if not hint_contents:
+            return ""
+        if isinstance(hint_contents, str):
+            hint_contents = [hint_contents]
+        return "OPTION({})".format(", ".join(str(_) for _ in hint_contents if _))
+
+    def enclosure_character(self):
+        return None
+
+    def execute_function(
+        self,
+        sql_fn,
+        return_type=None,
+        return_type_name=None,
+        arg_list=None,
+        log_level=VERBOSE,
+        not_when_dry_running=False,
+        commit=False,
+    ):
+        raise NotImplementedError("MSSQL execute_function not implemented.")
+
+    def format_query_parameter(self, param_name):
+        """No named parameters so always return "%s" """
+        return "%s"
+
+    def frontend_db_name(self):
+        return self._frontend_type.upper()
+
+    def frontend_version(self):
+        sql = "SELECT @@VERSION"
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
+        return row[0] if row else None
+
+    def gen_column_object(self, column_name, **kwargs):
+        return MSSQLColumn(column_name, **kwargs)
+
+    def generic_string_data_type(self) -> str:
+        return MSSQL_TYPE_VARCHAR
+
+    def get_columns(self, schema, table_name):
+        # TODO: byte_length - is this the same as Oracle query: CHARACTER_MAXIMUM_LENGTH / CHARACTER_OCTET_LENGTH
+        # TODO: hidden_column - do we have the concept of hidden_columns in MSSQL? If not remove from MSSQLColumn.from_mssql
+        q = """
+                    SELECT column_name
+                    ,      ordinal_position                                 AS column_id
+                    ,      is_nullable                                      AS nullable
+                    ,      data_type
+                    ,      COALESCE(numeric_precision, datetime_precision)  AS data_precision
+                    ,      numeric_scale                                    AS data_scale
+                    ,      character_octet_length                           AS byte_length
+                    ,      column_default                                   AS data_default
+                    ,      NULL                                             AS hidden_columns
+                    ,      character_maximum_length                         AS char_length
+                    FROM   information_schema.columns
+                    WHERE  table_schema = %s
+                    AND    table_name   = %s
+                    ORDER BY
+                           ordinal_position"""
+
+        cols = []
+        for row in self.execute_query_fetch_all(q, query_params=(schema, table_name)):
+            col = MSSQLColumn.from_mssql(row)
+            cols.append(col)
+        return cols
+
+    def get_current_scn(self) -> int:
+        # TODO: Is min_active_rowversion() for database equivalent to v$database.current_scn?
+        # https://www.mssqltips.com/sqlservertip/3423/sql-server-rowversion-functions-minactiverowversion-vs-dbts/
+        raise NotImplementedError("MSSQL get_current_scn not implemented.")
+
+    def get_db_unique_name(self) -> str:
+        return self._connection_options.rdbms_dsn.split("=")[1]
+
+    def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
+        assert schema and table_name
+        assert column_names
+        if isinstance(column_names, str):
+            column_names = [column_names]
+        projection = ",".join([self.enclose_identifier(_) for _ in column_names])
+        order_clause = f" ORDER BY {projection}" if order_results else ""
+
+        raise NotImplementedError("MSSQL get_distinct_column_values not implemented.")
+
+    def get_object_ddl(
+        self,
+        schema,
+        object_name,
+        object_type,
+        as_list=False,
+        terminate_sql=False,
+        remap_schema=None,
+    ):
+        raise NotImplementedError("MSSQL get_object_ddl not implemented.")
+
+    def get_command_step_codes(self) -> list:
+        raise NotImplementedError("MSSQL get_command_step_codes is not implemented.")
+
+    def get_command_executions(self) -> list[dict[str, str | Any]]:
+        raise NotImplementedError("MSSQL get_command_executions is not implemented.")
+
+    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | Any]:
+        raise NotImplementedError("MSSQL get_command_execution_status is not implemented.")
+
+    def get_command_execution_steps(self, execution_id: ExecutionId) -> list[dict[str, str | Any]]:
+        raise NotImplementedError("MSSQL get_command_execution_steps is not implemented.")
+
+    def get_partition_column_names(self, schema, table_name, conv_fn=None):
+        raise NotImplementedError("MSSQL get_partition_column_names not implemented.")
+
+    def get_partition_columns(self, schema, table_name):
+        raise NotImplementedError("MSSQL get_partition_column_names not implemented.")
+
+    def get_primary_key_column_names(self, schema, table_name):
+        q = """
+            SELECT COL_NAME(ic.object_id, ic.column_id) AS column_name
+            FROM   sys.tables           t
+                   INNER JOIN
+                   sys.indexes          i
+                   ON (t.object_id = i.object_id)
+                   INNER JOIN
+                   sys.index_columns    ic
+                   ON (     i.object_id = ic.object_id
+                       AND  i.index_id  = ic.index_id)
+                   INNER JOIN
+                   sys.schemas          s
+                   ON (t.schema_id    = s.schema_id)
+            WHERE  s.name = %s
+            AND    t.name = %s
+            AND    i.is_primary_key = 1
+            ORDER BY
+                   ic.column_id"""
+
+        rows = self.execute_query_fetch_all(q, query_params=(schema, table_name))
+        return [_[0] for _ in rows] if rows else []
+
+    def get_session_option(self, option_name):
+        raise NotImplementedError("MSSQL get_session_option not implemented.")
+
+    def get_session_user(self) -> str:
+        raise NotImplementedError("MSSQL get_session_user not implemented.")
+
+    def get_subpartition_column_names(self, schema, table_name, conv_fn=None):
+        raise NotImplementedError("MSSQL get_subpartition_column_names not implemented.")
+
+    def get_subpartition_columns(self, schema, table_name):
+        raise NotImplementedError("MSSQL get_subpartition_columns not implemented.")
+
+    def get_table_row_count(
+        self,
+        schema,
+        table_name,
+        filter_clause=None,
+        filter_clause_params=None,
+        hint_block=None,
+        not_when_dry_running=False,
+        log_level=VVERBOSE,
+    ):
+        raise NotImplementedError("MSSQL get_table_row_count not implemented.")
+
+    def get_table_size(self, schema, table_name):
+        """Not actually used since we always choose Sqoop in OffloadOperation.set_offload_method
+        The appropriateness of the SP_SPACEUSED procedure for calculating table size must be validated properly
+        If it is appropriate then we currently use the "data" size column as this is what Sqoop would extract
+        Other columns are reserved_size, index_size and unused
+        Assumption here on limited testing is that output is always in KB and suffixed as such. This might not be true
+        SP_SPACEUSED is not valid for Azure Serverless SQL Pools
+        """
+        q = f'SP_SPACEUSED "{schema}.{table_name}"'
+        rows = self.execute_query_fetch_all(q, query_params=(schema, table_name))
+        return (int(rows[0][3].replace("KB", "")) * 1024) if rows else None
+
+    def is_view(self, schema, object_name):
+        return self.view_exists(schema, object_name)
+
+    def max_datetime_scale(self) -> int:
+        """MSSQL supports up to milliseconds"""
+        return 3
+
+    def max_datetime_value(self):
+        return datetime64("9999-12-31")
+
+    def max_table_name_length(self):
+        return MSSQL_MAX_TABLE_NAME_LENGTH
+
+    def min_datetime_value(self):
+        return datetime64("1753-01-01")
+
+    def parallel_query_hint(self, query_parallelism):
+        if query_parallelism:
+            assert isinstance(query_parallelism, int)
+            return "MAXDOP %s" % query_parallelism
+        return ""
+
+    def split_partition_high_value_string(self, hv_string):
+        raise NotImplementedError("MSSQL split_partition_high_value_string not implemented.")
+
+    def schema_exists(self, schema) -> bool:
+        sql = dedent(
+            """\
+                     SELECT schema_name
+                     FROM information_schema.schemata
+                     WHERE schema_name = '%s'"""
+        )
+        row = self.execute_query_fetch_one(sql, query_params=(schema,), log_level=VVERBOSE)
+        return bool(row)
+
+    def table_exists(self, schema, table_name) -> bool:
+        sql = dedent(
+            """\
+                     SELECT table_name
+                     FROM information_schema.tables
+                     WHERE table_type = 'BASE TABLE'
+                     AND table_schema = '%s'
+                     AND table_name = '%s'"""
+        )
+        row = self.execute_query_fetch_one(sql, query_params=(schema, table_name), log_level=VVERBOSE)
+        return bool(row)
+
+    def to_frontend_literal(self, py_val, data_type=None) -> str:
+        self._debug("Formatting %s literal: %s" % (type(py_val), repr(py_val)))
+        self._debug("For data type: %s" % data_type)
+        new_py_val = SynapseLiteral.format_literal(py_val, data_type=data_type)
+        self._debug("Final %s literal: %s" % (type(py_val), str(new_py_val)))
+        return new_py_val
+
+    def view_exists(self, schema, view_name) -> bool:
+        sql = dedent(
+            """\
+                     SELECT table_name
+                     FROM information_schema.tables
+                     WHERE table_type = 'VIEW'
+                     AND table_schema = '%s'
+                     AND table_name = '%s'"""
+        )
+        row = self.execute_query_fetch_one(sql, query_params=(schema, view_name), log_level=VVERBOSE)
+        return bool(row)
+
+    ###########################################################################
     # PRIVATE METHODS
     ###########################################################################
 
@@ -322,269 +582,3 @@ class MSSQLFrontendApi(FrontendApiInterface):
         for qp in query_params:
             param_values.append(qp.param_value)
         return tuple(param_values)
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def close(self, force=False):
-        self._disconnect(force=force)
-
-    def agg_validate_sample_column_names(self, schema, table_name, num_required: int = 5) -> list:
-        raise NotImplementedError("MSSQL agg_validate_sample_column_names() not implemented.")
-
-    def create_new_connection(self, user_name, user_password, trace_action_override=None):
-        self._debug("Making new connection with user %s" % user_name)
-        server, port, database = extract_connection_details_from_dsn(self._connection_options.rdbms_dsn)
-        client = setup_mssql_session(server, port, database, user_name, user_password)
-        # client.autocommit = True
-        return client
-
-    def enclose_identifier(self, identifier):
-        if identifier is None:
-            return None
-        return "[%s]" % identifier
-
-    def enclose_query_hints(self, hint_contents):
-        if not hint_contents:
-            return ""
-        if isinstance(hint_contents, str):
-            hint_contents = [hint_contents]
-        return "OPTION({})".format(", ".join(str(_) for _ in hint_contents if _))
-
-    def enclosure_character(self):
-        return None
-
-    def execute_function(
-        self,
-        sql_fn,
-        return_type=None,
-        return_type_name=None,
-        arg_list=None,
-        log_level=VERBOSE,
-        not_when_dry_running=False,
-        commit=False,
-    ):
-        raise NotImplementedError("MSSQL execute_function not implemented.")
-
-    def format_query_parameter(self, param_name):
-        """No named parameters so always return "%s" """
-        return "%s"
-
-    def frontend_db_name(self):
-        return self._frontend_type.upper()
-
-    def frontend_version(self):
-        sql = "SELECT @@VERSION"
-        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
-        return row[0] if row else None
-
-    def gen_column_object(self, column_name, **kwargs):
-        return MSSQLColumn(column_name, **kwargs)
-
-    def generic_string_data_type(self) -> str:
-        return MSSQL_TYPE_VARCHAR
-
-    def get_columns(self, schema, table_name):
-        # TODO: byte_length - is this the same as Oracle query: CHARACTER_MAXIMUM_LENGTH / CHARACTER_OCTET_LENGTH
-        # TODO: hidden_column - do we have the concept of hidden_columns in MSSQL? If not remove from MSSQLColumn.from_mssql
-        q = """
-                    SELECT column_name
-                    ,      ordinal_position                                 AS column_id
-                    ,      is_nullable                                      AS nullable
-                    ,      data_type
-                    ,      COALESCE(numeric_precision, datetime_precision)  AS data_precision
-                    ,      numeric_scale                                    AS data_scale
-                    ,      character_octet_length                           AS byte_length
-                    ,      column_default                                   AS data_default
-                    ,      NULL                                             AS hidden_columns
-                    ,      character_maximum_length                         AS char_length
-                    FROM   information_schema.columns
-                    WHERE  table_schema = %s
-                    AND    table_name   = %s
-                    ORDER BY
-                           ordinal_position"""
-
-        cols = []
-        for row in self.execute_query_fetch_all(q, query_params=(schema, table_name)):
-            col = MSSQLColumn.from_mssql(row)
-            cols.append(col)
-        return cols
-
-    def get_current_scn(self) -> int:
-        # TODO: Is min_active_rowversion() for database equivalent to v$database.current_scn?
-        # https://www.mssqltips.com/sqlservertip/3423/sql-server-rowversion-functions-minactiverowversion-vs-dbts/
-        raise NotImplementedError("MSSQL get_current_scn not implemented.")
-
-    def get_db_unique_name(self) -> str:
-        return self._connection_options.rdbms_dsn.split("=")[1]
-
-    def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
-        assert schema and table_name
-        assert column_names
-        if isinstance(column_names, str):
-            column_names = [column_names]
-        projection = ",".join([self.enclose_identifier(_) for _ in column_names])
-        order_clause = f" ORDER BY {projection}" if order_results else ""
-
-        raise NotImplementedError("MSSQL get_distinct_column_values not implemented.")
-
-    def get_object_ddl(
-        self,
-        schema,
-        object_name,
-        object_type,
-        as_list=False,
-        terminate_sql=False,
-        remap_schema=None,
-    ):
-        raise NotImplementedError("MSSQL get_object_ddl not implemented.")
-
-    def get_offloadable_schemas(self):
-        raise NotImplementedError("MSSQL get_offloadable_schemas is not implemented.")
-
-    def get_command_step_codes(self) -> list:
-        raise NotImplementedError("MSSQL get_command_step_codes is not implemented.")
-
-    def get_command_executions(self) -> list[dict[str, str | Any]]:
-        raise NotImplementedError("MSSQL get_command_executions is not implemented.")
-
-    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | Any]:
-        raise NotImplementedError("MSSQL get_command_execution_status is not implemented.")
-
-    def get_command_execution_steps(self, execution_id: ExecutionId) -> list[dict[str, str | Any]]:
-        raise NotImplementedError("MSSQL get_command_execution_steps is not implemented.")
-
-    def get_partition_column_names(self, schema, table_name, conv_fn=None):
-        raise NotImplementedError("MSSQL get_partition_column_names not implemented.")
-
-    def get_partition_columns(self, schema, table_name):
-        raise NotImplementedError("MSSQL get_partition_column_names not implemented.")
-
-    def get_primary_key_column_names(self, schema, table_name):
-        q = """
-            SELECT COL_NAME(ic.object_id, ic.column_id) AS column_name
-            FROM   sys.tables           t
-                   INNER JOIN
-                   sys.indexes          i
-                   ON (t.object_id = i.object_id)
-                   INNER JOIN
-                   sys.index_columns    ic
-                   ON (     i.object_id = ic.object_id
-                       AND  i.index_id  = ic.index_id)
-                   INNER JOIN
-                   sys.schemas          s
-                   ON (t.schema_id    = s.schema_id)
-            WHERE  s.name = %s
-            AND    t.name = %s
-            AND    i.is_primary_key = 1
-            ORDER BY
-                   ic.column_id"""
-
-        rows = self.execute_query_fetch_all(q, query_params=(schema, table_name))
-        return [_[0] for _ in rows] if rows else []
-
-    def get_schema_tables(self, schema_name):
-        raise NotImplementedError("MSSQL get_schema_tables is not implemented.")
-
-    def get_session_option(self, option_name):
-        raise NotImplementedError("MSSQL get_session_option not implemented.")
-
-    def get_session_user(self) -> str:
-        raise NotImplementedError("MSSQL get_session_user not implemented.")
-
-    def get_subpartition_column_names(self, schema, table_name, conv_fn=None):
-        raise NotImplementedError("MSSQL get_subpartition_column_names not implemented.")
-
-    def get_subpartition_columns(self, schema, table_name):
-        raise NotImplementedError("MSSQL get_subpartition_columns not implemented.")
-
-    def get_table_row_count(
-        self,
-        schema,
-        table_name,
-        filter_clause=None,
-        filter_clause_params=None,
-        hint_block=None,
-        not_when_dry_running=False,
-        log_level=VVERBOSE,
-    ):
-        raise NotImplementedError("MSSQL get_table_row_count not implemented.")
-
-    def get_table_size(self, schema, table_name):
-        """Not actually used since we always choose Sqoop in OffloadOperation.set_offload_method
-        The appropriateness of the SP_SPACEUSED procedure for calculating table size must be validated properly
-        If it is appropriate then we currently use the "data" size column as this is what Sqoop would extract
-        Other columns are reserved_size, index_size and unused
-        Assumption here on limited testing is that output is always in KB and suffixed as such. This might not be true
-        SP_SPACEUSED is not valid for Azure Serverless SQL Pools
-        """
-        q = f'SP_SPACEUSED "{schema}.{table_name}"'
-        rows = self.execute_query_fetch_all(q, query_params=(schema, table_name))
-        return (int(rows[0][3].replace("KB", "")) * 1024) if rows else None
-
-    def is_view(self, schema, object_name):
-        return self.view_exists(schema, object_name)
-
-    def max_datetime_scale(self) -> int:
-        """MSSQL supports up to milliseconds"""
-        return 3
-
-    def max_datetime_value(self):
-        return datetime64("9999-12-31")
-
-    def max_table_name_length(self):
-        return MSSQL_MAX_TABLE_NAME_LENGTH
-
-    def min_datetime_value(self):
-        return datetime64("1753-01-01")
-
-    def parallel_query_hint(self, query_parallelism):
-        if query_parallelism:
-            assert isinstance(query_parallelism, int)
-            return "MAXDOP %s" % query_parallelism
-        return ""
-
-    def split_partition_high_value_string(self, hv_string):
-        raise NotImplementedError("MSSQL split_partition_high_value_string not implemented.")
-
-    def schema_exists(self, schema) -> bool:
-        sql = dedent(
-            """\
-                     SELECT schema_name
-                     FROM information_schema.schemata
-                     WHERE schema_name = '%s'"""
-        )
-        row = self.execute_query_fetch_one(sql, query_params=(schema,), log_level=VVERBOSE)
-        return bool(row)
-
-    def table_exists(self, schema, table_name) -> bool:
-        sql = dedent(
-            """\
-                     SELECT table_name
-                     FROM information_schema.tables
-                     WHERE table_type = 'BASE TABLE'
-                     AND table_schema = '%s'
-                     AND table_name = '%s'"""
-        )
-        row = self.execute_query_fetch_one(sql, query_params=(schema, table_name), log_level=VVERBOSE)
-        return bool(row)
-
-    def to_frontend_literal(self, py_val, data_type=None) -> str:
-        self._debug("Formatting %s literal: %s" % (type(py_val), repr(py_val)))
-        self._debug("For data type: %s" % data_type)
-        new_py_val = SynapseLiteral.format_literal(py_val, data_type=data_type)
-        self._debug("Final %s literal: %s" % (type(py_val), str(new_py_val)))
-        return new_py_val
-
-    def view_exists(self, schema, view_name) -> bool:
-        sql = dedent(
-            """\
-                     SELECT table_name
-                     FROM information_schema.tables
-                     WHERE table_type = 'VIEW'
-                     AND table_schema = '%s'
-                     AND table_name = '%s'"""
-        )
-        row = self.execute_query_fetch_one(sql, query_params=(schema, view_name), log_level=VVERBOSE)
-        return bool(row)

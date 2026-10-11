@@ -188,6 +188,14 @@ def get_load_db_pattern():
     return "%s_load"
 
 
+def google_cloud_project_default() -> str | None:
+    return os.environ.get("GOOGLE_CLOUD_PROJECT")
+
+
+def google_cloud_quota_project_default() -> str | None:
+    return os.environ.get("GOOGLE_CLOUD_QUOTA_PROJECT")
+
+
 def google_dataproc_batches_subnet_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_BATCHES_SUBNET")
 
@@ -204,6 +212,10 @@ def google_dataproc_cluster_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_CLUSTER")
 
 
+def google_dataproc_impersonate_service_account_default() -> str | None:
+    return os.environ.get("GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT")
+
+
 def google_dataproc_project_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_PROJECT")
 
@@ -214,6 +226,10 @@ def google_dataproc_region_default() -> str | None:
 
 def google_dataproc_service_account_default() -> str | None:
     return os.environ.get("GOOGLE_DATAPROC_SERVICE_ACCOUNT")
+
+
+def google_impersonate_service_account_default() -> str | None:
+    return os.environ.get("GOOGLE_IMPERSONATE_SERVICE_ACCOUNT")
 
 
 def google_kms_key_name_default() -> str | None:
@@ -853,10 +869,6 @@ def sqoop_queue_name_default() -> str | None:
 ###########################################################################
 
 
-def cache_enabled() -> bool:
-    return True if os.environ.get("OFFLOAD_LISTENER_REDIS_HOST") else False
-
-
 def listener_host_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_HOST")
 
@@ -871,35 +883,3 @@ def listener_heartbeat_interval_default() -> int:
 
 def listener_shared_token_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_SHARED_TOKEN")
-
-
-def listener_redis_username_default() -> str | None:
-    return os.environ.get("OFFLOAD_LISTENER_REDIS_USERNAME")
-
-
-def listener_redis_password_default() -> str | None:
-    return os.environ.get("OFFLOAD_LISTENER_REDIS_PASSWORD")
-
-
-def listener_redis_host_default() -> str | None:
-    return os.environ.get("OFFLOAD_LISTENER_REDIS_HOST")
-
-
-def listener_redis_port_default() -> int:
-    return int(os.environ.get("OFFLOAD_LISTENER_REDIS_PORT") or 6379)
-
-
-def listener_redis_db_default() -> int:
-    return int(os.environ.get("OFFLOAD_LISTENER_REDIS_DB") or 0)
-
-
-def listener_redis_ssl_cert_default() -> str | None:
-    return os.environ.get("OFFLOAD_LISTENER_REDIS_SSL_CERT")
-
-
-def listener_redis_use_ssl_default() -> bool:
-    return bool(os.environ.get("OFFLOAD_LISTENER_REDIS_SSL", "false").lower() == "true")
-
-
-def listener_redis_use_sentinel_default() -> int:
-    return bool(os.environ.get("OFFLOAD_LISTENER_REDIS_USE_SENTINEL", "false").lower() == "true")

@@ -30,6 +30,29 @@ FACT_NAME = "INTEG_SOURCE_TABLE_FACT"
 
 
 class TestCurrentOffloadSourceTable(TestCase):
+    def test_full_api_on_current_rdbms(self):
+        self.db = get_default_test_user()
+        self.table = FACT_NAME
+        self.messages = OffloadMessages()
+        self.config = self._build_current_options()
+        self.test_api = frontend_testing_api_factory(
+            self.config.db_type,
+            self.config,
+            self.messages,
+            dry_run=False,
+            trace_action="frontend_api(TestCurrentOffloadSourceTable)",
+        )
+        self.api = OffloadSourceTable.create(
+            self.db,
+            self.table,
+            self.config,
+            self.messages,
+            dry_run=True,
+        )
+
+        self._create_test_table()
+        self._run_all_tests()
+
     def _build_current_options(self):
         orchestration_options = build_current_options()
         self.db_type = orchestration_options.db_type
@@ -37,7 +60,6 @@ class TestCurrentOffloadSourceTable(TestCase):
 
     def _create_test_table(self):
         messages = get_test_messages(self.config, "TestCurrentOffloadSourceTable")
-        # Setup partitioned table
         run_setup_ddl(
             self.config,
             self.test_api,
@@ -49,24 +71,19 @@ class TestCurrentOffloadSourceTable(TestCase):
         if self.config.db_type == DBTYPE_ORACLE:
             if self.api.columns:
                 try:
-                    # Testing Oracle only private method
                     self.api._get_column_low_high_values(self.api.columns[0].name, from_stats=True, sample_perc=1)
                     self.api._get_column_low_high_values(self.api.columns[0].name, from_stats=False, sample_perc=1)
                 except NotImplementedError:
                     pass
 
     def _test_check_data_types_supported(self):
-        # 6 below is for milliseconds, False is for backend NaN support. Actual values unimportant
         self.assertIn(self.api.check_data_types_supported(6, False), [True, False])
 
     def _test_columns(self):
-        # Referencing the property will load the column from backend
         self.api.columns
         try:
-            # Test that setter property works
             self.api.columns = self.api.columns
         except OffloadSourceTableException:
-            # We expect "Set of columns is only supported when the table does NOT exist"
             pass
 
     def _test_data_types_in_use(self):
@@ -118,15 +135,15 @@ class TestCurrentOffloadSourceTable(TestCase):
                 self.assertIsNotNone(self.api.get_session_option(test_option))
 
     def _test_get_stored_object_dependent_schemas(self):
-        if self.config == DBTYPE_ORACLE:
-            self.api.get_stored_object_dependent_schemas()
+        if self.config.db_type == DBTYPE_ORACLE:
+            self.assertIsInstance(self.api.get_stored_object_dependent_schemas(), list)
 
     def _test_get_suitable_sample_size(self):
         self.api.get_suitable_sample_size()
 
     def _test_has_rowdependencies(self):
-        if self.config == DBTYPE_ORACLE:
-            self.api.has_rowdependencies()
+        if self.config.db_type == DBTYPE_ORACLE:
+            self.assertIsInstance(self.api.has_rowdependencies(), bool)
 
     def _test_max_column_name_length(self):
         self.assertIsInstance(self.api.max_column_name_length(), int)
@@ -150,10 +167,8 @@ class TestCurrentOffloadSourceTable(TestCase):
                 self.api.partition_has_rows(partitions[0].partition_name)
 
     def _test_sample_rdbms_data_types(self):
-        # Sampling only supports numeric and date based columns
         columns_to_sample = [_ for _ in self.api.columns if _.is_number_based() or _.is_date_based()]
         if columns_to_sample:
-            # The backend limit parameters ought to be from a backend but doesn't really matter for unit testing
             max_integral_magnitude = max_scale = 38
             allow_scale_rounding = True
             for parallel in [0, 2]:
@@ -190,29 +205,6 @@ class TestCurrentOffloadSourceTable(TestCase):
         self._test_partition_columns()
         self._test_partition_has_rows()
         self._test_sample_rdbms_data_types()
-
-    def test_full_api_on_current_rdbms(self):
-        self.db = get_default_test_user()
-        self.table = FACT_NAME
-        self.messages = OffloadMessages()
-        self.config = self._build_current_options()
-        self.test_api = frontend_testing_api_factory(
-            self.config.db_type,
-            self.config,
-            self.messages,
-            dry_run=False,
-            trace_action="frontend_api(TestCurrentOffloadSourceTable)",
-        )
-        self.api = OffloadSourceTable.create(
-            self.db,
-            self.table,
-            self.config,
-            self.messages,
-            dry_run=True,
-        )
-
-        self._create_test_table()
-        self._run_all_tests()
 
 
 if __name__ == "__main__":

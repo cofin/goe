@@ -96,3 +96,4 @@ run/
 
 # Gemini / Local Agent
 .gemini/
+gha-creds-*.json

@@ -19,6 +19,7 @@ from goe.connect.connect_functions import (
     section_header,
     success,
     test_header,
+    warning,
 )
 from goe.offload.factory.offload_transport_factory import (
     spark_dataproc_batches_jdbc_connectivity_checker,
@@ -43,6 +44,7 @@ from goe.offload.offload_transport_functions import (
     credential_provider_path_jvm_override,
     ssh_cmd_prefix,
 )
+from goe.offload.spark.dataproc_offload_transport import DATAPROC_CLUSTER_SERVICE_ACCOUNT_IGNORED
 from goe.offload.spark.livy_offload_transport import (
     LIVY_SESSIONS_SUBURL,
     URL_SEP,
@@ -50,6 +52,7 @@ from goe.offload.spark.livy_offload_transport import (
 from goe.offload.spark.offload_transport_livy_requests import (
     OffloadTransportLivyRequests,
 )
+from goe.util.gcp_credentials import resolve_gcloud_impersonation_principal
 
 
 def test_credential_api_alias(options, orchestration_config):
@@ -248,6 +251,7 @@ def test_spark_gcloud(orchestration_config, messages):
     ):
         detail(f"Executable {OFFLOAD_TRANSPORT_SPARK_GCLOUD_EXECUTABLE} exists")
         success(test_name)
+        report_gcloud_identity(orchestration_config)
     else:
         detail(f"Executable {OFFLOAD_TRANSPORT_SPARK_GCLOUD_EXECUTABLE} does not exist")
         failure(test_name)
@@ -261,6 +265,27 @@ def test_spark_gcloud(orchestration_config, messages):
     if is_spark_gcloud_batches_available(orchestration_config, None, messages=messages):
         data_transport_client = spark_dataproc_batches_jdbc_connectivity_checker(orchestration_config, messages)
         verify_offload_transport_rdbms_connectivity(data_transport_client, "Google Managed Spark serverless")
+
+
+def report_gcloud_identity(orchestration_config) -> None:
+    """Report the gcloud caller impersonation and Managed Spark runtime identities used by the Dataproc transports.
+
+    Warns when a permanent cluster is configured with GOOGLE_DATAPROC_SERVICE_ACCOUNT but no caller impersonation,
+    because that variable only sets the serverless batch runtime service account.
+    """
+    test_name = "Google Managed Spark identity"
+    test_header(test_name)
+    caller = resolve_gcloud_impersonation_principal(orchestration_config)
+    detail(f"gcloud caller impersonation: {caller or 'none (active gcloud account)'}")
+    detail(f"Serverless runtime service account: {orchestration_config.google_dataproc_service_account or 'default'}")
+    if (
+        orchestration_config.google_dataproc_cluster
+        and orchestration_config.google_dataproc_service_account
+        and not caller
+    ):
+        warning(test_name, DATAPROC_CLUSTER_SERVICE_ACCOUNT_IGNORED)
+    else:
+        success(test_name)
 
 
 def verify_offload_transport_rdbms_connectivity(data_transport_client, transport_type):

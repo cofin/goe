@@ -114,7 +114,7 @@ def competing_commands(
                     )
                 )
         assert not exceptions_caught_in_threads, "Unexpected Schema Sync exceptions detected, something is amiss"
-        assert text_in_log(SCHEMA_SYNC_LOCKED_MESSAGE_TEXT, search_from_text=test_id), (
+        assert text_in_log(messages, SCHEMA_SYNC_LOCKED_MESSAGE_TEXT, search_from_text=test_id), (
             "Did not find Schema Sync lock message in log file"
         )
     else:

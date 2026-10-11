@@ -109,19 +109,17 @@ def goe_wide_max_columns(frontend_api, backend_api_or_count):
 
 
 def log(line: str, detail: int = normal, ansi_code=None):
-    """Write log entry but without Redis interaction."""
-    offload_log(line, detail=detail, ansi_code=ansi_code, redis_publish=False)
+    """Write a log entry through goe.goe.log."""
+    offload_log(line, detail=detail, ansi_code=ansi_code)
 
 
 def text_in_events(messages, message_token):
     return bool(message_token in messages.get_events())
 
 
-def text_in_log(search_text, search_from_text="") -> bool:
-    """Will search for text in the test logfile starting from the start of the
-    story in the log or the top of the file if search_from_text is blank.
-    """
-    return bool(get_line_from_log(search_text, search_from_text=search_from_text) is not None)
+def text_in_log(messages: OffloadMessages, search_text: str, search_from_text: str = "") -> bool:
+    """Return True if search_text is found in the current offload log file."""
+    return bool(get_line_from_log(messages, search_text, search_from_text=search_from_text))
 
 
 def text_in_messages(messages, log_text) -> bool:

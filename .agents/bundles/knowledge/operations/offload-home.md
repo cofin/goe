@@ -19,7 +19,6 @@ GOE separates development source trees from the operational runtime environment 
 ```
 $OFFLOAD_HOME/
 ├── .venv/               # Isolated Python virtual environment
-├── bin/                 # Executable CLI tools (offload, connect, listener, etc.)
 ├── conf/                # Configuration (offload.env, templates)
 ├── lib/                 # Packaged Python wheel (goe_framework-*.whl)
 ├── log/                 # Active execution log directory

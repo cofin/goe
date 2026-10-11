@@ -7,17 +7,8 @@ import fnmatch
 import logging
 import threading
 import time
-import warnings
 from datetime import timedelta
 from typing import Any, ClassVar
-
-
-def _resolve_expiry(ttl: int | float | timedelta | None) -> float | None:
-    """Resolve a TTL value in seconds or timedelta to a monotonic expiration timestamp."""
-    if ttl is None:
-        return None
-    seconds = ttl.total_seconds() if isinstance(ttl, timedelta) else float(ttl)
-    return time.monotonic() + seconds
 
 
 class MemoryCache:
@@ -33,30 +24,6 @@ class MemoryCache:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
-
-    @classmethod
-    def _purge_expired(cls) -> None:
-        """Remove all expired entries from the backing store."""
-        now = time.monotonic()
-        with cls._lock:
-            expired_keys = [
-                k for k, (_, expires_at) in cls._store.items() if expires_at is not None and now >= expires_at
-            ]
-            for k in expired_keys:
-                cls._store.pop(k, None)
-
-    @classmethod
-    def _get_entry(cls, key: str) -> tuple[bool, Any, float | None]:
-        """Retrieve a live entry from the store, evicting it if expired."""
-        with cls._lock:
-            entry = cls._store.get(key)
-            if entry is None:
-                return False, None, None
-            value, expires_at = entry
-            if expires_at is not None and time.monotonic() >= expires_at:
-                cls._store.pop(key, None)
-                return False, None, None
-            return True, value, expires_at
 
     @classmethod
     def get_client(cls) -> type["MemoryCache"]:
@@ -188,19 +155,35 @@ class MemoryCache:
 
     def __getattr__(self, name: str) -> Any:
         """Support attribute lookups when goe.listener.utils.cache is bound to the singleton instance."""
-        if name == "RedisClient":
-            warnings.warn(
-                "goe.listener.utils.cache.RedisClient is deprecated and will be removed in GOE 2.0.0; "
-                "use MemoryCache instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            return MemoryCache
         if name == "MemoryCache":
             return MemoryCache
         if name == "MemorySyncCache":
             return MemorySyncCache
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    @classmethod
+    def _purge_expired(cls) -> None:
+        """Remove all expired entries from the backing store."""
+        now = time.monotonic()
+        with cls._lock:
+            expired_keys = [
+                k for k, (_, expires_at) in cls._store.items() if expires_at is not None and now >= expires_at
+            ]
+            for k in expired_keys:
+                cls._store.pop(k, None)
+
+    @classmethod
+    def _get_entry(cls, key: str) -> tuple[bool, Any, float | None]:
+        """Retrieve a live entry from the store, evicting it if expired."""
+        with cls._lock:
+            entry = cls._store.get(key)
+            if entry is None:
+                return False, None, None
+            value, expires_at = entry
+            if expires_at is not None and time.monotonic() >= expires_at:
+                cls._store.pop(key, None)
+                return False, None, None
+            return True, value, expires_at
 
 
 class MemorySyncCache:
@@ -337,14 +320,9 @@ cache = MemoryCache()
 sync_cache = MemorySyncCache()
 
 
-def __getattr__(name: str) -> Any:
-    """Emit a DeprecationWarning when legacy RedisClient symbol is accessed."""
-    if name == "RedisClient":
-        warnings.warn(
-            "goe.listener.utils.cache.RedisClient is deprecated and will be removed in GOE 2.0.0; "
-            "use MemoryCache instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return MemoryCache
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+def _resolve_expiry(ttl: int | float | timedelta | None) -> float | None:
+    """Resolve a TTL value in seconds or timedelta to a monotonic expiration timestamp."""
+    if ttl is None:
+        return None
+    seconds = ttl.total_seconds() if isinstance(ttl, timedelta) else float(ttl)
+    return time.monotonic() + seconds

@@ -89,7 +89,7 @@ class TestOffloadSourceTable(TestCase):
             pass
 
     def _test_parallel_query_hint(self):
-        if self.config == DBTYPE_ORACLE:
+        if self.config.db_type == DBTYPE_ORACLE:
             self.assertFalse(bool(self.api.parallel_query_hint(None)))
             self.assertIsInstance(self.api.parallel_query_hint(0), str)
             self.assertIsInstance(self.api.parallel_query_hint(1), str)

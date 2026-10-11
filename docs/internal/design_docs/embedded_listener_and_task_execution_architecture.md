@@ -3,7 +3,7 @@
 **Status:** Implemented  
 **Author:** AI Pair Programmer & Cody Fincher  
 **Date:** 2026-10-02  
-**Target Subsystems:** `src/goe/listener/`, `src/goe/util/`, `bin/`, `templates/conf/`
+**Target Subsystems:** `src/goe/listener/`, `src/goe/util/`, `templates/conf/`
 
 ---
 
@@ -16,7 +16,7 @@ Key Architectural Decisions:
 2. **Oracle Server Co-Location**: GOE binaries run directly on or adjacent to the Oracle database server, using Oracle RDBMS (`OFFLOAD_REPO`) as the single source of truth.
 3. **Embedded In-Memory TTL Cache**: In-process thread-safe asynchronous (`MemoryCache`) and synchronous (`MemorySyncCache`) caches sharing a common backing store with TTL expiration for listener endpoint registration, periodic heartbeats, log buffering, and query metadata caching.
 4. **First-Party `litestar-queues` & `litestar-security`**: Background task dispatching and cron scheduling via `litestar-queues` (`QueueConfig(queue_backend="memory", worker=WorkerConfig(placement="asgi"))`) wired through `AutowireConfig(domain_packages=["goe.listener"], integrations=["queues"])`, and constant-time `x-goe-console-key` header verification via `litestar-security` (`ConsoleKeyAuthenticator`).
-5. **Deprecation Strategy & Shims**: Explicit `DeprecationWarning` shims for legacy Redis modules (`goe.util.redis_tools`, `goe.listener.utils.cache.RedisClient`) and `bin/` wrapper scripts scheduled for removal in GOE 2.0.0.
+5. **Deprecation Strategy & Shims**: Explicit `DeprecationWarning` shims for legacy Redis modules (`goe.util.redis_tools`, `goe.listener.utils.cache.RedisClient`) and `bin/` wrapper scripts scheduled for removal in GOE 2.0.0. These shims were removed in PRD 1 Chapter 1.1.
 
 ---
 
@@ -78,11 +78,7 @@ flowchart TD
 ## 4. Deprecation Shims & Removal Roadmap
 
 ### 4.1 Legacy Redis Modules
-- **`src/goe/util/redis_tools.py`**: Emits `DeprecationWarning` on import and delegates `RedisClient` to `MemorySyncCache`.
-- **`src/goe/listener/utils/cache.py`**: Module `__getattr__("RedisClient")` emits `DeprecationWarning` and returns `MemoryCache`.
-
-### 4.2 Legacy Wrapper Scripts in `bin/`
-All standalone entry points in `bin/` (`bin/offload`, `bin/connect`, `bin/listener`, `bin/logmgr`, `bin/agg_validate`, `bin/offload_status_report`, `bin/schema_sync`) emit `DeprecationWarning` stating they will be removed in GOE 2.0.0 and delegate to `goe <subcommand>`.
+- **Removed shims**: `src/goe/util/redis_tools.py`, the `goe.listener.utils.cache.RedisClient` alias, and the seven `bin/*` wrapper scripts were deleted in PRD 1 Chapter 1.1; use `MemoryCache` / `MemorySyncCache` and `goe <subcommand>` directly.
 
 ---
 

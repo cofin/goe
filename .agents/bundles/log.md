@@ -5,12 +5,41 @@ tags:
   - changelog
   - okf
   - flow
-updated_at: "2026-10-08T16:39:00Z"
+updated_at: "2026-10-11T16:00:00Z"
 ---
 
 # Change Log
 
 This file records significant lifecycle operations, structural additions, and major evolutions to the GOE knowledge bundle.
+
+## 2026-10-11
+
+- **Master PRD 1 Implementation & Knowledge Synthesis (`prd_01_foundation_adc_and_ci_harness_20261010`, commits `f0c4ebf`..`bc6fc94`)**:
+  - **Chapter 1.1 (`legacy_shim_removal_and_repo_hygiene_20261010`, Tasks `1.1`–`1.6`)**:
+    - Removed legacy `bin/*` CLI wrapper scripts (`bin/offload`, `bin/connect`, `bin/agg_validate`, `bin/schema_sync`, `bin/logmgr`, `bin/listener`, `bin/offload_status_report`) and `goe.util.redis_tools` / `RedisClient` deprecation shims; consolidated all entrypoints on `goe`.
+    - Ported upstream `gluent/goe#278` (`dee61e8`) non-Litestar Redis/listener cleanup (`listener_redis_*` config attributes, `cache_enabled`, `redis_execution_id`, `redis_publish`, `test_listener`, `PRODUCT_NAME_GEL`, `src/goe/listener/utils/ping.py`, legacy `tools/{caller.py,redis_subscribe.py,goe-listener.service,goe-listener.sh}`, and `teradata_frontend_api.py`/`mssql_frontend_api.py` stubs) and `ExecutionId.from_uuid` (`_uuid_as_uuid`) validation while preserving the Litestar listener and `OracleOrchestrationRepoClient` introspection methods.
+    - Purged 9 confirmed unimported dead modules (`src/goe/conductor/`, `src/goe/listener/services/hybrid_view.py`, `src/goe/util/{serialization,env,text,uuids,exception_trigger,local_cache,retry_logic}.py`).
+    - Ported upstream `gluent/goe#275` (`e12a818`) `release-please` + `pypi-publish` workflow, migrated `lark-parser` to `lark>=1.1.9`, dropped `configparser`/`termcolor` and the `mypyc` extra from `sqlspec`, modernized `docs/google_cloud_run/Dockerfile` to Python 3.12 + `uv`, and synchronized OKF knowledge files.
+  - **Chapter 1.2 (`gcp_adc_credential_unification_20261010`, Tasks `1.1`–`1.6`)**:
+    - Implemented centralized keyless GCP credential resolution in [`src/goe/util/gcp_credentials.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/util/gcp_credentials.py) (`GcpCredentialBundle`, `resolve_gcp_credentials`, `resolve_gcloud_impersonation_principal`, `clear_gcp_credentials_cache`) and registered `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_QUOTA_PROJECT`, `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`, and `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT` in `OrchestrationConfig`.
+    - Wired `resolve_gcp_credentials` into `BackendBigQueryApi` (`bigquery.Client` and `kms.KeyManagementServiceClient`, with job billing project precedence `GOOGLE_CLOUD_PROJECT` -> ADC default project -> `BIGQUERY_DATASET_PROJECT`), `GOEGcs` (`storage.Client`), and `GOELogFileHandle` (`fsspec.filesystem("gs", project=bundle.project, token=bundle.credentials)`).
+    - Decoupled Dataproc Serverless workload runtime `--service-account` (`GOOGLE_DATAPROC_SERVICE_ACCOUNT`) from `gcloud dataproc` caller impersonation (`--impersonate-service-account`), added GCP credential preflight and Managed Spark identity checks to `goe connect`, upgraded the bundled Cloud Storage connector to `gcs-connector-3.0.20-shaded.jar` with `APPLICATION_DEFAULT` auth, and updated `offload.env` templates and user documentation.
+  - **Chapter 1.3 (`oracle_ci_and_bigquery_test_harness_20261010`, Tasks `1.1`–`1.3`)**:
+    - Fixed `TestOrchestrationMetadata.__init__` eager connection crash (`setUp()`), fixed `self.config.db_type == DBTYPE_ORACLE` in `test_offload_source_table.py` and `text_in_log(messages, ...)` in `test_functions.py`, and created [`tests/integration/conftest.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/tests/integration/conftest.py) so `GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only` collects all 147 integration tests offline.
+    - Created [`sql/oracle/source/bootstrap_ci.sh`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/sql/oracle/source/bootstrap_ci.sh) and wired `integration-oracle` (`gvenzl/oracle-free:23-slim-faststart`) and keyless WIF `integration-bigquery` (`google-github-actions/auth@v3`) into `.github/workflows/test.yaml`, `.github/workflows/ci.yaml`, and `Makefile`.
+    - Created the offline golden dry-run characterization suite [`tests/unit/characterization/test_offload_bigquery_golden.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/tests/unit/characterization/test_offload_bigquery_golden.py) (`644 passed` in `tests/unit`).
+
+## 2026-10-09
+
+- **Flow Completion & Rigorous Knowledge Archive**:
+  - Validated and archived all 9 completed specs across Master PRDs and child feature flows (`modernization_overhaul_20260823`, `v2_main_alignment_remediation_20261004`, `cli_execution_and_common_options_parity_20261004`, `cli_import_performance_20261008`, `cli_subcommand_options_and_defaults_parity_20261004`, `embedded_listener_and_task_execution_20260826`, `listener_and_persistence_schema_alignment_20261004`, `litestar_listener_overhaul_20260823`, `python_dotenv_autoload_20260826`).
+  - Synthesized durable knowledge chapters across 5 dimensions:
+    - [Centralized Rich-Click CLI & Legacy Delegators](knowledge/patterns/cli-architecture.md): Zero-type-loss lazy binding via `src/goe/cli/_lazy.py`, argument pre-processing, Click choice case preservation, option group reflection tests, and CI ANSI sequence handling.
+    - [Serialization & Utility Re-Export Patterns](knowledge/patterns/serialization-and-utils.md): Heterogeneous `msgspec.Struct` traversal, parameter whitelisting against `EXPECTED_OFFLOAD_ARGS`, and domain object fallback serialization for `ExecutionId` and `.dsl` predicates.
+    - [Listener Workers & Embedded Caching](knowledge/listener/worker-and-redis.md): Embedded in-process cache with dual async/sync facades, `litestar-queues` in-memory workers and periodic cron tasks, and removal of external Redis/Valkey footprint.
+    - [Listener REST API Architecture](knowledge/listener/rest-api.md): `litestar-security` API key authentication (`x-goe-console-key`), constant-time token verification, OpenAPI security scheme wiring, and Litestar 2.24 native dependency injection.
+    - [Configuration & Environment Variables](knowledge/operations/configuration-and-env.md): 4-tier configuration discovery, upward directory search via `find_dotenv(..., usecwd=True)`, POSIX variable expansion, automatic `OFFLOAD_HOME` export, and test isolation guards.
+  - Contracted `.agents/bundles/specs/` by removing completed spec trees; full verification gate confirmed clean (620 passed unit tests, 0 Ruff lint errors, 0 Mypy type errors across 231 files).
 
 ## 2026-10-08
 

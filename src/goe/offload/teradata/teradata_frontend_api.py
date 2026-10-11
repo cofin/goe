@@ -134,6 +134,327 @@ class TeradataFrontendApi(FrontendApiInterface):
             pass
 
     ###########################################################################
+    # PUBLIC METHODS
+    ###########################################################################
+
+    def close(self, force=False):
+        self._disconnect(force=force)
+
+    def agg_validate_sample_column_names(self, schema, table_name, num_required: int = 5) -> list:
+        sql = dedent(
+            """\
+        SELECT ColumnName
+        FROM  (
+               SELECT c.ColumnName
+               ,      c.ColumnId
+               ,      MIN(c.ColumnId) OVER () AS first_column_id
+               ,      MAX(c.ColumnId) OVER () AS last_column_id
+               ,      ROW_NUMBER() OVER (ORDER BY s.UniqueValueCount DESC) AS ndv_rank
+               FROM   DBC.ColumnsV AS c
+               LEFT OUTER JOIN DBC.StatsV AS s ON (c.DatabaseName = s.DatabaseName
+                                                   AND c.TableName = s.TableName
+                                                   AND c.ColumnName = s.ColumnName)
+               WHERE  c.DatabaseName = ?
+               AND    c.TableName = ?
+              ) AS v
+        WHERE  ColumnId IN (first_column_id, last_column_id)
+        OR     ndv_rank <= ?"""
+        )
+        rows = self.execute_query_fetch_all(sql, query_params=[schema, table_name, num_required], log_level=VVERBOSE)
+        return [_[0] for _ in rows] if rows else []
+
+    def create_new_connection(self, user_name, user_password, trace_action_override=None):
+        self._debug("Making new connection with user %s" % user_name)
+        odbc_url = self._connect_url(user_name, user_password)
+        client = pyodbc.connect(odbc_url)
+        client.autocommit = True
+        return client
+
+    def enclose_identifier(self, identifier):
+        if identifier is None:
+            return None
+        return double_quote_sandwich(identifier)
+
+    def enclose_query_hints(self, hint_contents):
+        # Teradata does not support query hints. We will only implement this method if a requirement is found.
+        return ""
+
+    def enclosure_character(self):
+        return '"'
+
+    def execute_function(
+        self,
+        sql_fn,
+        return_type=None,
+        return_type_name=None,
+        arg_list=None,
+        log_level=VERBOSE,
+        not_when_dry_running=False,
+        commit=False,
+    ):
+        raise NotImplementedError("execute_function() is not implemented for Teradata")
+
+    def format_query_parameter(self, param_name):
+        """No named parameters so always return "?" """
+        return "?"
+
+    def frontend_version(self):
+        if self._frontend_version is None:
+            sql = "SELECT InfoData FROM DBC.DBCInfoV WHERE InfoKey = 'VERSION'"
+            row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
+            self._frontend_version = row[0] if row else None
+        return self._frontend_version
+
+    def gen_column_object(self, column_name, **kwargs):
+        return TeradataColumn(column_name, **kwargs)
+
+    def generic_string_data_type(self) -> str:
+        return TERADATA_TYPE_VARCHAR
+
+    def get_columns(self, schema, table_name):
+        q = dedent(
+            """\
+            SELECT ColumnId
+            ,      ColumnName
+            ,      Nullable
+            ,      ColumnType
+            ,      DecimalTotalDigits
+            ,      DecimalFractionalDigits
+            ,      ColumnLength
+            ,      DefaultValue
+            FROM   DBC.ColumnsV
+            WHERE  DatabaseName = ?
+            AND    TableName = ?
+            ORDER BY ColumnId ASC"""
+        )
+
+        cols = []
+        for row in self.execute_query_fetch_all(q, query_params=[schema, table_name]):
+            col = TeradataColumn.from_teradata(row)
+            cols.append(col)
+        return cols
+
+    def get_db_unique_name(self) -> str:
+        raise NotImplementedError("get_db_unique_name() is not implemented for Teradata")
+
+    def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
+        """Run SQL to get distinct values for a list of columns.
+        partition_name is ignored on Teradata.
+        """
+        assert schema and table_name
+        assert column_names
+        if isinstance(column_names, str):
+            column_names = [column_names]
+        projection = ",".join([self.enclose_identifier(_) for _ in column_names])
+        order_clause = f" ORDER BY {projection}" if order_results else ""
+        sql = "SELECT DISTINCT %(col)s FROM %(own)s.%(tab)s%(order_clause)s" % {
+            "col": projection,
+            "own": self.enclose_identifier(schema.upper()),
+            "tab": self.enclose_identifier(table_name.upper()),
+            "order_clause": order_clause,
+        }
+        self._messages.log("Distinct column SQL: %s" % sql, detail=VVERBOSE)
+        return self.execute_query_fetch_all(sql)
+
+    def get_object_ddl(
+        self,
+        schema,
+        object_name,
+        object_type,
+        as_list=False,
+        terminate_sql=False,
+        remap_schema=None,
+    ):
+        """Return CREATE DDL as a string (or a list of strings split on CR if as_list=True)
+        terminate_sql: Adds any executing character to the end of the SQL (e.g. a semi-colon)
+        remap_schema: Replaces the actual schema (schema) with a different name (remap_schema)
+        """
+
+        def simple_line_breaks(s):
+            return s.replace("\r\n", "\n").replace("\r", "\n")
+
+        assert object_type in [GET_DDL_TYPE_TABLE, GET_DDL_TYPE_VIEW]
+        sql = f"SHOW {object_type} {schema}.{object_name}"
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
+        if row:
+            ddl_str = row[0]
+            # Protect ourselves from Teradata using \r instead of \n
+            ddl_str = simple_line_breaks(ddl_str)
+            if not terminate_sql:
+                ddl_str = ddl_str.strip().rstrip(";")
+            if as_list:
+                return ddl_str.split("\n")
+            return ddl_str
+        return None
+
+    def get_command_step_codes(self) -> list:
+        raise NotImplementedError("Teradata get_command_step_codes is not implemented.")
+
+    def get_command_executions(self) -> list[dict[str, str | UUID]]:
+        raise NotImplementedError("Teradata get_command_executions is not implemented.")
+
+    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | UUID]:
+        raise NotImplementedError("Teradata get_command_execution_status is not implemented.")
+
+    def get_command_execution_steps(self, execution_id: ExecutionId) -> list[dict[str, str | UUID]]:
+        raise NotImplementedError("Teradata get_command_execution_steps is not implemented.")
+
+    def get_current_scn(self) -> int:
+        return None
+
+    def get_partition_columns(self, schema, table_name):
+        """Return columns in the first row partition expression, i.e. we skip columnar partitioning."""
+        try:
+            partition_expression = teradata_get_primary_partition_expression(schema, table_name, self)
+        except (
+            UnsupportedCaseNPartitionExpression,
+            UnsupportedPartitionExpression,
+        ) as exc:
+            # Treat tables with unsupported partition expressions as non-partitioned.
+            self._log(
+                f"Cannot retrieve partition column from partition expression: {exc!s}",
+                detail=VVERBOSE,
+            )
+            return []
+        if partition_expression:
+            table_columns = self.get_columns(schema, table_name)
+            return [match_table_column(partition_expression.column, table_columns)]
+        return []
+
+    def get_primary_key_column_names(self, schema, table_name):
+        q = dedent(
+            """\
+            SELECT ColumnName
+            FROM   DBC.IndicesV
+            WHERE  DatabaseName = ?
+            AND    TableName = ?
+            AND    IndexType = 'K'
+            ORDER BY ColumnPosition"""
+        )
+
+        rows = self.execute_query_fetch_all(q, query_params=[schema, table_name])
+        return [_[0] for _ in rows] if rows else []
+
+    def get_session_option(self, option_name):
+        raise NotImplementedError("get_session_option() is not implemented for Teradata")
+
+    def get_session_user(self) -> str:
+        sql = "SELECT CURRENT_USER"
+        row = self.execute_query_fetch_one(sql)
+        return row[0] if row else row
+
+    def get_subpartition_columns(self, schema, table_name):
+        raise NotImplementedError("get_subpartition_columns() is not implemented for Teradata")
+
+    def get_table_row_count(
+        self,
+        schema,
+        table_name,
+        filter_clause=None,
+        filter_clause_params=None,
+        hint_block=None,
+        not_when_dry_running=False,
+        log_level=VVERBOSE,
+    ):
+        """Note that this is interrogating the table in order to get the actual row count
+        not getting the value from stats or some potentially stale location.
+        hint_block: Ignored on Teradata
+        """
+        where_clause = f" WHERE {filter_clause}" if filter_clause else ""
+        sql = "SELECT COUNT(*) FROM %s%s" % (
+            self.enclose_object_reference(schema, table_name),
+            where_clause,
+        )
+        row = self.execute_query_fetch_one(
+            sql,
+            query_params=filter_clause_params,
+            log_level=log_level,
+            not_when_dry_running=not_when_dry_running,
+        )
+        return row[0] if row else None
+
+    def get_table_size(self, schema, table_name):
+        """Return the size of the table in bytes"""
+        sql = dedent(
+            """\
+            SELECT SUM(CurrentPerm)
+            FROM   DBC.TablesizeV
+            WHERE  DatabaseName = ?
+            AND    TableName = ?
+        """
+        )
+        row = self.execute_query_fetch_one(sql, query_params=[schema, table_name])
+        return row[0] if row else row
+
+    def is_view(self, schema, object_name) -> bool:
+        """Is the underlying RDBMS object a view"""
+        return self.view_exists(schema, object_name)
+
+    def max_datetime_scale(self) -> int:
+        """Teradata supports up to microseconds"""
+        return 6
+
+    def max_datetime_value(self):
+        return datetime64("9999-12-31")
+
+    def max_table_name_length(self):
+        return 128
+
+    def min_datetime_value(self):
+        return datetime64("0001-01-01")
+
+    def parallel_query_hint(self, query_parallelism):
+        # Teradata does not support query hints. We will only implement this method if a requirement is found.
+        return None
+
+    def schema_exists(self, schema) -> bool:
+        sql = dedent(
+            """\
+            SELECT DatabaseName
+            FROM   DBC.Databases2V
+            WHERE  DatabaseName = ?
+        """
+        )
+        return bool(self.execute_query_fetch_one(sql, query_params=[schema]))
+
+    def split_partition_high_value_string(self, hv_string):
+        if not hv_string:
+            return []
+        tokens = split_not_in_quotes(hv_string, sep=",")
+        return tokens
+
+    def table_exists(self, schema, table_name) -> bool:
+        sql = dedent(
+            """\
+            SELECT TableName
+            FROM   DBC.TablesV
+            WHERE  DatabaseName = ?
+            AND    TableName = ?
+            AND    TableKind = 'T'
+        """
+        )
+        return bool(self.execute_query_fetch_one(sql, query_params=[schema, table_name]))
+
+    def to_frontend_literal(self, py_val, data_type=None) -> str:
+        self._debug("Formatting %s literal: %s" % (type(py_val), repr(py_val)))
+        self._debug("For data type: %s" % data_type)
+        new_py_val = TeradataLiteral.format_literal(py_val, data_type=data_type)
+        self._debug("Final %s literal: %s" % (type(py_val), str(new_py_val)))
+        return new_py_val
+
+    def view_exists(self, schema, view_name) -> bool:
+        sql = dedent(
+            """\
+            SELECT TableName
+            FROM   DBC.TablesV
+            WHERE  DatabaseName = ?
+            AND    TableName = ?
+            AND    TableKind = 'V'
+        """
+        )
+        return bool(self.execute_query_fetch_one(sql, query_params=[schema, view_name]))
+
+    ###########################################################################
     # PRIVATE METHODS
     ###########################################################################
 
@@ -485,330 +806,3 @@ class TeradataFrontendApi(FrontendApiInterface):
 
     def _to_native_query_params(self, query_params):
         return self._odbc_to_native_query_params(query_params)
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def close(self, force=False):
-        self._disconnect(force=force)
-
-    def agg_validate_sample_column_names(self, schema, table_name, num_required: int = 5) -> list:
-        sql = dedent(
-            """\
-        SELECT ColumnName
-        FROM  (
-               SELECT c.ColumnName
-               ,      c.ColumnId
-               ,      MIN(c.ColumnId) OVER () AS first_column_id
-               ,      MAX(c.ColumnId) OVER () AS last_column_id
-               ,      ROW_NUMBER() OVER (ORDER BY s.UniqueValueCount DESC) AS ndv_rank
-               FROM   DBC.ColumnsV AS c
-               LEFT OUTER JOIN DBC.StatsV AS s ON (c.DatabaseName = s.DatabaseName
-                                                   AND c.TableName = s.TableName
-                                                   AND c.ColumnName = s.ColumnName)
-               WHERE  c.DatabaseName = ?
-               AND    c.TableName = ?
-              ) AS v
-        WHERE  ColumnId IN (first_column_id, last_column_id)
-        OR     ndv_rank <= ?"""
-        )
-        rows = self.execute_query_fetch_all(sql, query_params=[schema, table_name, num_required], log_level=VVERBOSE)
-        return [_[0] for _ in rows] if rows else []
-
-    def create_new_connection(self, user_name, user_password, trace_action_override=None):
-        self._debug("Making new connection with user %s" % user_name)
-        odbc_url = self._connect_url(user_name, user_password)
-        client = pyodbc.connect(odbc_url)
-        client.autocommit = True
-        return client
-
-    def enclose_identifier(self, identifier):
-        if identifier is None:
-            return None
-        return double_quote_sandwich(identifier)
-
-    def enclose_query_hints(self, hint_contents):
-        # Teradata does not support query hints. We will only implement this method if a requirement is found.
-        return ""
-
-    def enclosure_character(self):
-        return '"'
-
-    def execute_function(
-        self,
-        sql_fn,
-        return_type=None,
-        return_type_name=None,
-        arg_list=None,
-        log_level=VERBOSE,
-        not_when_dry_running=False,
-        commit=False,
-    ):
-        raise NotImplementedError("execute_function() is not implemented for Teradata")
-
-    def format_query_parameter(self, param_name):
-        """No named parameters so always return "?" """
-        return "?"
-
-    def frontend_version(self):
-        if self._frontend_version is None:
-            sql = "SELECT InfoData FROM DBC.DBCInfoV WHERE InfoKey = 'VERSION'"
-            row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
-            self._frontend_version = row[0] if row else None
-        return self._frontend_version
-
-    def gen_column_object(self, column_name, **kwargs):
-        return TeradataColumn(column_name, **kwargs)
-
-    def generic_string_data_type(self) -> str:
-        return TERADATA_TYPE_VARCHAR
-
-    def get_columns(self, schema, table_name):
-        q = dedent(
-            """\
-            SELECT ColumnId
-            ,      ColumnName
-            ,      Nullable
-            ,      ColumnType
-            ,      DecimalTotalDigits
-            ,      DecimalFractionalDigits
-            ,      ColumnLength
-            ,      DefaultValue
-            FROM   DBC.ColumnsV
-            WHERE  DatabaseName = ?
-            AND    TableName = ?
-            ORDER BY ColumnId ASC"""
-        )
-
-        cols = []
-        for row in self.execute_query_fetch_all(q, query_params=[schema, table_name]):
-            col = TeradataColumn.from_teradata(row)
-            cols.append(col)
-        return cols
-
-    def get_db_unique_name(self) -> str:
-        raise NotImplementedError("get_db_unique_name() is not implemented for Teradata")
-
-    def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
-        """Run SQL to get distinct values for a list of columns.
-        partition_name is ignored on Teradata.
-        """
-        assert schema and table_name
-        assert column_names
-        if isinstance(column_names, str):
-            column_names = [column_names]
-        projection = ",".join([self.enclose_identifier(_) for _ in column_names])
-        order_clause = f" ORDER BY {projection}" if order_results else ""
-        sql = "SELECT DISTINCT %(col)s FROM %(own)s.%(tab)s%(order_clause)s" % {
-            "col": projection,
-            "own": self.enclose_identifier(schema.upper()),
-            "tab": self.enclose_identifier(table_name.upper()),
-            "order_clause": order_clause,
-        }
-        self._messages.log("Distinct column SQL: %s" % sql, detail=VVERBOSE)
-        return self.execute_query_fetch_all(sql)
-
-    def get_object_ddl(
-        self,
-        schema,
-        object_name,
-        object_type,
-        as_list=False,
-        terminate_sql=False,
-        remap_schema=None,
-    ):
-        """Return CREATE DDL as a string (or a list of strings split on CR if as_list=True)
-        terminate_sql: Adds any executing character to the end of the SQL (e.g. a semi-colon)
-        remap_schema: Replaces the actual schema (schema) with a different name (remap_schema)
-        """
-
-        def simple_line_breaks(s):
-            return s.replace("\r\n", "\n").replace("\r", "\n")
-
-        assert object_type in [GET_DDL_TYPE_TABLE, GET_DDL_TYPE_VIEW]
-        sql = f"SHOW {object_type} {schema}.{object_name}"
-        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
-        if row:
-            ddl_str = row[0]
-            # Protect ourselves from Teradata using \r instead of \n
-            ddl_str = simple_line_breaks(ddl_str)
-            if not terminate_sql:
-                ddl_str = ddl_str.strip().rstrip(";")
-            if as_list:
-                return ddl_str.split("\n")
-            return ddl_str
-        return None
-
-    def get_offloadable_schemas(self):
-        raise NotImplementedError("Teradata get_offloadable_schemas is not implemented.")
-
-    def get_command_step_codes(self) -> list:
-        raise NotImplementedError("Teradata get_command_step_codes is not implemented.")
-
-    def get_command_executions(self) -> list[dict[str, str | UUID]]:
-        raise NotImplementedError("Teradata get_command_executions is not implemented.")
-
-    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | UUID]:
-        raise NotImplementedError("Teradata get_command_execution_status is not implemented.")
-
-    def get_command_execution_steps(self, execution_id: ExecutionId) -> list[dict[str, str | UUID]]:
-        raise NotImplementedError("Teradata get_command_execution_steps is not implemented.")
-
-    def get_current_scn(self) -> int:
-        return None
-
-    def get_partition_columns(self, schema, table_name):
-        """Return columns in the first row partition expression, i.e. we skip columnar partitioning."""
-        try:
-            partition_expression = teradata_get_primary_partition_expression(schema, table_name, self)
-        except (
-            UnsupportedCaseNPartitionExpression,
-            UnsupportedPartitionExpression,
-        ) as exc:
-            # Treat tables with unsupported partition expressions as non-partitioned.
-            self._log(
-                f"Cannot retrieve partition column from partition expression: {exc!s}",
-                detail=VVERBOSE,
-            )
-            return []
-        if partition_expression:
-            table_columns = self.get_columns(schema, table_name)
-            return [match_table_column(partition_expression.column, table_columns)]
-        return []
-
-    def get_primary_key_column_names(self, schema, table_name):
-        q = dedent(
-            """\
-            SELECT ColumnName
-            FROM   DBC.IndicesV
-            WHERE  DatabaseName = ?
-            AND    TableName = ?
-            AND    IndexType = 'K'
-            ORDER BY ColumnPosition"""
-        )
-
-        rows = self.execute_query_fetch_all(q, query_params=[schema, table_name])
-        return [_[0] for _ in rows] if rows else []
-
-    def get_schema_tables(self, schema_name):
-        raise NotImplementedError("Teradata get_schema_tables is not implemented.")
-
-    def get_session_option(self, option_name):
-        raise NotImplementedError("get_session_option() is not implemented for Teradata")
-
-    def get_session_user(self) -> str:
-        sql = "SELECT CURRENT_USER"
-        row = self.execute_query_fetch_one(sql)
-        return row[0] if row else row
-
-    def get_subpartition_columns(self, schema, table_name):
-        raise NotImplementedError("get_subpartition_columns() is not implemented for Teradata")
-
-    def get_table_row_count(
-        self,
-        schema,
-        table_name,
-        filter_clause=None,
-        filter_clause_params=None,
-        hint_block=None,
-        not_when_dry_running=False,
-        log_level=VVERBOSE,
-    ):
-        """Note that this is interrogating the table in order to get the actual row count
-        not getting the value from stats or some potentially stale location.
-        hint_block: Ignored on Teradata
-        """
-        where_clause = f" WHERE {filter_clause}" if filter_clause else ""
-        sql = "SELECT COUNT(*) FROM %s%s" % (
-            self.enclose_object_reference(schema, table_name),
-            where_clause,
-        )
-        row = self.execute_query_fetch_one(
-            sql,
-            query_params=filter_clause_params,
-            log_level=log_level,
-            not_when_dry_running=not_when_dry_running,
-        )
-        return row[0] if row else None
-
-    def get_table_size(self, schema, table_name):
-        """Return the size of the table in bytes"""
-        sql = dedent(
-            """\
-            SELECT SUM(CurrentPerm)
-            FROM   DBC.TablesizeV
-            WHERE  DatabaseName = ?
-            AND    TableName = ?
-        """
-        )
-        row = self.execute_query_fetch_one(sql, query_params=[schema, table_name])
-        return row[0] if row else row
-
-    def is_view(self, schema, object_name) -> bool:
-        """Is the underlying RDBMS object a view"""
-        return self.view_exists(schema, object_name)
-
-    def max_datetime_scale(self) -> int:
-        """Teradata supports up to microseconds"""
-        return 6
-
-    def max_datetime_value(self):
-        return datetime64("9999-12-31")
-
-    def max_table_name_length(self):
-        return 128
-
-    def min_datetime_value(self):
-        return datetime64("0001-01-01")
-
-    def parallel_query_hint(self, query_parallelism):
-        # Teradata does not support query hints. We will only implement this method if a requirement is found.
-        return None
-
-    def schema_exists(self, schema) -> bool:
-        sql = dedent(
-            """\
-            SELECT DatabaseName
-            FROM   DBC.Databases2V
-            WHERE  DatabaseName = ?
-        """
-        )
-        return bool(self.execute_query_fetch_one(sql, query_params=[schema]))
-
-    def split_partition_high_value_string(self, hv_string):
-        if not hv_string:
-            return []
-        tokens = split_not_in_quotes(hv_string, sep=",")
-        return tokens
-
-    def table_exists(self, schema, table_name) -> bool:
-        sql = dedent(
-            """\
-            SELECT TableName
-            FROM   DBC.TablesV
-            WHERE  DatabaseName = ?
-            AND    TableName = ?
-            AND    TableKind = 'T'
-        """
-        )
-        return bool(self.execute_query_fetch_one(sql, query_params=[schema, table_name]))
-
-    def to_frontend_literal(self, py_val, data_type=None) -> str:
-        self._debug("Formatting %s literal: %s" % (type(py_val), repr(py_val)))
-        self._debug("For data type: %s" % data_type)
-        new_py_val = TeradataLiteral.format_literal(py_val, data_type=data_type)
-        self._debug("Final %s literal: %s" % (type(py_val), str(new_py_val)))
-        return new_py_val
-
-    def view_exists(self, schema, view_name) -> bool:
-        sql = dedent(
-            """\
-            SELECT TableName
-            FROM   DBC.TablesV
-            WHERE  DatabaseName = ?
-            AND    TableName = ?
-            AND    TableKind = 'V'
-        """
-        )
-        return bool(self.execute_query_fetch_one(sql, query_params=[schema, view_name]))
