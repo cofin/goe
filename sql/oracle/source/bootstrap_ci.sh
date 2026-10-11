@@ -21,13 +21,15 @@ BUILD_HASH="$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo "
 WORK_SQL_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_SQL_DIR}"' EXIT
 
-cp -a "${SCRIPT_DIR}/." "${WORK_SQL_DIR}/"
+cp -r "${SCRIPT_DIR}/." "${WORK_SQL_DIR}/"
+chmod -R u+w "${WORK_SQL_DIR}"
 
 sed -i -e "s/VERSION/${OFFLOAD_VERSION}/g" -e "s/BUILD/${BUILD_HASH}/g" \
   "${WORK_SQL_DIR}/sql/install_env.sql" \
   "${WORK_SQL_DIR}/sql/upgrade_env.sql"
 sed -i "s/'%s-SNAPSHOT'/'${OFFLOAD_VERSION} (${BUILD_HASH})'/g" \
   "${WORK_SQL_DIR}"/sql/create_offload*_package_spec.sql
+ln -snf . "${WORK_SQL_DIR}/sql/sql"
 
 cat <<EOF > "${WORK_SQL_DIR}/ci_install.sql"
 WHENEVER SQLERROR EXIT SQL.SQLCODE
