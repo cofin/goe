@@ -17,9 +17,16 @@ from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
     OFFLOAD_TRANSPORT_METHOD_SQOOP,
+    OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
+    OffloadTransportException,
+    choose_offload_transport_method,
+    get_offload_transport_method_validation_fns,
     is_query_import_available,
+    validate_offload_transport_method,
 )
 from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_VARCHAR2,
@@ -147,6 +154,7 @@ def test_spark_submit_canary_construct():
 
 
 def test_dataproc_cmd(config, messages, oracle_table, fake_operation):
+    """batch option should NOT be in standard Managed Spark job commands."""
     fake_dfs_client = Mock()
     fake_target_table = Mock()
     client = offload_transport_factory(
@@ -164,7 +172,6 @@ def test_dataproc_cmd(config, messages, oracle_table, fake_operation):
     assert f"--project={config.google_dataproc_project}" in cmd, f"project option is missing from cmd: {cmd}"
     assert f"--cluster={config.google_dataproc_cluster}" in cmd, f"cluster option is missing from cmd: {cmd}"
     assert f"--region={config.google_dataproc_region}" in cmd, f"region option is missing from cmd: {cmd}"
-    # batch option should NOT be in standard Managed Spark job commands.
     assert all("--batch=" not in _ for _ in cmd), f"batch option is incorrectly in cmd: {cmd}"
 
 
@@ -222,7 +229,6 @@ def test_dataproc_batches_describe_cmd(config, messages, oracle_table, fake_oper
 @pytest.mark.parametrize(
     "cmd_output,expect_exception",
     [
-        # Describe output for a successful job.
         (
             """{
   "createTime": "2024-04-26T08:10:01.214382Z",
@@ -255,7 +261,6 @@ def test_dataproc_batches_describe_cmd(config, messages, oracle_table, fake_oper
 }""",
             False,
         ),
-        # Describe output for a cancelled job.
         (
             """{
   "createTime": "2024-04-26T10:09:11.916627Z",
@@ -293,7 +298,6 @@ def test_dataproc_batches_describe_cmd(config, messages, oracle_table, fake_oper
 }""",
             True,
         ),
-        # Describe output for a failed job.
         (
             """{
   "createTime": "2024-04-26T10:09:11.916627Z",
@@ -327,7 +331,6 @@ def test_dataproc_batches_describe_cmd(config, messages, oracle_table, fake_oper
 }""",
             True,
         ),
-        # Describe output for a job failing with 'Task was not acquired'.
         (
             """{
     "createTime": "2026-05-13T08:05:33Z",
@@ -409,7 +412,6 @@ def test_dataproc_batch_describe(
                 "spark.executor.instances=4",
             ],
         ),
-        # If either setting has already been manually set then we don't interfere.
         (
             64,
             {"spark.executor.cores": 1},
@@ -549,3 +551,33 @@ def test_dataproc_specific_caller_overrides_general_impersonation(
         Mock(),
     )
     assert f"--impersonate-service-account={DATAPROC_CALLER_SA}" in client._gcloud_dataproc_submit_command()
+
+
+def test_validation_fns_cover_every_selectable_method(config, messages) -> None:
+    """Every concrete transport method has an availability check."""
+    fns = get_offload_transport_method_validation_fns(config, messages=messages)
+    assert set(fns) == {
+        OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
+        OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
+        OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
+        OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
+        OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
+        OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
+        OFFLOAD_TRANSPORT_METHOD_SQOOP,
+        OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
+    }
+
+
+def test_validate_rejects_unknown_method(config, messages) -> None:
+    """Unknown transport methods are rejected before any availability check."""
+    with pytest.raises(OffloadTransportException, match="Unsupported transport method"):
+        validate_offload_transport_method("NOT_A_METHOD", config, messages=messages)
+
+
+def test_choose_method_by_frontend_type(messages) -> None:
+    """MSSQL always selects Sqoop and unsupported frontends are refused."""
+    mssql_config = Mock(offload_transport="AUTO", db_type="mssql")
+    assert choose_offload_transport_method(Mock(), None, mssql_config, messages) == OFFLOAD_TRANSPORT_METHOD_SQOOP
+    other_config = Mock(offload_transport="AUTO", db_type="snowflake")
+    with pytest.raises(OffloadTransportException, match="Unsupported DB type"):
+        choose_offload_transport_method(Mock(), None, other_config, messages)
