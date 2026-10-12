@@ -2,14 +2,14 @@
 type: Spec
 flow_id: bigquery_first_backend_modernization_20261010
 title: "Chapter 3.3: BigQuery-First Backend & Transport Modernization"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
-last_operation: null
+last_operation: finish
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: 8fcb959
 created_at: 2026-10-10T16:00:00Z
 updated_at: 2026-10-11T00:10:00Z
 description: Make Google BigQuery and GCS the first-class GOE backend path by replacing Legacy SQL partition metadata, modernizing BackendBigQueryApi query execution and lifecycle, adding native BigQuery load jobs for staged files, removing redundant GOEGcs existence/poll round trips, and prioritizing GCP transports, with zero feature loss and no edits to deprioritized backends.
@@ -79,11 +79,11 @@ research: [research/bigquery_first_and_test_harness.md]
 
 ## Implementation Plan
 
-- [ ] 1.1 Default BigQuery staging to Parquet and add validated `BIGQUERY_LOAD_TABLE_MODE` ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Replace Legacy SQL partition metadata, delete `__del__`, adopt `query_and_wait`, job labels, `ClientInfo`, session allow-list and dataset CMEK default in `BackendBigQueryApi` ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 Load staged files into native BigQuery load tables with external-table fallback ([tasks/1.3.md](tasks/1.3.md))
-- [ ] 1.4 Use `if_generation_match=0` uploads and single-pass deletes in `GOEGcs` ([tasks/1.4.md](tasks/1.4.md))
-- [ ] 1.5 Prioritize GCP transports in `AUTO` and modernize Query Import fetch size and local cleanup ([tasks/1.5.md](tasks/1.5.md))
+- [x] 1.1 Default BigQuery staging to Parquet and add validated `BIGQUERY_LOAD_TABLE_MODE` ([tasks/1.1.md](tasks/1.1.md)) (9e38f08)
+- [x] 1.2 Replace Legacy SQL partition metadata, delete `__del__`, adopt `query_and_wait`, job labels, `ClientInfo`, session allow-list and dataset CMEK default in `BackendBigQueryApi` ([tasks/1.2.md](tasks/1.2.md)) (19cf122)
+- [x] 1.3 Load staged files into native BigQuery load tables with external-table fallback ([tasks/1.3.md](tasks/1.3.md)) (940eb8b)
+- [x] 1.4 Use `if_generation_match=0` uploads and single-pass deletes in `GOEGcs` ([tasks/1.4.md](tasks/1.4.md)) (abade1e)
+- [x] 1.5 Prioritize GCP transports in `AUTO` and modernize Query Import fetch size and local cleanup ([tasks/1.5.md](tasks/1.5.md)) (8fcb959)
 
 ## Verification Commands
 

@@ -2,14 +2,14 @@
 type: Spec
 flow_id: sqlspec_oracle_data_layer_migration_20261010
 title: "Chapter 3.1: SQLSpec Oracle Data Layer Migration"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
-last_operation: null
+last_operation: finish
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: b72c216
 created_at: 2026-10-10T16:00:00Z
 updated_at: 2026-10-11T00:10:00Z
 description: "Introduce a SQLSpec-backed OracleGateway (SQLFileLoader + OracleSyncDriver over GOE's existing oracledb connection), move OracleFrontendApi dictionary queries and OracleOrchestrationRepoClient repository queries into named .sql files with msgspec.Struct row hydration, and keep every Oracle auth, session-tagging, reconnect, dry-run, and PL/SQL behavior unchanged."
@@ -67,9 +67,9 @@ Route GOE's static Oracle SQL through **SQLSpec** (`sqlspec.loader.SQLFileLoader
 
 ## Implementation Plan
 
-- [ ] 1.1 Create `OracleGateway`, `validate_oracle_identifier`, `load_sql_file`, and `rows_as_dicts` in `src/goe/persistence/oracle_gateway.py` ([tasks/1.1.md](tasks/1.1.md)) [P1, behavior_tdd]
-- [ ] 1.2 Move 16 `OracleFrontendApi` dictionary queries to `src/goe/offload/oracle/sql/frontend_metadata.sql`, add `get_validated_oracle_connection`, clean `_open_cursor` reconnect, and delegate `OracleQuery` row projection ([tasks/1.2.md](tasks/1.2.md)) (depends on: 1.1) [P1, characterization]
-- [ ] 1.3 Move 7 repository statements to `src/goe/persistence/sql/oracle_repo.sql`, add repository row structs to `schemas.py`, and route `OracleOrchestrationRepoClient` through `OracleGateway` ([tasks/1.3.md](tasks/1.3.md)) (depends on: 1.1, 1.2) [P2, characterization]
+- [x] 1.1 Create `OracleGateway`, `validate_oracle_identifier`, `load_sql_file`, and `rows_as_dicts` in `src/goe/persistence/oracle_gateway.py` ([tasks/1.1.md](tasks/1.1.md)) [P1, behavior_tdd] (df50c5c)
+- [x] 1.2 Move 16 `OracleFrontendApi` dictionary queries to `src/goe/offload/oracle/sql/frontend_metadata.sql`, add `get_validated_oracle_connection`, clean `_open_cursor` reconnect, and delegate `OracleQuery` row projection ([tasks/1.2.md](tasks/1.2.md)) (depends on: 1.1) [P1, characterization] (157ddbf)
+- [x] 1.3 Move 7 repository statements to `src/goe/persistence/sql/oracle_repo.sql`, add repository row structs to `schemas.py`, and route `OracleOrchestrationRepoClient` through `OracleGateway` ([tasks/1.3.md](tasks/1.3.md)) (depends on: 1.1, 1.2) [P2, characterization] (b72c216)
 
 ## Continuity Snapshot
 

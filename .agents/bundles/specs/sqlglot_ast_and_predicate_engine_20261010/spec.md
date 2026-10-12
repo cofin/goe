@@ -2,14 +2,14 @@
 type: Spec
 flow_id: sqlglot_ast_and_predicate_engine_20261010
 title: "Chapter 3.2: Pluggable SQL AST, Custom Oracle Dialect & Predicate Engine"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
-last_operation: null
+last_operation: finish
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: 3cb9b21
 created_at: 2026-10-10T16:00:00Z
 updated_at: 2026-10-11T00:10:00Z
 description: "Introduce a library-agnostic SQL dialect and AST engine seam (src/goe/offload/sql_engine.py), a custom upstreamable Oracle dialect extension (src/goe/offload/oracle/oracle_dialect.py) for AS OF SCN and PARTITION/SUBPARTITION ASTs, and encapsulated sqlglot implementations for BigQuery DDL/DML, Oracle extraction queries, predicate rendering, and CrossDbValidator."
@@ -89,11 +89,11 @@ Replace string-concatenated and f-string-interpolated SQL construction across GO
 
 ## Implementation Plan
 
-- [ ] 1.1 Create `src/goe/offload/sql_engine.py` (`RenderedSQL`, `ValidationQuerySpec`, `BigQueryDialectEngineProtocol`, `OracleExtractionQueryProtocol`, `PredicateDialectEngineProtocol`, `ValidationQueryEngineProtocol`) with zero `sqlglot` imports and verify in `tests/unit/offload/test_sql_engine.py`.
-- [ ] 1.2 Implement `BigQuerySqlEngine` in `src/goe/offload/bigquery/bigquery_sql.py`, refactor `BackendBigQueryApi` (`src/goe/offload/bigquery/bigquery_backend_api.py`) to use `get_bigquery_dialect_engine()` and delete legacy string-splicing DDL/DML code, and verify in `tests/unit/offload/bigquery/test_bigquery_sql.py`.
-- [ ] 1.3 Create `src/goe/offload/oracle/oracle_dialect.py` (`register_oracle_dialect_extensions`, `OracleSqlEngine`), refactor `OffloadTransportOracleApi` in `src/goe/offload/oracle/oracle_offload_transport_rdbms_api.py` (`AS OF SCN` and `PARTITION`/`SUBPARTITION` ASTs), and verify in `tests/unit/offload/oracle/test_oracle_dialect.py`.
-- [ ] 1.4 Implement `PredicateSqlEngine` in `src/goe/offload/predicate_offload.py`, refactor `oracle_predicate.py` and `bigquery_predicate.py` while deleting superseded `GenericPredicateToOracleSQL` / `TypedPredicateToOracle*` and `GenericPredicateToBigQuerySQL` / `TypedPredicateToBigQuery*` classes, and verify in `tests/unit/offload/test_predicate_offload.py`.
-- [ ] 1.5 Implement `ValidationSqlEngine` in `src/goe/offload/offload_validation.py`, refactor `CrossDbValidator` to validate `--filters` and build aggregate queries via `ValidationQueryEngineProtocol` while deleting raw string-splicing SQL assembly, and verify in `tests/unit/offload/test_offload_validation.py`.
+- [x] 1.1 Create `src/goe/offload/sql_engine.py` (`RenderedSQL`, `ValidationQuerySpec`, `BigQueryDialectEngineProtocol`, `OracleExtractionQueryProtocol`, `PredicateDialectEngineProtocol`, `ValidationQueryEngineProtocol`) with zero `sqlglot` imports and verify in `tests/unit/offload/test_sql_engine.py`. (42c6710)
+- [x] 1.2 Implement `BigQuerySqlEngine` in `src/goe/offload/bigquery/bigquery_sql.py`, refactor `BackendBigQueryApi` (`src/goe/offload/bigquery/bigquery_backend_api.py`) to use `get_bigquery_dialect_engine()` and delete legacy string-splicing DDL/DML code, and verify in `tests/unit/offload/bigquery/test_bigquery_sql.py`. (dd2333b)
+- [x] 1.3 Create `src/goe/offload/oracle/oracle_dialect.py` (`register_oracle_dialect_extensions`, `OracleSqlEngine`), refactor `OffloadTransportOracleApi` in `src/goe/offload/oracle/oracle_offload_transport_rdbms_api.py` (`AS OF SCN` and `PARTITION`/`SUBPARTITION` ASTs), and verify in `tests/unit/offload/oracle/test_oracle_dialect.py`. (4185aaf)
+- [x] 1.4 Implement `PredicateSqlEngine` in `src/goe/offload/predicate_offload.py`, refactor `oracle_predicate.py` and `bigquery_predicate.py` while deleting superseded `GenericPredicateToOracleSQL` / `TypedPredicateToOracle*` and `GenericPredicateToBigQuerySQL` / `TypedPredicateToBigQuery*` classes, and verify in `tests/unit/offload/test_predicate_offload.py`. (81b1144)
+- [x] 1.5 Implement `ValidationSqlEngine` in `src/goe/offload/offload_validation.py`, refactor `CrossDbValidator` to validate `--filters` and build aggregate queries via `ValidationQueryEngineProtocol` while deleting raw string-splicing SQL assembly, and verify in `tests/unit/offload/test_offload_validation.py`. (3cb9b21)
 
 ## Continuity Snapshot
 

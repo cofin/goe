@@ -2,14 +2,14 @@
 type: Spec
 flow_id: duckdb_oracle_offload_transport_20261010
 title: "Chapter 3.4: Opt-In DuckDB Oracle Offload Transport (duckdb-oracle + community gcs)"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
 state_revision: 0
 current_task: null
-last_operation: null
+last_operation: finish
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: ad4dbf8
 created_at: 2026-10-10T16:00:00Z
 updated_at: 2026-10-11T00:10:00Z
 description: Add an opt-in DUCKDB offload transport that runs one SCN-pinned oracle_query per GOE transport batch through cofin/duckdb-oracle and writes Parquet directly to gcss:// with the community gcs extension using GOE's central ADC credentials, for Oracle-to-BigQuery offloads.
@@ -71,10 +71,10 @@ research: [research/duckdb_integration.md]
 
 ## Implementation Plan
 
-- [ ] 1.1 Add `OFFLOAD_TRANSPORT_DUCKDB_*` orchestration options ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Implement DuckDB transport constants and engine helpers ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 Implement `OffloadTransportDuckDB` (SCN-pinned batches to `gcss://` Parquet) ([tasks/1.3.md](tasks/1.3.md))
-- [ ] 1.4 Register the opt-in `DUCKDB` method, availability gate and factory branch ([tasks/1.4.md](tasks/1.4.md))
+- [x] 1.1 Add `OFFLOAD_TRANSPORT_DUCKDB_*` orchestration options ([tasks/1.1.md](tasks/1.1.md)) (83b7b06)
+- [x] 1.2 Implement DuckDB transport constants and engine helpers ([tasks/1.2.md](tasks/1.2.md)) (41113eb)
+- [x] 1.3 Implement `OffloadTransportDuckDB` (SCN-pinned batches to `gcss://` Parquet) ([tasks/1.3.md](tasks/1.3.md)) (a4fd5fc)
+- [x] 1.4 Register the opt-in `DUCKDB` method, availability gate and factory branch ([tasks/1.4.md](tasks/1.4.md)) (ad4dbf8)
 
 ## Verification Commands
 
