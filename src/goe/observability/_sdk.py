@@ -169,10 +169,10 @@ def build_metric_readers(settings: ObservabilitySettings, config: Any | None = N
         ]
     if settings.exporter == "otlp" and settings.protocol == "http/protobuf":
         bind_lazy_imports(__name__, _OTLP_HTTP_IMPORTS)
-        return [PeriodicExportingMetricReader(HttpMetricExporter())]
+        return [PeriodicExportingMetricReader(HttpMetricExporter(endpoint=settings.endpoint))]
     if settings.exporter == "otlp":
         bind_lazy_imports(__name__, _OTLP_GRPC_IMPORTS)
-        return [PeriodicExportingMetricReader(GrpcMetricExporter())]
+        return [PeriodicExportingMetricReader(GrpcMetricExporter(endpoint=settings.endpoint))]
     return []
 
 

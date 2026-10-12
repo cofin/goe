@@ -142,11 +142,11 @@ uv run pytest tests/unit/observability/ tests/unit/cli/ -v
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `opentelemetry_foundation_and_context_propagation_20261010`, `planned`.
+- **Flow / lifecycle**: `opentelemetry_foundation_and_context_propagation_20261010`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `0295b02`.
 - **Decisions**: Google Cloud export uses the Telemetry OTLP API (no deprecated GCP exporter packages); `ObservabilitySettings` is the only env resolver (no `OrchestrationConfig` fields); SDK isolated in lazily loaded `_sdk.py`.
 - **Blockers**: none; requires PRD 1-3 chapters listed in `depends_on` to be complete.
-- **Next exact step**: execute task `1.1` (`opentelemetry_foundation_and_context_propagation_20261010:1.1`).
-- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Next exact step**: none (all tasks completed).
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 1`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/patterns/cli-architecture.md`, `.agents/bundles/knowledge/standards/python.md`, `.agents/bundles/knowledge/standards/testing.md`, `.agents/bundles/knowledge/workflow.md`, `.agents/bundles/product/tech-stack.md`.

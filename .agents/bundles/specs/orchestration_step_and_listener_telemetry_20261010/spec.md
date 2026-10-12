@@ -96,11 +96,11 @@ uv run pytest tests/unit/observability/ tests/unit/offload/test_offload_messages
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `orchestration_step_and_listener_telemetry_20261010`, `planned`.
+- **Flow / lifecycle**: `orchestration_step_and_listener_telemetry_20261010`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `ec4dd87`.
 - **Decisions**: trace ids persisted from the runner (`_command_begin`) and `offload_step`, not the persistence layer; native litestar-queues propagation (no manual carrier); MCP spans through `MCPConfig` hooks; listener `config/logging.py` left untouched.
 - **Blockers**: Chapter 4.1 must be complete.
-- **Next exact step**: execute task `1.1` (`orchestration_step_and_listener_telemetry_20261010:1.1`).
-- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Next exact step**: none (all tasks completed).
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 1`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/architecture/orchestration.md`, `.agents/bundles/knowledge/listener/rest-api.md`, `.agents/bundles/knowledge/listener/worker-and-redis.md`, `.agents/bundles/knowledge/patterns/cli-architecture.md`, `.agents/bundles/knowledge/standards/testing.md`.

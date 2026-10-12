@@ -87,11 +87,11 @@ uv run python -c "import ast,sys; is_priv=lambda n:n.startswith('_') and not (n.
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `database_transport_and_cloud_storage_spans_20261010`, `planned`.
+- **Flow / lifecycle**: `database_transport_and_cloud_storage_spans_20261010`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `8ddd9f3`.
 - **Decisions**: instrument the single transport call site instead of eight subclasses; telemetry gating on every data-plane hook; extend PRD 3 BigQuery labels (`job_labels` / `sanitize_bigquery_label_value`) rather than re-implementing them; `D-4.3-SQLCOMMENTER` resolved (emit spec-compliant SQLCommenter via `sqlspec.core.sqlcommenter`).
 - **Blockers**: Chapter 4.2 and PRD 3 chapters listed in `depends_on` must be complete.
-- **Next exact step**: execute task `1.1` (`database_transport_and_cloud_storage_spans_20261010:1.1`).
-- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Next exact step**: none (all tasks completed).
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 1`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/frontends/oracle.md`, `.agents/bundles/knowledge/transport/`, `.agents/bundles/knowledge/storage/`, `.agents/bundles/knowledge/backends/bigquery.md`, `.agents/bundles/knowledge/standards/database-and-sql.md`.

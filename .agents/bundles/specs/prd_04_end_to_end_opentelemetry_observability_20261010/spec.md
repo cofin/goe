@@ -115,11 +115,11 @@ uv run pytest tests/unit/ -v
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `prd_04_end_to_end_opentelemetry_observability_20261010`, `planned`; 3 sequenced child flows (15 tasks).
+- **Flow / lifecycle**: `prd_04_end_to_end_opentelemetry_observability_20261010`, `completed`; 3 sequenced child flows (15 tasks).
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `8ddd9f3`.
 - **Decisions**: see §4 (`D-4.3-SQLCOMMENTER` resolved).
 - **Blockers**: PRDs 1-3 must complete first.
-- **Next exact step**: execute Chapter 4.1 task `1.1` (`opentelemetry_foundation_and_context_propagation_20261010:1.1`).
-- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Next exact step**: none (all tasks completed).
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 1`.
 - **Relevant knowledge**: `.agents/bundles/product/tech-stack.md`, `.agents/bundles/knowledge/architecture/orchestration.md`, `.agents/bundles/knowledge/listener/index.md`, `.agents/bundles/knowledge/patterns/cli-architecture.md`, `.agents/bundles/knowledge/workflow.md`.
