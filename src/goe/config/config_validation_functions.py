@@ -43,7 +43,7 @@ from goe.offload.offload_transport import (
     derive_rest_api_verify_value_from_url,
 )
 from goe.util.goe_log_fh import is_valid_path_for_logs
-from goe.util.misc_functions import human_size_to_bytes
+from goe.util.misc_functions import human_size_to_bytes, is_pos_int
 from goe.util.password_tools import PasswordTools
 
 
@@ -295,6 +295,16 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
 
     if options.offload_staging_format:
         options.offload_staging_format = options.offload_staging_format.upper()
+
+    if not is_pos_int(options.offload_transport_duckdb_threads):
+        raise exc_cls(f"Invalid value for OFFLOAD_TRANSPORT_DUCKDB_THREADS: {options.offload_transport_duckdb_threads}")
+    options.offload_transport_duckdb_threads = int(options.offload_transport_duckdb_threads)
+    options.offload_transport_duckdb_max_bytes = normalise_size_option(
+        options.offload_transport_duckdb_max_bytes,
+        binary_sizes=True,
+        strict_name="OFFLOAD_TRANSPORT_DUCKDB_MAX_BYTES",
+        exc_cls=exc_cls,
+    )
 
     # For backward compatibility
     options.offload_transport_user = options.offload_transport_user or options.hadoop_ssh_user

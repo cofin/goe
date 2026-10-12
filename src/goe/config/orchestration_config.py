@@ -116,6 +116,14 @@ EXPECTED_CONFIG_ARGS = [
     "offload_transport_cmd_host",
     "offload_transport_credential_provider_path",
     "offload_transport_dsn",
+    "offload_transport_duckdb_version",
+    "offload_transport_duckdb_extension_path",
+    "offload_transport_duckdb_extension_dir",
+    "offload_transport_duckdb_extension_repository",
+    "offload_transport_duckdb_threads",
+    "offload_transport_duckdb_memory_limit",
+    "offload_transport_duckdb_temp_directory",
+    "offload_transport_duckdb_max_bytes",
     "offload_transport_livy_api_url",
     "offload_transport_livy_api_verify_ssl",
     "offload_transport_livy_max_sessions",
@@ -268,6 +276,14 @@ class OrchestrationConfig:
     offload_fs_scheme: str
     offload_staging_format: str
     offload_transport: str
+    offload_transport_duckdb_version: str
+    offload_transport_duckdb_extension_path: str | None
+    offload_transport_duckdb_extension_dir: str | None
+    offload_transport_duckdb_extension_repository: str
+    offload_transport_duckdb_threads: int
+    offload_transport_duckdb_memory_limit: str
+    offload_transport_duckdb_temp_directory: str | None
+    offload_transport_duckdb_max_bytes: int
     offload_transport_auth_using_oracle_wallet: bool
     offload_transport_cmd_host: str
     offload_transport_credential_provider_path: str | None
@@ -604,6 +620,38 @@ class OrchestrationConfig:
             offload_transport_dsn=config_dict.get(
                 "offload_transport_dsn",
                 orchestration_defaults.offload_transport_dsn_default(),
+            ),
+            offload_transport_duckdb_version=config_dict.get(
+                "offload_transport_duckdb_version",
+                orchestration_defaults.offload_transport_duckdb_version_default(),
+            ),
+            offload_transport_duckdb_extension_path=config_dict.get(
+                "offload_transport_duckdb_extension_path",
+                orchestration_defaults.offload_transport_duckdb_extension_path_default(),
+            ),
+            offload_transport_duckdb_extension_dir=config_dict.get(
+                "offload_transport_duckdb_extension_dir",
+                orchestration_defaults.offload_transport_duckdb_extension_dir_default(),
+            ),
+            offload_transport_duckdb_extension_repository=config_dict.get(
+                "offload_transport_duckdb_extension_repository",
+                orchestration_defaults.offload_transport_duckdb_extension_repository_default(),
+            ),
+            offload_transport_duckdb_threads=config_dict.get(
+                "offload_transport_duckdb_threads",
+                orchestration_defaults.offload_transport_duckdb_threads_default(),
+            ),
+            offload_transport_duckdb_memory_limit=config_dict.get(
+                "offload_transport_duckdb_memory_limit",
+                orchestration_defaults.offload_transport_duckdb_memory_limit_default(),
+            ),
+            offload_transport_duckdb_temp_directory=config_dict.get(
+                "offload_transport_duckdb_temp_directory",
+                orchestration_defaults.offload_transport_duckdb_temp_directory_default(),
+            ),
+            offload_transport_duckdb_max_bytes=config_dict.get(
+                "offload_transport_duckdb_max_bytes",
+                orchestration_defaults.offload_transport_duckdb_max_bytes_default(),
             ),
             offload_transport_livy_max_sessions=config_dict.get(
                 "offload_transport_livy_max_sessions",
