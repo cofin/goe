@@ -19,6 +19,8 @@ from goe.goe import (
     init_log,
     offload_table,
 )
+from goe.observability.runtime import ensure_observability
+from goe.observability.spans import current_trace_ids, traced_command
 from goe.offload.factory.frontend_api_factory import frontend_api_factory
 from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_messages import (
@@ -61,6 +63,7 @@ class OrchestrationRunner:
 
     def __init__(self, config_overrides=None, suppress_stdout=False):
         self._config = self._gen_config(config_overrides, suppress_stdout=suppress_stdout)
+        ensure_observability(self._config)
         self._execution_id: ExecutionId | None = None
         self._messages: OffloadMessages | None = None
         self._max_hybrid_name_length: int | None = None
@@ -91,29 +94,37 @@ class OrchestrationRunner:
         )
 
         operation = self._gen_offload_operation(params, repo_client)
-        command_id = self._command_begin(orchestration_constants.COMMAND_OFFLOAD, params, repo_client, operation)
-        try:
-            offload_source_table = self._build_offload_source_table(operation)
-            offload_target_table = get_offload_target_table(operation, self._config, self._messages)
+        with traced_command(
+            orchestration_constants.COMMAND_OFFLOAD,
+            self._execution_id,
+            backend=self._config.target,
+            dry_run=dry_run,
+            source_owner=operation.owner,
+            source_table=operation.table_name,
+        ):
+            command_id = self._command_begin(orchestration_constants.COMMAND_OFFLOAD, params, repo_client, operation)
+            try:
+                offload_source_table = self._build_offload_source_table(operation)
+                offload_target_table = get_offload_target_table(operation, self._config, self._messages)
 
-            self._log(f"Offloading to {self._target_version_string(offload_target_table)}")
+                self._log(f"Offloading to {self._target_version_string(offload_target_table)}")
 
-            status = self._offload(operation, offload_source_table, offload_target_table)
-            self._log_final_messages(orchestration_constants.COMMAND_OFFLOAD, dry_run)
+                status = self._offload(operation, offload_source_table, offload_target_table)
+                self._log_final_messages(orchestration_constants.COMMAND_OFFLOAD, dry_run)
 
-            self._command_end(command_id, repo_client)
-            self._cleanup_objects(
-                repo_client,
-                frontend_table=offload_source_table,
-                backend_table=offload_target_table,
-            )
-        except Exception as exc:
-            self._command_fail(command_id, exc, repo_client)
-            repo_client.close(force=True)
-            raise
-        finally:
-            if not reuse_log and self._messages is not None:
-                self._messages.close_log()
+                self._command_end(command_id, repo_client)
+                self._cleanup_objects(
+                    repo_client,
+                    frontend_table=offload_source_table,
+                    backend_table=offload_target_table,
+                )
+            except Exception as exc:
+                self._command_fail(command_id, exc, repo_client)
+                repo_client.close(force=True)
+                raise
+            finally:
+                if not reuse_log and self._messages is not None:
+                    self._messages.close_log()
 
         return status
 
@@ -190,6 +201,9 @@ class OrchestrationRunner:
                 command_input = " ".join(sys.argv)
 
             operation_dict = operation if isinstance(operation, (dict, type(None))) else operation.vars()
+            trace_ids = current_trace_ids()
+            if trace_ids:
+                operation_dict = {**(operation_dict or {}), **trace_ids}
 
             command_id = repo_client.start_command(
                 self._execution_id,

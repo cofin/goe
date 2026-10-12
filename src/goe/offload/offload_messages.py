@@ -12,6 +12,12 @@ from datetime import datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from goe.observability.spans import (
+    add_span_log_event,
+    current_trace_ids,
+    record_skipped_step,
+    traced_step,
+)
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.command_steps import STEP_TITLES, step_title
 from goe.util.goe_log_fh import GOELogFileHandle
@@ -239,6 +245,7 @@ class OffloadMessages:
         if msg not in self.messages["warnings"]:
             self.messages["warnings"].append(msg)
         self.log("WARNING:" + msg, detail, ansi_code)
+        add_span_log_event("WARNING", msg)
 
     def event(self, token):
         """Add a token to a list of events that can be interrogated later in an orchestration process.
@@ -325,53 +332,71 @@ class OffloadMessages:
         if self._skip and step_id in self._skip:
             if mandatory_step:
                 raise OffloadMessagesException('Step "%s" is mandatory and cannot be skipped' % title)
+            record_skipped_step(step_id, step_constant, title, command_type=parent_command_type)
             self.log("skipped")
             return None
 
-        if step_repo_logging(parent_command_type):
-            csid = self._repo_client.start_command_step(self.execution_id, parent_command_type, step_constant)
-        else:
-            csid = None
-
-        if step_id == self._error_before_step:
-            raise OffloadMessagesForcedException("%s before step: %s" % (FORCED_EXCEPTION_TEXT, title))
-
-        try:
-            step_results = step_fn()
-            td = log_timedelta(ts)
-
-            if execute:
-                self.log("Done", ansi_code="green")
-                if record_step_delta:
-                    self.step_delta(title, td)
-            else:
-                self.step_no_delta(title)
-
+        with traced_step(
+            step_id,
+            step_constant,
+            title,
+            command_type=parent_command_type,
+            mandatory=mandatory_step,
+            optional=optional,
+            execute=execute,
+        ) as step_op:
             if step_repo_logging(parent_command_type):
-                self._repo_client.end_command_step(csid, orchestration_constants.COMMAND_SUCCESS)
-
-            return step_results
-        except Exception as exc:
-            log_timedelta(ts)
-            if step_repo_logging(parent_command_type):
-                error_context = {
-                    command_steps.CTX_ERROR_MESSAGE: str(exc),
-                    command_steps.CTX_EXCEPTION_STACK: traceback.format_exc(),
-                }
-                self._repo_client.end_command_step(
-                    csid,
-                    orchestration_constants.COMMAND_ERROR,
-                    step_details=error_context,
-                )
-            if optional:
-                self.log(traceback.format_exc(), detail=VVERBOSE)
-                self.warning('Error in "%s": %s' % (title, str(exc)), ansi_code="red")
-                self.log("Optional step, continuing", ansi_code="green")
+                csid = self._repo_client.start_command_step(self.execution_id, parent_command_type, step_constant)
             else:
-                raise
-        finally:
-            if step_id == self._error_after_step:
-                raise OffloadMessagesForcedException("%s after step: %s" % (FORCED_EXCEPTION_TEXT, title))
+                csid = None
+
+            if step_id == self._error_before_step:
+                raise OffloadMessagesForcedException("%s before step: %s" % (FORCED_EXCEPTION_TEXT, title))
+
+            try:
+                step_results = step_fn()
+                td = log_timedelta(ts)
+
+                if execute:
+                    self.log("Done", ansi_code="green")
+                    if record_step_delta:
+                        self.step_delta(title, td)
+                else:
+                    self.step_no_delta(title)
+
+                if step_repo_logging(parent_command_type):
+                    trace_ids = current_trace_ids()
+                    if trace_ids:
+                        self._repo_client.end_command_step(
+                            csid, orchestration_constants.COMMAND_SUCCESS, step_details=trace_ids
+                        )
+                    else:
+                        self._repo_client.end_command_step(csid, orchestration_constants.COMMAND_SUCCESS)
+
+                return step_results
+            except Exception as exc:
+                step_op.fail(exc)
+                log_timedelta(ts)
+                if step_repo_logging(parent_command_type):
+                    error_context = {
+                        command_steps.CTX_ERROR_MESSAGE: str(exc),
+                        command_steps.CTX_EXCEPTION_STACK: traceback.format_exc(),
+                        **current_trace_ids(),
+                    }
+                    self._repo_client.end_command_step(
+                        csid,
+                        orchestration_constants.COMMAND_ERROR,
+                        step_details=error_context,
+                    )
+                if optional:
+                    self.log(traceback.format_exc(), detail=VVERBOSE)
+                    self.warning('Error in "%s": %s' % (title, str(exc)), ansi_code="red")
+                    self.log("Optional step, continuing", ansi_code="green")
+                else:
+                    raise
+            finally:
+                if step_id == self._error_after_step:
+                    raise OffloadMessagesForcedException("%s after step: %s" % (FORCED_EXCEPTION_TEXT, title))
 
     def set_execution_id(self, execution_id):
         self.execution_id = execution_id
