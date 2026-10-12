@@ -23,6 +23,7 @@ from numpy import datetime64
 
 from goe import __version__ as GOE_VERSION
 from goe.connect.connect_constants import CONNECT_DETAIL, CONNECT_STATUS, CONNECT_TEST
+from goe.observability.bigquery import merge_trace_labels, record_bigquery_job_metadata, traced_bigquery_job
 from goe.offload.backend_api import (
     FETCH_ACTION_ALL,
     FETCH_ACTION_ONE,
@@ -1149,7 +1150,7 @@ LIMIT 1""" % {
             labels["goe_execution_id"] = sanitize_bigquery_label_value(execution_id)
         if self._messages.command_type:
             labels["goe_command"] = sanitize_bigquery_label_value(self._messages.command_type)
-        return labels
+        return merge_trace_labels(labels, sanitize_bigquery_label_value)
 
     def kms_key_name(self):
         if self._kms_client:
@@ -1882,20 +1883,22 @@ LIMIT 1""" % {
             return_list.append(run_sql)
             if not self._dry_run:
                 assert self._client is not None
-                query_job = self._client.query(run_sql, job_config=job_config)
-                self._log(
-                    "%s: %s" % (self._log_query_id_tag, query_job.job_id),
-                    detail=VVERBOSE,
-                )
-                query_job.result()
-                if query_job.state != "DONE":
-                    raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
+                with traced_bigquery_job("ddl_dml", self._client.project) as bq_job:
+                    query_job = self._client.query(run_sql, job_config=job_config)
+                    self._log(
+                        "%s: %s" % (self._log_query_id_tag, query_job.job_id),
+                        detail=VVERBOSE,
+                    )
+                    query_job.result()
+                    if query_job.state != "DONE":
+                        raise BackendApiException("Unexpected BigQuery job state: %s" % query_job.state)
+                    record_bigquery_job_metadata(bq_job, query_job, "ddl_dml")
 
-                if query_options and "destination_encryption_configuration" in query_options:
-                    self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
+                    if query_options and "destination_encryption_configuration" in query_options:
+                        self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
 
-                if profile:
-                    self._log(self._get_query_profile(query_job), detail=VVERBOSE)
+                    if profile:
+                        self._log(self._get_query_profile(query_job), detail=VVERBOSE)
         return return_list
 
     def _execute_global_session_parameters(self, log_level=VVERBOSE):
@@ -1967,30 +1970,32 @@ LIMIT 1""" % {
 
         assert self._client is not None
         query_job = None
-        if profile or verify_kms:
-            query_job = self._client.query(sql, job_config=job_config)
-            self._log("%s: %s" % (self._log_query_id_tag, query_job.job_id), detail=VVERBOSE)
-            if verify_kms:
-                self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
-            results = query_job.result(max_results=max_results)
-        else:
-            results = self._client.query_and_wait(sql, job_config=job_config, max_results=max_results)
-            self._log("%s: %s" % (self._log_query_id_tag, results.job_id), detail=VVERBOSE)
-
-        rows: Any
-        if fetch_action == FETCH_ACTION_ALL:
-            rows = list(results)
-            if as_dict:
-                columns = self._cursor_projection(results)
-                rows = [self._cursor_row_to_dict(columns, _) for _ in rows]
+        with traced_bigquery_job("query", self._client.project) as bq_job:
+            if profile or verify_kms:
+                query_job = self._client.query(sql, job_config=job_config)
+                self._log("%s: %s" % (self._log_query_id_tag, query_job.job_id), detail=VVERBOSE)
+                if verify_kms:
+                    self._check_kms_key_name(query_job.destination_encryption_configuration.kms_key_name)
+                results = query_job.result(max_results=max_results)
             else:
-                rows = [tuple(_) for _ in rows]
-        elif results.total_rows == 0:
-            rows = None
-        else:
-            rows = tuple(next(iter(results)))
-            if as_dict:
-                rows = self._cursor_row_to_dict(self._cursor_projection(results), rows)
+                results = self._client.query_and_wait(sql, job_config=job_config, max_results=max_results)
+                self._log("%s: %s" % (self._log_query_id_tag, results.job_id), detail=VVERBOSE)
+
+            rows: Any
+            if fetch_action == FETCH_ACTION_ALL:
+                rows = list(results)
+                if as_dict:
+                    columns = self._cursor_projection(results)
+                    rows = [self._cursor_row_to_dict(columns, _) for _ in rows]
+                else:
+                    rows = [tuple(_) for _ in rows]
+            elif results.total_rows == 0:
+                rows = None
+            else:
+                rows = tuple(next(iter(results)))
+                if as_dict:
+                    rows = self._cursor_row_to_dict(self._cursor_projection(results), rows)
+            record_bigquery_job_metadata(bq_job, query_job if query_job is not None else results, "query")
 
         if time_sql:
             t2 = datetime.now().replace(microsecond=0)

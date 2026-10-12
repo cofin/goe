@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from google.cloud import bigquery
 
+from goe.observability.bigquery import record_bigquery_job_metadata, traced_bigquery_job
 from goe.offload.backend_table import (
     PARTITION_KEY_OUT_OF_RANGE,
     TYPICAL_DATE_GRANULARITY_TERMS,
@@ -291,11 +292,13 @@ class BackendBigQueryTable(BackendTableInterface):
         )
         self._log(cmd, detail=VERBOSE)
         if not self._dry_run:
-            load_job = self._db_api.bq_client().load_table_from_uri(
-                load_table_location, destination, job_config=job_config
-            )
-            load_job.result()
-            self._log(f"BigQuery load job {load_job.job_id} loaded {load_job.output_rows} rows", detail=VVERBOSE)
+            with traced_bigquery_job("load", self._db_api.bq_client().project) as bq_job:
+                load_job = self._db_api.bq_client().load_table_from_uri(
+                    load_table_location, destination, job_config=job_config
+                )
+                load_job.result()
+                record_bigquery_job_metadata(bq_job, load_job, "load")
+                self._log(f"BigQuery load job {load_job.job_id} loaded {load_job.output_rows} rows", detail=VVERBOSE)
         return [cmd]
 
     def _drop_load_table(self, sync=None):
