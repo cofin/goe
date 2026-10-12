@@ -43,10 +43,11 @@ To achieve sub-200ms CLI startup without sacrificing `mypy` static type checking
 - Command callback bodies invoke `bind_lazy_imports(__name__, _LAZY_IMPORTS)` before calling the implementation.
 - `bind_lazy_imports` checks `if name not in module_dict:` before binding, guaranteeing that any mock established via `unittest.mock.patch("goe.cli.commands.<cmd>.<symbol>")` is preserved.
 
-### 2. Pre-Processing Option Normalization Seam
-Subcommands bridging Click to legacy execution engines must normalize inputs before dispatch:
-- **`goe validate`**: Must invoke `post_process_args(options)` (`src/goe/scripts/agg_validate.py`) to parse CSV filter/select expressions and convert string clauses into structured 3-tuples before calling `run_agg_validate(options)`. Exit codes must be propagated via `sys.exit(0 if ret else 1)`.
-- **`goe sync`**: Must invoke `normalise_schema_sync_options(options)` and wrap execution in a `try ... finally` block ensuring `repo_client.close()` and `log_close()` are called, propagating non-zero returns via `sys.exit(return_code)`.
+### 2. Typed `msgspec.Struct` Option Construction & Normalization Seam
+Every operational subcommand (`connect`, `offload`, `report`, `sync`, `validate`) constructs its typed `msgspec.Struct` option model from [`src/goe/config/options.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/config/options.py) (`ConnectOptions`, `OffloadOperationOptions`, `StatusReportOptions`, `SchemaSyncOptions`, `AggValidateOptions`) via `.from_mapping(options_dict)` without touching `optparse`:
+- Precedence is strictly: struct field defaults (`orchestration_defaults.*_default()`) $\to$ `extract_common_options(ctx, kwargs)` $\to$ derived negation/mode flags (`--verify`/`--no-verify`, `--no-modify-hybrid-view`, `-x`/`--execute`) $\to$ non-`None` CLI `kwargs` (converting non-empty tuples from `multiple=True` options to lists).
+- **`goe validate`**: Constructs `AggValidateOptions.from_mapping(options_dict)`, invokes `post_process_args(options)` (`src/goe/scripts/agg_validate.py`) to parse CSV filter/select expressions and convert string clauses into structured 3-tuples before calling `run_agg_validate(options)`, and propagates exit codes via `sys.exit(0 if ret else 1)`.
+- **`goe sync`**: Constructs `SchemaSyncOptions.from_mapping(options_dict)`, invokes `normalise_schema_sync_options(options)`, and wraps execution in a `try ... finally` block ensuring `repo_client.close()` and `log_close()` are called, propagating non-zero returns via `sys.exit(return_code)`.
 
 ### 3. Case-Insensitive Choice Default Preservation
 When Click choices use `click.Choice(["HTML", "TEXT", ...], case_sensitive=False)`, Click normalizes `default="text"` to uppercase `"TEXT"`. When downstream engines require lowercase defaults:

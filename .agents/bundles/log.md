@@ -5,12 +5,26 @@ tags:
   - changelog
   - okf
   - flow
-updated_at: "2026-10-11T16:00:00Z"
+updated_at: "2026-10-12T15:51:00Z"
 ---
 
 # Change Log
 
 This file records significant lifecycle operations, structural additions, and major evolutions to the GOE knowledge bundle.
+
+## 2026-10-12
+
+- **Master PRD 2 Implementation & Flow Archive (`prd_02_core_typing_options_and_decomposition_20261010`, commits `99f519c`..`e69fe75`, merged in `de3fdf7`)**:
+  - **Chapter 2.1 (`typed_msgspec_option_model_20261010`, Tasks `1.1`–`1.3`)**:
+    - Created [`src/goe/config/options.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/config/options.py) defining `BaseOptionStruct` (`from_mapping()`, `to_dict()`, `__contains__()`) and the 7 slot-backed `msgspec.Struct` (`kw_only=True`, no `dict=True`) option models (`CommonOptions`, `TableOperationOptions`, `OffloadOperationOptions`, `AggValidateOptions`, `ConnectOptions`, `StatusReportOptions`, `SchemaSyncOptions`), plus `EXPECTED_OFFLOAD_ARGS` (85 keys), `LISTENER_OFFLOAD_RENAME_ALIASES`, and `LISTENER_OFFLOAD_CSV_ALIASES`.
+    - Aliased `OptionValueError = OffloadOptionError` in [`src/goe/exceptions.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/exceptions.py), migrated all CLI commands (`connect`, `offload`, `report`, `sync`, `validate`) to construct typed option structs directly, added `OffloadOptions.to_operation_options()` in [`src/goe/listener/schemas.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/schemas.py), and deleted all legacy `optparse` builders and imports across `src/goe/`.
+  - **Chapter 2.2 (`core_god_module_decomposition_20261010`, Tasks `1.1`–`1.4`)**:
+    - Decomposed `src/goe/goe.py` into `src/goe/orchestration/{constants,logging_init,operation,execution}.py`, `src/goe/offload/offload_status_report.py` into `src/goe/report/{models,demo_data,renderers,collector}.py`, `src/goe/offload/offload_source_data.py` into `src/goe/offload/source_data/{base,predicate,full,ipa_range,ipa_list,factory}.py`, and `src/goe/offload/offload_transport.py` + `src/goe/offload/factory/offload_transport_factory.py` into `src/goe/offload/transport/{constants,availability,base,spark_thrift,spark_submit,query_import,factory}.py`.
+    - Deleted confirmed zero-caller dead code (`silent_close`, `normalise_column_transformations`, `canonical_to_rdbms_mappings`, `get_synthetic_partition_cols`, `dev_logger`, `_pretty_print_report_data`, `datetime_literal_to_hv`, `override_source_partitions`, `OffloadSourceDataIUPartitioned`) and left each legacy module as a definition-free `from <mod> import Symbol as Symbol` facade.
+  - **Chapter 2.3 (`strict_mypy_type_safety_ratchet_20261010`, Tasks `1.1`–`1.6`)**:
+    - Resolved all strict `mypy` diagnostics and `F401`/`F841`/`ERA001` findings across all 245 source files in `src/goe/` in five package waves, enforced public-before-private function/method ordering, guarded optional `hdfs`/`requests_kerberos` imports in [`src/goe/filesystem/web_hdfs.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/filesystem/web_hdfs.py), and enabled global `ERA`/`F401`/`F841` and strict `[tool.mypy]` (`check_untyped_defs = true`, `disallow_incomplete_defs = true`, `disable_error_code = []`) in `pyproject.toml` with zero `# type: ignore` directives (`668 passed` unit tests).
+  - **Flow Archive Contraction (`prd_01_foundation_adc_and_ci_harness_20261010` & `prd_02_core_typing_options_and_decomposition_20261010`)**:
+    - Synthesized durable patterns into [Serialization & Utility Re-Export Patterns](knowledge/patterns/serialization-and-utils.md), [Centralized Rich-Click CLI](knowledge/patterns/cli-architecture.md), [Orchestration Core Engine](knowledge/architecture/orchestration.md), and [Python Development Standards](knowledge/standards/python.md), and contracted the 8 completed spec directories from `.agents/bundles/specs/`.
 
 ## 2026-10-11
 

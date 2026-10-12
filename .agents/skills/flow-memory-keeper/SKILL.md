@@ -117,8 +117,12 @@ Before claiming a task, phase, or flow is complete, verify:
   `.agents/skills/` is the only operational project-skill authority.
 - Maintain Python >= 3.12 compatibility and PEP 585 built-in collection types (`dict`, `list`).
 - Run tests with `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false`.
-- Always format Python files with `ruff` (`line-length = 120`), run `mypy`, and place PEP 257 explanations in docstrings (never in-line comments).
+- Always format Python files with `ruff` (`line-length = 120`), run `mypy` (strict gate: `check_untyped_defs = true`, `disallow_incomplete_defs = true`, `disable_error_code = []`, zero `# type: ignore` directives), and place PEP 257 explanations in docstrings (never in-line comments).
+- Enforce public-before-private function and method ordering (`# PUBLIC METHODS` and dunder methods before `# PRIVATE METHODS` `_...` helpers) across all modules and classes in `src/goe/`.
+- Define CLI and orchestration option models as slot-backed `msgspec.Struct` (`kw_only=True`, no `dict=True`) subclasses of `BaseOptionStruct` in `src/goe/config/options.py` (an acyclic import leaf); never reintroduce `optparse`.
+- Guard optional extra imports (`hdfs`, `requests_kerberos`, `impyla`, `thrift_sasl`, `pymssql`, `pyodbc`, `snowflake`) at module top-level with `try: ... except ModuleNotFoundError:` (binding base-class fallbacks to `object`, not `None`) when imported by modules loaded in base CI (`uv sync --dev --locked`).
 - Structure utility modules in `src/goe/util/` to cleanly re-export `sqlspec.utils`.
 - Define serialization schemas as pure `msgspec.Struct` models without redundant client wrapper classes.
 - Maintain a single authoritative entrypoint in `pyproject.toml` (`[project.scripts] goe = "goe.cli.main:cli"`); legacy `bin/` wrappers were removed in PRD 1 Chapter 1.1 — do not reintroduce wrapper scripts.
 <!-- project-customization: end -->
+
