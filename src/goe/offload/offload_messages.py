@@ -98,7 +98,7 @@ class OffloadMessages:
         self._error_after_step = error_after_step
         self.execution_id = execution_id
         self._repo_client = repo_client
-        self._command_type = command_type
+        self._command_type: str | None = command_type
         self._stdout_in_error = False
 
     @staticmethod
@@ -469,6 +469,11 @@ class OffloadMessages:
     @property
     def verbosity(self):
         return self._detail
+
+    @property
+    def command_type(self) -> str | None:
+        """Return the orchestration command code (for example OFFLOAD) this object was created for."""
+        return self._command_type
 
     def get_execution_id(self):
         return self.execution_id
