@@ -11,6 +11,7 @@ from goe.offload.offload_constants import (
     DBTYPE_ORACLE,
     DBTYPE_TERADATA,
     OFFLOAD_TRANSPORT_AUTO,
+    OFFLOAD_TRANSPORT_DUCKDB,
     OFFLOAD_TRANSPORT_GCP,
     OFFLOAD_TRANSPORT_GOE,
     OFFLOAD_TRANSPORT_SQOOP,
@@ -43,6 +44,9 @@ from goe.offload.transport.constants import (
     OFFLOAD_TRANSPORT_SQOOP_METHODS,
     VALID_OFFLOAD_TRANSPORT_METHODS,
 )
+from goe.offload.transport.duckdb_availability import is_duckdb_available
+from goe.offload.transport.duckdb_constants import OFFLOAD_TRANSPORT_METHOD_DUCKDB
+from goe.offload.transport.duckdb_transport import OffloadTransportDuckDB
 from goe.offload.transport.query_import import OffloadTransportQueryImport
 from goe.offload.transport.spark_submit import (
     OffloadTransportSparkSubmit,
@@ -101,6 +105,12 @@ def get_offload_transport_method_validation_fns(
             messages=messages,
         ),
         OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY: lambda: is_sqoop_by_query_available(config, messages=messages),
+        OFFLOAD_TRANSPORT_METHOD_DUCKDB: lambda: is_duckdb_available(
+            offload_operation,
+            config,
+            offload_source_table=offload_source_table,
+            messages=messages,
+        ),
     }
 
 
@@ -144,6 +154,8 @@ def choose_offload_transport_method(
         Pick a method using the following priorities: SPARK_DATAPROC_GCLOUD, SPARK_BATCHES_GCLOUD
     SQOOP:
         Pick a method using the following priorities: SQOOP, SQOOP_BY_QUERY
+    DUCKDB:
+        Opt-in only: DUCKDB (never chosen by AUTO)
 
     An override was supplied if we get to here then no rule was accepted
     """
@@ -166,6 +178,8 @@ def choose_offload_transport_method(
             rules = OFFLOAD_TRANSPORT_SQOOP_METHODS
         elif config.offload_transport == OFFLOAD_TRANSPORT_GCP:
             rules = OFFLOAD_TRANSPORT_GCP_METHODS
+        elif config.offload_transport == OFFLOAD_TRANSPORT_DUCKDB:
+            rules = [OFFLOAD_TRANSPORT_METHOD_DUCKDB]
 
         for rule in rules:
             if validation_fns[rule]():
@@ -287,6 +301,16 @@ def offload_transport_factory(
 
         messages.log("Data transport method: OffloadTransportSparkLivy", detail=VVERBOSE)
         return OffloadTransportSparkLivy(
+            offload_source_table,
+            offload_target_table,
+            offload_operation,
+            offload_options,
+            messages,
+            dfs_client,
+        )
+    if offload_transport_method == OFFLOAD_TRANSPORT_METHOD_DUCKDB:
+        messages.log("Data transport method: OffloadTransportDuckDB", detail=VVERBOSE)
+        return OffloadTransportDuckDB(
             offload_source_table,
             offload_target_table,
             offload_operation,
