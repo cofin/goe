@@ -26,6 +26,7 @@ from goe.filesystem.goe_dfs import (
     GOEDfsException,
     gen_fs_uri,
 )
+from goe.observability.storage import traced_storage_call
 from goe.util.gcp_credentials import resolve_gcp_credentials
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,7 @@ class GOEGcs(GOEDfs):
         except google_exceptions.NotFound:
             return False
 
+    @traced_storage_call("copy_from_local", "dfs_path")
     def copy_from_local(self, local_path, dfs_path, overwrite=False):
         assert local_path
         assert dfs_path
@@ -96,6 +98,7 @@ class GOEGcs(GOEDfs):
             except google_exceptions.PreconditionFailed as exc:
                 raise GOEDfsException("Cannot copy file over existing file: %s" % target_path) from exc
 
+    @traced_storage_call("copy_to_local", "dfs_path")
     def copy_to_local(self, dfs_path, local_path, overwrite=False):
         assert dfs_path
         assert local_path
@@ -116,16 +119,13 @@ class GOEGcs(GOEDfs):
         predicate=retry.if_exception_type(ConnectionError, google_exceptions.ServiceUnavailable),
         deadline=DFS_RETRY_TIMEOUT,
     )
+    @traced_storage_call("delete", "dfs_path")
     def delete(self, dfs_path, recursive=False):
         """Delete a file, or a directory prefix and its contents, in a single pass.
 
         GCS listing is strongly consistent, so no post-delete wait or re-list is needed. Objects that vanish
         concurrently (404 NotFound) are accepted as deleted.
         """
-
-        def accept_not_found(blob):
-            self.debug("delete(%s) returned 404 (NotFound), accepting as deleted" % blob.name)
-
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("delete(%s, %s)" % (dfs_path, recursive))
@@ -144,7 +144,7 @@ class GOEGcs(GOEDfs):
         self.debug("Recursive delete using directory prefix: %s" % path)
         if not path.endswith(URI_SEP):
             path += URI_SEP
-        bucket.delete_blobs(list(self._client.list_blobs(bucket, prefix=path)), on_error=accept_not_found)
+        bucket.delete_blobs(list(self._client.list_blobs(bucket, prefix=path)), on_error=self._accept_not_found)
         return True
 
     def gen_uri(
@@ -170,6 +170,7 @@ class GOEGcs(GOEDfs):
         predicate=retry.if_exception_type(google_exceptions.GatewayTimeout),
         deadline=DFS_RETRY_TIMEOUT,
     )
+    @traced_storage_call("list_dir", "dfs_path")
     def list_dir(self, dfs_path):
         """Return a list of file/directory names within dfs_path
 
@@ -198,6 +199,7 @@ class GOEGcs(GOEDfs):
         predicate=retry.if_exception_type(google_exceptions.GatewayTimeout),
         deadline=DFS_RETRY_TIMEOUT,
     )
+    @traced_storage_call("read", "dfs_path")
     def read(self, dfs_path, as_str=False):
         assert dfs_path
         assert isinstance(dfs_path, str)
@@ -224,6 +226,7 @@ class GOEGcs(GOEDfs):
         predicate=retry.if_exception_type(google_exceptions.GatewayTimeout),
         deadline=DFS_RETRY_TIMEOUT,
     )
+    @traced_storage_call("stat", "dfs_path")
     def stat(self, dfs_path):
         """No delimiter parameter because we want to be able to stat directories
 
@@ -260,6 +263,7 @@ class GOEGcs(GOEDfs):
             return {"length": 0, "permission": None, "type": DFS_TYPE_DIRECTORY}
         return None
 
+    @traced_storage_call("write", "dfs_path")
     def write(self, dfs_path: str, data: Any, overwrite: bool = False) -> None:
         assert dfs_path
         assert isinstance(dfs_path, str)
@@ -274,3 +278,6 @@ class GOEGcs(GOEDfs):
             blob.upload_from_string(data, if_generation_match=None if overwrite else 0)
         except google_exceptions.PreconditionFailed as exc:
             raise GOEDfsException("Cannot write to existing file: %s" % path) from exc
+
+    def _accept_not_found(self, blob: Any) -> None:
+        self.debug("delete(%s) returned 404 (NotFound), accepting as deleted" % blob.name)
