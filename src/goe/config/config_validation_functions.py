@@ -51,12 +51,8 @@ class OrchestrationConfigException(Exception):
     pass
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
 def verify_json_option(option_name, option_value):
+    """Validate that a JSON option string parses to a flat primitive key/value mapping."""
     if option_value:
         try:
             properties = json.loads(option_value)
@@ -73,14 +69,8 @@ def verify_json_option(option_name, option_value):
             raise OrchestrationConfigException("Invalid JSON value for %s: %s" % (option_name, str(ve))) from ve
 
 
-###########################################################################
-# NORMALISATION FUNCTIONS
-# For the time being these are a lift and shift from goe.py while we
-# migrate to OrchestrationConfig.
-###########################################################################
-
-
 def normalise_backend_options(options):
+    """Normalize backend-specific configuration options and identifier casing."""
     normalise_bigquery_options(options)
     normalise_hadoop_options(options)
     normalise_snowflake_options(options)
@@ -126,6 +116,7 @@ def normalise_bigquery_options(options, exc_cls=OrchestrationConfigException):
 
 
 def normalise_hadoop_options(options, exc_cls=OrchestrationConfigException):
+    """Normalize Hadoop/Hive/Impala options and select a host from a comma-separated list."""
     if options.backend_distribution not in HADOOP_BASED_BACKEND_DISTRIBUTIONS:
         return
 
@@ -139,7 +130,6 @@ def normalise_hadoop_options(options, exc_cls=OrchestrationConfigException):
         if not options.hiveserver2_auth_mechanism:
             options.hiveserver2_auth_mechanism = "NOSASL"
 
-    # Select hadoop_host from (potentially) comma-separated list
     options.hadoop_host = random.choice(options.hadoop_host.split(","))
     options.hdfs_host = options.hdfs_host or options.hadoop_host
 
@@ -155,6 +145,7 @@ def normalise_backend_session_parameters(opts):
 
 
 def normalise_filesystem_options(options, exc_cls=OrchestrationConfigException):
+    """Normalize offload filesystem scheme and cloud container options."""
     options.offload_fs_scheme = (
         options.offload_fs_scheme.lower() if options.offload_fs_scheme else options.offload_fs_scheme
     )
@@ -173,7 +164,6 @@ def normalise_filesystem_options(options, exc_cls=OrchestrationConfigException):
         if not options.hdfs_load:
             raise exc_cls("HDFS_LOAD environment variable is mandatory")
 
-    # Not ideal to hardcode SNOWFLAKE here but we don't have a backend_api in normalise* to get the supported schemes
     if options.backend_distribution == BACKEND_DISTRO_SNOWFLAKE:
         if options.offload_fs_scheme in AZURE_OFFLOAD_FS_SCHEMES and not options.offload_fs_azure_account_name:
             raise exc_cls(
@@ -186,7 +176,7 @@ def normalise_filesystem_options(options, exc_cls=OrchestrationConfigException):
 
 
 def normalise_listener_options(options):
-    # Listener options
+    """Normalize listener port, heartbeat interval, and shared token options."""
     if options.listener_port:
         options.listener_port = orchestration_defaults.posint_option_from_string(
             "OFFLOAD_LISTENER_PORT", options.listener_port
@@ -204,12 +194,13 @@ def normalise_listener_options(options):
 
 
 def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigException):
+    """Normalize Spark, Thrift, Livy, DuckDB, and generic offload transport options."""
+
     def simple_file_csv(var_val, var_name):
         """Check for invalid characters that could be a shell injection risk."""
         if not re.match(r"^[a-z0-9\/_\-:.,]+$", var_val):
             raise exc_cls(f"Invalid characters found in {var_name}: {var_val}")
 
-    # Spark config
     verify_json_option(
         "OFFLOAD_TRANSPORT_RDBMS_SESSION_PARAMETERS",
         options.offload_transport_rdbms_session_parameters,
@@ -242,7 +233,6 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
     if options.offload_transport_spark_jars:
         simple_file_csv(options.offload_transport_spark_jars, "OFFLOAD_TRANSPORT_SPARK_JARS")
 
-    # Spark thriftserver config
     if options.offload_transport_spark_thrift_host:
         options.offload_transport_spark_thrift_host = random.choice(
             options.offload_transport_spark_thrift_host.split(",")
@@ -253,7 +243,6 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
             options.offload_transport_spark_thrift_port,
         )
 
-    # Livy config
     if (
         type(options.offload_transport_livy_api_verify_ssl) is not bool
         and options.offload_transport_livy_api_verify_ssl is not None
@@ -278,7 +267,6 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
         options.offload_transport_livy_idle_session_timeout,
     )
 
-    # Generic transport config
     if options.offload_transport:
         options.offload_transport = options.offload_transport.upper()
     if not options.offload_transport or options.offload_transport not in VALID_OFFLOAD_TRANSPORTS:
@@ -306,18 +294,17 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
         exc_cls=exc_cls,
     )
 
-    # For backward compatibility
     options.offload_transport_user = options.offload_transport_user or options.hadoop_ssh_user
     if not options.offload_transport_user:
         raise exc_cls("OFFLOAD_TRANSPORT_USER is mandatory")
 
 
 def normalise_rdbms_options(options, exc_cls=OrchestrationConfigException):
+    """Normalize source RDBMS options by database vendor."""
     if not options.db_type:
         options.db_type = orchestration_defaults.frontend_db_type_default()
     if getattr(options, "use_oracle_wallet", None) is None:
         options.use_oracle_wallet = False
-    # Source vendor specifics
     if options.db_type == DBTYPE_MSSQL:
         normalise_mssql_options(options, exc_cls=exc_cls)
     elif options.db_type == DBTYPE_ORACLE:
@@ -365,9 +352,9 @@ def normalise_rdbms_oracle_options(options, exc_cls=OrchestrationConfigException
 
 
 def normalise_rdbms_wallet_options(options, frontend_api=None):
+    """Set ora_adm_user and transport wallet flags when Oracle Wallet is enabled."""
     if options.use_oracle_wallet:
         if frontend_api:
-            # We need to set/override ora_adm_user when using Oracle Wallet
             options.ora_adm_user = frontend_api.get_session_user()
         options.offload_transport_auth_using_oracle_wallet = True
 
