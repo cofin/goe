@@ -44,6 +44,7 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP_TZ,
     ORACLE_TYPE_XMLTYPE,
 )
+from goe.offload.oracle.oracle_dialect import get_oracle_dialect_engine
 from goe.offload.oracle.oracle_offload_source_table import (
     oracle_version_is_smart_scan_unsafe,
 )
@@ -122,52 +123,24 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         return None
 
     def get_id_range(self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk: Any = None) -> tuple:
-        """Function to get the MIN and MAX values for an id column.
-
-        Used to create non-overlapping ranges for splitting IOT tables between transport processes.
-        partition_chunk: Used to restrict the MIN/MAX query to a single partition IF chunk is for single partition.
-        The query is structured specifically to take advantage of Oracle's MIN/MAX optimization, e.g.:
-            ----------------------------------------------------------------
-            | Id  | Operation                     | Name                   |
-            ----------------------------------------------------------------
-            |   0 | SELECT STATEMENT              |                        |
-            |   1 |  NESTED LOOPS                 |                        |
-            |   2 |   VIEW                        |                        |
-            |   3 |    SORT AGGREGATE             |                        |
-            |   4 |     PARTITION RANGE SINGLE    |                        |
-            |   5 |      INDEX FULL SCAN (MIN/MAX)| GOE_RANGE_IOT_MONTH_PK |
-            |   6 |   VIEW                        |                        |
-            |   7 |    SORT AGGREGATE             |                        |
-            |   8 |     PARTITION RANGE SINGLE    |                        |
-            |   9 |      INDEX FULL SCAN (MIN/MAX)| GOE_RANGE_IOT_MONTH_PK |
-            ----------------------------------------------------------------
-        """
-        predicate_clause = ""
-        if predicate_offload_clause:
-            predicate_clause = f"\n    WHERE {predicate_offload_clause}"
-        min_max_row = None
-        min_max_qry = """SELECT min_v.val, max_v.val
-FROM  (
-    SELECT MIN(%(col)s) AS val
-    FROM   "%(owner)s"."%(table)s"%(partition_clause)s%(predicate_clause)s
-) min_v
-, (
-    SELECT MAX(%(col)s) AS val
-    FROM   "%(owner)s"."%(table)s"%(partition_clause)s%(predicate_clause)s
-) max_v""" % {
-            "owner": self._rdbms_owner,
-            "table": self._rdbms_table_name,
-            "col": rdbms_col_name,
-            "partition_clause": self._get_iot_single_partition_clause(partition_chunk),
-            "predicate_clause": predicate_clause,
-        }
+        """Return the MIN and MAX values for an id column using OracleSqlEngine."""
+        iot_part_name = self._extract_iot_single_partition_name(partition_chunk)
+        min_max_qry = get_oracle_dialect_engine().id_range_query(
+            owner=self._rdbms_owner,
+            table_name=self._rdbms_table_name,
+            id_col_name=rdbms_col_name,
+            iot_partition_name=iot_part_name,
+            where_clause=predicate_offload_clause or "",
+        )
         self.log("Oracle SQL:\n%s" % min_max_qry, detail=VVERBOSE)
+        min_max_row = None
         cx = get_rdbms_connection_for_oracle(
             self._offload_options.rdbms_app_user,
             self._offload_options.rdbms_app_pass,
             self._offload_transport_dsn,
             self._offload_options.use_oracle_wallet,
         )
+        ora_cursor = None
         try:
             ora_cursor = cx.cursor()
             min_max_row = ora_cursor.execute(min_max_qry).fetchone()
@@ -183,14 +156,16 @@ FROM  (
                     detail=VVERBOSE,
                 )
         finally:
-            try:
-                ora_cursor.close()
-            except:
-                pass
+            if ora_cursor is not None:
+                try:
+                    ora_cursor.close()
+                except Exception:
+                    pass
             try:
                 cx.close()
-            except:
+            except Exception:
                 pass
+        assert min_max_row is not None
         return min_max_row[0], min_max_row[1]
 
     def get_rdbms_query_cast(
@@ -426,15 +401,14 @@ FROM  (
         return partition_by, tuned_parallelism
 
     def get_snapshot_clause(self, transport_scn: int, consistent_read: bool) -> str:
-        if consistent_read:
+        """Return the Oracle Flashback AS OF SCN clause when consistent_read is enabled."""
+        if consistent_read and transport_scn is not None:
             self.log(
                 f"Using RDBMS snapshot {transport_scn} for consistent data retrieval",
                 detail=VVERBOSE,
             )
-            scn_clause = f" AS OF SCN {transport_scn}"
-        else:
-            scn_clause = ""
-        return scn_clause
+            return f" {get_oracle_dialect_engine().snapshot_scn_clause(transport_scn)}"
+        return ""
 
     def get_transport_row_source_query(
         self,
@@ -451,14 +425,7 @@ FROM  (
         id_col_min: Any = None,
         id_col_max: Any = None,
     ) -> str:
-        """Define a frontend query that will retrieve data from a table dividing it by a split method
-        such as partition or rowid range.
-        These row source queries can be split between a number of processes by either partition name or segment
-        extent, this is defined by a PL/SQL function offload.offload_rowid_ranges which ensures we have one group
-        for each degree of transport parallelism.
-        Groups are numbered from 0 to (parallelism - 1).
-        pad: Number of spaces with which to pad any CRs.
-        """
+        """Define a frontend query that retrieves data divided by the selected split method."""
         assert partition_by_prm in self._transport_row_source_query_split_methods
 
         is_iot = rdbms_table.is_iot()
@@ -469,36 +436,42 @@ FROM  (
 
         owner_table = '"%s"."%s"' % (self._rdbms_owner, self._rdbms_table_name)
         partition_by = partition_by_prm
-        scn_clause = self.get_snapshot_clause(transport_scn, consistent_read)
+        if consistent_read and transport_scn is not None:
+            self.log(
+                f"Using RDBMS snapshot {transport_scn} for consistent data retrieval",
+                detail=VVERBOSE,
+            )
+            effective_scn: int | None = int(transport_scn)
+        else:
+            effective_scn = None
         union_all = self._row_source_query_union_all_clause(pad)
+        engine = get_oracle_dialect_engine()
+        iot_part_name = self._extract_iot_single_partition_name(partition_chunk)
+        row_source = ""
 
         if partition_by in (
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
         ):
             assert partition_chunk is not None
-            if partition_by == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION:
-                partition_clause = "PARTITION"
+            is_subpart = partition_by == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION
+            if not is_subpart:
+                partition_names = partition_chunk.partition_names()
+            elif offload_by_subpartition:
                 partition_names = partition_chunk.partition_names()
             else:
-                partition_clause = "SUBPARTITION"
-                if offload_by_subpartition:
-                    partition_names = partition_chunk.partition_names()
-                else:
-                    partition_names = partition_chunk.subpartition_names()
-
-            union_branch_template = 'SELECT g.*, %(batch)s AS %(batch_col)s FROM %(owner_table)s %(part_clause)s ("%(part_name)s")%(scn_clause)s g'
+                partition_names = partition_chunk.subpartition_names()
             row_source = union_all.join(
                 [
-                    union_branch_template
-                    % {
-                        "batch": (i % parallelism),
-                        "batch_col": TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
-                        "owner_table": owner_table,
-                        "part_clause": partition_clause,
-                        "scn_clause": scn_clause,
-                        "part_name": p,
-                    }
+                    engine.partition_split_branch_query(
+                        owner=self._rdbms_owner,
+                        table_name=self._rdbms_table_name,
+                        partition_name=p,
+                        is_subpartition=is_subpart,
+                        transport_scn=effective_scn,
+                        batch=(i % parallelism),
+                        batch_col=TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
+                    )
                     for i, p in enumerate(partition_names)
                 ]
             )
@@ -511,28 +484,19 @@ FROM  (
                 if offload_by_subpartition:
                     subpartition_param = partition_param
                     partition_param = "NULL"
-            union_branch_template = (
-                "SELECT /*+ NO_INDEX(g) USE_NL(g) LEADING(r) */ g.*, %(batch)s AS %(batch_col)s "
-                "FROM %(owner_table)s%(scn_clause)s g, "
-                "TABLE(offload.offload_rowid_ranges('%(owner)s', '%(table)s', %(partition_param)s, %(subpartition_param)s, %(degree)s, %(batch)s)) r "
-                "WHERE g.rowid BETWEEN CHARTOROWID(r.min_rowid_vc) and CHARTOROWID(r.max_rowid_vc)"
-            )
-            if predicate_offload_clause:
-                union_branch_template += " AND (%s)" % predicate_offload_clause
             row_source = union_all.join(
                 [
-                    union_branch_template
-                    % {
-                        "batch": i,
-                        "batch_col": TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
-                        "degree": parallelism,
-                        "owner_table": owner_table,
-                        "scn_clause": scn_clause,
-                        "owner": self._rdbms_owner.upper(),
-                        "table": self._rdbms_table_name.upper(),
-                        "partition_param": partition_param,
-                        "subpartition_param": subpartition_param,
-                    }
+                    engine.extent_split_branch_query(
+                        owner=self._rdbms_owner,
+                        table_name=self._rdbms_table_name,
+                        transport_scn=effective_scn,
+                        partition_param=partition_param,
+                        subpartition_param=subpartition_param,
+                        degree=parallelism,
+                        batch=i,
+                        batch_col=TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
+                        where_clause=predicate_offload_clause or "",
+                    )
                     for i in range(parallelism)
                 ]
             )
@@ -541,54 +505,45 @@ FROM  (
                 raise OffloadTransportRdbmsApiException(
                     "Table %s cannot be split by mod without suitable column" % owner_table
                 )
-            batch_expr = "MOD(ORA_HASH(%(batch_source_col)s), %(degree)s)" % {
-                "batch_source_col": mod_column,
-                "degree": parallelism,
-            }
-            union_branch_template = "SELECT g.*, %(batch)s AS %(batch_col)s FROM %(owner_table)s%(part_clause)s%(scn_clause)s g%(extra_where_clause)s"
-            extra_where_clause = ""
-            if predicate_offload_clause:
-                extra_where_clause = " WHERE (%s)" % predicate_offload_clause
-            row_source = union_branch_template % {
-                "batch": batch_expr,
-                "batch_col": TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
-                "owner_table": owner_table,
-                "part_clause": self._get_iot_single_partition_clause(partition_chunk),
-                "scn_clause": scn_clause,
-                "extra_where_clause": extra_where_clause,
-            }
+            row_source = engine.mod_split_query(
+                owner=self._rdbms_owner,
+                table_name=self._rdbms_table_name,
+                mod_column=mod_column,
+                degree=parallelism,
+                batch_col=TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
+                iot_partition_name=iot_part_name,
+                transport_scn=effective_scn,
+                where_clause=predicate_offload_clause or "",
+            )
         elif partition_by == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE:
             assert id_split_col is not None
-            part_clause = self._get_iot_single_partition_clause(partition_chunk)
-            row_source = (
-                f"SELECT g.*, {rdbms_table.enclose_identifier(id_split_col.name)} AS {TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN}"
-                f"\nFROM {owner_table}{part_clause}{scn_clause} g"
+            row_source = engine.native_range_split_query(
+                owner=self._rdbms_owner,
+                table_name=self._rdbms_table_name,
+                id_col_sql=rdbms_table.enclose_identifier(id_split_col.name),
+                batch_col=TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
+                iot_partition_name=iot_part_name,
+                transport_scn=effective_scn,
+                where_clause=predicate_offload_clause or "",
             )
-            if predicate_offload_clause:
-                row_source += "\nWHERE (%s)" % predicate_offload_clause
         elif partition_by == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE:
             assert id_split_col is not None
             id_ranges = split_ranges_for_id_range(id_col_min, id_col_max, parallelism)
-            union_branch_template = (
-                "SELECT g.*, %(batch)s AS %(batch_col)s FROM %(owner_table)s%(part_clause)s%(scn_clause)s g "
-                "WHERE %(batch_source_col)s >= %(low_val)s AND %(batch_source_col)s < %(high_val)s"
-            )
-            if predicate_offload_clause:
-                union_branch_template += " AND (%s)" % predicate_offload_clause
             row_source = union_all.join(
                 [
-                    union_branch_template
-                    % {
-                        "batch": (i % parallelism),
-                        "batch_col": TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
-                        "owner_table": owner_table,
-                        "part_clause": self._get_iot_single_partition_clause(partition_chunk),
-                        "scn_clause": scn_clause,
-                        "batch_source_col": id_split_col.name,
-                        "low_val": lowhigh[0],
-                        "high_val": lowhigh[1],
-                    }
-                    for i, (lowhigh) in enumerate(id_ranges)
+                    engine.id_range_split_branch_query(
+                        owner=self._rdbms_owner,
+                        table_name=self._rdbms_table_name,
+                        id_col_name=id_split_col.name,
+                        low_val=lowhigh[0],
+                        high_val=lowhigh[1],
+                        batch=(i % parallelism),
+                        batch_col=TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
+                        iot_partition_name=iot_part_name,
+                        transport_scn=effective_scn,
+                        where_clause=predicate_offload_clause or "",
+                    )
+                    for i, lowhigh in enumerate(id_ranges)
                 ]
             )
         return row_source
@@ -942,11 +897,16 @@ ORDER BY seconds DESC"""
     def _cx_getvalue(self, incoming):
         return incoming.getvalue() if incoming and hasattr(incoming, "getvalue") else incoming
 
-    def _get_iot_single_partition_clause(self, partition_chunk):
-        """Return PARTITION(partition_name) clause partition_chunk if there is a single partition.
-        This is because we treat single partition IOT offloads like non-partitioned tables. It's a small
-        optimization to make up for the fact we cannot split IOT partitions by rowid range.
-        """
+    @staticmethod
+    def _extract_iot_single_partition_name(partition_chunk: Any) -> str | None:
+        """Return the single partition name when partition_chunk contains exactly 1 partition."""
         if partition_chunk and partition_chunk.count() == 1:
-            return f" PARTITION ({partition_chunk.partition_names().pop()})"
+            return str(partition_chunk.partition_names().pop())
+        return None
+
+    def _get_iot_single_partition_clause(self, partition_chunk):
+        """Return PARTITION("partition_name") clause for a single-partition IOT chunk."""
+        iot_part_name = self._extract_iot_single_partition_name(partition_chunk)
+        if iot_part_name:
+            return f" {get_oracle_dialect_engine().iot_partition_clause(iot_part_name)}"
         return ""
