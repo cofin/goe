@@ -2,16 +2,16 @@
 type: Spec
 flow_id: prd_04_end_to_end_opentelemetry_observability_20261010
 title: "Master PRD 4: End-to-End OpenTelemetry Observability, Step Spans, Metrics & Log Correlation"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 1
 current_task: null
 last_operation: null
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: 8ddd9f3
 created_at: 2026-10-10T17:15:00Z
-updated_at: 2026-10-11T01:40:00Z
+updated_at: 2026-10-12T19:03:00Z
 description: "Master roadmap for opt-in, zero-cost-when-disabled OpenTelemetry tracing, metrics, and log correlation across the GOE CLI, Listener HTTP/MCP/queue workers, orchestration steps, OracleGateway, all offload transports, GCS, and BigQuery."
 tags:
   - prd
@@ -109,9 +109,9 @@ uv run pytest tests/unit/ -v
 
 ## Implementation Plan
 
-- [ ] 4.1 `opentelemetry_foundation_and_context_propagation_20261010` — dependencies, settings, metrics, context bridge, SDK builders, runtime, CLI/env wiring ([spec](../opentelemetry_foundation_and_context_propagation_20261010/spec.md)).
-- [ ] 4.2 `orchestration_step_and_listener_telemetry_20261010` — command/step spans, repo trace ids, log correlation, Litestar/queue/MCP telemetry ([spec](../orchestration_step_and_listener_telemetry_20261010/spec.md)).
-- [ ] 4.3 `database_transport_and_cloud_storage_spans_20261010` — Oracle tagging and `OracleGateway` spans, transport/DuckDB/subprocess spans, GCS and BigQuery spans/labels/metrics ([spec](../database_transport_and_cloud_storage_spans_20261010/spec.md)).
+- [x] 4.1 `opentelemetry_foundation_and_context_propagation_20261010` — dependencies, settings, metrics, context bridge, SDK builders, runtime, CLI/env wiring ([spec](../opentelemetry_foundation_and_context_propagation_20261010/spec.md)).
+- [x] 4.2 `orchestration_step_and_listener_telemetry_20261010` — command/step spans, repo trace ids, log correlation, Litestar/queue/MCP telemetry ([spec](../orchestration_step_and_listener_telemetry_20261010/spec.md)).
+- [x] 4.3 `database_transport_and_cloud_storage_spans_20261010` — Oracle tagging and `OracleGateway` spans, transport/DuckDB/subprocess spans, GCS and BigQuery spans/labels/metrics ([spec](../database_transport_and_cloud_storage_spans_20261010/spec.md)).
 
 ## Continuity Snapshot
 

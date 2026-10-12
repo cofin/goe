@@ -2,16 +2,16 @@
 type: Spec
 flow_id: orchestration_step_and_listener_telemetry_20261010
 title: "Chapter 4.2: Orchestration Step Spans, Structured Log Correlation & Listener/Worker Telemetry"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 1
 current_task: null
 last_operation: null
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: ec4dd87
 created_at: 2026-10-10T17:15:00Z
-updated_at: 2026-10-10T22:06:00Z
+updated_at: 2026-10-12T19:03:00Z
 description: "Instrument OrchestrationRunner commands and OffloadMessages steps with spans, metrics and OFFLOAD_REPO trace ids; add JSON/JSONL log correlation; wire Litestar OpenTelemetryPlugin, litestar-queues tracing, and MCP tool spans."
 tags:
   - specification
@@ -89,10 +89,10 @@ uv run pytest tests/unit/observability/ tests/unit/offload/test_offload_messages
 
 ## Implementation Plan
 
-- [ ] 1.1 Command and step span helpers (`traced_command`, `traced_step`) ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Instrument `OrchestrationRunner` commands and `OffloadMessages` steps ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 Structured log correlation: JSON/JSONL `GOELogFileHandle` and `LogRecord` trace fields ([tasks/1.3.md](tasks/1.3.md))
-- [ ] 1.4 Listener `OpenTelemetryPlugin`, litestar-queues tracing, and MCP tool spans ([tasks/1.4.md](tasks/1.4.md))
+- [x] 1.1 Command and step span helpers (`traced_command`, `traced_step`) ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Instrument `OrchestrationRunner` commands and `OffloadMessages` steps ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.3 Structured log correlation: JSON/JSONL `GOELogFileHandle` and `LogRecord` trace fields ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.4 Listener `OpenTelemetryPlugin`, litestar-queues tracing, and MCP tool spans ([tasks/1.4.md](tasks/1.4.md))
 
 ## Continuity Snapshot
 

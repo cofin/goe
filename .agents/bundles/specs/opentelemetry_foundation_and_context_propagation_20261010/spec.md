@@ -2,16 +2,16 @@
 type: Spec
 flow_id: opentelemetry_foundation_and_context_propagation_20261010
 title: "Chapter 4.1: OpenTelemetry Foundation, Config & ExecutionId Context Bridge"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 1
 current_task: null
 last_operation: null
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: 0295b02
 created_at: 2026-10-10T17:15:00Z
-updated_at: 2026-10-10T22:06:00Z
+updated_at: 2026-10-12T19:03:00Z
 description: "Add opentelemetry-api to core and an optional otel extra, build the zero-cost src/goe/observability/ runtime (settings, metrics, context bridge, SDK builders, runtime lifecycle), and wire CLI/env configuration."
 tags:
   - specification
@@ -133,12 +133,12 @@ uv run pytest tests/unit/observability/ tests/unit/cli/ -v
 
 ## Implementation Plan
 
-- [ ] 1.1 OpenTelemetry dependency stratification and typed `ObservabilitySettings` ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 `GOEMetrics` canonical instrument catalog ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 `ExecutionId` to W3C trace context, baggage, and SQLSpec correlation bridge ([tasks/1.3.md](tasks/1.3.md))
-- [ ] 1.4 SDK provider builders, `ExecutionContextSpanProcessor`, JSONL and exporter dispatch ([tasks/1.4.md](tasks/1.4.md))
-- [ ] 1.5 `ObservabilityRuntime` lifecycle with zero-cost no-op default ([tasks/1.5.md](tasks/1.5.md))
-- [ ] 1.6 CLI flags, `CommonOptions` fields, offload entry-point bootstrap and env template docs ([tasks/1.6.md](tasks/1.6.md))
+- [x] 1.1 OpenTelemetry dependency stratification and typed `ObservabilitySettings` ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 `GOEMetrics` canonical instrument catalog ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.3 `ExecutionId` to W3C trace context, baggage, and SQLSpec correlation bridge ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.4 SDK provider builders, `ExecutionContextSpanProcessor`, JSONL and exporter dispatch ([tasks/1.4.md](tasks/1.4.md))
+- [x] 1.5 `ObservabilityRuntime` lifecycle with zero-cost no-op default ([tasks/1.5.md](tasks/1.5.md))
+- [x] 1.6 CLI flags, `CommonOptions` fields, offload entry-point bootstrap and env template docs ([tasks/1.6.md](tasks/1.6.md))
 
 ## Continuity Snapshot
 

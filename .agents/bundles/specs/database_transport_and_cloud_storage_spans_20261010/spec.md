@@ -2,16 +2,16 @@
 type: Spec
 flow_id: database_transport_and_cloud_storage_spans_20261010
 title: "Chapter 4.3: Database (OracleGateway), Offload Transport, GCS & BigQuery Spans"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 1
 current_task: null
 last_operation: null
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: 8ddd9f3
 created_at: 2026-10-10T17:15:00Z
-updated_at: 2026-10-10T22:06:00Z
+updated_at: 2026-10-12T19:03:00Z
 description: "Instrument the data plane: Oracle CLIENT_INFO tagging and OracleGateway SQLSpec spans, chunk/transport/subprocess spans for every transport including DuckDB batches, GOEGcs storage spans, and BigQuery job spans, labels, and slot/bytes metrics."
 tags:
   - specification
@@ -79,11 +79,11 @@ uv run python -c "import ast,sys; is_priv=lambda n:n.startswith('_') and not (n.
 
 ## Implementation Plan
 
-- [ ] 1.1 Oracle session trace tagging, SQLCommenter helper, and `OracleGateway` SQLSpec spans ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Offload chunk, transport, and subprocess spans with `TRACEPARENT` propagation ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 DuckDB transport per-batch spans with thread context propagation ([tasks/1.3.md](tasks/1.3.md))
-- [ ] 1.4 `GOEGcs` storage CLIENT spans ([tasks/1.4.md](tasks/1.4.md))
-- [ ] 1.5 BigQuery job spans, trace job labels, and slot/bytes metrics ([tasks/1.5.md](tasks/1.5.md))
+- [x] 1.1 Oracle session trace tagging, SQLCommenter helper, and `OracleGateway` SQLSpec spans ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Offload chunk, transport, and subprocess spans with `TRACEPARENT` propagation ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.3 DuckDB transport per-batch spans with thread context propagation ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.4 `GOEGcs` storage CLIENT spans ([tasks/1.4.md](tasks/1.4.md))
+- [x] 1.5 BigQuery job spans, trace job labels, and slot/bytes metrics ([tasks/1.5.md](tasks/1.5.md))
 
 ## Continuity Snapshot
 
