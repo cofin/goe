@@ -4,9 +4,11 @@
 """Query Import offload transport implementation for direct RDBMS-to-staging extraction."""
 
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from goe.offload.factory.query_import_factory import query_import_factory
+from goe.offload.offload_constants import DBTYPE_BIGQUERY
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_functions import (
     get_local_staging_path,
@@ -25,6 +27,15 @@ from goe.orchestration import command_steps
 if TYPE_CHECKING:
     from goe.offload.offload_source_data import OffloadSourcePartitions
 
+QUERY_IMPORT_MAX_FETCH_SIZE = 1000
+QUERY_IMPORT_BIGQUERY_MAX_FETCH_SIZE = 10000
+
+
+def query_import_fetch_size(requested_fetch_size: int | str, target: str) -> int:
+    """Cap the Query Import array fetch size at 10000 rows for BigQuery targets and 1000 for other targets."""
+    cap = QUERY_IMPORT_BIGQUERY_MAX_FETCH_SIZE if target == DBTYPE_BIGQUERY else QUERY_IMPORT_MAX_FETCH_SIZE
+    return min(int(requested_fetch_size), cap)
+
 
 class OffloadTransportQueryImport(OffloadTransport):
     """Use Python to transport data, only suitable for small chunks"""
@@ -38,10 +49,7 @@ class OffloadTransportQueryImport(OffloadTransport):
         messages,
         dfs_client,
     ):
-        """CONSTRUCTOR
-
-        Cap fetch size at 1000
-        """
+        """CONSTRUCTOR"""
         self._offload_transport_method = OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
         super().__init__(
             offload_source_table,
@@ -52,7 +60,7 @@ class OffloadTransportQueryImport(OffloadTransport):
             dfs_client,
         )
         self._offload_transport_parallelism = 1
-        self._offload_transport_fetch_size = min(int(self._offload_transport_fetch_size), 1000)
+        self._offload_transport_fetch_size = query_import_fetch_size(self._offload_transport_fetch_size, self._target)
         self._convert_nans_to_nulls = convert_nans_to_nulls(offload_target_table, offload_operation)
 
     def transport(self, partition_chunk: Optional["OffloadSourcePartitions"] = None) -> int | None:
@@ -160,9 +168,10 @@ class OffloadTransportQueryImport(OffloadTransport):
         return rows_imported, local_staging_path, dfs_load_path
 
     def _query_import_copy_to_dfs(self, local_staging_path, dfs_load_path):
-        """Simulate Sqoop's use of recreate load dir"""
-        rm_local_file = ["rm", "-f", local_staging_path]
+        """Copy the local staging file to the load location and always remove the local file afterwards."""
         self.log_dfs_cmd('copy_from_local("%s", "%s")' % (local_staging_path, dfs_load_path))
         if not self._dry_run:
-            self._dfs_client.copy_from_local(local_staging_path, dfs_load_path, overwrite=True)
-            self._run_os_cmd(rm_local_file)
+            try:
+                self._dfs_client.copy_from_local(local_staging_path, dfs_load_path, overwrite=True)
+            finally:
+                Path(local_staging_path).unlink(missing_ok=True)

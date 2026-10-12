@@ -18,6 +18,7 @@ from goe.offload.offload_constants import (
     BACKEND_DISTRO_GCP,
     BACKEND_DISTRO_MSAZURE,
     BACKEND_DISTRO_SNOWFLAKE,
+    BIGQUERY_LOAD_TABLE_MODE_NATIVE,
     DBTYPE_BIGQUERY,
     DBTYPE_HIVE,
     DBTYPE_IMPALA,
@@ -111,6 +112,11 @@ def bigquery_dataset_location_default() -> str | None:
 
 def bigquery_dataset_project_default() -> str | None:
     return os.environ.get("BIGQUERY_DATASET_PROJECT")
+
+
+def bigquery_load_table_mode_default() -> str:
+    """Return BIGQUERY_LOAD_TABLE_MODE upper-cased, defaulting to NATIVE load jobs."""
+    return (os.environ.get("BIGQUERY_LOAD_TABLE_MODE") or BIGQUERY_LOAD_TABLE_MODE_NATIVE).upper()
 
 
 def ca_cert_default() -> str | None:
@@ -647,6 +653,7 @@ def offload_staging_format_default() -> str:
     if os.environ.get("OFFLOAD_STAGING_FORMAT"):
         return os.environ["OFFLOAD_STAGING_FORMAT"].upper()
     if os.environ.get("BACKEND_DISTRIBUTION", BACKEND_DISTRO_CDH).upper() in [
+        BACKEND_DISTRO_GCP,
         BACKEND_DISTRO_SNOWFLAKE,
         BACKEND_DISTRO_MSAZURE,
     ]:
@@ -768,6 +775,50 @@ def offload_transport_spark_thrift_port_default() -> str | None:
 
 def offload_transport_dsn_default() -> str | None:
     return os.environ.get("OFFLOAD_TRANSPORT_DSN")
+
+
+def offload_transport_duckdb_version_default() -> str:
+    """Return the DuckDB version required by the configured duckdb-oracle extension build."""
+    return os.environ.get("OFFLOAD_TRANSPORT_DUCKDB_VERSION") or "1.5.5"
+
+
+def offload_transport_duckdb_extension_path_default() -> str | None:
+    """Return an optional local path to an oracle.duckdb_extension file."""
+    return os.environ.get("OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_PATH") or None
+
+
+def offload_transport_duckdb_extension_dir_default() -> str | None:
+    """Return an optional DuckDB extension_directory containing pre-installed oracle and gcs extensions."""
+    return os.environ.get("OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_DIR") or None
+
+
+def offload_transport_duckdb_extension_repository_default() -> str:
+    """Return the custom repository serving unsigned duckdb-oracle builds."""
+    return os.environ.get("OFFLOAD_TRANSPORT_DUCKDB_EXTENSION_REPOSITORY") or "https://cofin.github.io/duckdb-oracle"
+
+
+def offload_transport_duckdb_threads_default() -> str:
+    """Return the DuckDB thread count for each batch connection."""
+    return os.environ.get("OFFLOAD_TRANSPORT_DUCKDB_THREADS") or "2"
+
+
+def offload_transport_duckdb_memory_limit_default() -> str:
+    """Return the DuckDB memory_limit for each batch connection."""
+    return os.environ.get("OFFLOAD_TRANSPORT_DUCKDB_MEMORY_LIMIT") or "2GB"
+
+
+def offload_transport_duckdb_temp_directory_default() -> str | None:
+    """Return the DuckDB spill directory, defaulting to $OFFLOAD_HOME/run/duckdb."""
+    if os.environ.get("OFFLOAD_TRANSPORT_DUCKDB_TEMP_DIRECTORY"):
+        return os.environ["OFFLOAD_TRANSPORT_DUCKDB_TEMP_DIRECTORY"]
+    if os.environ.get("OFFLOAD_HOME"):
+        return os.path.join(os.environ["OFFLOAD_HOME"], "run", "duckdb")
+    return None
+
+
+def offload_transport_duckdb_max_bytes_default() -> str:
+    """Return the maximum source table size eligible for DuckDB transport as a human-readable size."""
+    return os.environ.get("OFFLOAD_TRANSPORT_DUCKDB_MAX_BYTES") or "20G"
 
 
 def oracle_adm_dsn_default() -> str | None:

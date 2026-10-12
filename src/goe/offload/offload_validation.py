@@ -10,8 +10,11 @@ CrossDbValidator:   Validate successful offload via calculating aggregates in fr
 """
 
 import logging
+from collections.abc import Sequence
 from datetime import date, datetime
-from functools import reduce
+from functools import lru_cache
+
+from sqlglot import exp
 
 from goe.offload.column_metadata import match_table_column
 from goe.offload.factory.backend_api_factory import backend_api_factory
@@ -33,6 +36,12 @@ from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessagesMixin
 from goe.offload.offload_metadata_functions import (
     decode_metadata_incremental_high_values_from_metadata,
 )
+from goe.offload.oracle.oracle_dialect import register_oracle_dialect_extensions
+from goe.offload.predicate_offload import (
+    PredicateOffloadException,
+    get_predicate_dialect_engine,
+)
+from goe.offload.sql_engine import ValidationQueryEngineProtocol, ValidationQuerySpec
 from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
@@ -47,6 +56,10 @@ class CrossDbValidatorException(Exception):
     pass
 
 
+OffloadValidationException = CrossDbValidatorException
+
+_TRIVIAL_TAUTOLOGIES: frozenset[str] = frozenset({"1=1", "1 = 1", "(1=1)", "(1 = 1)"})
+
 DEFAULT_SELECT_COLS = 5
 
 DEFAULT_AGGS = ("min", "max", "count")
@@ -57,6 +70,76 @@ SUPPORTED_OPERATIONS = ("<", "<=", ">", ">=", "=", "!=", "<>", "like", "not like
 
 ENGINE_FRONT = "FRONT"
 ENGINE_BACK = "BACK"
+
+
+def validate_raw_filter_clause(raw_filter: str, dialect: str = "oracle") -> str:
+    """Validate a raw filter condition string via PredicateDialectEngineProtocol."""
+    try:
+        return get_predicate_dialect_engine(dialect).validate_where_clause(raw_filter, dialect=dialect)
+    except PredicateOffloadException as exc:
+        raise CrossDbValidatorException(str(exc)) from exc
+
+
+def combine_validation_filters(filters: Sequence[str], dialect: str = "oracle") -> str:
+    """Validate and combine non-trivial filter clauses into a parenthesized AND conjunction."""
+    cleaned: list[str] = []
+    for raw in filters:
+        stripped = raw.strip()
+        if not stripped or stripped in _TRIVIAL_TAUTOLOGIES:
+            continue
+        cleaned.append(validate_raw_filter_clause(stripped, dialect=dialect))
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return f"({cleaned[0]})" if not (cleaned[0].startswith("(") and cleaned[0].endswith(")")) else cleaned[0]
+    combined: exp.Expr | None = None
+    for clause in cleaned:
+        wrapped = exp.Paren(this=exp.Var(this=clause))
+        combined = wrapped if combined is None else exp.And(this=combined, expression=wrapped)
+    assert combined is not None
+    return combined.sql(dialect)
+
+
+class ValidationSqlEngine(ValidationQueryEngineProtocol):
+    """Aggregate validation query builder and filter validator satisfying ValidationQueryEngineProtocol."""
+
+    def __init__(self, dialect: str = "oracle") -> None:
+        self._dialect = dialect
+        if dialect == "oracle":
+            register_oracle_dialect_extensions()
+
+    def validate_filter_clause(self, raw_filter: str, dialect: str) -> str:
+        """Validate a raw filter condition string for the given dialect."""
+        return validate_raw_filter_clause(raw_filter, dialect=dialect)
+
+    def build_aggregate_query(self, spec: ValidationQuerySpec) -> str:
+        """Construct an aggregate validation SELECT query from a ValidationQuerySpec."""
+        if spec.dialect == "oracle":
+            register_oracle_dialect_extensions()
+        projections = [exp.Var(this=item) for item in spec.select_items]
+        from_target = f"{spec.table_identifier} {spec.prior_to_where}".strip()
+        select_node = exp.select(*projections, copy=False).from_(exp.Var(this=from_target), copy=False)
+        where_sql = combine_validation_filters(spec.where_clauses, dialect=spec.dialect)
+        if where_sql:
+            select_node = select_node.where(exp.Var(this=where_sql), copy=False)
+        if spec.group_by_cols:
+            select_node = select_node.group_by(*[exp.Var(this=col) for col in spec.group_by_cols], copy=False)
+        if spec.order_by_cols:
+            select_node = select_node.order_by(
+                *[exp.Ordered(this=exp.Var(this=col)) for col in spec.order_by_cols],
+                copy=False,
+            )
+        rendered = select_node.sql(spec.dialect)
+        if spec.query_hints:
+            hint_str = spec.query_hints.strip()
+            rendered = f"SELECT {hint_str} {rendered[len('SELECT ') :]}"
+        return rendered
+
+
+@lru_cache(maxsize=4)
+def get_validation_query_engine(dialect: str = "oracle") -> ValidationQueryEngineProtocol:
+    """Return a cached ValidationQueryEngineProtocol instance for the given dialect."""
+    return ValidationSqlEngine(dialect=dialect)
 
 
 def build_verification_clauses(
@@ -476,42 +559,25 @@ class CrossDbValidator(OffloadMessagesMixin):
         table_name=None,
         frontend_hint_block=None,
     ):
-        """Construct appropriate aggregate SQL
-
-        Returns: sql, select_expressions
-        """
-
-        def expand(lst, elem_func, concat_func):
-            """Functional style SQL syntax expansion routine"""
-            return reduce(concat_func, list(map(elem_func, lst)))
-
+        """Construct frontend aggregate validation SQL via ValidationQueryEngineProtocol."""
         db_name = db_name or self._db_name
         table_name = table_name or self._table_name
-
-        if not group_bys:
-            group_bys = []
-        select_expressions = group_bys + ["%s(%s)" % (a.upper(), s) for s in selects for a in aggs]
-        hint_clause = f" {frontend_hint_block}" if frontend_hint_block else ""
-
-        sql = """SELECT%s %s\nFROM   %s.%s %s""" % (
-            hint_clause,
-            "\n,      ".join(select_expressions),
-            db_name,
-            table_name,
-            "AS OF SCN %d" % as_of_scn if as_of_scn else "",
+        normalized_group_bys = list(group_bys) if group_bys else []
+        select_expressions = normalized_group_bys + [f"{a.upper()}({s})" for s in selects for a in aggs]
+        normalized_filters = [
+            f"{x[0]} {x[1]} {x[2]}" if isinstance(x, (list, tuple)) else str(x) for x in (filters or [])
+        ]
+        spec = ValidationQuerySpec(
+            table_identifier=f"{db_name}.{table_name}",
+            select_items=select_expressions,
+            where_clauses=normalized_filters,
+            group_by_cols=normalized_group_bys,
+            order_by_cols=normalized_group_bys,
+            query_hints=frontend_hint_block or "",
+            prior_to_where=f"AS OF SCN {int(as_of_scn)}" if as_of_scn else "",
+            dialect="oracle",
         )
-
-        if filters:
-            sql += "\nWHERE  %s" % expand(
-                filters,
-                lambda x: (" ".join((x[0], x[1], str(x[2])))) if type(x) in (list, tuple) else x,
-                lambda x, y: "%s\nAND    %s" % (x, y),
-            )
-
-        if group_bys:
-            sql += "\n\tGROUP BY %s" % expand(group_bys, lambda x: x, lambda x, y: "%s, %s" % (x, y))
-            sql += "\n\tORDER BY %s" % expand(group_bys, lambda x: x, lambda x, y: "%s, %s" % (x, y))
-
+        sql = get_validation_query_engine("oracle").build_aggregate_query(spec)
         return sql, select_expressions
 
     def _construct_simple_front_agg_sql(self, selects, filters, group_bys, aggs, as_of_scn, frontend_hint_block):
@@ -542,36 +608,39 @@ class CrossDbValidator(OffloadMessagesMixin):
         )
 
     def _adjust_filters_front(self, filters):
-        """Adjust filters for FRONT-END db: type convert, format etc"""
+        """Adjust and AST-validate filters for the FRONT-END (Oracle) database."""
         if filters:
+            engine = get_validation_query_engine("oracle")
             new_filters = []
-            for i, filt in enumerate(filters):
-                if type(filt) in (list, tuple):
+            for filt in filters:
+                if isinstance(filt, (list, tuple)):
                     left, expr, right = filt
                     right = self._frontend.to_frontend_literal(right)
-                    new_filters.append("%s %s %s" % (left, expr, right))
+                    clause = f"{left} {expr} {right}"
                 else:
-                    new_filters.append(filt)
+                    clause = str(filt)
+                new_filters.append(engine.validate_filter_clause(clause, "oracle"))
             filters = new_filters
-
         return filters
 
     def _adjust_filters_back(self, filters):
-        """Adjust filters for BACK-END db: type convert, format etc"""
+        """Adjust and AST-validate filters for the BACK-END database."""
         if filters:
+            backend_dialect = "bigquery" if self._backend.backend_type() == "BIGQUERY" else "oracle"
+            engine = get_validation_query_engine(backend_dialect)
             new_filters = []
-            for i, filt in enumerate(filters):
-                if type(filt) in (list, tuple):
+            for filt in filters:
+                if isinstance(filt, (list, tuple)):
                     left, expr, right = filt
                     left = self._backend.enclose_identifier(left)
                     right = self._backend.to_backend_literal(right)
-                    new_filters.append("%s %s %s" % (left, expr, right))
+                    clause = f"{left} {expr} {right}"
                 else:
+                    clause = str(filt)
                     if self._backend.enclosure_character() != '"':
-                        filt = filt.replace('"', self._backend.enclosure_character())
-                    new_filters.append(filt)
+                        clause = clause.replace('"', self._backend.enclosure_character())
+                new_filters.append(engine.validate_filter_clause(clause, backend_dialect))
             filters = new_filters
-
         return filters
 
     def _run_sqls(self, front_sql, back_sql, front_binds=None):

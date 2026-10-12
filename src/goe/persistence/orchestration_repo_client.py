@@ -208,7 +208,7 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
         """Return a list of codes from REPO.COMMEND_STEP table"""
 
     @abstractmethod
-    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | Any]:
+    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, Any] | None:
         """Return a list of command executions"""
 
     @abstractmethod

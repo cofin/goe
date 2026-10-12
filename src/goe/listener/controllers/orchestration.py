@@ -11,6 +11,7 @@ from litestar.di import NamedDependency
 from litestar.params import FromPath, FromQuery, JSONBody
 from litestar_queues import QueueService
 from litestar_security import AuthenticationPolicy, SecureController, required
+from opentelemetry import trace
 
 from goe.listener import exceptions, jobs, schemas, utils
 from goe.listener.services.system import SystemService
@@ -109,6 +110,7 @@ class OrchestrationController(SecureController):
         """Submit a background offload operation."""
         utils.orchestrate.check_for_running_command(data.owner_table)
         execution_identifier = ExecutionId()
+        trace.get_current_span().set_attribute("goe.execution.id", execution_identifier.as_str())
         params = data.to_params_dict()
 
         await queue_service.enqueue(

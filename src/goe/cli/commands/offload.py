@@ -344,7 +344,7 @@ _LAZY_IMPORTS: LazyImportMap = {
 @click.option(
     "--offload-transport-method",
     "offload_transport_method",
-    help="Transport engine: SPARK_DATAPROC, SPARK_SUBMIT, QUERY_IMPORT, SQOOP, or AUTO.",
+    help="Transport method override: QUERY_IMPORT, SPARK_SUBMIT, SPARK_THRIFT, SPARK_LIVY, SPARK_DATAPROC_GCLOUD, SPARK_BATCHES_GCLOUD, SQOOP, SQOOP_BY_QUERY, or DUCKDB (opt-in).",
 )
 @click.option(
     "--offload-transport-parallelism",

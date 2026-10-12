@@ -110,13 +110,9 @@ def test_golden_rbo_bigquery_ddl_staging_and_final_insert_sql(bq_config, message
     create_ddl = bq_table.create_backend_table(with_terminator=True)
     assert len(create_ddl) == 1
     assert create_ddl[0] == (
-        "CREATE TABLE `bq-project.target_ds.sales_rbo` (\n"
-        "    `ID`         INT64 NOT NULL\n"
-        ",   `STATUS`     STRING(32)\n"
-        ",   `AMOUNT`     NUMERIC(12,2)\n"
-        ",   `ORDER_DATE` DATE\n"
-        ")\n"
-        "CLUSTER BY `ID`,`STATUS`;"
+        "CREATE TABLE `bq-project`.`target_ds`.`sales_rbo` "
+        "(`ID` INT64 NOT NULL, `STATUS` STRING(32), `AMOUNT` NUMERIC(12, 2), `ORDER_DATE` DATE) "
+        "CLUSTER BY `ID`, `STATUS`;"
     )
 
     staging_file = staging_file_factory(
@@ -129,23 +125,32 @@ def test_golden_rbo_bigquery_ddl_staging_and_final_insert_sql(bq_config, message
         messages,
         dry_run=True,
     )
-    load_ddl = bq_table._create_load_table(staging_file, with_terminator=True)
+    native_load = bq_table._create_load_table(staging_file, with_terminator=True)
+    assert native_load == [
+        "BigQuery load job: gs://b/target_ds_load/sales_rbo/part* -> "
+        "bq-project.target_ds_load.sales_rbo (format=AVRO, write_disposition=WRITE_TRUNCATE)"
+    ]
+    bq_config.bigquery_load_table_mode = "EXTERNAL"
+    try:
+        load_ddl = bq_table._create_load_table(staging_file, with_terminator=True)
+    finally:
+        bq_config.bigquery_load_table_mode = "NATIVE"
     assert len(load_ddl) == 1
-    assert "CREATE EXTERNAL TABLE `bq-project.target_ds_load.sales_rbo`" in load_ddl[0]
-    assert "format ='AVRO'" in load_ddl[0]
-    assert "uris = ['gs://b/target_ds_load/sales_rbo/part*']" in load_ddl[0]
+    assert "CREATE EXTERNAL TABLE `bq-project`.`target_ds_load`.`sales_rbo`" in load_ddl[0]
+    assert "format='AVRO'" in load_ddl[0]
+    assert "uris=['gs://b/target_ds_load/sales_rbo/part*']" in load_ddl[0]
 
     bq_table.set_final_table_casts(rdbms_cols, staging_file.get_staging_columns())
     select_exprs = [(bq_table.get_final_table_cast(col), col.name.upper()) for col in bq_table.get_columns()]
     insert_sqls, query_options = bq_table._gen_final_insert_sqls(select_exprs)
     assert len(insert_sqls) == 1
     assert insert_sqls[0] == (
-        "INSERT INTO `bq-project.target_ds.sales_rbo`\n"
-        "SELECT `ID` AS `ID`\n"
-        ",      `STATUS` AS `STATUS`\n"
-        ",      CAST(`AMOUNT` AS NUMERIC(12,2)) AS `AMOUNT`\n"
-        ",      CAST(PARSE_DATETIME('%F %H:%M:%E*S', `ORDER_DATE`) AS DATE) AS `ORDER_DATE`\n"
-        "FROM   `bq-project.target_ds_load.sales_rbo`"
+        "INSERT INTO `bq-project`.`target_ds`.`sales_rbo` "
+        "SELECT `ID` AS `ID`, "
+        "`STATUS` AS `STATUS`, "
+        "CAST(`AMOUNT` AS NUMERIC(12,2)) AS `AMOUNT`, "
+        "CAST(PARSE_DATETIME('%F %H:%M:%E*S', `ORDER_DATE`) AS DATE) AS `ORDER_DATE` "
+        "FROM `bq-project`.`target_ds_load`.`sales_rbo`"
     )
     assert query_options is None
 
@@ -173,7 +178,7 @@ def test_golden_ipa_range_partitioning_and_chunking(bq_config, messages):
 
     create_ddl = bq_table.create_backend_table(with_terminator=True)
     assert len(create_ddl) == 1
-    assert "PARTITION BY DATETIME_TRUNC(`CREATED_TS`,MONTH)" in create_ddl[0]
+    assert "PARTITION BY DATETIME_TRUNC(`CREATED_TS`, MONTH)" in create_ddl[0]
 
     synth_table = _build_bq_table(bq_config, messages, db_name="target_ds", table_name="sales_ipa_decimal")
     synth_rdbms_cols = [
@@ -299,9 +304,9 @@ def test_golden_bigquery_schema_evolution_add_columns_ddl(bq_dry_run_api):
     with mock.patch.object(bq_dry_run_api, "_get_bq_table", return_value=mock.MagicMock()):
         ddl_list = bq_dry_run_api.add_columns("target_ds", "sales_rbo", new_cols, sync=True)
     assert ddl_list == [
-        "ALTER TABLE `bq-project.target_ds.sales_rbo` "
-        "ADD COLUMN IF NOT EXISTS DISCOUNT_RATE NUMERIC, "
-        "ADD COLUMN IF NOT EXISTS NOTES STRING"
+        "ALTER TABLE `bq-project`.`target_ds`.`sales_rbo` "
+        "ADD COLUMN IF NOT EXISTS `DISCOUNT_RATE` NUMERIC, "
+        "ADD COLUMN IF NOT EXISTS `NOTES` STRING"
     ]
 
 

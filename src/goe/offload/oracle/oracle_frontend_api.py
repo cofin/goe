@@ -10,12 +10,14 @@ Implements abstract methods from FrontendApiInterface.
 import logging
 import traceback
 from datetime import datetime
+from pathlib import Path
 from textwrap import dedent
-from typing import Any
+from typing import Any, cast
 
 import oracledb as cxo
 from numpy import datetime64
 
+from goe.observability.db import apply_oracle_session_trace_info
 from goe.offload import offload_constants
 from goe.offload.column_metadata import match_table_column
 from goe.offload.frontend_api import (
@@ -35,6 +37,7 @@ from goe.offload.oracle.oracle_column import (
     OracleColumn,
 )
 from goe.offload.oracle.oracle_literal import OracleLiteral
+from goe.persistence.oracle_gateway import OracleGateway, load_sql_file
 from goe.util.goe_version import GOEVersion
 from goe.util.misc_functions import double_quote_sandwich, format_list_for_logging
 
@@ -47,6 +50,19 @@ MAX_DEPENDENCY_DEPTH = 100
 ORACLE_VERSION_WITH_128_BYTE_IDENTIFIERS = "12.2.0"
 
 CREATE_TABLE_ORACLE_PARTITION_SPEC = "partition_spec"
+
+FRONTEND_METADATA_SQL_PATH = Path(__file__).resolve().parent / "sql" / "frontend_metadata.sql"
+
+RECONNECT_ERROR_MARKERS = (
+    "ORA-02396",
+    "ORA-2396",
+    "ORA-03113",
+    "ORA-3113",
+    "ORA-03114",
+    "ORA-3114",
+    "ORA-03135",
+    "ORA-3135",
+)
 
 
 def switch_oracle_open_partition_token(frontend_token):
@@ -96,6 +112,9 @@ class OracleFrontendApi(FrontendApiInterface):
 
         self._db_conn = None
         self._db_curs = None
+        self._metadata_gateway = OracleGateway(
+            self.get_validated_oracle_connection, load_sql_file(FRONTEND_METADATA_SQL_PATH)
+        )
         if not do_not_connect:
             self._connect()
 
@@ -119,28 +138,17 @@ class OracleFrontendApi(FrontendApiInterface):
         self._disconnect(force=force)
 
     def agg_validate_sample_column_names(self, schema: Any, table_name: Any, num_required: int = 5) -> list:
-        sql = dedent("""\
-        SELECT column_name
-        FROM  (
-               SELECT column_name
-               ,      column_id
-               ,      MAX(column_id) OVER () AS last_column_id
-               ,      ROW_NUMBER() OVER (ORDER BY num_distinct DESC) AS ndv_rank
-               FROM   all_tab_cols
-               WHERE  owner = :OWNER
-               AND    table_name = :TABLE_NAME
-               AND    hidden_column = 'NO'
-              )
-        WHERE  column_id IN (1, last_column_id)
-        OR     ndv_rank <= :REQUIRED_NO""")
-        binds = [
-            QueryParameter(param_name="OWNER", param_value=schema),
-            QueryParameter(param_name="TABLE_NAME", param_value=table_name),
-            QueryParameter(param_name="REQUIRED_NO", param_value=num_required),
-        ]
-
-        query_result = self.execute_query_fetch_all(sql, query_params=binds, log_level=VVERBOSE)
-        return [_[0] for _ in query_result]
+        params = {"owner": schema, "table_name": table_name, "required_no": num_required}
+        self._log_or_not(
+            "%s SQL: %s"
+            % (self._sql_engine_name, self._metadata_gateway.statement_text("agg_validate_sample_column_names")),
+            log_level=VVERBOSE,
+        )
+        self._log_or_not(
+            "Bind values:\n%s" % "\n".join("%s = %s" % (k, v) for k, v in params.items()), log_level=VVERBOSE
+        )
+        rows = self._metadata_gateway.select_tuples("agg_validate_sample_column_names", params)
+        return [_[0] for _ in rows or []]
 
     def create_new_connection(self, user_name, user_password, trace_action_override=None):
         self._debug("Making new connection with user %s" % user_name)
@@ -207,51 +215,17 @@ class OracleFrontendApi(FrontendApiInterface):
         return ORACLE_TYPE_VARCHAR2
 
     def get_columns(self, schema, table_name):
-        q = """SELECT UPPER(column_name)
-               ,      column_id
-               ,      nullable
-               ,      data_type
-               ,      data_precision
-               ,      data_scale
-               ,      data_length     AS byte_length
-               ,      data_default
-               ,      hidden_column
-               ,      char_used
-               ,      char_length
-               FROM   all_tab_cols
-               WHERE  owner = :owner
-               AND    table_name = :table_name
-               AND    hidden_column = 'NO'
-               ORDER BY column_id ASC"""
+        rows = self._metadata_gateway.select_tuples("get_columns", {"owner": schema, "table_name": table_name})
+        return [OracleColumn.from_oracle(row) for row in rows or []]
 
-        cols = []
-        for row in self.execute_query_fetch_all(q, query_params={"owner": schema, "table_name": table_name}):
-            col = OracleColumn.from_oracle(row)
-            cols.append(col)
-        return cols
-
-    def get_current_scn(self) -> int:
+    def get_current_scn(self) -> int | None:
         """Return the current system change number for the source RDBMS."""
-        row = self.execute_query_fetch_one("SELECT current_scn FROM v$database")
-        return row[0] if row else row
+        rows = self._metadata_gateway.select_tuples("get_current_scn")
+        return rows[0][0] if rows else None
 
     def get_db_unique_name(self) -> str:
-        sql = dedent("""\
-        SELECT SYS_CONTEXT('USERENV', 'DB_UNIQUE_NAME') ||
-               CASE
-                  WHEN version >= 12
-                  THEN CASE
-                          WHEN SYS_CONTEXT('USERENV', 'CDB_NAME') IS NOT NULL
-                          THEN '_' || SYS_CONTEXT('USERENV', 'CON_NAME')
-                       END
-               END
-        FROM  (
-               SELECT TO_NUMBER(REGEXP_SUBSTR(version, '[0-9]+')) AS version
-               FROM   v$instance
-              )
-        """)
-        row = self.execute_query_fetch_one(sql)
-        return row[0] if row else row
+        rows = self._metadata_gateway.select_tuples("get_db_unique_name")
+        return cast(str, rows[0][0] if rows else None)
 
     def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
         assert schema and table_name
@@ -293,6 +267,16 @@ class OracleFrontendApi(FrontendApiInterface):
         """Return an Oracle connection object. Oracle specific method not provided by other frontends."""
         return self._db_conn
 
+    def get_validated_oracle_connection(self) -> "cxo.Connection | None":
+        """Return the live connection after ``_open_cursor`` tagging and reconnect checks, or ``None`` if unconnected.
+
+        Oracle-specific method used as the ``OracleGateway`` connection provider so gateway queries keep the same
+        ``TRACEFILE_IDENTIFIER`` tagging and sniped-session reconnect as ``execute_query_fetch_*``.
+        """
+        self._open_cursor()
+        self._close_cursor()
+        return self._db_conn
+
     def get_partition_column_names(self, schema, table_name, conv_fn=None):
         names = self._get_partition_column_names(schema, table_name)
         return [conv_fn(_) for _ in names or []] if conv_fn else names
@@ -305,17 +289,9 @@ class OracleFrontendApi(FrontendApiInterface):
         return part_cols
 
     def get_primary_key_column_names(self, schema, table_name):
-        q = """SELECT cc.column_name
-                  FROM   dba_constraints c
-                  ,      dba_cons_columns cc
-                  WHERE  c.owner = :owner
-                  AND    c.table_name = :table_name
-                  AND    c.constraint_type = 'P'
-                  AND    cc.owner = c.owner
-                  AND    cc.table_name = c.table_name
-                  AND    cc.constraint_name = c.constraint_name
-                  ORDER BY cc.position"""
-        rows = self.execute_query_fetch_all(q, query_params={"owner": schema, "table_name": table_name})
+        rows = self._metadata_gateway.select_tuples(
+            "get_primary_key_column_names", {"owner": schema, "table_name": table_name}
+        )
         return [_[0] for _ in rows] if rows else []
 
     def get_session_option(self, option_name):
@@ -327,9 +303,8 @@ class OracleFrontendApi(FrontendApiInterface):
         return self._execute_plsql_function("offload.get_init_param", return_type=str, arg_list=[option_name])
 
     def get_session_user(self) -> str:
-        sql = "SELECT sys_context('USERENV','SESSION_USER') FROM DUAL"
-        row = self.execute_query_fetch_one(sql)
-        return row[0] if row else row
+        rows = self._metadata_gateway.select_tuples("get_session_user")
+        return cast(str, rows[0][0] if rows else None)
 
     def get_subpartition_column_names(self, schema, table_name, conv_fn=None):
         names = self._get_partition_column_names(schema, table_name, subpartition_level=True)
@@ -343,9 +318,10 @@ class OracleFrontendApi(FrontendApiInterface):
         return part_cols
 
     def get_table_default_parallelism(self, schema, table_name):
-        sql = "SELECT TRIM(degree) FROM dba_tables WHERE owner = :owner AND table_name = :table_name"
-        row = self.execute_query_fetch_one(sql, query_params={"owner": schema, "table_name": table_name})
-        return row[0] if row else None
+        rows = self._metadata_gateway.select_tuples(
+            "get_table_default_parallelism", {"owner": schema, "table_name": table_name}
+        )
+        return rows[0][0] if rows else None
 
     def get_table_row_count(
         self,
@@ -377,22 +353,9 @@ class OracleFrontendApi(FrontendApiInterface):
         NB: does not currently include LOB or overflow segments
         """
         logger.debug("get_table_size: %s, %s" % (schema, table_name))
-        if self._is_iot(schema, table_name):
-            q = """SELECT SUM(bytes) AS bytes
-                   FROM dba_segments s
-                   WHERE (s.owner, s.segment_name) = (SELECT c.owner, c.index_name
-                                                      FROM dba_constraints c
-                                                      WHERE c.owner = :owner
-                                                      AND c.table_name = :table_name
-                                                      AND c.constraint_type  = 'P')"""
-        else:
-            q = """SELECT SUM(bytes) bytes
-                   FROM dba_segments s
-                   WHERE s.owner = :owner
-                   AND s.segment_name = :table_name"""
-
-        row = self.execute_query_fetch_one(q, query_params={"owner": schema, "table_name": table_name})
-        return row[0] if row else None
+        query_name = "get_iot_table_size" if self._is_iot(schema, table_name) else "get_table_size"
+        rows = self._metadata_gateway.select_tuples(query_name, {"owner": schema, "table_name": table_name})
+        return rows[0][0] if rows else None
 
     def is_view(self, schema: Any, object_name: Any) -> bool:
         return self.view_exists(schema, object_name)
@@ -473,14 +436,10 @@ class OracleFrontendApi(FrontendApiInterface):
         return tokens
 
     def schema_exists(self, schema: Any) -> bool:
-        sql = "SELECT 1 FROM dba_users WHERE username = :schema"
-        row = self.execute_query_fetch_one(sql, query_params={"schema": schema})
-        return bool(row)
+        return bool(self._metadata_gateway.select_tuples("schema_exists", {"schema": schema}))
 
     def table_exists(self, schema: Any, table_name: Any) -> bool:
-        sql = "SELECT table_name FROM dba_tables WHERE owner = :owner AND table_name = :table_name"
-        row = self.execute_query_fetch_one(sql, query_params={"owner": schema, "table_name": table_name})
-        return bool(row)
+        return bool(self._metadata_gateway.select_tuples("table_exists", {"owner": schema, "table_name": table_name}))
 
     def to_frontend_literal(self, py_val: Any, data_type: Any = None) -> str:
         self._debug("Formatting %s literal: %s" % (type(py_val), repr(py_val)))
@@ -490,9 +449,7 @@ class OracleFrontendApi(FrontendApiInterface):
         return new_py_val
 
     def view_exists(self, schema: Any, view_name: Any) -> bool:
-        sql = "SELECT 1 FROM dba_views WHERE owner = :owner AND view_name = :view_name"
-        row = self.execute_query_fetch_one(sql, query_params={"owner": schema, "view_name": view_name})
-        return bool(row)
+        return bool(self._metadata_gateway.select_tuples("view_exists", {"owner": schema, "view_name": view_name}))
 
     def _conn_user_and_pass_for_override(self):
         """Return a user and password from connection_options object for the override user
@@ -560,6 +517,7 @@ class OracleFrontendApi(FrontendApiInterface):
         self._db_conn.module = FRONTEND_TRACE_MODULE
         self._db_conn.action = self._trace_action
         self._db_conn.outputtypehandler = self._connection_output_type_handler
+        apply_oracle_session_trace_info(self._db_conn)
         self._db_conn.ping()
         return made_new_connection
 
@@ -919,14 +877,9 @@ class OracleFrontendApi(FrontendApiInterface):
     def _get_partition_column_names(self, schema, table_name, subpartition_level=False):
         """Return a list of partition column names in the correct order."""
         logger.debug("_get_partition_column_names: %s, %s" % (schema, table_name))
-        dba_part_key_columns = "dba_subpart_key_columns" if subpartition_level else "dba_part_key_columns"
-        q = dedent("""\
-            SELECT UPPER(pk.column_name)
-            FROM   %(dba_part_key_columns)s pk
-            WHERE  pk.owner = :owner
-            AND    pk.name = :table_name
-            ORDER BY pk.column_position""") % {"dba_part_key_columns": dba_part_key_columns}
-        return [_[0] for _ in self.execute_query_fetch_all(q, query_params={"owner": schema, "table_name": table_name})]
+        query_name = "get_subpartition_column_names" if subpartition_level else "get_partition_column_names"
+        rows = self._metadata_gateway.select_tuples(query_name, {"owner": schema, "table_name": table_name})
+        return [_[0] for _ in rows or []]
 
     def _instrumentation_snap(self, delta_dict=None):
         """Capture and return session events and CPU usage and return as a dict
@@ -942,10 +895,10 @@ class OracleFrontendApi(FrontendApiInterface):
             cpu_seconds = get_cpu_s()
 
         logger.debug("Fetching session events from DB")
-        sql = (
-            "SELECT event, ROUND(time_waited_micro/1e6,2) FROM v$session_event WHERE sid = SYS_CONTEXT('USERENV','SID')"
-        )
-        profile_dict = {event_name: event_sec for event_name, event_sec in self.execute_query_fetch_all(sql)}
+        profile_dict = {
+            event_name: event_sec
+            for event_name, event_sec in self._metadata_gateway.select_tuples("get_session_events") or []
+        }
 
         if not delta_dict:
             cpu_seconds = get_cpu_s()
@@ -962,45 +915,40 @@ class OracleFrontendApi(FrontendApiInterface):
         return profile_dict
 
     def _is_iot(self, schema, table_name):
-        q = """SELECT NVL2(t.iot_type,'IOT',NULL) AS iot_type
-               FROM   all_tables t
-               WHERE  t.owner = :owner
-               AND    t.table_name = :table_name"""
-        row = self.execute_query_fetch_one(q, query_params={"owner": schema, "table_name": table_name})
-        return bool(row and row[0] == "IOT")
+        rows = self._metadata_gateway.select_tuples("get_iot_type", {"owner": schema, "table_name": table_name})
+        return bool(rows and rows[0][0] == "IOT")
 
-    def _open_cursor(self):
-        def setup_cursor():
+    def _open_cursor(self) -> None:
+        """Open a fresh cursor, reconnecting once when the session was sniped or the connection was lost.
+
+        The ``ALTER SESSION SET TRACEFILE_IDENTIFIER`` execute is what surfaces a dead session; taking a cursor is
+        not enough. Errors are matched by substring because python-oracledb reports padded (``ORA-02396``) and
+        unpadded (``DPI-1080: connection was closed by ORA-2396``) codes: ORA-02396 idle-time sniping, ORA-03113
+        end-of-file, ORA-03114 not connected, ORA-03135 lost contact. Reconnection runs after the ``except`` block,
+        once, so a failed reconnect is not chained to the original error.
+        """
+
+        def setup_cursor() -> None:
             assert self._db_conn is not None
             self._db_curs = self._db_conn.cursor()
             self._db_curs.execute('ALTER SESSION SET TRACEFILE_IDENTIFIER="%s"' % FRONTEND_TRACE_ID)
 
-        if self._db_conn:
-            try:
-                setup_cursor()
-            except cxo.DatabaseError as exc:
-                if any(
-                    _ in str(exc)
-                    for _ in (
-                        "ORA-02396",
-                        "ORA-2396",
-                        "ORA-03113",
-                        "ORA-3113",
-                        "ORA-03114",
-                        "ORA-3114",
-                        "ORA-03135",
-                        "ORA-3135",
-                    )
-                ):
-                    self._log(f"Reconnecting to Oracle due to: {exc!s}", detail=VVERBOSE)
-                    logger.info(f"Reconnecting to Oracle due to: {exc!s}")
-                    self._disconnect(force=True)
-                    self._connect()
-                    setup_cursor()
-                else:
-                    raise
-        else:
+        if not self._db_conn:
             self._db_curs = None
+            return
+        reconnect_reason = None
+        try:
+            setup_cursor()
+        except cxo.DatabaseError as exc:
+            if not any(marker in str(exc) for marker in RECONNECT_ERROR_MARKERS):
+                raise
+            reconnect_reason = str(exc)
+        if reconnect_reason is not None:
+            self._log(f"Reconnecting to Oracle due to: {reconnect_reason}", detail=VVERBOSE)
+            logger.info(f"Reconnecting to Oracle due to: {reconnect_reason}")
+            self._disconnect(force=True)
+            self._connect()
+            setup_cursor()
 
     def _to_native_query_params(self, query_params):
         """Using a dict for oracledb binds.

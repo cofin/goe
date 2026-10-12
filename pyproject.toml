@@ -31,6 +31,7 @@ dependencies = [
     "lark>=1.1.9",
     "numpy",
     "msgspec>=0.19.0",
+    "opentelemetry-api>=1.40.0",
     "sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0",
     "python-dateutil",
     "PyYAML",
@@ -95,6 +96,12 @@ teradata = [
 sqlspec = [
     "sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0",
 ]
+otel = [
+    "opentelemetry-sdk>=1.40.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.40.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.40.0",
+    "opentelemetry-instrumentation-asgi>=0.61b0",
+]
 all = [
     "hdfs",
     "impyla",
@@ -120,6 +127,10 @@ test = [
     "pytest-xdist>=3.6.0",
     "pytest-mock",
     "filelock>=3.0.0",
+    "opentelemetry-sdk>=1.40.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.40.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.40.0",
+    "opentelemetry-instrumentation-asgi>=0.61b0",
 ]
 lint = [
     "mypy>=1.13.0",

@@ -48,6 +48,7 @@ EXPECTED_CONFIG_ARGS = [
     "backend_session_parameters",
     "bigquery_dataset_location",
     "bigquery_dataset_project",
+    "bigquery_load_table_mode",
     "ca_cert",
     "db_name_pattern",
     "db_name_prefix",
@@ -115,6 +116,14 @@ EXPECTED_CONFIG_ARGS = [
     "offload_transport_cmd_host",
     "offload_transport_credential_provider_path",
     "offload_transport_dsn",
+    "offload_transport_duckdb_version",
+    "offload_transport_duckdb_extension_path",
+    "offload_transport_duckdb_extension_dir",
+    "offload_transport_duckdb_extension_repository",
+    "offload_transport_duckdb_threads",
+    "offload_transport_duckdb_memory_limit",
+    "offload_transport_duckdb_temp_directory",
+    "offload_transport_duckdb_max_bytes",
     "offload_transport_livy_api_url",
     "offload_transport_livy_api_verify_ssl",
     "offload_transport_livy_max_sessions",
@@ -203,6 +212,7 @@ class OrchestrationConfig:
     backend_session_parameters: Any
     bigquery_dataset_location: str | None
     bigquery_dataset_project: str | None
+    bigquery_load_table_mode: str
     ca_cert: str | None
     db_name_pattern: str
     db_name_prefix: Any
@@ -266,6 +276,14 @@ class OrchestrationConfig:
     offload_fs_scheme: str
     offload_staging_format: str
     offload_transport: str
+    offload_transport_duckdb_version: str
+    offload_transport_duckdb_extension_path: str | None
+    offload_transport_duckdb_extension_dir: str | None
+    offload_transport_duckdb_extension_repository: str
+    offload_transport_duckdb_threads: int
+    offload_transport_duckdb_memory_limit: str
+    offload_transport_duckdb_temp_directory: str | None
+    offload_transport_duckdb_max_bytes: int
     offload_transport_auth_using_oracle_wallet: bool
     offload_transport_cmd_host: str
     offload_transport_credential_provider_path: str | None
@@ -411,6 +429,10 @@ class OrchestrationConfig:
             bigquery_dataset_project=config_dict.get(
                 "bigquery_dataset_project",
                 orchestration_defaults.bigquery_dataset_project_default(),
+            ),
+            bigquery_load_table_mode=config_dict.get(
+                "bigquery_load_table_mode",
+                orchestration_defaults.bigquery_load_table_mode_default(),
             ),
             ca_cert=config_dict.get("ca_cert", orchestration_defaults.ca_cert_default()),
             db_name_pattern=config_dict.get("db_name_pattern", orchestration_defaults.db_name_pattern_default()),
@@ -598,6 +620,38 @@ class OrchestrationConfig:
             offload_transport_dsn=config_dict.get(
                 "offload_transport_dsn",
                 orchestration_defaults.offload_transport_dsn_default(),
+            ),
+            offload_transport_duckdb_version=config_dict.get(
+                "offload_transport_duckdb_version",
+                orchestration_defaults.offload_transport_duckdb_version_default(),
+            ),
+            offload_transport_duckdb_extension_path=config_dict.get(
+                "offload_transport_duckdb_extension_path",
+                orchestration_defaults.offload_transport_duckdb_extension_path_default(),
+            ),
+            offload_transport_duckdb_extension_dir=config_dict.get(
+                "offload_transport_duckdb_extension_dir",
+                orchestration_defaults.offload_transport_duckdb_extension_dir_default(),
+            ),
+            offload_transport_duckdb_extension_repository=config_dict.get(
+                "offload_transport_duckdb_extension_repository",
+                orchestration_defaults.offload_transport_duckdb_extension_repository_default(),
+            ),
+            offload_transport_duckdb_threads=config_dict.get(
+                "offload_transport_duckdb_threads",
+                orchestration_defaults.offload_transport_duckdb_threads_default(),
+            ),
+            offload_transport_duckdb_memory_limit=config_dict.get(
+                "offload_transport_duckdb_memory_limit",
+                orchestration_defaults.offload_transport_duckdb_memory_limit_default(),
+            ),
+            offload_transport_duckdb_temp_directory=config_dict.get(
+                "offload_transport_duckdb_temp_directory",
+                orchestration_defaults.offload_transport_duckdb_temp_directory_default(),
+            ),
+            offload_transport_duckdb_max_bytes=config_dict.get(
+                "offload_transport_duckdb_max_bytes",
+                orchestration_defaults.offload_transport_duckdb_max_bytes_default(),
             ),
             offload_transport_livy_max_sessions=config_dict.get(
                 "offload_transport_livy_max_sessions",

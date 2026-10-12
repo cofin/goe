@@ -25,17 +25,37 @@ from goe.listener.exceptions.handlers import (
 from goe.listener.mcp import build_mcp_plugin
 from goe.listener.security import build_security_config
 from goe.listener.services.system import get_system_service
+from goe.listener.telemetry import build_listener_otel_plugin, build_queue_observability_config
+from goe.observability.runtime import ensure_observability
 from goe.util.goe_version import goe_version
 
 
 def create_app(dependencies: dict[str, Any] | None = None) -> Litestar:
     """Create and configure the Litestar application instance."""
     load_env()
+    telemetry = ensure_observability()
     deps: dict[str, Any] = {
         "system_service": Provide(get_system_service, sync_to_thread=False),
     }
     if dependencies:
         deps.update(dependencies)
+
+    plugins: list[Any] = [
+        SecurityPlugin(build_security_config()),
+        GranianPlugin(),
+        QueuePlugin(
+            QueueConfig(
+                queue_backend="memory",
+                worker=WorkerConfig(placement="asgi"),
+                observability=build_queue_observability_config(telemetry),
+            )
+        ),
+        build_mcp_plugin(),
+        AutowirePlugin(AutowireConfig(domain_packages=["goe.listener"], integrations=["queues"])),
+    ]
+    otel_plugin = build_listener_otel_plugin(telemetry)
+    if otel_plugin is not None:
+        plugins.append(otel_plugin)
 
     return Litestar(
         exception_handlers={
@@ -43,13 +63,7 @@ def create_app(dependencies: dict[str, Any] | None = None) -> Litestar:
             Exception: generic_exception_handler,
         },
         dependencies=deps,
-        plugins=[
-            SecurityPlugin(build_security_config()),
-            GranianPlugin(),
-            QueuePlugin(QueueConfig(queue_backend="memory", worker=WorkerConfig(placement="asgi"))),
-            build_mcp_plugin(),
-            AutowirePlugin(AutowireConfig(domain_packages=["goe.listener"], integrations=["queues"])),
-        ],
+        plugins=plugins,
         cors_config=CORSConfig(
             allow_origins=["*"],
             allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],

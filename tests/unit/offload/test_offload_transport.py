@@ -34,6 +34,7 @@ from goe.offload.oracle.oracle_column import (
 )
 from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
 from goe.offload.spark.dataproc_offload_transport import DATAPROC_CLUSTER_SERVICE_ACCOUNT_IGNORED
+from goe.offload.transport.duckdb_constants import OFFLOAD_TRANSPORT_METHOD_DUCKDB
 from tests.unit.test_functions import (
     FAKE_ORACLE_BQ_ENV,
     build_mock_offload_operation,
@@ -557,6 +558,7 @@ def test_validation_fns_cover_every_selectable_method(config, messages) -> None:
     """Every concrete transport method has an availability check."""
     fns = get_offload_transport_method_validation_fns(config, messages=messages)
     assert set(fns) == {
+        OFFLOAD_TRANSPORT_METHOD_DUCKDB,
         OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
         OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
         OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,

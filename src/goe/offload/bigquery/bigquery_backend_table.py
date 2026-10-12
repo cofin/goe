@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from google.cloud import bigquery
 
+from goe.observability.bigquery import record_bigquery_job_metadata, traced_bigquery_job
 from goe.offload.backend_table import (
     PARTITION_KEY_OUT_OF_RANGE,
     TYPICAL_DATE_GRANULARITY_TERMS,
@@ -30,7 +31,9 @@ from goe.offload.bigquery.bigquery_column import (
     BIGQUERY_TYPE_TIME,
     BigQueryColumn,
 )
+from goe.offload.bigquery.bigquery_load_job import build_staging_load_job_config
 from goe.offload.column_metadata import ColumnMetadataInterface, get_column_names
+from goe.offload.offload_constants import BIGQUERY_LOAD_TABLE_MODE_NATIVE
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.staging.avro.avro_staging_file import AVRO_TYPE_DOUBLE, AVRO_TYPE_LONG
 from goe.offload.staging.parquet.parquet_column import (
@@ -259,10 +262,13 @@ class BackendBigQueryTable(BackendTableInterface):
             standard .avro extension. If you copy these files out, you'll likely want to rename them with .avro.
 
         We've gone with part* to identify Avro files.
+        When BIGQUERY_LOAD_TABLE_MODE is NATIVE the part* files are loaded into a native load table with a BigQuery load job instead.
         """
+        load_table_location = "%s/part*" % (self.get_staging_table_location())
+        if self._orchestration_config.bigquery_load_table_mode == BIGQUERY_LOAD_TABLE_MODE_NATIVE:
+            return self._load_native_load_table(staging_file, load_table_location)
         no_columns: list[Any] = []
         no_partition_cols: list[Any] = []
-        load_table_location = "%s/part*" % (self.get_staging_table_location())
         return self._db_api.create_table(
             self._load_db_name,
             self._load_table_name,
@@ -273,6 +279,27 @@ class BackendBigQueryTable(BackendTableInterface):
             external=True,
             with_terminator=with_terminator,
         )
+
+    def _load_native_load_table(self, staging_file: Any, load_table_location: str) -> list:
+        """Load staged files into a native load table with a batch load job and return the logged command."""
+        destination = f"{self._db_api.bq_dataset_id(self._load_db_name)}.{self._load_table_name}"
+        job_config = build_staging_load_job_config(
+            staging_file.file_format, self._kms_key_name, self._db_api.job_labels()
+        )
+        cmd = (
+            f"BigQuery load job: {load_table_location} -> {destination} "
+            f"(format={staging_file.file_format}, write_disposition=WRITE_TRUNCATE)"
+        )
+        self._log(cmd, detail=VERBOSE)
+        if not self._dry_run:
+            with traced_bigquery_job("load", self._db_api.bq_client().project) as bq_job:
+                load_job = self._db_api.bq_client().load_table_from_uri(
+                    load_table_location, destination, job_config=job_config
+                )
+                load_job.result()
+                record_bigquery_job_metadata(bq_job, load_job, "load")
+                self._log(f"BigQuery load job {load_job.job_id} loaded {load_job.output_rows} rows", detail=VVERBOSE)
+        return [cmd]
 
     def _drop_load_table(self, sync=None):
         """Drop the staging/load table."""

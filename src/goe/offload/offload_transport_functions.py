@@ -16,6 +16,14 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import oracledb as cxo
 
+from goe.observability.transport import (
+    finalize_chunk,
+    finalize_transport,
+    record_os_cmd_exit,
+    traced_offload_chunk,
+    traced_os_cmd,
+    traced_transport,
+)
 from goe.offload.frontend_api import FRONTEND_TRACE_MODULE
 from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_AVRO,
@@ -193,36 +201,43 @@ def run_os_cmd(
     if dry_run:
         return 0, None
 
-    output = ""
-    proc = subprocess.Popen(cmd, stdout=PIPE, stderr=STDOUT)
-    assert proc.stdout is not None
-    for raw_line in proc.stdout:
-        line = raw_line.decode()
-        output += line
-        if line and "password" in line:
-            messages.log(
-                "GOE: Not logging stdout line containing token: 'password'",
-                detail=VVERBOSE,
-            )
-        else:
-            messages.log(line.strip(), detail=VVERBOSE)
-        if not offload_options.vverbose and not silent:
-            write_progress_to_stdout()
-    if not offload_options.vverbose and not offload_options.quiet and output and not silent:
-        finish_progress_on_stdout()
+    with traced_os_cmd(cmd) as (cmd_op, trace_env):
+        output = ""
+        proc = subprocess.Popen(cmd, stdout=PIPE, stderr=STDOUT, env=trace_env)
+        assert proc.stdout is not None
+        for raw_line in proc.stdout:
+            line = raw_line.decode()
+            output += line
+            if line and "password" in line:
+                messages.log(
+                    "GOE: Not logging stdout line containing token: 'password'",
+                    detail=VVERBOSE,
+                )
+            else:
+                messages.log(line.strip(), detail=VVERBOSE)
+            if not offload_options.vverbose and not silent:
+                write_progress_to_stdout()
+        if not offload_options.vverbose and not offload_options.quiet and output and not silent:
+            finish_progress_on_stdout()
 
-    cmd_returncode = proc.wait()
-    messages.log("returncode: %s" % cmd_returncode, detail=VVERBOSE)
-    if cmd_returncode and not offload_options.vverbose and (not offload_options.quiet or not optional) and not silent:
-        try:
-            sys.stdout.write(output)
-        except OSError:
-            pass
+        cmd_returncode = proc.wait()
+        record_os_cmd_exit(cmd_op, cmd_returncode)
+        messages.log("returncode: %s" % cmd_returncode, detail=VVERBOSE)
+        if (
+            cmd_returncode
+            and not offload_options.vverbose
+            and (not offload_options.quiet or not optional)
+            and not silent
+        ):
+            try:
+                sys.stdout.write(output)
+            except OSError:
+                pass
 
-    if not optional and cmd_returncode:
-        raise OffloadTransportException("Required shell cmd failed with return code %s" % cmd_returncode)
+        if not optional and cmd_returncode:
+            raise OffloadTransportException("Required shell cmd failed with return code %s" % cmd_returncode)
 
-    return cmd_returncode, output
+        return cmd_returncode, output
 
 
 def hs2_connection_log_message(host, port, offload_options, service_name):
@@ -294,53 +309,77 @@ def transport_and_load_offload_chunk(
         except Exception as exc:
             messages.warning(f"Unable to calculate transport frontend bytes due to exception: {exc!s}")
 
-    chunk_id = repo_client.start_offload_chunk(
-        execution_id,
-        offload_source_table.owner,
-        offload_source_table.table_name,
-        offload_target_table.db_name,
-        offload_target_table.table_name,
-        chunk_number=chunk_count + 1,
-        offload_partitions=(partition_chunk.get_partitions() if partition_chunk else None),
-        offload_partition_level=offload_source_table.offload_partition_level,
-    )
-
-    try:
-        if chunk_count > 0:
-            offload_target_table.empty_staging_area_step(data_transport_client.get_staging_file())
-
-        rows_staged = data_transport_client.transport(partition_chunk=partition_chunk)
-        transport_bytes = data_transport_client.get_transport_bytes()
-        staging_columns = data_transport_client.get_staging_file().get_staging_columns()
-
-        offload_target_table.validate_staged_data_step(
-            offload_source_table.partition_columns,
-            offload_source_table.columns,
-            rows_staged,
-            staging_columns,
+    with traced_offload_chunk(
+        chunk_count + 1, offload_target_table.db_name, offload_target_table.table_name, dry_run
+    ) as chunk_op:
+        chunk_id = repo_client.start_offload_chunk(
+            execution_id,
+            offload_source_table.owner,
+            offload_source_table.table_name,
+            offload_target_table.db_name,
+            offload_target_table.table_name,
+            chunk_number=chunk_count + 1,
+            offload_partitions=(partition_chunk.get_partitions() if partition_chunk else None),
+            offload_partition_level=offload_source_table.offload_partition_level,
         )
 
-        offload_target_table.validate_type_conversions_step(staging_columns)
+        try:
+            if chunk_count > 0:
+                offload_target_table.empty_staging_area_step(data_transport_client.get_staging_file())
 
-        pre_load_backend_bytes = offload_target_table.get_table_size() if not dry_run else None
-        offload_target_table.load_final_table_step(sync=sync)
-        post_load_backend_bytes = offload_target_table.get_table_size(no_cache=True) if not dry_run else None
-        backend_byte_delta = offload_chunk_backend_bytes(pre_load_backend_bytes, post_load_backend_bytes, messages)
-        frontend_bytes = get_frontend_bytes()
+            transport_method = data_transport_client.get_transport_method()
+            transport_attributes = data_transport_client.get_telemetry_attributes()
+            with traced_transport(transport_method, transport_attributes) as transport_op:
+                rows_staged = data_transport_client.transport(partition_chunk=partition_chunk)
+                transport_bytes = data_transport_client.get_transport_bytes()
+                finalize_transport(
+                    transport_op,
+                    transport_method,
+                    offload_target_table.backend_type(),
+                    offload_source_table.owner,
+                    rows_staged,
+                    transport_bytes,
+                    transport_attributes.get("goe.transport.staging_format"),
+                    transport_attributes.get("goe.transport.staging_location"),
+                )
+            staging_columns = data_transport_client.get_staging_file().get_staging_columns()
 
-        repo_client.end_offload_chunk(
-            chunk_id,
-            orchestration_constants.COMMAND_SUCCESS,
-            row_count=rows_staged,
-            frontend_bytes=frontend_bytes,
-            transport_bytes=transport_bytes,
-            backend_bytes=backend_byte_delta,
-        )
+            offload_target_table.validate_staged_data_step(
+                offload_source_table.partition_columns,
+                offload_source_table.columns,
+                rows_staged,
+                staging_columns,
+            )
 
-        return rows_staged
-    except Exception:
-        repo_client.end_offload_chunk(chunk_id, orchestration_constants.COMMAND_ERROR)
-        raise
+            offload_target_table.validate_type_conversions_step(staging_columns)
+
+            pre_load_backend_bytes = offload_target_table.get_table_size() if not dry_run else None
+            offload_target_table.load_final_table_step(sync=sync)
+            post_load_backend_bytes = offload_target_table.get_table_size(no_cache=True) if not dry_run else None
+            backend_byte_delta = offload_chunk_backend_bytes(pre_load_backend_bytes, post_load_backend_bytes, messages)
+            frontend_bytes = get_frontend_bytes()
+
+            finalize_chunk(
+                chunk_op,
+                offload_target_table.backend_type(),
+                rows_staged,
+                frontend_bytes,
+                transport_bytes,
+                backend_byte_delta,
+            )
+            repo_client.end_offload_chunk(
+                chunk_id,
+                orchestration_constants.COMMAND_SUCCESS,
+                row_count=rows_staged,
+                frontend_bytes=frontend_bytes,
+                transport_bytes=transport_bytes,
+                backend_bytes=backend_byte_delta,
+            )
+
+            return rows_staged
+        except Exception:
+            repo_client.end_offload_chunk(chunk_id, orchestration_constants.COMMAND_ERROR)
+            raise
 
 
 def split_ranges_for_id_range(id_min, id_max, parallelism):
