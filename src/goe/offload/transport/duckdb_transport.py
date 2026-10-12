@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 import duckdb
 from google.auth.transport.requests import Request
 
+from goe.observability.transport import submit_with_context, traced_transport_batch
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE,
@@ -193,6 +194,16 @@ class OffloadTransportDuckDB(OffloadTransport):
         finally:
             conn.close()
 
+    def _run_batch_traced(
+        self, batch: int, copy_sql: str, access_token: str, project_id: str | None, run_dir: Path
+    ) -> int:
+        """Run ``_run_batch`` inside a ``goe.transport.duckdb.batch`` span and record the rows written."""
+        with traced_transport_batch(self.get_transport_method(), batch) as batch_op:
+            rows = self._run_batch(batch, copy_sql, access_token, project_id, run_dir)
+            if batch_op.span.is_recording():
+                batch_op.span.set_attribute("goe.transport.batch.rows", rows)
+            return rows
+
     def _run_batches(self, copy_sqls: list[str]) -> int:
         """Run all batches concurrently in a private spill directory that is always removed."""
         os.environ["ORA_SDTZ"] = "UTC"
@@ -203,7 +214,7 @@ class OffloadTransportDuckDB(OffloadTransport):
         try:
             with ThreadPoolExecutor(max_workers=len(copy_sqls)) as executor:
                 futures = [
-                    executor.submit(self._run_batch, batch, sql, access_token, project_id, run_dir)
+                    submit_with_context(executor, self._run_batch_traced, batch, sql, access_token, project_id, run_dir)
                     for batch, sql in enumerate(copy_sqls)
                 ]
                 return sum(future.result() for future in futures)
