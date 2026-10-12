@@ -19,6 +19,7 @@ from opentelemetry.trace import NoOpTracerProvider, Tracer, TracerProvider
 
 from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
 from goe.observability.config import ObservabilitySettings
+from goe.observability.log_correlation import install_log_record_correlation, uninstall_log_record_correlation
 from goe.observability.metrics import GOEMetrics
 
 if TYPE_CHECKING:
@@ -123,6 +124,10 @@ def configure_observability(
     resolved = settings or ObservabilitySettings.from_env_and_config(config)
     active = _build_runtime(resolved, config)
     _state["runtime"] = active
+    if active.enabled and resolved.log_correlation:
+        install_log_record_correlation()
+    else:
+        uninstall_log_record_correlation()
     if set_global and active.enabled and not _state["global_set"]:
         trace.set_tracer_provider(active.tracer_provider)
         metrics.set_meter_provider(active.meter_provider)
@@ -179,6 +184,7 @@ def get_meter_provider() -> MeterProvider:
 
 def shutdown_observability() -> None:
     """Flush and forget the configured runtime; safe to call repeatedly and from ``atexit``."""
+    uninstall_log_record_correlation()
     current = _state["runtime"]
     _state["runtime"] = None
     if current is not None:

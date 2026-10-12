@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
+from goe.observability.config import ObservabilitySettings
+from goe.observability.log_correlation import encode_structured_log_line
+from goe.observability.runtime import get_observability_runtime, is_observability_configured
 from goe.util.gcp_credentials import resolve_gcp_credentials
 
 if TYPE_CHECKING:
@@ -29,10 +32,28 @@ def is_valid_path_for_logs(path: str) -> bool:
 class GOELogFileHandle:
     name: str | None = None
 
-    def __init__(self, path: str, mode: str = "w") -> None:
+    def __init__(
+        self,
+        path: str,
+        mode: str = "w",
+        log_format: str | None = None,
+        json_sidecar: bool | None = None,
+    ) -> None:
+        """Open ``path``; ``log_format``/``json_sidecar`` default to the active observability settings."""
+        settings = (
+            get_observability_runtime().settings
+            if is_observability_configured()
+            else ObservabilitySettings.from_env_and_config()
+        )
         self._fs = self._get_fs(path)
         self.name = path
         self._fh = self._open(path, mode=mode)
+        self._log_format = log_format or settings.log_format
+        use_sidecar = settings.log_json_sidecar if json_sidecar is None else json_sidecar
+        writable = "w" in mode or "a" in mode
+        self._sidecar_fh = (
+            self._open(f"{path}.jsonl", mode=mode) if use_sidecar and writable and self._log_format == "text" else None
+        )
 
     def __enter__(self):
         return self._fh
@@ -41,6 +62,8 @@ class GOELogFileHandle:
         self.close()
 
     def close(self):
+        if self._sidecar_fh is not None and not self._sidecar_fh.closed:
+            self._sidecar_fh.close()
         if not self._fh.closed:
             return self._fh.close()
 
@@ -51,9 +74,17 @@ class GOELogFileHandle:
         minimum block size.
         """
         self._fh.flush()
+        if self._sidecar_fh is not None:
+            self._sidecar_fh.flush()
 
-    def write(self, *args, **kwargs):
-        return self._fh.write(*args, **kwargs)
+    def write(self, data: str) -> int:
+        """Write ``data`` as text, or as a JSON line in ``json`` mode; mirror JSON to the sidecar when enabled."""
+        if self._log_format == "json":
+            return self._fh.write(encode_structured_log_line(data))
+        written = self._fh.write(data)
+        if self._sidecar_fh is not None:
+            self._sidecar_fh.write(encode_structured_log_line(data))
+        return written
 
     def _get_fs(self, path: str) -> fsspec.AbstractFileSystem:
         """Get fsspec filesystem for path.
