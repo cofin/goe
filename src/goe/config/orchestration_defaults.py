@@ -18,6 +18,7 @@ from goe.offload.offload_constants import (
     BACKEND_DISTRO_GCP,
     BACKEND_DISTRO_MSAZURE,
     BACKEND_DISTRO_SNOWFLAKE,
+    BIGQUERY_LOAD_TABLE_MODE_NATIVE,
     DBTYPE_BIGQUERY,
     DBTYPE_HIVE,
     DBTYPE_IMPALA,
@@ -111,6 +112,11 @@ def bigquery_dataset_location_default() -> str | None:
 
 def bigquery_dataset_project_default() -> str | None:
     return os.environ.get("BIGQUERY_DATASET_PROJECT")
+
+
+def bigquery_load_table_mode_default() -> str:
+    """Return BIGQUERY_LOAD_TABLE_MODE upper-cased, defaulting to NATIVE load jobs."""
+    return (os.environ.get("BIGQUERY_LOAD_TABLE_MODE") or BIGQUERY_LOAD_TABLE_MODE_NATIVE).upper()
 
 
 def ca_cert_default() -> str | None:
@@ -647,6 +653,7 @@ def offload_staging_format_default() -> str:
     if os.environ.get("OFFLOAD_STAGING_FORMAT"):
         return os.environ["OFFLOAD_STAGING_FORMAT"].upper()
     if os.environ.get("BACKEND_DISTRIBUTION", BACKEND_DISTRO_CDH).upper() in [
+        BACKEND_DISTRO_GCP,
         BACKEND_DISTRO_SNOWFLAKE,
         BACKEND_DISTRO_MSAZURE,
     ]:

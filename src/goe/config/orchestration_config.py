@@ -48,6 +48,7 @@ EXPECTED_CONFIG_ARGS = [
     "backend_session_parameters",
     "bigquery_dataset_location",
     "bigquery_dataset_project",
+    "bigquery_load_table_mode",
     "ca_cert",
     "db_name_pattern",
     "db_name_prefix",
@@ -203,6 +204,7 @@ class OrchestrationConfig:
     backend_session_parameters: Any
     bigquery_dataset_location: str | None
     bigquery_dataset_project: str | None
+    bigquery_load_table_mode: str
     ca_cert: str | None
     db_name_pattern: str
     db_name_prefix: Any
@@ -411,6 +413,10 @@ class OrchestrationConfig:
             bigquery_dataset_project=config_dict.get(
                 "bigquery_dataset_project",
                 orchestration_defaults.bigquery_dataset_project_default(),
+            ),
+            bigquery_load_table_mode=config_dict.get(
+                "bigquery_load_table_mode",
+                orchestration_defaults.bigquery_load_table_mode_default(),
             ),
             ca_cert=config_dict.get("ca_cert", orchestration_defaults.ca_cert_default()),
             db_name_pattern=config_dict.get("db_name_pattern", orchestration_defaults.db_name_pattern_default()),

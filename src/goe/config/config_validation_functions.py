@@ -34,6 +34,7 @@ from goe.offload.offload_constants import (
     DBTYPE_ORACLE,
     DBTYPE_TERADATA,
     HADOOP_BASED_BACKEND_DISTRIBUTIONS,
+    VALID_BIGQUERY_LOAD_TABLE_MODES,
 )
 from goe.offload.offload_transport import (
     SPARK_SUBMIT_SPARK_YARN_MASTER,
@@ -119,6 +120,9 @@ def normalise_bigquery_options(options, exc_cls=OrchestrationConfigException):
     if options.google_dataproc_batches_ttl:
         if not re.match(r"^[1-9][0-9]*[mhd]$", options.google_dataproc_batches_ttl):
             raise exc_cls(f"Invalid value for GOOGLE_DATAPROC_BATCHES_TTL: {options.google_dataproc_batches_ttl}")
+    options.bigquery_load_table_mode = (options.bigquery_load_table_mode or "").upper()
+    if options.bigquery_load_table_mode not in VALID_BIGQUERY_LOAD_TABLE_MODES:
+        raise exc_cls(f"Invalid value for BIGQUERY_LOAD_TABLE_MODE: {options.bigquery_load_table_mode}")
 
 
 def normalise_hadoop_options(options, exc_cls=OrchestrationConfigException):
