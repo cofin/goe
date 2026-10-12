@@ -505,38 +505,59 @@ class OffloadMessagesMixin:
     """
 
     def __init__(self, messages=None, ext_logger=None):
-        def set_func(marker, messages_func, logger_func):
-            if messages and isinstance(messages, OffloadMessages):
-                logger.debug("Setting: %s call to use 'messages'" % marker)
-                return messages_func()
-            if logger and isinstance(ext_logger, logging.Logger):
-                logger.debug("Setting: %s call to use 'logger'" % marker)
-                return logger_func()
-            logger.debug("Setting: %s call to EMPTY" % marker)
-            return lambda x: None
-
-        self.warn = set_func(
+        self.warn = self._set_func(
             "warn",
+            messages,
+            ext_logger,
             lambda: partial(messages.warning, ansi_code="red"),
-            lambda: ext_logger.warn,
+            lambda: lambda msg, **_kwargs: ext_logger.warning(msg),
         )
-        self.notice = set_func("notice", lambda: messages.notice, lambda: ext_logger.info)
-        self.log = set_func("log", lambda: messages.log, lambda: ext_logger.info)
-        self.log_normal = set_func(
+        self.notice = self._set_func(
+            "notice",
+            messages,
+            ext_logger,
+            lambda: messages.notice,
+            lambda: lambda msg, **_kwargs: ext_logger.info(msg),
+        )
+        self.log = self._set_func(
+            "log",
+            messages,
+            ext_logger,
+            lambda: messages.log,
+            lambda: lambda msg, **_kwargs: ext_logger.info(msg),
+        )
+        self.log_normal = self._set_func(
             "log_normal",
+            messages,
+            ext_logger,
             lambda: partial(messages.log, detail=NORMAL),
-            lambda: ext_logger.info,
+            lambda: lambda msg, **_kwargs: ext_logger.info(msg),
         )
-        self.log_verbose = set_func(
+        self.log_verbose = self._set_func(
             "log_verbose",
+            messages,
+            ext_logger,
             lambda: partial(messages.log, detail=VERBOSE),
-            lambda: ext_logger.info,
+            lambda: lambda msg, **_kwargs: ext_logger.info(msg),
         )
-        self.log_vverbose = set_func(
+        self.log_vverbose = self._set_func(
             "log_vverbose",
+            messages,
+            ext_logger,
             lambda: partial(messages.log, detail=VVERBOSE),
-            lambda: ext_logger.info,
+            lambda: lambda msg, **_kwargs: ext_logger.info(msg),
         )
+
+    @staticmethod
+    def _set_func(marker, messages, ext_logger, messages_func, logger_func):
+        if messages and isinstance(messages, OffloadMessages):
+            logger.debug("Setting: %s call to use 'messages'" % marker)
+            return messages_func()
+        if logger and isinstance(ext_logger, logging.Logger):
+            logger.debug("Setting: %s call to use 'logger'" % marker)
+            return logger_func()
+        logger.debug("Setting: %s call to EMPTY" % marker)
+        return lambda *_args, **_kwargs: None
 
 
 def step_title_to_step_id(step_title):
