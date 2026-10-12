@@ -14,6 +14,7 @@ import oracledb
 from numpy import datetime64
 
 from goe.offload.offload_messages import VERBOSE, OffloadMessagesMixin
+from goe.persistence.oracle_gateway import rows_as_dicts
 
 
 class OracleQueryException(Exception):
@@ -195,9 +196,7 @@ class OracleQuery(OffloadMessagesMixin):
             logger.debug("AS_DICT transformation requested for: %s" % self._retrieve_source_code(cursor_fn))
             ret = []
             if self._cursor.description:
-                col_names = [_[0] for _ in self._cursor.description]
-                for rec in cursor_fn(self._cursor):
-                    ret.append(dict(list(zip(col_names, rec))))
+                ret = rows_as_dicts([_[0] for _ in self._cursor.description], cursor_fn(self._cursor))
         else:
             logger.debug("Passthrough requested for: %s" % self._retrieve_source_code(cursor_fn))
             ret = cursor_fn(self._cursor)
