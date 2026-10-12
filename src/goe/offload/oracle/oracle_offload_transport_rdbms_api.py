@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import oracledb as cxo
 
+from goe.observability.db import build_oracle_client_info_command
 from goe.offload.column_metadata import match_table_column
 from goe.offload.frontend_api import FRONTEND_TRACE_ID
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
@@ -262,6 +263,9 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
                 commands.append("DBMS_APPLICATION_INFO.SET_MODULE('%s','%s');" % (module, action))
             else:
                 commands.append("BEGIN DBMS_APPLICATION_INFO.SET_MODULE('%s','%s'); END;" % (module, action))
+            client_info_command = build_oracle_client_info_command(for_plsql=for_plsql)
+            if client_info_command:
+                commands.append(client_info_command)
             commands.extend(
                 self._oracle_alter_session_statements(
                     fixed_sqoop_parameters,

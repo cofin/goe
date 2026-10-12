@@ -17,6 +17,7 @@ from typing import Any, cast
 import oracledb as cxo
 from numpy import datetime64
 
+from goe.observability.db import apply_oracle_session_trace_info
 from goe.offload import offload_constants
 from goe.offload.column_metadata import match_table_column
 from goe.offload.frontend_api import (
@@ -516,6 +517,7 @@ class OracleFrontendApi(FrontendApiInterface):
         self._db_conn.module = FRONTEND_TRACE_MODULE
         self._db_conn.action = self._trace_action
         self._db_conn.outputtypehandler = self._connection_output_type_handler
+        apply_oracle_session_trace_info(self._db_conn)
         self._db_conn.ping()
         return made_new_connection
 

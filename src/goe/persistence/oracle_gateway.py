@@ -21,6 +21,8 @@ from sqlspec.core import SQL
 from sqlspec.core.sqlcommenter import SQLCommenterContext
 from sqlspec.loader import SQLFileLoader
 
+from goe.observability.db import attach_db_observability, build_db_observability_config
+
 if TYPE_CHECKING:
     import oracledb
 
@@ -72,7 +74,11 @@ class OracleGateway:
         """Store the connection provider, statement loader, normalized config, and validated identifier slots."""
         self._connection_provider = connection_provider
         self._loader = loader
-        self._config = OracleSyncConfig(connection_config=None, driver_features=dict(_DRIVER_FEATURES))
+        self._config = OracleSyncConfig(
+            connection_config=None,
+            driver_features=dict(_DRIVER_FEATURES),
+            observability_config=build_db_observability_config(),
+        )
         self._slots = {key: validate_oracle_identifier(value) for key, value in (slots or {}).items()}
 
     def statement_text(self, name: str, slots: Mapping[str, str] | None = None) -> str:
@@ -148,6 +154,7 @@ class OracleGateway:
             statement_config=self._config.statement_config,
             driver_features=dict(self._config.driver_features),
         )
+        attach_db_observability(driver)
         return driver
 
     @staticmethod
