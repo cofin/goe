@@ -8,6 +8,7 @@
 import logging
 import re
 from datetime import date, datetime
+from typing import Any
 
 from numpy import datetime64
 
@@ -83,13 +84,8 @@ from goe.offload.oracle.oracle_column import (
 from goe.util.goe_version import GOEVersion
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
-
-###############################################################################
-# CONSTANTS
-###############################################################################
 
 MAX_UNIONS_IN_MIN_PARTITION_CHECK = 1000
 
@@ -112,14 +108,7 @@ ORACLE_SUPPORTED_LIST_DATA_TYPES = [
 
 ORACLE_VERSION_WITH_SUBPART_MIN_MAX_OPTIMIZATION = "12.1.0"
 ORACLE_VERSION_WITH_CELL_OFFLOAD_PROCESSING = "11.2.0"
-# This is an assumption. We've seen Smart Scan issues on 11.2.x and 12.1.x in the past.
-# Assuming that by v18 these issues were resolved. See issue 172 for details.
 ORACLE_VERSION_SAFE_FOR_CELL_OFFLOAD_PROCESSING = "18.0.0"
-
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
 
 
 def oracle_datetime_literal_to_python(rdbms_literal, strict=True):
@@ -142,11 +131,6 @@ def oracle_version_is_smart_scan_unsafe(db_version: str) -> bool:
     )
 
 
-###########################################################################
-# CLASSES
-###########################################################################
-
-
 class OracleSourceTable(OffloadSourceTableInterface):
     """Oracle source table details and methods"""
 
@@ -160,6 +144,16 @@ class OracleSourceTable(OffloadSourceTableInterface):
         conn=None,
         do_not_connect=False,
     ):
+        """Converting to str() below because Oracle dictionary tables are VARCHAR2 and unicode casts to NVARCHAR2.
+
+        NVARCHAR2 binds are inefficient when querying the data dictionary.
+        There's a risk this is lossy because str() is more restrictive than VARCHAR2, however, there are many
+        str() conversions throughout the codebase so decided to go with the easy option in this module too.
+        Attributes below are specified as private so they can be enforced
+        (where relevant) as properties via base class.
+        Unit testing requires no db connection.
+        Get columns regardless of self._table_exists because it might be a view.
+        """
         assert schema_name and table_name and connection_options
         assert (
             hasattr(connection_options, "ora_adm_user")
@@ -183,10 +177,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
         if dry_run:
             logger.info("* Dry run *")
 
-        # Converting to str() below because Oracle dictionary tables are VARCHAR2 and unicode casts to NVARCHAR2.
-        # NVARCHAR2 binds are inefficient when querying the data dictionary.
-        # There's a risk this is lossy because str() is more restrictive than VARCHAR2, however, there are many
-        # str() conversions throughout the codebase so decided to go with the easy option in this module too.
         self.owner = str(self.owner).upper()
         self.table_name = str(self.table_name).upper()
         self._adm_user = connection_options.ora_adm_user
@@ -200,8 +190,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
         self._offload_by_subpartition = False
         self._table_stats = None
 
-        # Attributes below are specified as private so they can be enforced
-        # (where relevant) as properties via base class.
         self._iot_type = None
         self._partitioned = None
         self._partition_type = None
@@ -215,7 +203,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
 
         self._conn = conn
         if do_not_connect:
-            # Unit testing requires no db connection.
             self._db_conn = None
             self._db_curs = None
         else:
@@ -223,597 +210,12 @@ class OracleSourceTable(OffloadSourceTableInterface):
             self._get_db_block_size()
             self._get_table_details()
             self._hash_bucket_candidate = None
-            # Get columns regardless of self._table_exists because it might be a view.
             self._columns_setter(self._get_column_details(), skip_exists_check=True)
             if self._table_exists:
                 self._is_compression_enabled()
                 self._size_in_bytes = self._get_table_size()
             else:
                 self._compression_enabled = None
-
-    ###############################################################################
-    # PRIVATE METHODS
-    ###############################################################################
-
-    def _columns_getter(self):
-        if self._is_view():
-            return self._columns
-        if self._offload_by_subpartition:
-            return self._columns_with_subpartition_info
-        return self._columns_with_partition_info
-
-    def _columns_setter(self, new_columns, skip_exists_check=False):
-        """When running in verification mode we might need to fake the columns in order to continue processing."""
-        if not skip_exists_check and self.exists():
-            raise OffloadSourceTableException("Set of columns is only supported when the table does NOT exist")
-        self._columns = new_columns
-        self._columns_with_partition_info = self._get_columns_with_partition_info()
-        self._columns_with_subpartition_info = self._get_columns_with_partition_info(
-            part_col_names_override=self._db_api.get_subpartition_column_names(self.owner, self.table_name)
-        )
-
-    def _get_db_block_size(self):
-        if not self._db_block_size:
-            self._db_block_size = int(self.get_session_option("db_block_size"))
-        return self._db_block_size
-
-    def _get_table_details(self):
-        logger.debug("_get_table_details: %s, %s" % (self.owner, self.table_name))
-        # order of columns important as referenced in helper functions
-        q = """SELECT NVL2(t.iot_type,'IOT',NULL) AS iot_type
-                ,     t.num_rows
-                ,     t.partitioned
-                ,     p.partitioning_type
-                ,     p.subpartitioning_type
-                ,     t.dependencies
-                ,     TRIM(t.degree)
-                FROM  all_tables t
-                ,     all_part_tables p
-                WHERE p.owner (+) = t.owner
-                AND   p.table_name (+) = t.table_name
-                AND   t.owner = :owner
-                AND   t.table_name = :table_name"""
-
-        row = self._db_api.execute_query_fetch_one(q, query_params={"owner": self.owner, "table_name": self.table_name})
-        if row:
-            self._table_exists = True
-            (
-                self._iot_type,
-                self._stats_num_rows,
-                self._partitioned,
-                self._partition_type,
-                self._subpartition_type,
-                self._dependencies,
-                self._parallelism,
-            ) = row
-        else:
-            self._table_exists = False
-
-    def _get_table_stats(self):
-        """Get optimizer stats from Oracle catalogue views at table, partition and column level
-        Return a dict of the form:
-            table_stats = {
-                'num_rows', 'num_bytes', 'avg_row_len',
-                'column_stats': {name: {ndv, num_nulls, avg_col_len, low_value, high_value},},
-                'partition_stats': {name: {num_rows, num_bytes, avg_row_len},}
-            }
-        """
-        if not self._table_stats:
-            logger.debug("_get_table_stats: %s, %s" % (self.owner, self.table_name))
-
-            table_stats = {
-                "num_rows": -1,
-                "num_bytes": 0,
-                "avg_row_len": 0,
-                "column_stats": {},
-                "partition_stats": {},
-            }
-
-            logger.debug("fetching table stats")
-
-            q = """SELECT num_rows
-                   ,      blocks
-                   ,      avg_row_len
-                   FROM   all_tab_statistics
-                   WHERE  owner = :owner
-                   AND    table_name = :table_name
-                   AND    partition_name IS NULL"""
-
-            row = self._db_api.execute_query_fetch_one(
-                q, query_params={"owner": self.owner, "table_name": self.table_name}
-            )
-            if not row:
-                return None
-
-            table_stats["num_rows"] = row[0]
-            table_stats["num_bytes"] = (row[1] * self._db_block_size) if row[1] else row[1]
-            table_stats["avg_row_len"] = row[2]
-
-            if self.is_partitioned():
-                logger.debug("fetching partition stats")
-
-                q = """SELECT partition_name
-                       ,      num_rows
-                       ,      blocks
-                       ,      avg_row_len
-                       FROM   all_tab_statistics
-                       WHERE  owner = :owner
-                       AND    table_name = :table_name
-                       AND    partition_name IS NOT NULL
-                       AND    subpartition_name IS NULL
-                       ORDER BY partition_position"""
-
-                for row in self._db_api.execute_query_fetch_all(
-                    q, query_params={"owner": self.owner, "table_name": self.table_name}
-                ):
-                    table_stats["partition_stats"][row[0]] = {
-                        "num_rows": row[1],
-                        "num_bytes": ((row[2] * self._db_block_size) if row[2] else row[2]),
-                        "avg_row_len": row[3],
-                    }
-
-            logger.debug("fetching column stats")
-
-            q = """SELECT s.column_name
-                   ,      s.num_distinct
-                   ,      s.num_nulls
-                   ,      s.avg_col_len
-                   FROM   all_tab_col_statistics s
-                   INNER JOIN all_tab_cols c ON (c.owner = s.owner AND c.table_name = s.table_name AND c.column_name = s.column_name)
-                   WHERE  s.owner = :owner
-                   AND    s.table_name = :table_name
-                   AND    c.hidden_column = 'NO'
-                   ORDER BY s.column_name"""
-
-            # There is little point in populating Oracle RAW high/low value therefore using None
-            for row in self._db_api.execute_query_fetch_all(
-                q, query_params={"owner": self.owner, "table_name": self.table_name}
-            ):
-                table_stats["column_stats"][row[0]] = {
-                    "ndv": row[1],
-                    "num_nulls": row[2],
-                    "avg_col_len": row[3],
-                    "low_value": None,
-                    "high_value": None,
-                }
-
-            logger.debug(
-                "stats: num_rows=%s, num_bytes=%s, avg_row_len=%s, #cols=%s, #parts=%s"
-                % (
-                    table_stats["num_rows"],
-                    table_stats["num_bytes"],
-                    table_stats["avg_row_len"],
-                    len(table_stats["column_stats"]),
-                    len(table_stats["partition_stats"]),
-                )
-            )
-            self._table_stats = table_stats
-        return self._table_stats
-
-    def _get_hash_bucket_candidate(self):
-        logger.debug("_get_hash_bucket_candidate: %s, %s" % (self.owner, self.table_name))
-        q = """SELECT column_name
-            FROM (
-                SELECT c.column_name
-                ,      c.num_distinct * ((GREATEST(t.num_rows,1) - num_nulls) / GREATEST(t.num_rows,1)) AS ndv_null_factor
-                FROM   all_tables t
-                INNER JOIN all_tab_cols c ON (c.owner = t.owner AND c.table_name = t.table_name)
-                WHERE  t.owner = :owner
-                AND    t.table_name = :table_name
-                AND    c.hidden_column = 'NO'
-                AND    c.data_type IN (%s)
-                ORDER BY ndv_null_factor DESC
-            )
-            WHERE ROWNUM = 1""" % ",".join(
-            sorted(
-                "'%s'" % dtype
-                for dtype in self.supported_data_types().difference(self.hash_bucket_unsuitable_data_types())
-            )
-        )
-        rows = self._db_api.execute_query_fetch_one(
-            q, query_params={"owner": self.owner, "table_name": self.table_name}
-        )
-        return rows[0] if rows else None
-
-    def _get_partitions(self, strict=True, populate_hvs=True) -> list:
-        """Return a list of RdbmsPartition() objects
-        Partitions are in high value descending order
-        """
-
-        def hv_python_fn(hv):
-            if populate_hvs:
-                return tuple(self.decode_partition_high_values(hv, strict=strict))
-            return None
-
-        def hv_individual_fn(hv):
-            if populate_hvs:
-                return tuple(self._decode_partition_high_values_string(hv))
-            return None
-
-        logger.debug("_get_partitions: %s, %s" % (self.owner, self.table_name))
-        q = """
-              WITH partition_data AS (
-                     SELECT tp.partition_name
-                     ,      CASE WHEN pt.partitioning_type IN ('HASH') THEN NULL ELSE tp.high_value END           AS high_value
-                     ,      tp.partition_position
-                     ,      tp.subpartition_count
-                     ,      COALESCE(SUM(s.bytes) OVER (PARTITION BY tp.partition_name), 0)                       AS bytes
-                     ,      COALESCE(tp.num_rows, SUM(tsp.num_rows) OVER (PARTITION BY tp.partition_name), 0)     AS num_rows
-                     ,      tsp.subpartition_name
-                     ,      NVL(tsp.subpartition_position, 0)                                                     AS subpartition_position
-                     ,      ROW_NUMBER() OVER (PARTITION BY tp.partition_name ORDER BY tsp.subpartition_position) AS partition_rownum
-                     FROM   dba_tables                 t
-                            LEFT OUTER JOIN
-                            dba_constraints            c
-                            ON (    c.owner            = t.owner
-                                AND c.table_name       = t.table_name
-                                AND c.constraint_type  = 'P')
-                            INNER JOIN
-                            dba_part_tables            pt
-                            ON (    pt.owner           = t.owner
-                                AND pt.table_name      = t.table_name)
-                            INNER JOIN
-                            dba_tab_partitions         tp
-                            ON (    tp.table_owner     = t.owner
-                                AND tp.table_name      = t.table_name)
-                            LEFT OUTER JOIN
-                            dba_tab_subpartitions      tsp
-                            ON (    tsp.table_owner    = tp.table_owner
-                                AND tsp.table_name     = tp.table_name
-                                AND tsp.partition_name = tp.partition_name)
-                            LEFT OUTER JOIN
-                            dba_segments               s
-                            ON (    s.owner            = t.owner
-                                AND s.segment_name     = DECODE(t.iot_type, 'IOT', c.index_name, t.table_name)
-                                AND s.partition_name   = NVL(tsp.subpartition_name, tp.partition_name))
-                     WHERE  t.owner       = :owner
-                     AND    t.table_name  = :table_name
-                     )
-              SELECT partition_rownum
-              ,      partition_name
-              ,      partition_position
-              ,      subpartition_count
-              ,      subpartition_name
-              ,      subpartition_position
-              ,      high_value
-              ,      bytes
-              ,      num_rows
-              FROM   partition_data
-              ORDER  BY
-                     partition_position DESC
-              ,      partition_rownum
-        """
-        # GOE-1381: cursor now fetches all subpartitions rather than a single rollup row per partition.
-        # This is because we now keep a list of subpartitions per partition in case they are needed
-        # for offload transport. As a result, fetchall() and list comprehension has been replaced with
-        # an array fetch loop with a nested loop for generating a subpartitions list. Not only is this necessary
-        # for assigning the subpartition names to a nested list, it also prevents fetching lots of redundant
-        # denormalised high_values from the partition row to the subpartition rows.
-        rows = self._db_api.execute_query_fetch_all(
-            q, query_params={"owner": self.owner, "table_name": self.table_name}
-        )
-        partitions = []
-        for row in rows:
-            (
-                partition_rownum,
-                partition_name,
-                partition_position,
-                subpartition_count,
-                subpartition_name,
-                subpartition_position,
-                partition_high_value,
-                partition_bytes,
-                num_rows,
-            ) = row
-            if partition_rownum == 1:
-                # Initialise new partition on first occurrence of this partition...
-                partition = RdbmsPartition.by_name(
-                    partition_count=1,
-                    partition_name=partition_name,
-                    partition_position=partition_position,
-                    subpartition_count=subpartition_count,
-                    subpartition_names=([subpartition_name] if subpartition_name is not None else None),
-                    high_values_csv=partition_high_value,
-                    partition_size=partition_bytes,
-                    num_rows=num_rows,
-                    high_values_individual=hv_individual_fn(partition_high_value),
-                    high_values_python=hv_python_fn(partition_high_value),
-                )
-            else:
-                # Append the subpartition name to the list of subpartitions for this partition...
-                partition.subpartition_names.append(subpartition_name)
-            if subpartition_count == subpartition_position:
-                # Reached the last row for this partition. Add this partition to the list of partitions...
-                partitions.append(partition)
-
-        return partitions
-
-    def _get_subpartitions(self, strict=True, populate_hvs=True):
-        """Return a list of RdbmsPartition() objects at subpartition level
-        Partitions are in high value descending order
-        """
-
-        def hv_python_fn(hv):
-            if populate_hvs:
-                return tuple(self.decode_partition_high_values(hv, strict=strict))
-            return None
-
-        def hv_individual_fn(hv):
-            if populate_hvs:
-                return tuple(self._decode_partition_high_values_string(hv))
-            return None
-
-        logger.debug("_get_subpartitions: %s, %s" % (self.owner, self.table_name))
-        q = """
-                SELECT pt.partition_count
-                ,      tp.partition_name
-                ,      tp.partition_position
-                ,      tp.subpartition_count
-                ,      tsp.subpartition_name
-                ,      tsp.subpartition_position
-                ,      tsp.high_value
-                ,      NVL(s.bytes, 0)      AS subpartition_size
-                ,      NVL(tsp.num_rows, 0) AS num_rows
-                FROM   dba_tables                 t
-                       LEFT OUTER JOIN
-                       dba_constraints            c
-                       ON (    c.owner            = t.owner
-                           AND c.table_name       = t.table_name
-                           AND c.constraint_type  = 'P')
-                       INNER JOIN
-                       dba_part_tables            pt
-                       ON (    pt.owner           = t.owner
-                           AND pt.table_name      = t.table_name)
-                       INNER JOIN
-                       dba_tab_partitions         tp
-                       ON (    tp.table_owner     = t.owner
-                           AND tp.table_name      = t.table_name)
-                       LEFT OUTER JOIN
-                       dba_tab_subpartitions      tsp
-                       ON (    tsp.table_owner    = tp.table_owner
-                           AND tsp.table_name     = tp.table_name
-                           AND tsp.partition_name = tp.partition_name)
-                       LEFT OUTER JOIN                                              -- note the OUTER join
-                       dba_segments               s
-                       ON (    s.owner            = t.owner
-                           AND s.segment_name     = DECODE(t.iot_type, 'IOT', c.index_name, t.table_name)
-                           AND s.partition_name   = NVL(tsp.subpartition_name, tp.partition_name))
-                WHERE  t.owner       = :owner
-                AND    t.table_name  = :table_name
-                ORDER  BY
-                       tp.partition_position
-                ,      tsp.subpartition_position
-              """
-        rows = self._db_api.execute_query_fetch_all(
-            q, query_params={"owner": self.owner, "table_name": self.table_name}
-        )
-        logger.debug("len(rows): %s" % len(rows))
-        partitions = []
-        for row in rows:
-            (
-                partition_count,
-                partition_name,
-                partition_position,
-                subpartition_count,
-                subpartition_name,
-                subpartition_position,
-                subpartition_high_value,
-                subpartition_size,
-                num_rows,
-            ) = row
-            partitions.append(
-                RdbmsPartition.by_name(
-                    partition_count=partition_count,
-                    partition_name=partition_name,
-                    partition_position=partition_position,
-                    subpartition_count=subpartition_count,
-                    subpartition_name=subpartition_name,
-                    subpartition_position=subpartition_position,
-                    high_values_csv=subpartition_high_value,
-                    partition_size=subpartition_size,
-                    num_rows=num_rows,
-                    high_values_individual=hv_individual_fn(subpartition_high_value),
-                    high_values_python=hv_python_fn(subpartition_high_value),
-                )
-            )
-
-        # sort by high value descending to match output from _get_partitions()
-        partitions.sort(key=lambda x: x.high_values_python, reverse=True)
-
-        return partitions
-
-    def _is_compression_enabled(self) -> bool:
-        """Oracle tables have compression defined at either table/partition/subpartition level
-        and for partitioned tables this can be a mixture of compression types.
-        For this reason it is not simple enough to say is a table compressed, this function
-        is simply defining whether a table has some compressed segments, it is not worrying
-        about the ratio of compressed to uncompressed segments.
-        This function does not handle the db connection, it expects the calling function to
-        have catered for this
-        """
-        if self._compression_enabled is None:
-            if self.is_subpartitioned():
-                sql = """SELECT p.compression
-                         FROM   dba_tab_subpartitions p
-                         WHERE  p.table_owner = :owner
-                         AND    p.table_name = :table_name
-                         AND    p.compression = 'ENABLED'
-                         AND    ROWNUM = 1"""
-            elif self.is_partitioned():
-                sql = """SELECT p.compression
-                         FROM   dba_tab_partitions p
-                         WHERE  p.table_owner = :owner
-                         AND    p.table_name = :table_name
-                         AND    p.compression = 'ENABLED'
-                         AND    ROWNUM = 1"""
-            else:
-                sql = """SELECT t.compression
-                         FROM   dba_tables t
-                         WHERE  t.owner = :owner
-                         AND    t.table_name = :table_name
-                         AND    t.compression = 'ENABLED'"""
-            rows = self._db_api.execute_query_fetch_one(
-                sql, query_params={"owner": self.owner, "table_name": self.table_name}
-            )
-            self._compression_enabled = bool(rows)
-        return self._compression_enabled
-
-    def _decode_partition_high_values_string(self, hv_csv):
-        """Break up high value by comma while respecting parentheses in TO_DATE(...,...,...)
-        TIMESTAMPs don't contain commas and are therefore not a special case.
-        """
-        return self._db_api.split_partition_high_value_string(hv_csv)
-
-    def _decode_partition_high_values(self, hv_csv, strict=True):
-        """Takes Oracle dba_tab_partitions.high_value and rationalises to Python values
-        The values returned are tuples
-        """
-        logger.debug("_decode_partition_high_values: %s, %s" % (hv_csv, strict))
-
-        if not hv_csv:
-            return [], []
-
-        hv_literals = self._decode_partition_high_values_string(hv_csv)
-        hv_list = convert_high_values_to_python(
-            self.partition_columns,
-            hv_literals,
-            self.partition_type,
-            self,
-            strict=strict,
-        )
-
-        return tuple(hv_list), tuple(hv_literals)
-
-    def _get_column_low_high_values(self, column_name, from_stats=True, sample_perc=1):
-        """Return low/high values for a specific column either from stats or from sampling data in the table
-        When using optimiser stats only certain data types are supported
-        """
-        logger.debug(
-            "get_column_low_high_values: %s, %s, %s, %s" % (self.owner, self.table_name, column_name, from_stats)
-        )
-        assert column_name
-        column_name = column_name.upper()
-
-        if from_stats:
-            col = self.get_column(column_name)
-            if not col:
-                raise OffloadSourceTableException('Unknown column name "%s"' % column_name)
-
-            params = {
-                "owner": self.owner,
-                "table_name": self.table_name,
-                "column_name": str(column_name.upper()),
-            }
-            if col.data_type in [
-                ORACLE_TYPE_NUMBER,
-                ORACLE_TYPE_FLOAT,
-                ORACLE_TYPE_VARCHAR2,
-                ORACLE_TYPE_NVARCHAR2,
-                ORACLE_TYPE_BINARY_DOUBLE,
-                ORACLE_TYPE_BINARY_FLOAT,
-            ]:
-                raw_fn = "UTL_RAW.CAST_TO_%s" % (
-                    ORACLE_TYPE_NUMBER if col.data_type == ORACLE_TYPE_FLOAT else col.data_type
-                )
-                q = """SELECT %(fn)s(low_value) AS low_val
-                    ,      %(fn)s(high_value) AS high_val
-                    FROM   all_tab_cols
-                    WHERE  owner = :owner
-                    AND    table_name = :table_name
-                    AND    column_name = :column_name""" % {"fn": raw_fn}
-                row = self._db_api.execute_query_fetch_one(q, query_params=params)
-            elif col.is_date_based():
-                row = self._db_api.oracle_get_column_low_high_dates(self.owner, self.table_name, col.name)
-            else:
-                raise OffloadSourceTableException(
-                    'Unable to get values for column "%s" of type "%s" from stats' % (column_name, col.data_type)
-                )
-        else:
-            # TODO nj@2021-07-21 Should this take ORACLE_VERSION_WITH_SUBPART_MIN_MAX_OPTIMIZATION into account?
-            q = """SELECT MIN(%(col)s)
-                ,     MAX(%(col)s)
-                FROM  "%(owner)s"."%(table)s"
-                SAMPLE (%(perc)s)""" % {
-                "owner": self.owner.upper(),
-                "table": self.table_name.upper(),
-                "col": column_name,
-                "perc": sample_perc or 1,
-            }
-            row = self._db_api.execute_query_fetch_one(q)
-
-        return row
-
-    def _get_db_version(self):
-        """Returns the RDBMS version"""
-        if not hasattr(self, "_db_version") or not self._db_version:
-            self._db_version = self._db_api.frontend_version()
-        return self._db_version
-
-    def _partition_has_rows(self, partition_name):
-        """Check if a partition contains a row"""
-        assert partition_name
-        sql = 'SELECT 1 FROM "%s"."%s" PARTITION ("%s") WHERE ROWNUM = 1' % (
-            self.owner.upper(),
-            self.table_name.upper(),
-            partition_name.upper(),
-        )
-        row = self._db_api.execute_query_fetch_one(sql)
-        return bool(row)
-
-    def _sample_data_types_compression_factor(self):
-        return 0.25
-
-    def _sample_data_types_data_sample_parallelism(self, data_sample_parallelism):
-        """Just a pass through on Oracle"""
-        return int(data_sample_parallelism)
-
-    def _sample_data_types_data_sample_pct(self, data_sample_pct):
-        if data_sample_pct and data_sample_pct < 0:
-            return self._sample_data_types_max_pct()
-        if data_sample_pct and data_sample_pct >= 100:
-            return self._sample_data_types_max_pct()
-        return data_sample_pct
-
-    def _sample_data_types_execute_query(self, sample_sql):
-        query_options = {}
-        if oracle_version_is_smart_scan_unsafe(self._db_version):
-            query_options = {"CELL_OFFLOAD_PROCESSING": "FALSE"}
-        return self._db_api.execute_query_fetch_one(
-            sample_sql, query_options=query_options, log_level=VERBOSE, profile=True
-        )
-
-    def _sample_data_types_date_as_string_column(self, column_name):
-        return OracleColumn(column_name, self._db_api.generic_string_data_type(), data_length=128)
-
-    def _sample_data_types_decimal_column(self, column, data_precision, data_scale):
-        return OracleColumn(
-            column.name,
-            ORACLE_TYPE_NUMBER,
-            data_precision=data_precision,
-            data_scale=data_scale,
-            nullable=column.nullable,
-            safe_mapping=False,
-        )
-
-    def _sample_data_types_min_gb(self):
-        """1GB seems like a good target"""
-        return 1
-
-    def _sample_data_types_max_pct(self):
-        return 99.999999
-
-    def _sample_data_types_min_pct(self):
-        return 0.000001
-
-    def _sample_perc_sql_clause(self, data_sample_pct) -> str:
-        return f"SAMPLE BLOCK ({data_sample_pct})"
-
-    def _sample_data_types_v2_query_hint_block(self):
-        return "/*+ NO_MERGE */"
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     @property
     def partition_type(self):
@@ -867,7 +269,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 return False
         return True
 
-    def decode_partition_high_values(self, hv_csv, strict=True) -> tuple:
+    def decode_partition_high_values(self, hv_csv: Any, strict: bool = True) -> tuple:
         hv_tuple, _ = self._decode_partition_high_values(hv_csv, strict=strict)
         return hv_tuple
 
@@ -959,6 +361,12 @@ class OracleSourceTable(OffloadSourceTableInterface):
     def get_minimum_partition_key_data(self):
         """Returns lowest point of data stored in source Oracle table.
         Impyla and oracledb both truncate nanoseconds hence TIMESTAMP columns are returned as string.
+
+        In Oracle 11.2 MIN() on subpartition columns does not take advantage of PARTITION RANGE ALL MIN/MAX
+        here we UNION ALL MIN() queries for each top level partition
+        for single column partition schemes nothing outperforms MIN()
+        MIN() is single column only so for multi-column partition schemes we use GROUP BY/ORDER BY
+        Tuple (None, ) is True, catch that here and return None instead
         """
 
         def to_char_ts_col(col_name, data_type):
@@ -978,8 +386,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
             if self._offload_by_subpartition and GOEVersion(self._db_version) < GOEVersion(
                 ORACLE_VERSION_WITH_SUBPART_MIN_MAX_OPTIMIZATION
             ):
-                # In Oracle 11.2 MIN() on subpartition columns does not take advantage of PARTITION RANGE ALL MIN/MAX
-                # here we UNION ALL MIN() queries for each top level partition
                 top_level_partitions = self.get_partitions(populate_hvs=False)
                 if len(top_level_partitions) <= MAX_UNIONS_IN_MIN_PARTITION_CHECK:
                     min_sql_unions = "\nUNION ALL\n".join(
@@ -996,10 +402,8 @@ class OracleSourceTable(OffloadSourceTableInterface):
                     )
 
             if not min_sql:
-                # for single column partition schemes nothing outperforms MIN()
                 min_sql = "SELECT %s FROM %s" % (proj_col, owner_table)
         else:
-            # MIN() is single column only so for multi-column partition schemes we use GROUP BY/ORDER BY
             cols = ", ".join([_.name for _ in self.partition_columns])
             proj_cols = ", ".join([to_char_ts_col(_.name, _.data_type) for _ in self.partition_columns])
             order_by = cols
@@ -1015,7 +419,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
 
         row = self._db_api.execute_query_fetch_one(min_sql)
         if row and row[0] is None:
-            # Tuple (None, ) is True, catch that here and return None instead
             return None
         return row
 
@@ -1088,7 +491,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         if isinstance(py_val, datetime64):
             py_val = str(py_val).replace("T", " ")
         elif isinstance(py_val, date):
-            py_val = datetime.strptime(py_val, "%Y-%m-%d %H:%M:%S.%f")
+            py_val = datetime.strptime(str(py_val), "%Y-%m-%d %H:%M:%S.%f")
 
         if rdbms_data_type == ORACLE_TYPE_DATE:
             py_val = py_val[:19]
@@ -1104,8 +507,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
             ORACLE_TYPE_TIMESTAMP_TZ,
             ORACLE_TYPE_TIMESTAMP_LOCAL_TZ,
         ):
-            # Unimplemented as we don't support timezones within the offload/present Python
-            # We can offload the data but not as a partition key or for use with this code
             raise NotImplementedError(
                 'Oracle to_rdbms_literal_with_sql_conv_fn() data type "%s" not implemented.' % rdbms_data_type
             )
@@ -1135,7 +536,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
         ):
             if valid_for_auto_enable:
                 if not partition_key_data_types_are_valid(get_partition_columns(self._columns_with_partition_info)):
-                    # top level RANGE incompatible but subpartition RANGE looks good
                     return True
             else:
                 return True
@@ -1181,12 +581,9 @@ class OracleSourceTable(OffloadSourceTableInterface):
         if rdbms_literal in ("MAXVALUE", offload_constants.PART_OUT_OF_RANGE):
             return datetime64(datetime.max)
         if "TO_DATE(" in rdbms_literal:
-            # if decoding dba_tab_partitions.high_value then need to parse TO_DATE()
             td, ds, c1, fmt, c2, cal, br = rdbms_literal.split("'")
             return datetime64(ds)
         if ORACLE_TYPE_TIMESTAMP in rdbms_literal and len(rdbms_literal) in (31, 41):
-            # if decoding dba_tab_partitions.high_value then need to parse TIMESTAMP' ...'
-            # len 31 == no FF. len 41 == with FF9
             ts, ds, meh = rdbms_literal.split("'")
             return datetime64(ds)
         if not strict:
@@ -1199,7 +596,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
         if rdbms_literal in ("MAXVALUE", offload_constants.PART_OUT_OF_RANGE):
             return float("inf")
         if re.match(r"^-?\d+$", rdbms_literal.strip("'").strip()):
-            # strip(') because Oracle allows single quoted HVs for NUMERIC partitioning
             return int(rdbms_literal.strip("'").strip())
         raise NotImplementedError("Oracle NUMBER literal not implemented: %s" % rdbms_literal)
 
@@ -1210,12 +606,10 @@ class OracleSourceTable(OffloadSourceTableInterface):
         - 'common': For convenience - True if 'sub_count' == 'expected_subs'
         """
         expected_subs = None
-        subs_by_hwm = {}
-        # reverse the list order (to high value ascending) in order to calculate expected subpartitions
+        subs_by_hwm: dict[Any, Any] = {}
         for p in reversed(self.get_subpartitions()):
             if expected_subs is None:
                 expected_subs = p.partition_count
-            # Manage the expected subpartition count. This count is used to recognise when partitions become dormant
             if p.high_values_python in subs_by_hwm:
                 subs_by_hwm[p.high_values_python]["sub_count"] += 1
             else:
@@ -1224,16 +618,10 @@ class OracleSourceTable(OffloadSourceTableInterface):
                     "expected_subs": expected_subs,
                     "common": False,
                 }
-            # For convenience we store whether the boundary is a "common boundary"
-            # This avoids having the logic in multiple places, an alternative would be to expose a method for this
             subs_by_hwm[p.high_values_python]["common"] = bool(
                 subs_by_hwm[p.high_values_python]["sub_count"] == subs_by_hwm[p.high_values_python]["expected_subs"]
             )
             if p.subpartition_position == p.subpartition_count:
-                # Is this subpartition the last in its partition (if it is, remove it from future
-                # expected subpartitions-per-partition). This logic is probably going to become a lot
-                # more complicated when we need to support new partitions with future-dated initial
-                # subpartitions
                 expected_subs = expected_subs - 1
         return subs_by_hwm
 
@@ -1253,7 +641,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
             be defined by operational logic.
             """
             safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            # Always set CANONICAL_CHAR_SEMANTICS_UNICODE for N datatypes when offloading
             char_semantics = (
                 CANONICAL_CHAR_SEMANTICS_UNICODE
                 if (
@@ -1300,19 +687,14 @@ class OracleSourceTable(OffloadSourceTableInterface):
         if column.data_type in (ORACLE_TYPE_BLOB, ORACLE_TYPE_LONG_RAW):
             return new_column(column, GOE_TYPE_LARGE_BINARY)
         if column.data_type == ORACLE_TYPE_FLOAT:
-            # FLOAT is an anomaly because precision is specified in bits. We could convert it but scale is unknown
-            # and NUMBER(p, *) is not possible. Best thing for now is to wipe out precision matching NUMBER(*,*)
             return new_column(column, GOE_TYPE_DECIMAL, data_precision=None, safe_mapping=False)
         if column.data_type == ORACLE_TYPE_NUMBER:
             data_precision = column.data_precision
             data_scale = column.data_scale
             if data_precision is not None and data_scale is not None:
-                # Process a couple of edge cases
                 if data_scale > data_precision:
-                    # e.g. NUMBER(3,5) scale > precision
                     data_precision = data_scale
                 elif data_scale < 0:
-                    # e.g. NUMBER(10,-5)
                     data_scale = 0
 
             integral_type = self._frontend_decimal_to_integral_type(
@@ -1320,7 +702,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
             )
             if integral_type:
                 return new_column(column, integral_type, data_precision=data_precision, data_scale=0)
-            # If precision & scale are None then this is unsafe, otherwise leave it None to let new_column() logic take over
             safe_mapping = False if data_precision is None and data_scale is None else None
             return new_column(
                 column,
@@ -1453,8 +834,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
             GOE_TYPE_INTEGER_38,
         ):
             data_length = column.data_length or 22
-            # These are all integrals:
-            data_scale = 0
+            data_scale: int | None = 0
             return new_column(
                 column,
                 ORACLE_TYPE_NUMBER,
@@ -1466,8 +846,6 @@ class OracleSourceTable(OffloadSourceTableInterface):
             data_length = column.data_length or 22
             data_precision, data_scale = column.data_precision, column.data_scale
             if column.data_precision and column.data_precision > 38:
-                # If an incoming GOE DECIMAL has precision > 38 then we need to fall back on the flexibility
-                # provided by NUMBER with no precision or scale
                 data_precision, data_scale = None, None
             return new_column(
                 column,
@@ -1570,3 +948,581 @@ class OracleSourceTable(OffloadSourceTableInterface):
             from_string,
             to_string,
         )
+
+    def _columns_getter(self):
+        if self._is_view():
+            return self._columns
+        if self._offload_by_subpartition:
+            return self._columns_with_subpartition_info
+        return self._columns_with_partition_info
+
+    def _columns_setter(self, new_columns, skip_exists_check=False):
+        """When running in verification mode we might need to fake the columns in order to continue processing."""
+        if not skip_exists_check and self.exists():
+            raise OffloadSourceTableException("Set of columns is only supported when the table does NOT exist")
+        self._columns = new_columns
+        self._columns_with_partition_info = self._get_columns_with_partition_info()
+        self._columns_with_subpartition_info = self._get_columns_with_partition_info(
+            part_col_names_override=self._db_api.get_subpartition_column_names(self.owner, self.table_name)
+        )
+
+    def _get_db_block_size(self):
+        if not self._db_block_size:
+            self._db_block_size = int(self.get_session_option("db_block_size"))
+        return self._db_block_size
+
+    def _get_table_details(self):
+        """order of columns important as referenced in helper functions"""
+        logger.debug("_get_table_details: %s, %s" % (self.owner, self.table_name))
+        q = """SELECT NVL2(t.iot_type,'IOT',NULL) AS iot_type
+                ,     t.num_rows
+                ,     t.partitioned
+                ,     p.partitioning_type
+                ,     p.subpartitioning_type
+                ,     t.dependencies
+                ,     TRIM(t.degree)
+                FROM  all_tables t
+                ,     all_part_tables p
+                WHERE p.owner (+) = t.owner
+                AND   p.table_name (+) = t.table_name
+                AND   t.owner = :owner
+                AND   t.table_name = :table_name"""
+
+        row = self._db_api.execute_query_fetch_one(q, query_params={"owner": self.owner, "table_name": self.table_name})
+        if row:
+            self._table_exists = True
+            (
+                self._iot_type,
+                self._stats_num_rows,
+                self._partitioned,
+                self._partition_type,
+                self._subpartition_type,
+                self._dependencies,
+                self._parallelism,
+            ) = row
+        else:
+            self._table_exists = False
+
+    def _get_table_stats(self):
+        """Get optimizer stats from Oracle catalogue views at table, partition and column level
+        Return a dict of the form:
+            table_stats = {
+                'num_rows', 'num_bytes', 'avg_row_len',
+                'column_stats': {name: {ndv, num_nulls, avg_col_len, low_value, high_value},},
+                'partition_stats': {name: {num_rows, num_bytes, avg_row_len},}
+            }
+        """
+        if not self._table_stats:
+            logger.debug("_get_table_stats: %s, %s" % (self.owner, self.table_name))
+
+            table_stats: dict[str, Any] = {
+                "num_rows": -1,
+                "num_bytes": 0,
+                "avg_row_len": 0,
+                "column_stats": {},
+                "partition_stats": {},
+            }
+
+            logger.debug("fetching table stats")
+
+            q = """SELECT num_rows
+                   ,      blocks
+                   ,      avg_row_len
+                   FROM   all_tab_statistics
+                   WHERE  owner = :owner
+                   AND    table_name = :table_name
+                   AND    partition_name IS NULL"""
+
+            row = self._db_api.execute_query_fetch_one(
+                q, query_params={"owner": self.owner, "table_name": self.table_name}
+            )
+            if not row:
+                return None
+
+            table_stats["num_rows"] = row[0]
+            table_stats["num_bytes"] = (row[1] * self._db_block_size) if row[1] else row[1]
+            table_stats["avg_row_len"] = row[2]
+
+            if self.is_partitioned():
+                logger.debug("fetching partition stats")
+
+                q = """SELECT partition_name
+                       ,      num_rows
+                       ,      blocks
+                       ,      avg_row_len
+                       FROM   all_tab_statistics
+                       WHERE  owner = :owner
+                       AND    table_name = :table_name
+                       AND    partition_name IS NOT NULL
+                       AND    subpartition_name IS NULL
+                       ORDER BY partition_position"""
+
+                for row in self._db_api.execute_query_fetch_all(
+                    q, query_params={"owner": self.owner, "table_name": self.table_name}
+                ):
+                    table_stats["partition_stats"][row[0]] = {
+                        "num_rows": row[1],
+                        "num_bytes": ((row[2] * self._db_block_size) if row[2] else row[2]),
+                        "avg_row_len": row[3],
+                    }
+
+            logger.debug("fetching column stats")
+
+            q = """SELECT s.column_name
+                   ,      s.num_distinct
+                   ,      s.num_nulls
+                   ,      s.avg_col_len
+                   FROM   all_tab_col_statistics s
+                   INNER JOIN all_tab_cols c ON (c.owner = s.owner AND c.table_name = s.table_name AND c.column_name = s.column_name)
+                   WHERE  s.owner = :owner
+                   AND    s.table_name = :table_name
+                   AND    c.hidden_column = 'NO'
+                   ORDER BY s.column_name"""
+
+            for row in self._db_api.execute_query_fetch_all(
+                q, query_params={"owner": self.owner, "table_name": self.table_name}
+            ):
+                table_stats["column_stats"][row[0]] = {
+                    "ndv": row[1],
+                    "num_nulls": row[2],
+                    "avg_col_len": row[3],
+                    "low_value": None,
+                    "high_value": None,
+                }
+
+            logger.debug(
+                "stats: num_rows=%s, num_bytes=%s, avg_row_len=%s, #cols=%s, #parts=%s"
+                % (
+                    table_stats["num_rows"],
+                    table_stats["num_bytes"],
+                    table_stats["avg_row_len"],
+                    len(table_stats["column_stats"]),
+                    len(table_stats["partition_stats"]),
+                )
+            )
+            self._table_stats = table_stats
+        return self._table_stats
+
+    def _get_hash_bucket_candidate(self):
+        logger.debug("_get_hash_bucket_candidate: %s, %s" % (self.owner, self.table_name))
+        q = """SELECT column_name
+            FROM (
+                SELECT c.column_name
+                ,      c.num_distinct * ((GREATEST(t.num_rows,1) - num_nulls) / GREATEST(t.num_rows,1)) AS ndv_null_factor
+                FROM   all_tables t
+                INNER JOIN all_tab_cols c ON (c.owner = t.owner AND c.table_name = t.table_name)
+                WHERE  t.owner = :owner
+                AND    t.table_name = :table_name
+                AND    c.hidden_column = 'NO'
+                AND    c.data_type IN (%s)
+                ORDER BY ndv_null_factor DESC
+            )
+            WHERE ROWNUM = 1""" % ",".join(
+            sorted(
+                "'%s'" % dtype
+                for dtype in self.supported_data_types().difference(self.hash_bucket_unsuitable_data_types())
+            )
+        )
+        rows = self._db_api.execute_query_fetch_one(
+            q, query_params={"owner": self.owner, "table_name": self.table_name}
+        )
+        return rows[0] if rows else None
+
+    def _get_partitions(self, strict: bool = True, populate_hvs: bool = True) -> list:
+        """Return a list of RdbmsPartition() objects
+        Partitions are in high value descending order
+
+        GOE-1381: cursor now fetches all subpartitions rather than a single rollup row per partition.
+        This is because we now keep a list of subpartitions per partition in case they are needed
+        for offload transport. As a result, fetchall() and list comprehension has been replaced with
+        an array fetch loop with a nested loop for generating a subpartitions list. Not only is this necessary
+        for assigning the subpartition names to a nested list, it also prevents fetching lots of redundant
+        denormalised high_values from the partition row to the subpartition rows.
+        Initialise new partition on first occurrence of this partition...
+        Append the subpartition name to the list of subpartitions for this partition...
+        Reached the last row for this partition. Add this partition to the list of partitions...
+        """
+
+        def hv_python_fn(hv):
+            if populate_hvs:
+                return tuple(self.decode_partition_high_values(hv, strict=strict))
+            return None
+
+        def hv_individual_fn(hv):
+            if populate_hvs:
+                return tuple(self._decode_partition_high_values_string(hv))
+            return None
+
+        logger.debug("_get_partitions: %s, %s" % (self.owner, self.table_name))
+        q = """
+              WITH partition_data AS (
+                     SELECT tp.partition_name
+                     ,      CASE WHEN pt.partitioning_type IN ('HASH') THEN NULL ELSE tp.high_value END           AS high_value
+                     ,      tp.partition_position
+                     ,      tp.subpartition_count
+                     ,      COALESCE(SUM(s.bytes) OVER (PARTITION BY tp.partition_name), 0)                       AS bytes
+                     ,      COALESCE(tp.num_rows, SUM(tsp.num_rows) OVER (PARTITION BY tp.partition_name), 0)     AS num_rows
+                     ,      tsp.subpartition_name
+                     ,      NVL(tsp.subpartition_position, 0)                                                     AS subpartition_position
+                     ,      ROW_NUMBER() OVER (PARTITION BY tp.partition_name ORDER BY tsp.subpartition_position) AS partition_rownum
+                     FROM   dba_tables                 t
+                            LEFT OUTER JOIN
+                            dba_constraints            c
+                            ON (    c.owner            = t.owner
+                                AND c.table_name       = t.table_name
+                                AND c.constraint_type  = 'P')
+                            INNER JOIN
+                            dba_part_tables            pt
+                            ON (    pt.owner           = t.owner
+                                AND pt.table_name      = t.table_name)
+                            INNER JOIN
+                            dba_tab_partitions         tp
+                            ON (    tp.table_owner     = t.owner
+                                AND tp.table_name      = t.table_name)
+                            LEFT OUTER JOIN
+                            dba_tab_subpartitions      tsp
+                            ON (    tsp.table_owner    = tp.table_owner
+                                AND tsp.table_name     = tp.table_name
+                                AND tsp.partition_name = tp.partition_name)
+                            LEFT OUTER JOIN
+                            dba_segments               s
+                            ON (    s.owner            = t.owner
+                                AND s.segment_name     = DECODE(t.iot_type, 'IOT', c.index_name, t.table_name)
+                                AND s.partition_name   = NVL(tsp.subpartition_name, tp.partition_name))
+                     WHERE  t.owner       = :owner
+                     AND    t.table_name  = :table_name
+                     )
+              SELECT partition_rownum
+              ,      partition_name
+              ,      partition_position
+              ,      subpartition_count
+              ,      subpartition_name
+              ,      subpartition_position
+              ,      high_value
+              ,      bytes
+              ,      num_rows
+              FROM   partition_data
+              ORDER  BY
+                     partition_position DESC
+              ,      partition_rownum
+        """
+        rows = self._db_api.execute_query_fetch_all(
+            q, query_params={"owner": self.owner, "table_name": self.table_name}
+        )
+        partitions = []
+        for row in rows:
+            (
+                partition_rownum,
+                partition_name,
+                partition_position,
+                subpartition_count,
+                subpartition_name,
+                subpartition_position,
+                partition_high_value,
+                partition_bytes,
+                num_rows,
+            ) = row
+            if partition_rownum == 1:
+                partition = RdbmsPartition.by_name(
+                    partition_count=1,
+                    partition_name=partition_name,
+                    partition_position=partition_position,
+                    subpartition_count=subpartition_count,
+                    subpartition_names=([subpartition_name] if subpartition_name is not None else None),
+                    high_values_csv=partition_high_value,
+                    partition_size=partition_bytes,
+                    num_rows=num_rows,
+                    high_values_individual=hv_individual_fn(partition_high_value),
+                    high_values_python=hv_python_fn(partition_high_value),
+                )
+            else:
+                partition.subpartition_names.append(subpartition_name)
+            if subpartition_count == subpartition_position:
+                partitions.append(partition)
+
+        return partitions
+
+    def _get_subpartitions(self, strict=True, populate_hvs=True):
+        """Return a list of RdbmsPartition() objects at subpartition level
+        Partitions are in high value descending order
+
+        sort by high value descending to match output from _get_partitions()
+        """
+
+        def hv_python_fn(hv):
+            if populate_hvs:
+                return tuple(self.decode_partition_high_values(hv, strict=strict))
+            return None
+
+        def hv_individual_fn(hv):
+            if populate_hvs:
+                return tuple(self._decode_partition_high_values_string(hv))
+            return None
+
+        logger.debug("_get_subpartitions: %s, %s" % (self.owner, self.table_name))
+        q = """
+                SELECT pt.partition_count
+                ,      tp.partition_name
+                ,      tp.partition_position
+                ,      tp.subpartition_count
+                ,      tsp.subpartition_name
+                ,      tsp.subpartition_position
+                ,      tsp.high_value
+                ,      NVL(s.bytes, 0)      AS subpartition_size
+                ,      NVL(tsp.num_rows, 0) AS num_rows
+                FROM   dba_tables                 t
+                       LEFT OUTER JOIN
+                       dba_constraints            c
+                       ON (    c.owner            = t.owner
+                           AND c.table_name       = t.table_name
+                           AND c.constraint_type  = 'P')
+                       INNER JOIN
+                       dba_part_tables            pt
+                       ON (    pt.owner           = t.owner
+                           AND pt.table_name      = t.table_name)
+                       INNER JOIN
+                       dba_tab_partitions         tp
+                       ON (    tp.table_owner     = t.owner
+                           AND tp.table_name      = t.table_name)
+                       LEFT OUTER JOIN
+                       dba_tab_subpartitions      tsp
+                       ON (    tsp.table_owner    = tp.table_owner
+                           AND tsp.table_name     = tp.table_name
+                           AND tsp.partition_name = tp.partition_name)
+                       LEFT OUTER JOIN                                              -- note the OUTER join
+                       dba_segments               s
+                       ON (    s.owner            = t.owner
+                           AND s.segment_name     = DECODE(t.iot_type, 'IOT', c.index_name, t.table_name)
+                           AND s.partition_name   = NVL(tsp.subpartition_name, tp.partition_name))
+                WHERE  t.owner       = :owner
+                AND    t.table_name  = :table_name
+                ORDER  BY
+                       tp.partition_position
+                ,      tsp.subpartition_position
+              """
+        rows = self._db_api.execute_query_fetch_all(
+            q, query_params={"owner": self.owner, "table_name": self.table_name}
+        )
+        logger.debug("len(rows): %s" % len(rows))
+        partitions = []
+        for row in rows:
+            (
+                partition_count,
+                partition_name,
+                partition_position,
+                subpartition_count,
+                subpartition_name,
+                subpartition_position,
+                subpartition_high_value,
+                subpartition_size,
+                num_rows,
+            ) = row
+            partitions.append(
+                RdbmsPartition.by_name(
+                    partition_count=partition_count,
+                    partition_name=partition_name,
+                    partition_position=partition_position,
+                    subpartition_count=subpartition_count,
+                    subpartition_name=subpartition_name,
+                    subpartition_position=subpartition_position,
+                    high_values_csv=subpartition_high_value,
+                    partition_size=subpartition_size,
+                    num_rows=num_rows,
+                    high_values_individual=hv_individual_fn(subpartition_high_value),
+                    high_values_python=hv_python_fn(subpartition_high_value),
+                )
+            )
+
+        partitions.sort(key=lambda x: x.high_values_python, reverse=True)
+
+        return partitions
+
+    def _is_compression_enabled(self) -> bool:
+        """Oracle tables have compression defined at either table/partition/subpartition level
+        and for partitioned tables this can be a mixture of compression types.
+        For this reason it is not simple enough to say is a table compressed, this function
+        is simply defining whether a table has some compressed segments, it is not worrying
+        about the ratio of compressed to uncompressed segments.
+        This function does not handle the db connection, it expects the calling function to
+        have catered for this
+        """
+        if self._compression_enabled is None:
+            if self.is_subpartitioned():
+                sql = """SELECT p.compression
+                         FROM   dba_tab_subpartitions p
+                         WHERE  p.table_owner = :owner
+                         AND    p.table_name = :table_name
+                         AND    p.compression = 'ENABLED'
+                         AND    ROWNUM = 1"""
+            elif self.is_partitioned():
+                sql = """SELECT p.compression
+                         FROM   dba_tab_partitions p
+                         WHERE  p.table_owner = :owner
+                         AND    p.table_name = :table_name
+                         AND    p.compression = 'ENABLED'
+                         AND    ROWNUM = 1"""
+            else:
+                sql = """SELECT t.compression
+                         FROM   dba_tables t
+                         WHERE  t.owner = :owner
+                         AND    t.table_name = :table_name
+                         AND    t.compression = 'ENABLED'"""
+            rows = self._db_api.execute_query_fetch_one(
+                sql, query_params={"owner": self.owner, "table_name": self.table_name}
+            )
+            self._compression_enabled = bool(rows)
+        return self._compression_enabled
+
+    def _decode_partition_high_values_string(self, hv_csv):
+        """Break up high value by comma while respecting parentheses in TO_DATE(...,...,...)
+        TIMESTAMPs don't contain commas and are therefore not a special case.
+        """
+        return self._db_api.split_partition_high_value_string(hv_csv)
+
+    def _decode_partition_high_values(self, hv_csv, strict=True):
+        """Takes Oracle dba_tab_partitions.high_value and rationalises to Python values
+        The values returned are tuples
+        """
+        logger.debug("_decode_partition_high_values: %s, %s" % (hv_csv, strict))
+
+        if not hv_csv:
+            return [], []
+
+        hv_literals = self._decode_partition_high_values_string(hv_csv)
+        hv_list = convert_high_values_to_python(
+            self.partition_columns,
+            hv_literals,
+            self.partition_type,
+            self,
+            strict=strict,
+        )
+
+        return tuple(hv_list), tuple(hv_literals)
+
+    def _get_column_low_high_values(self, column_name, from_stats=True, sample_perc=1):
+        """Return low/high values for a specific column either from stats or from sampling data in the table
+        When using optimiser stats only certain data types are supported
+
+        TODO nj@2021-07-21 Should this take ORACLE_VERSION_WITH_SUBPART_MIN_MAX_OPTIMIZATION into account?
+        """
+        logger.debug(
+            "get_column_low_high_values: %s, %s, %s, %s" % (self.owner, self.table_name, column_name, from_stats)
+        )
+        assert column_name
+        column_name = column_name.upper()
+
+        if from_stats:
+            col = self.get_column(column_name)
+            if not col:
+                raise OffloadSourceTableException('Unknown column name "%s"' % column_name)
+
+            params = {
+                "owner": self.owner,
+                "table_name": self.table_name,
+                "column_name": str(column_name.upper()),
+            }
+            if col.data_type in [
+                ORACLE_TYPE_NUMBER,
+                ORACLE_TYPE_FLOAT,
+                ORACLE_TYPE_VARCHAR2,
+                ORACLE_TYPE_NVARCHAR2,
+                ORACLE_TYPE_BINARY_DOUBLE,
+                ORACLE_TYPE_BINARY_FLOAT,
+            ]:
+                raw_fn = "UTL_RAW.CAST_TO_%s" % (
+                    ORACLE_TYPE_NUMBER if col.data_type == ORACLE_TYPE_FLOAT else col.data_type
+                )
+                q = """SELECT %(fn)s(low_value) AS low_val
+                    ,      %(fn)s(high_value) AS high_val
+                    FROM   all_tab_cols
+                    WHERE  owner = :owner
+                    AND    table_name = :table_name
+                    AND    column_name = :column_name""" % {"fn": raw_fn}
+                row = self._db_api.execute_query_fetch_one(q, query_params=params)
+            elif col.is_date_based():
+                row = self._db_api.oracle_get_column_low_high_dates(self.owner, self.table_name, col.name)
+            else:
+                raise OffloadSourceTableException(
+                    'Unable to get values for column "%s" of type "%s" from stats' % (column_name, col.data_type)
+                )
+        else:
+            q = """SELECT MIN(%(col)s)
+                ,     MAX(%(col)s)
+                FROM  "%(owner)s"."%(table)s"
+                SAMPLE (%(perc)s)""" % {
+                "owner": self.owner.upper(),
+                "table": self.table_name.upper(),
+                "col": column_name,
+                "perc": sample_perc or 1,
+            }
+            row = self._db_api.execute_query_fetch_one(q)
+
+        return row
+
+    def _get_db_version(self):
+        """Returns the RDBMS version"""
+        if not hasattr(self, "_db_version") or not self._db_version:
+            self._db_version = self._db_api.frontend_version()
+        return self._db_version
+
+    def _partition_has_rows(self, partition_name):
+        """Check if a partition contains a row"""
+        assert partition_name
+        sql = 'SELECT 1 FROM "%s"."%s" PARTITION ("%s") WHERE ROWNUM = 1' % (
+            self.owner.upper(),
+            self.table_name.upper(),
+            partition_name.upper(),
+        )
+        row = self._db_api.execute_query_fetch_one(sql)
+        return bool(row)
+
+    def _sample_data_types_compression_factor(self):
+        return 0.25
+
+    def _sample_data_types_data_sample_parallelism(self, data_sample_parallelism):
+        """Just a pass through on Oracle"""
+        return int(data_sample_parallelism)
+
+    def _sample_data_types_data_sample_pct(self, data_sample_pct):
+        if data_sample_pct and data_sample_pct < 0:
+            return self._sample_data_types_max_pct()
+        if data_sample_pct and data_sample_pct >= 100:
+            return self._sample_data_types_max_pct()
+        return data_sample_pct
+
+    def _sample_data_types_execute_query(self, sample_sql):
+        query_options = {}
+        if oracle_version_is_smart_scan_unsafe(self._db_version):
+            query_options = {"CELL_OFFLOAD_PROCESSING": "FALSE"}
+        return self._db_api.execute_query_fetch_one(
+            sample_sql, query_options=query_options, log_level=VERBOSE, profile=True
+        )
+
+    def _sample_data_types_date_as_string_column(self, column_name):
+        return OracleColumn(column_name, self._db_api.generic_string_data_type(), data_length=128)
+
+    def _sample_data_types_decimal_column(self, column, data_precision, data_scale):
+        return OracleColumn(
+            column.name,
+            ORACLE_TYPE_NUMBER,
+            data_precision=data_precision,
+            data_scale=data_scale,
+            nullable=column.nullable,
+            safe_mapping=False,
+        )
+
+    def _sample_data_types_min_gb(self):
+        """1GB seems like a good target"""
+        return 1
+
+    def _sample_data_types_max_pct(self):
+        return 99.999999
+
+    def _sample_data_types_min_pct(self):
+        return 0.000001
+
+    def _sample_perc_sql_clause(self, data_sample_pct: Any) -> str:
+        return f"SAMPLE BLOCK ({data_sample_pct})"
+
+    def _sample_data_types_v2_query_hint_block(self):
+        return "/*+ NO_MERGE */"

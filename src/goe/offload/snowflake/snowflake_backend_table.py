@@ -11,6 +11,7 @@ be either:
 
 import logging
 from textwrap import dedent
+from typing import Any
 
 from goe.filesystem.goe_azure import azure_fq_container_name
 from goe.filesystem.goe_dfs import (
@@ -37,18 +38,8 @@ from goe.offload.snowflake.snowflake_column import (
 )
 from goe.util.misc_functions import add_suffix_in_same_case
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# BackendSnowflakeTable
-###########################################################################
 
 
 class BackendSnowflakeTable(BackendTableInterface):
@@ -67,7 +58,10 @@ class BackendSnowflakeTable(BackendTableInterface):
         existing_backend_api=None,
         do_not_connect=False,
     ):
-        """CONSTRUCTOR"""
+        """CONSTRUCTOR
+
+        Load DB is also final DB
+        """
         super().__init__(
             db_name,
             table_name,
@@ -86,11 +80,10 @@ class BackendSnowflakeTable(BackendTableInterface):
         self._snowflake_stage = orchestration_options.snowflake_stage
         self._snowflake_file_format = add_suffix_in_same_case(
             orchestration_options.snowflake_file_format_prefix,
-            "_" + self._offload_staging_format,
+            "_" + (self._offload_staging_format or ""),
         )
-        self._log_profile_after_final_table_load = True
-        self._log_profile_after_verification_queries = True
-        # Load DB is also final DB
+        setattr(self, "_log_profile_after_final_table_load", True)
+        setattr(self, "_log_profile_after_verification_queries", True)
         self._load_db_name = self.db_name
         self._load_table_path = self._get_dfs_client().gen_uri(
             self._orchestration_config.offload_fs_scheme,
@@ -100,9 +93,219 @@ class BackendSnowflakeTable(BackendTableInterface):
             table_name=self._load_table_name,
         )
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def cleanup_staging_area(self):
+        self._rm_dfs_dir(self.get_staging_table_location())
+
+    def compute_final_table_stats(self, incremental_stats, materialized_join=False):
+        """We cannot influence stats on Snowflake and this should never be called due to capability setting"""
+
+    def create_backend_table(self, with_terminator: bool = False) -> list:
+        """Create a table in Snowflake based on object state.
+        Creating a new table may change our world view so the function drops state if in execute mode.
+        If dry_run then we leave state in place to allow other operations to preview.
+        """
+        no_partition_columns = None
+        cmds = self._db_api.create_table(
+            self.db_name,
+            self.table_name,
+            self.get_columns(),
+            no_partition_columns,
+            sort_column_names=self._sort_columns,
+            with_terminator=with_terminator,
+        )
+        if not self._dry_run:
+            self._drop_state()
+        return cmds
+
+    def create_db(self, with_terminator: bool = False) -> list:
+        """On Snowflake we create a SCHEMA, STAGE and all FILE FORMATs
+
+        Create STAGE and FILE FORMAT
+        TODO NJ@2020-11-12 Prepare result cache area for Hybrid Queries, temporary solution that will be removed
+        """
+        cmds = self._create_final_db()
+        sqls = []
+        if self._db_api.snowflake_stage_exists(self.db_name, self._snowflake_stage):
+            self._log(
+                "Snowflake stage already exists: %s.%s" % (self.db_name, self._snowflake_stage),
+                detail=VERBOSE,
+            )
+        else:
+            sqls.append(self._gen_create_stage_sql_text(with_terminator=with_terminator))
+
+        for staging_format in self._db_api.valid_staging_formats():
+            file_format = add_suffix_in_same_case(
+                self._orchestration_config.snowflake_file_format_prefix,
+                "_" + staging_format,
+            )
+            if self._db_api.snowflake_file_format_exists(self.db_name, file_format):
+                self._log(
+                    "Snowflake file format already exists: %s.%s" % (self.db_name, file_format),
+                    detail=VERBOSE,
+                )
+            else:
+                sqls.append(
+                    self._gen_create_file_format_sql_text(file_format, staging_format, with_terminator=with_terminator)
+                )
+
+        cmds.extend(self._create_result_cache_db())
+
+        if sqls:
+            cmds.extend(self._execute_ddl(sqls, log_level=VERBOSE))
+        return cmds
+
+    def empty_staging_area(self, staging_file):
+        self._rm_dfs_dir(self.get_staging_table_location())
+
+    def get_default_location(self):
+        """Not applicable to Snowflake"""
+        return
+
+    def get_staging_table_location(self):
+        """Use cached location to avoid re-doing same thing multiple times"""
+        return self._load_table_path
+
+    def load_final_table(self, sync=None):
+        """Copy data from the staged load table into the final Snowflake table"""
+        self._debug(
+            "Loading %s.%s from %s.%s"
+            % (
+                self.db_name,
+                self.table_name,
+                self._load_db_name,
+                self._load_table_name,
+            )
+        )
+        select_expression_tuples = [(self.get_final_table_cast(col), col.name.upper()) for col in self.get_columns()]
+        sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples)
+        self._execute_dml(
+            sqls,
+            query_options=query_options,
+            profile=self._log_profile_after_final_table_load,
+        )
+
+    def load_materialized_join(
+        self,
+        threshold_cols=None,
+        gte_threshold_vals=None,
+        lt_threshold_vals=None,
+        insert_predicates=None,
+        sync=None,
+    ):
+        """Copy data from the load view into the final Snowflake join table"""
+        if insert_predicates:
+            assert isinstance(insert_predicates, list)
+        self._debug(
+            "Loading %s.%s from %s.%s"
+            % (
+                self.db_name,
+                self.table_name,
+                self._load_view_db_name,
+                self._load_table_name,
+            )
+        )
+        select_expression_tuples = [
+            (self.enclose_identifier(col.name), self.enclose_identifier(col.name)) for col in self.get_columns()
+        ]
+        sqls, query_options = self._gen_mat_join_insert_sqls(
+            select_expression_tuples,
+            threshold_cols,
+            gte_threshold_vals,
+            lt_threshold_vals,
+            insert_predicates=insert_predicates,
+        )
+        self._execute_dml(
+            sqls,
+            query_options=query_options,
+            profile=self._log_profile_after_final_table_load,
+        )
+
+    def partition_function_requires_granularity(self):
+        """No partitioning on Snowflake"""
+        return False
+
+    def post_transport_tasks(self, staging_file):
+        """Nothing to do on Snowflake"""
+
+    def predicate_has_rows(self, predicate):
+        if not self.exists():
+            return False
+
+        sql = "SELECT 1 FROM %s WHERE (%s) LIMIT 1" % (
+            self._db_api.enclose_object_reference(self.db_name, self.table_name),
+            snowflake_predicate.predicate_to_where_clause(self.get_columns(), predicate),
+        )
+        return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
+
+    def predicate_to_where_clause(self, predicate, columns_override=None):
+        return snowflake_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
+
+    def result_cache_area_exists(self):
+        return self._result_cache_db_exists()
+
+    def set_columns(self, new_columns):
+        """Set column lists in state, see interface for description.
+        NOTE: This Snowflake override ensures all column names are upper case as specified in the design.
+              If we remove this overload then modify the description in the interface.
+        """
+        assert valid_column_list(new_columns)
+        cols = [_.clone(name=_.name.upper()) for _ in new_columns]
+        self._columns = cols
+
+    def setup_result_cache_area(self):
+        """Prepare result cache area for Hybrid Queries"""
+        if self.create_database_supported() and self._user_requested_create_backend_db:
+            self._create_result_cache_db()
+
+    def setup_staging_area(self, staging_file):
+        """Prepare any staging area for Snowflake OffloadTransport
+
+        FIXME nj@2021-01-04 Remove the code/comment below once Snowflake issue 00172945 is resolved publicly
+        We have an issue where SCHEMA.FILE_FORMAT referenced in staging SQL ignores the SCHEMA
+        """
+        self._rm_dfs_dir(self.get_staging_table_location())
+        self._db_api.set_session_db(self._load_db_name, log_level=VVERBOSE)
+
+    def staging_area_exists(self):
+        """On Snowflake this checks that the Snowflake INTEGRATION and STAGE objects exist and are correct.
+        A missing integration is fatal.
+        A missing stage or file format is False.
+        """
+        if not self._db_api.snowflake_integration_exists(self._snowflake_integration):
+            raise BackendTableException("Snowflake integration does not exist: %s" % self._snowflake_integration)
+        status = True
+        expected_stage_prefix = self._get_dfs_client().gen_uri(
+            self._offload_fs_scheme_override(),
+            self._orchestration_config.offload_fs_container,
+            self._orchestration_config.offload_fs_prefix,
+            container_override=self._offload_fs_container_override(),
+        )
+        if not self._db_api.snowflake_stage_exists(
+            self._load_db_name, self._snowflake_stage, url_prefix=expected_stage_prefix
+        ):
+            self._warning("Snowflake stage %s.%s does not exist" % (self._load_db_name, self._snowflake_stage))
+            status = False
+        if not self._db_api.snowflake_file_format_exists(
+            self._load_db_name,
+            self._snowflake_file_format,
+            format_type=self._offload_staging_format,
+        ):
+            self._warning(
+                "Snowflake file format %s.%s does not exist" % (self._load_db_name, self._snowflake_file_format)
+            )
+            status = False
+        if not self.result_cache_area_exists():
+            self._warning("Result cache area %s does not exist" % self._load_db_name)
+            status = False
+        return status
+
+    def transport_binary_data_in_base64(self):
+        """Stage binary data, during offload transport, encoded as Base64"""
+        return True
+
+    def validate_type_conversions(self, staging_columns: list) -> None:
+        """Validate CASTs before copying data from the staged load table into the final backend table"""
+        self._validate_final_table_casts(staging_columns, log_profile=self._log_profile_after_verification_queries)
 
     def _cast_verification_query_options(self):
         """Returns a dict of query options to be executed before the final insert.
@@ -110,7 +313,7 @@ class BackendSnowflakeTable(BackendTableInterface):
         """
         return {"BINARY_INPUT_FORMAT": "BASE64"}
 
-    def _create_load_table(self, staging_file, with_terminator=False) -> list:
+    def _create_load_table(self, staging_file: Any, with_terminator: bool = False) -> list:
         raise NotImplementedError(self._not_implemented_message("Load table"))
 
     def _drop_load_table(self, sync=None):
@@ -126,7 +329,11 @@ class BackendSnowflakeTable(BackendTableInterface):
         sort_expr_list,
         for_materialized_join=False,
     ):
-        """Format INSERT/SELECT for Snowflake"""
+        """Format INSERT/SELECT for Snowflake
+
+        For a standard data load we use COPY INTO on Snowflake
+        from_object_override is a STAGE
+        """
         assert select_expr_tuples
         assert isinstance(select_expr_tuples, list)
         if filter_clauses:
@@ -143,8 +350,6 @@ class BackendSnowflakeTable(BackendTableInterface):
                 filter_clauses=filter_clauses,
                 from_object_override=from_object_override,
             )
-        # For a standard data load we use COPY INTO on Snowflake
-        # from_object_override is a STAGE
         from_object_override = self._format_staging_object_name()
         return self._db_api.gen_copy_into_sql_text(
             self.db_name,
@@ -166,7 +371,7 @@ class BackendSnowflakeTable(BackendTableInterface):
             "stage": self._db_api.enclose_object_reference(self._load_db_name, self._snowflake_stage),
             "table": self._load_table_name,
             "file_format": self._db_api.enclose_object_reference(self._load_db_name, self._snowflake_file_format),
-            "file_ext": self._offload_staging_format.lower(),
+            "file_ext": (self._offload_staging_format or "").lower(),
         }
 
     def _gen_create_file_format_sql_text(self, file_format_name, staging_format, with_terminator=False):
@@ -227,9 +432,9 @@ class BackendSnowflakeTable(BackendTableInterface):
         raise NotImplementedError(self._not_implemented_message("Synthetic partitioning"))
 
     def _offload_fs_container_override(self):
+        """For Azure STAGE the container is 'account/container' not 'container@account'"""
         container_override = None
         if self._orchestration_config.offload_fs_scheme in AZURE_OFFLOAD_FS_SCHEMES:
-            # For Azure STAGE the container is 'account/container' not 'container@account'
             container_override = azure_fq_container_name(
                 self._orchestration_config.offload_fs_azure_account_name,
                 self._orchestration_config.offload_fs_azure_account_domain,
@@ -256,42 +461,48 @@ class BackendSnowflakeTable(BackendTableInterface):
         """Return a column IS NOT NULL expression.
         When Snowflake stages to Avro is doesn't convert the Avro "null" value to NULL so
         we have the workaround below.
+
+        Call the common code on the interface
         """
         if self._offload_staging_format == FILE_STORAGE_FORMAT_AVRO:
             return "%s != 'null'" % self._format_staging_column_name(column_name)
-        # Call the common code on the interface
         return super()._staging_column_is_not_null_sql_expr(column_name)
 
-    def _staging_to_backend_cast(self, rdbms_column, backend_column, staging_column) -> tuple:
-        """Returns correctly cast or overridden columns ready for insert/select to final table"""
+    def _staging_to_backend_cast(self, rdbms_column: Any, backend_column: Any, staging_column: Any) -> tuple:
+        """Returns correctly cast or overridden columns ready for insert/select to final table
+
+        Same column type and data type so no need to CAST, this is only possible when materializing a join
+        Time zoned so we do not normalise to UTC.
+        We need a string containing the full timestamp spec including nanoseconds and 4 digit year.
+        """
 
         def cast(expr, data_type, safe_cast=False):
+            """TRY_CAST only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
             if safe_cast:
-                # TRY_CAST only works with TEXT but all staging columns are VARIANT. Std CAST is fine.
                 return "TRY_CAST(CAST(%s AS TEXT) AS %s)" % (expr, data_type)
             return "CAST(%s AS %s)" % (expr, data_type)
 
         def cast_date(expr, data_type, safe_cast=False):
+            """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
             if safe_cast:
-                # TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine.
                 return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'YYYY-MM-DD')"
             return f"TO_{data_type}({expr})"
 
         def cast_datetime(expr, data_type, safe_cast=False):
+            """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
             if safe_cast:
-                # TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine.
                 return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'YYYY-MM-DD HH24:MI:SS.FF')"
             return f"TO_{data_type}({expr})"
 
         def cast_time(expr, data_type, safe_cast=False):
+            """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
             if safe_cast:
-                # TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine.
                 return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'HH24:MI:SS.FF')"
             return f"TO_{data_type}({expr})"
 
         def cast_tz(expr, data_type, safe_cast=False):
+            """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
             if safe_cast:
-                # TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine.
                 return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')"
             return f"TO_{data_type}({expr})"
 
@@ -307,7 +518,6 @@ class BackendSnowflakeTable(BackendTableInterface):
         return_type = backend_column.format_data_type().upper()
 
         if isinstance(staging_column, SnowflakeColumn) and staging_column.data_type == backend_column.data_type:
-            # Same column type and data type so no need to CAST, this is only possible when materializing a join
             self._log(
                 "No cast of %s required for matching load data type: %s"
                 % (backend_column.name, staging_column.data_type),
@@ -325,7 +535,6 @@ class BackendSnowflakeTable(BackendTableInterface):
             )
         elif rdbms_column.is_time_zone_based():
             if not backend_column.is_string_based():
-                # Time zoned so we do not normalise to UTC.
                 return_cast = cast_tz(
                     self._format_staging_column_name(staging_column),
                     backend_column.data_type,
@@ -338,7 +547,6 @@ class BackendSnowflakeTable(BackendTableInterface):
         elif rdbms_column.is_date_based():
             if backend_column.is_string_based():
                 if rdbms_column.has_time_element():
-                    # We need a string containing the full timestamp spec including nanoseconds and 4 digit year.
                     return_cast = cast_datetime(
                         self._format_staging_column_name(staging_column),
                         SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
@@ -419,226 +627,3 @@ class BackendSnowflakeTable(BackendTableInterface):
             return return_cast, return_type, return_vcast
         return_cast = self._format_staging_column_name(staging_column)
         return return_cast, None, return_cast
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def cleanup_staging_area(self):
-        self._rm_dfs_dir(self.get_staging_table_location())
-
-    def compute_final_table_stats(self, incremental_stats, materialized_join=False):
-        """We cannot influence stats on Snowflake and this should never be called due to capability setting"""
-
-    def create_backend_table(self, with_terminator=False) -> list:
-        """Create a table in Snowflake based on object state.
-        Creating a new table may change our world view so the function drops state if in execute mode.
-        If dry_run then we leave state in place to allow other operations to preview.
-        """
-        no_partition_columns = None
-        cmds = self._db_api.create_table(
-            self.db_name,
-            self.table_name,
-            self.get_columns(),
-            no_partition_columns,
-            sort_column_names=self._sort_columns,
-            with_terminator=with_terminator,
-        )
-        if not self._dry_run:
-            self._drop_state()
-        return cmds
-
-    def create_db(self, with_terminator=False) -> list:
-        """On Snowflake we create a SCHEMA, STAGE and all FILE FORMATs"""
-        cmds = self._create_final_db()
-        # Create STAGE and FILE FORMAT
-        sqls = []
-        if self._db_api.snowflake_stage_exists(self.db_name, self._snowflake_stage):
-            self._log(
-                "Snowflake stage already exists: %s.%s" % (self.db_name, self._snowflake_stage),
-                detail=VERBOSE,
-            )
-        else:
-            sqls.append(self._gen_create_stage_sql_text(with_terminator=with_terminator))
-
-        for staging_format in self._db_api.valid_staging_formats():
-            file_format = add_suffix_in_same_case(
-                self._orchestration_config.snowflake_file_format_prefix,
-                "_" + staging_format,
-            )
-            if self._db_api.snowflake_file_format_exists(self.db_name, file_format):
-                self._log(
-                    "Snowflake file format already exists: %s.%s" % (self.db_name, file_format),
-                    detail=VERBOSE,
-                )
-            else:
-                sqls.append(
-                    self._gen_create_file_format_sql_text(file_format, staging_format, with_terminator=with_terminator)
-                )
-
-        # TODO NJ@2020-11-12 Prepare result cache area for Hybrid Queries, temporary solution that will be removed
-        cmds.extend(self._create_result_cache_db())
-
-        if sqls:
-            cmds.extend(self._execute_ddl(sqls, log_level=VERBOSE))
-        return cmds
-
-    def empty_staging_area(self, staging_file):
-        self._rm_dfs_dir(self.get_staging_table_location())
-
-    def get_default_location(self):
-        """Not applicable to Snowflake"""
-        return
-
-    def get_staging_table_location(self):
-        # Use cached location to avoid re-doing same thing multiple times
-        return self._load_table_path
-
-    def load_final_table(self, sync=None):
-        """Copy data from the staged load table into the final Snowflake table"""
-        self._debug(
-            "Loading %s.%s from %s.%s"
-            % (
-                self.db_name,
-                self.table_name,
-                self._load_db_name,
-                self._load_table_name,
-            )
-        )
-        select_expression_tuples = [(self.get_final_table_cast(col), col.name.upper()) for col in self.get_columns()]
-        sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples)
-        self._execute_dml(
-            sqls,
-            query_options=query_options,
-            profile=self._log_profile_after_final_table_load,
-        )
-
-    def load_materialized_join(
-        self,
-        threshold_cols=None,
-        gte_threshold_vals=None,
-        lt_threshold_vals=None,
-        insert_predicates=None,
-        sync=None,
-    ):
-        """Copy data from the load view into the final Snowflake join table"""
-        if insert_predicates:
-            assert isinstance(insert_predicates, list)
-        self._debug(
-            "Loading %s.%s from %s.%s"
-            % (
-                self.db_name,
-                self.table_name,
-                self._load_view_db_name,
-                self._load_table_name,
-            )
-        )
-        select_expression_tuples = [
-            (self.enclose_identifier(col.name), self.enclose_identifier(col.name)) for col in self.get_columns()
-        ]
-        sqls, query_options = self._gen_mat_join_insert_sqls(
-            select_expression_tuples,
-            threshold_cols,
-            gte_threshold_vals,
-            lt_threshold_vals,
-            insert_predicates=insert_predicates,
-        )
-        self._execute_dml(
-            sqls,
-            query_options=query_options,
-            profile=self._log_profile_after_final_table_load,
-        )
-
-    def partition_function_requires_granularity(self):
-        """No partitioning on Snowflake"""
-        return False
-
-    def post_transport_tasks(self, staging_file):
-        """Nothing to do on Snowflake"""
-
-    def predicate_has_rows(self, predicate):
-        if not self.exists():
-            return False
-
-        sql = "SELECT 1 FROM %s WHERE (%s) LIMIT 1" % (
-            self._db_api.enclose_object_reference(self.db_name, self.table_name),
-            snowflake_predicate.predicate_to_where_clause(self.get_columns(), predicate),
-        )
-        return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
-
-    def predicate_to_where_clause(self, predicate, columns_override=None):
-        return snowflake_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
-
-    def result_cache_area_exists(self):
-        return self._result_cache_db_exists()
-        # When we return to using a stage for result cache we can reinstate the code below
-        # return self._db_api.snowflake_stage_exists(self._load_db_name, self._snowflake_stage)
-
-    def set_columns(self, new_columns):
-        """Set column lists in state, see interface for description.
-        NOTE: This Snowflake override ensures all column names are upper case as specified in the design.
-              If we remove this overload then modify the description in the interface.
-        """
-        assert valid_column_list(new_columns)
-        cols = [_.clone(name=_.name.upper()) for _ in new_columns]
-        self._columns = cols
-
-    def setup_result_cache_area(self):
-        """Prepare result cache area for Hybrid Queries"""
-        # TODO NJ@2020-11-12 Temporary solution that will be removed
-        if self.create_database_supported() and self._user_requested_create_backend_db:
-            self._create_result_cache_db()
-        # When we return to using a stage for result cache we can reinstate the code below and
-        # remove calls to _create_result_cache_db().
-        # if self._db_api.snowflake_stage_exists(self.db_name, self._snowflake_stage):
-        # self._log('Snowflake stage already exists: %s.%s' % (self.db_name, self._snowflake_stage))
-        # else:
-        # return self._execute_ddl(self._gen_create_stage_sql_text(), log_level=VERBOSE)
-
-    def setup_staging_area(self, staging_file):
-        """Prepare any staging area for Snowflake OffloadTransport"""
-        self._rm_dfs_dir(self.get_staging_table_location())
-        # FIXME nj@2021-01-04 Remove the code/comment below once Snowflake issue 00172945 is resolved publicly
-        # We have an issue where SCHEMA.FILE_FORMAT referenced in staging SQL ignores the SCHEMA
-        self._db_api.set_session_db(self._load_db_name, log_level=VVERBOSE)
-
-    def staging_area_exists(self):
-        """On Snowflake this checks that the Snowflake INTEGRATION and STAGE objects exist and are correct.
-        A missing integration is fatal.
-        A missing stage or file format is False.
-        """
-        if not self._db_api.snowflake_integration_exists(self._snowflake_integration):
-            raise BackendTableException("Snowflake integration does not exist: %s" % self._snowflake_integration)
-        status = True
-        expected_stage_prefix = self._get_dfs_client().gen_uri(
-            self._offload_fs_scheme_override(),
-            self._orchestration_config.offload_fs_container,
-            self._orchestration_config.offload_fs_prefix,
-            container_override=self._offload_fs_container_override(),
-        )
-        if not self._db_api.snowflake_stage_exists(
-            self._load_db_name, self._snowflake_stage, url_prefix=expected_stage_prefix
-        ):
-            self._warning("Snowflake stage %s.%s does not exist" % (self._load_db_name, self._snowflake_stage))
-            status = False
-        if not self._db_api.snowflake_file_format_exists(
-            self._load_db_name,
-            self._snowflake_file_format,
-            format_type=self._offload_staging_format,
-        ):
-            self._warning(
-                "Snowflake file format %s.%s does not exist" % (self._load_db_name, self._snowflake_file_format)
-            )
-            status = False
-        if not self.result_cache_area_exists():
-            self._warning("Result cache area %s does not exist" % self._load_db_name)
-            status = False
-        return status
-
-    def transport_binary_data_in_base64(self):
-        """Stage binary data, during offload transport, encoded as Base64"""
-        return True
-
-    def validate_type_conversions(self, staging_columns: list):
-        """Validate CASTs before copying data from the staged load table into the final backend table"""
-        self._validate_final_table_casts(staging_columns, log_profile=self._log_profile_after_verification_queries)

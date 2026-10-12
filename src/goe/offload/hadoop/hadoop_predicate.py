@@ -53,8 +53,10 @@ class TypedPredicateToHadoopBinds(predicate_offload.TypedPredicateToBinds):
 
 class TypedPredicateToHadoopLiterals(predicate_offload.TypedPredicateToLiterals):
     def datetime_value(self, items):
+        """TODO NJ@2020-06-01 Impala literals are compaitible with Hive but we do have different literal classes
+
+        Ideally we wouldn't exclusively use ImpalaLiteral below and would be able to use HiveLiteral when on Hive
+        """
         value, data_type = items[0].value
         assert isinstance(value, np.datetime64)
-        # TODO NJ@2020-06-01 Impala literals are compaitible with Hive but we do have different literal classes
-        #     Ideally we wouldn't exclusively use ImpalaLiteral below and would be able to use HiveLiteral when on Hive
         return ImpalaLiteral.format_literal(value, data_type)

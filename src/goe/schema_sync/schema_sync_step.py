@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.util.ora_query import get_oracle_connection
@@ -22,13 +22,13 @@ class SchemaSyncStep:
 
     def __init__(
         self,
-        name,
-        options,
-        orchestration_options,
+        name: str,
+        options: Any,
+        orchestration_options: Any,
         messages: "OffloadMessages",
         execution_id: "ExecutionId",
         repo_client: "OrchestrationRepoClientInterface",
-    ):
+    ) -> None:
         self.name = name
         self._options = options
         self._orchestration_options = orchestration_options
@@ -74,3 +74,6 @@ class SchemaSyncStep:
         self.check_postconditions(run_commands)
 
         return run_status, run_commands
+
+    def _do_run(self, run_params: Any) -> tuple[Any, Any]:
+        raise NotImplementedError("_do_run() must be implemented by SchemaSyncStep subclasses")

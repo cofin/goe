@@ -7,9 +7,9 @@ import sys
 import traceback
 from datetime import datetime
 from getpass import getuser
-from optparse import SUPPRESS_HELP
 
 from goe.config import config_file, orchestration_defaults
+from goe.config.options import ConnectOptions
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.connect.connect_backend import (
     is_hadoop_environment,
@@ -36,17 +36,15 @@ from goe.connect.connect_transport import (
     run_sqoop_tests,
     test_credential_api_alias,
 )
+from goe.exceptions import OptionValueError
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.goe import (
-    OptionValueError,
-    get_common_options,
     get_log_fh,
     get_log_fh_name,
     init,
     init_log,
     log_command_line,
     log_timestamp,
-    verbose,
     version,
 )
 from goe.offload.offload_messages import OffloadMessages
@@ -64,6 +62,10 @@ OS_RELEASE_FILES = [
 ]
 
 
+warnings: bool = False
+failures: bool = False
+
+
 class ConnectException(Exception):
     pass
 
@@ -71,8 +73,10 @@ class ConnectException(Exception):
 def test_ssh(orchestration_config):
     def normalise_host_list(list_of_hosts):
         """Ensure no CSVs or empty values"""
-        expanded_list = []
-        [expanded_list.extend(_.split(",")) if _ else [] for _ in list_of_hosts]
+        expanded_list: list[str] = []
+        for item in list_of_hosts:
+            if item:
+                expanded_list.extend(item.split(","))
         return set(expanded_list)
 
     test_name = None
@@ -166,16 +170,15 @@ def get_environment_file_name(orchestration_config):
 
 def get_template_file_path(orchestration_config):
     template_name = get_environment_file_name(orchestration_config)
-    return os.path.join(os.environ.get("OFFLOAD_HOME"), "conf", template_name)
+    return os.path.join(os.environ.get("OFFLOAD_HOME") or "", "conf", template_name)
 
 
 def test_conf_perms():
     test_name = "Configuration file permissions"
     test_header(test_name)
     hint = "Expected permissions are 640"
-    environment_file = config_file.get_environment_file_path()
+    environment_file = config_file.get_environment_file_path() or ""
     perms = oct(os.stat(environment_file).st_mode & 0o777)
-    # Removing oct prefix deemed safe for display only.
     detail("%s has permissions: %s" % (environment_file, perms[2:]))
     if perms[-3:] != "640":
         warning(test_name, hint)
@@ -187,9 +190,8 @@ def test_dir(dir_name, expected_perms):
     test_name = "Directory permissions: %s" % dir_name
     hint = "Expected permissions are %s" % expected_perms
     test_header(test_name)
-    log_dir = os.path.join(os.environ.get("OFFLOAD_HOME"), dir_name)
+    log_dir = os.path.join(os.environ.get("OFFLOAD_HOME") or "", dir_name)
     perms = oct(os.stat(log_dir).st_mode & 0o2777)
-    # Removing oct prefix deemed safe for display only.
     detail("%s has permissions: %s" % (log_dir, perms[2:]))
     if perms[-4:] != expected_perms:
         failure(test_name, hint)
@@ -209,6 +211,7 @@ def dict_from_environment_file(environment_file):
 
 
 def check_offload_env(environment_file, template_file):
+    """If offload.env does not exist then we need to abort because the OFFLOAD_HOME is in bad shape"""
     left = os.path.basename(environment_file)
     right = os.path.basename(template_file)
     test_name = "%s vs %s" % (left, right)
@@ -218,7 +221,6 @@ def check_offload_env(environment_file, template_file):
         configuration = dict_from_environment_file(environment_file)
     except OSError:
         debug(traceback.format_exc())
-        # If offload.env does not exist then we need to abort because the OFFLOAD_HOME is in bad shape
         raise ConnectException("Unable to access environment file: %s" % environment_file)
 
     try:
@@ -274,6 +276,11 @@ def upgrade_environment_file(environment_file, template_file):
 
 
 def check_environment(options, orchestration_config):
+    """A number of checks require a messages object, rather than creating in multiple place we create early and re-use
+
+    Important to test WebHDFS before test_offload_fs_container to ensure
+    option normalization happens
+    """
     global warnings
     warnings = False
     global failures
@@ -288,7 +295,6 @@ def check_environment(options, orchestration_config):
     )
     test_conf_perms()
 
-    # A number of checks require a messages object, rather than creating in multiple place we create early and re-use
     messages = OffloadMessages.from_options(options, get_log_fh())
 
     section_header("Frontend")
@@ -313,8 +319,6 @@ def check_environment(options, orchestration_config):
         test_hdfs_dirs(orchestration_config, messages)
     if is_hadoop_environment(orchestration_config):
         run_sqoop_tests(options, orchestration_config, messages)
-        # Important to test WebHDFS before test_offload_fs_container to ensure
-        # option normalization happens
         test_webhdfs_config(orchestration_config, messages)
     test_credential_api_alias(options, orchestration_config)
     if orchestration_config.offload_fs_container:
@@ -359,39 +363,14 @@ def get_config_with_connect_overrides(connect_options):
     return config
 
 
-def get_connect_opts():
-    opt = get_common_options()
+def connect(options: ConnectOptions) -> None:
+    """Run goe connect checks for the supplied options and exit with the check status.
 
-    opt.remove_option("--execute")
-
-    opt.add_option(
-        "--upgrade-environment-file",
-        dest="upgrade_environment_file",
-        default=False,
-        action="store_true",
-        help="Adds missing configuration variables from the environment file template to the environment file",
-    )
-    # Hidden options to keep TeamCity testing functioning
-    opt.add_option(
-        "--create-backend-db",
-        dest="create_backend_db",
-        action="store_true",
-        help=SUPPRESS_HELP,
-    )
-
-    return opt
-
-
-def connect(options_override=None):
-    options = None
+    We need the original host CSV for comprehensive checking later
+    has already been reported
+    """
     try:
         config_file.load_env()
-        if options_override is not None:
-            options = options_override
-        else:
-            opt = get_connect_opts()
-            options, args = opt.parse_args()
-
         init(options)
         init_log("connect")
         section_header("Connect v%s" % version())
@@ -403,7 +382,6 @@ def connect(options_override=None):
         if is_hadoop_environment(orchestration_config) and not orchestration_config.hadoop_host:
             raise OptionValueError("HIVE_SERVER_HOST is mandatory")
 
-        # We need the original host CSV for comprehensive checking later
         options.original_offload_transport_spark_thrift_host = (
             orchestration_defaults.offload_transport_spark_thrift_host_default()
         )
@@ -419,7 +397,7 @@ def connect(options_override=None):
         sys.exit(0)
 
     except FatalTestFailure:
-        sys.exit(1)  # has already been reported
+        sys.exit(1)
     except Exception as exc:
         log("Exception caught at top-level", ansi_code="red")
         log_timestamp()
@@ -434,15 +412,13 @@ def _os_release_file_exists() -> str | None:
 
 def _os_version_from_file_content(os_release_file: str, file_content: str) -> str:
     if os_release_file == OS_RELEASE_FILE_SUSE:
-        os_ver = file_content.splitlines()
-        os_ver = "%s (%s)" % (os_ver[:1][0], ", ".join([o for o in os_ver[1:]]))
-        return os_ver
+        lines = file_content.splitlines()
+        return "%s (%s)" % (lines[:1][0], ", ".join([o for o in lines[1:]]))
     if os_release_file == OS_RELEASE_FILE_DEBIAN:
-        os_ver = file_content.splitlines()
-        tokens = os_ver[0].split("=")
+        lines = file_content.splitlines()
+        tokens = lines[0].split("=")
         os_ver = tokens[0] if len(tokens) == 1 else " ".join(tokens[1:])
-        os_ver = unsurround(os_ver, '"')
-        return os_ver
+        return unsurround(os_ver, '"')
     return file_content
 
 

@@ -9,24 +9,15 @@ import re
 
 from goe.offload.column_metadata import ColumnMetadataInterface
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# Data type constants, these must match the types stored in the data dictionary
-# We haven't added Geospatial, JSON, PERIOD, UDT or XML data types
 TERADATA_TYPE_BIGINT = "I8"
 TERADATA_TYPE_BLOB = "BO"
 TERADATA_TYPE_BYTE = "BF"
 TERADATA_TYPE_BYTEINT = "I1"
 TERADATA_TYPE_CHAR = "CF"
-# TERADATA_TYPE_CHARACTER not required because internal type is the same as CHAR
-# TERADATA_TYPE_CHAR_VARYING not required because internal type is the same as VARCHAR
 TERADATA_TYPE_CLOB = "CO"
 TERADATA_TYPE_DATE = "DA"
 TERADATA_TYPE_DECIMAL = "D "
 TERADATA_TYPE_DOUBLE = "F "
-# TERADATA_TYPE_FLOAT not required because internal type is the same as DOUBLE PRECISION
 TERADATA_TYPE_INTEGER = "I "
 TERADATA_TYPE_INTERVAL_YR = "YR"
 TERADATA_TYPE_INTERVAL_YM = "YM"
@@ -41,10 +32,7 @@ TERADATA_TYPE_INTERVAL_HS = "HS"
 TERADATA_TYPE_INTERVAL_MI = "MI"
 TERADATA_TYPE_INTERVAL_MS = "MS"
 TERADATA_TYPE_INTERVAL_SC = "SC"
-# TERADATA_TYPE_LONG_VARCHAR not required because internal type is the same as VARCHAR
 TERADATA_TYPE_NUMBER = "N "
-# TERADATA_TYPE_NUMERIC not required because internal type is the same as DECIMAL
-# TERADATA_TYPE_REAL not required because internal type is the same as DOUBLE PRECISION
 TERADATA_TYPE_SMALLINT = "I2"
 TERADATA_TYPE_TIME = "AT"
 TERADATA_TYPE_TIMESTAMP = "TS"
@@ -115,11 +103,6 @@ TERADATA_INTERVAL_DATA_TYPES = [
     TERADATA_TYPE_INTERVAL_MS,
     TERADATA_TYPE_INTERVAL_SC,
 ]
-
-
-###########################################################################
-# CLASSES
-###########################################################################
 
 
 class TeradataColumn(ColumnMetadataInterface):

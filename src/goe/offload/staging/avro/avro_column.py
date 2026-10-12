@@ -7,10 +7,6 @@
 
 from goe.offload.column_metadata import ColumnMetadataInterface
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 AVRO_TYPE_BOOLEAN = "BOOLEAN"
 AVRO_TYPE_BYTES = "BYTES"
 AVRO_TYPE_DOUBLE = "DOUBLE"
@@ -18,11 +14,6 @@ AVRO_TYPE_FLOAT = "FLOAT"
 AVRO_TYPE_INT = "INT"
 AVRO_TYPE_LONG = "LONG"
 AVRO_TYPE_STRING = "STRING"
-
-
-###########################################################################
-# CLASSES
-###########################################################################
 
 
 class StagingAvroColumn(ColumnMetadataInterface):
@@ -55,19 +46,21 @@ class StagingAvroColumn(ColumnMetadataInterface):
         )
 
     def format_data_type(self):
-        # Currently no staging data types have a length/precision/scale so no formatting required
+        """Currently no staging data types have a length/precision/scale so no formatting required"""
         return self.data_type
 
     def has_time_element(self):
-        """Does the column data contain a time"""
-        # We should not need to this for a staging column
+        """Does the column data contain a time
+
+        We should not need to this for a staging column
+        """
         raise NotImplementedError("has_time_element() is not applicable to a StagingAvroColumn")
 
     def is_binary(self):
         return bool(self.data_type == AVRO_TYPE_BYTES)
 
     def is_nan_capable(self):
-        # We should not need to this for a staging column
+        """We should not need to this for a staging column"""
         raise NotImplementedError("is_nan_capable() is not applicable to a StagingAvroColumn")
 
     def is_number_based(self):

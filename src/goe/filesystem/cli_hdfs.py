@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """CliHdfs: Command line hdfs implementation of GOEDfs"""
 
 import logging
@@ -32,26 +33,8 @@ from goe.filesystem.goe_dfs import (
 from goe.offload.offload_constants import BACKEND_DISTRO_MAPR
 from goe.util.misc_functions import is_number
 
-###############################################################################
-# EXCEPTIONS
-###############################################################################
-
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###############################################################################
-# LOGGING
-###############################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###############################################################################
-# CliHdfs
-###############################################################################
 
 
 class CliHdfs(GOEDfs):
@@ -86,6 +69,296 @@ class CliHdfs(GOEDfs):
     def __str__(self):
         return "%s@%s" % (self._ssh_user, self._hdfs_host)
 
+    @staticmethod
+    def dfs_cmd(as_string=False):
+        """Return distribution appropriate 'hdfs dfs' command"""
+        dfs: list[str] = ["hdfs", "dfs"]
+        if backend_distribution_default() == BACKEND_DISTRO_MAPR:
+            dfs = ["hadoop", "fs"]
+
+        if as_string:
+            return " ".join(dfs)
+
+        return dfs
+
+    @property
+    def client(self):
+        logger.warning("Attempting to access 'client' in ssh based CliHdfs")
+
+    def mkdir(self, dfs_path):
+        assert dfs_path
+        assert isinstance(dfs_path, str)
+        logger.info("mkdir(%s)" % dfs_path)
+        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
+
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-mkdir", "-p", dfs_path]
+        returncode, output = self._run_cmd(cmd)
+        self._check_returncode(returncode, output)
+
+    @retry.Retry(
+        predicate=retry.if_exception_type(GOEDfsDeleteNotComplete),
+        deadline=DFS_RETRY_TIMEOUT,
+    )
+    def delete(self, dfs_path, recursive=False):
+        """Delete a file or directory and contents.
+
+        If cloud DFS then check the files are no longer visible
+        """
+        assert dfs_path
+        assert isinstance(dfs_path, str)
+        logger.info("delete(%s, %s)" % (dfs_path, recursive))
+        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
+
+        if recursive:
+            cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-rm", "-f", "-r", dfs_path]
+        else:
+            cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-rm", "-f", dfs_path]
+        returncode, output = self._run_cmd(cmd)
+        self._check_returncode(returncode, output)
+
+        if not self._dry_run:
+            scheme, _, _ = self._uri_component_split(dfs_path)
+            self._post_cloud_delete_wait(scheme)
+            if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER and self.stat(dfs_path):
+                self.debug("%s delete incomplete, retrying" % scheme)
+                raise GOEDfsDeleteNotComplete
+        return True
+
+    def rename(self, hdfs_src_path, hdfs_dst_path):
+        assert hdfs_src_path and hdfs_dst_path
+        logger.info("rename(%s, %s)" % (hdfs_src_path, hdfs_dst_path))
+        if not self._dry_run:
+            cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-mv", hdfs_src_path, hdfs_dst_path]
+            returncode, output = self._run_cmd(cmd)
+        else:
+            returncode, output = 0, []
+        self._check_returncode(returncode, output)
+
+    def rmdir(self, dfs_path, recursive=False):
+        assert dfs_path
+        assert isinstance(dfs_path, str)
+        logger.info("rmdir(%s, %s)" % (dfs_path, recursive))
+        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
+
+        if recursive:
+            return self.delete(dfs_path, recursive)
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-rmdir", dfs_path]
+        returncode, output = self._run_cmd(cmd)
+        self._check_returncode(returncode, output)
+        return True
+
+    def chmod(self, dfs_path, mode):
+        """mode in format rwx or g+w"""
+        assert dfs_path and mode and (re.match(r"^\d+$", mode) or re.match(r"^[ugo]+[+\-][rwx]+$", mode))
+        assert isinstance(dfs_path, str)
+        logger.info("chmod(%s, %s)" % (dfs_path, mode))
+        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
+
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-chmod", mode, dfs_path]
+        returncode, output = self._run_cmd(cmd)
+        self._check_returncode(returncode, output)
+
+    def chgrp(self, dfs_path, group):
+        assert dfs_path and group
+        assert isinstance(dfs_path, str)
+        logger.info("chgrp(%s, %s)" % (dfs_path, group))
+        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
+
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-chgrp", group, dfs_path]
+        returncode, output = self._run_cmd(cmd)
+        self._check_returncode(returncode, output)
+
+    def list_dir(self, dfs_path):
+        """Returns a list of directory contents as strings (not bytes)"""
+        assert dfs_path
+        assert isinstance(dfs_path, str)
+        logger.info("list_dir(%s)" % dfs_path)
+        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
+
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-ls", dfs_path]
+        returncode, output = self._run_cmd(cmd, force_run=True)
+        self._check_returncode(returncode, output)
+        return [_[_.find(b"/") :].strip().decode() for _ in output if self._valid_ls_line(_)]
+
+    def stat(self, dfs_path):
+        """we ran a successful command but have no files to report
+
+        only deriving file permissions and file type because it is unknown how reliable 'ls' format
+        is across versions/provider
+        further attributes can be derived in the future as needed
+        converting rwx style permissions to octal string to be consistent with webhdfs
+        Log the message, in many cases this will be a positive error, such as confirming a file doesn't
+        exist. However in some cases it could contain useful debug information, hence logging as debug
+        """
+        assert dfs_path
+        assert isinstance(dfs_path, str)
+        logger.info("stat(%s)" % dfs_path)
+        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
+
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-ls", "-d", dfs_path]
+        returncode, output = self._run_cmd(cmd, force_run=True)
+        if returncode == 0:
+            tidy_output = [_.strip().decode() for _ in output if self._valid_ls_line(_)]
+            if not tidy_output:
+                self.debug("Stat command: %s" % cmd)
+                self.debug("Stat raw text: %s" % output)
+                return None
+            tokens = tidy_output[0].split()
+            if tokens:
+                file_type = DFS_TYPE_DIRECTORY if tokens[0] and tokens[0][0] == "d" else DFS_TYPE_FILE
+                file_length = int(tokens[4]) if tokens[4] and is_number(tokens[4]) else None
+                return {
+                    "permission": self.convert_rwx_perms_to_oct_str(tokens[0]),
+                    "type": file_type,
+                    "length": file_length,
+                }
+        else:
+            self.debug("Stat command: %s" % cmd)
+            self.debug("Stat raw text: %s" % output)
+
+    def container_exists(self, scheme, container):
+        assert scheme and container
+        if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER:
+            return bool(self.stat(self.gen_uri(scheme, container, "")))
+        return False
+
+    def copy_from_local(self, local_path, dfs_path, overwrite=False):
+        """Two phase SCP to Hadoop node and then copy from local there.
+
+        Works in 2 steps, first scp file to Hadoop node and then invoke copyFromLocal
+        Even if copyFromLocal fails we still want to rm the temp file - no data left lying around
+        """
+        assert local_path
+        assert dfs_path
+        assert isinstance(dfs_path, str)
+        logger.info("copy_from_local(%s, %s)" % (local_path, dfs_path))
+        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
+
+        base_file = basename(local_path)
+        hadoop_temp_file = self._temp_file(base_file)
+
+        scp_cmd = self._scp_to(self._ssh_user, self._hdfs_host, local_path, hadoop_temp_file)
+        self.debug("SCP command: %s" % " ".join(scp_cmd))
+        returncode, output = self._run_cmd(scp_cmd)
+        self._check_returncode(returncode, output)
+
+        try:
+            cfl_opts = (["-f"] if overwrite else []) + [hadoop_temp_file, dfs_path]
+            cfl_cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-copyFromLocal"] + cfl_opts
+            self.debug("SSH command: %s" % " ".join(cfl_cmd))
+            returncode, output = self._run_cmd(cfl_cmd)
+            self._check_returncode(returncode, output)
+        finally:
+            rm_cmd = self._ssh(self._ssh_user, self._hdfs_host) + [
+                "rm",
+                "-f",
+                hadoop_temp_file,
+            ]
+            returncode, output = self._run_cmd(rm_cmd)
+            self._check_returncode(returncode, output)
+
+    def copy_to_local(self, dfs_path, local_path, overwrite=False):
+        """Two phase copy to local on Hadoop node and then SCP to current node.
+
+        Same user/host so no need for second phase
+        Phase 1: copy to local storage on Hadoop node
+        Phase 2: copy from Hadoop node to local node
+        Even if copyToLocal fails we still want to rm the temp file - no data left lying around
+        """
+        if self._can_short_circuit_ssh(self._ssh_user, self._hdfs_host):
+            hadoop_temp_file = local_path
+        else:
+            base_file = basename(local_path)
+            hadoop_temp_file = self._temp_file(base_file)
+
+        if file_exists(local_path) and not overwrite:
+            raise GOEDfsException("Cannot copy file over existing file: %s" % local_path)
+
+        try:
+            cfl_opts = [dfs_path, hadoop_temp_file]
+            cfl_cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-copyToLocal"] + cfl_opts
+            self.debug("SSH command: %s" % " ".join(cfl_cmd))
+            returncode, output = self._run_cmd(cfl_cmd)
+            self._check_returncode(returncode, output)
+
+            if not self._can_short_circuit_ssh(self._ssh_user, self._hdfs_host):
+                scp_cmd = self._scp_from(self._ssh_user, self._hdfs_host, hadoop_temp_file, local_path)
+                self.debug("SCP command: %s" % " ".join(scp_cmd))
+                returncode, output = self._run_cmd(scp_cmd)
+                self._check_returncode(returncode, output)
+        finally:
+            if not self._can_short_circuit_ssh(self._ssh_user, self._hdfs_host):
+                rm_cmd = self._ssh(self._ssh_user, self._hdfs_host) + [
+                    "rm",
+                    "-f",
+                    hadoop_temp_file,
+                ]
+                returncode, output = self._run_cmd(rm_cmd)
+                self._check_returncode(returncode, output)
+
+    def gen_uri(
+        self,
+        scheme,
+        container,
+        path_prefix,
+        backend_db=None,
+        table_name=None,
+        container_override=None,
+    ):
+        """Fall back to hdfs_data for backward compatibility"""
+        if not scheme or scheme == OFFLOAD_FS_SCHEME_INHERIT:
+            uri = gen_fs_uri(
+                self._hdfs_data,
+                self._db_path_suffix,
+                backend_db=backend_db,
+                table_name=table_name,
+            )
+        else:
+            prefix = self._hdfs_data if path_prefix is None else path_prefix
+            use_container = container if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER else None
+            uri = gen_fs_uri(
+                prefix,
+                self._db_path_suffix,
+                scheme=scheme,
+                container=container_override or use_container,
+                backend_db=backend_db,
+                table_name=table_name,
+            )
+        return uri
+
+    def read(self, dfs_path, as_str=False):
+        """Return contents of a file as a bytes object because we don't know anything about the contents"""
+        assert dfs_path
+        assert isinstance(dfs_path, str)
+        logger.info("read(%s)" % dfs_path)
+        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
+
+        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-cat", dfs_path]
+        returncode, output = self._run_cmd(cmd, force_run=True)
+        self._check_returncode(returncode, output)
+        content = b"".join(output) if output else b""
+        if as_str:
+            return content.decode()
+        return content
+
+    def write(self, dfs_path, data, overwrite=False):
+        """even if copy_from_local fails we still want to rm the temp file - no data left lying around"""
+        assert dfs_path
+        assert isinstance(dfs_path, str)
+        logger.info("write(%s, data, %s)" % (dfs_path, overwrite))
+        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
+
+        local_temp_file = self._temp_file()
+        write_mode = "wb" if isinstance(data, bytes) else "w"
+        with open(local_temp_file, write_mode) as fh:
+            fh.write(data)
+        try:
+            self.copy_from_local(local_temp_file, dfs_path, overwrite=overwrite)
+        finally:
+            rm_cmd = ["rm", "-f", local_temp_file]
+            returncode, output = self._run_cmd(rm_cmd)
+            self._check_returncode(returncode, output)
+
     def _ssh(self, ssh_user, host):
         if ssh_user == getuser() and host == "localhost":
             return []
@@ -119,7 +392,8 @@ class CliHdfs(GOEDfs):
         if returncode:
             self.log("Output: %s" % output)
             raise GOEDfsException(
-                'Required shell command failed with return code "%s"\n%s' % (returncode, b"\n".join(output))
+                'Required shell command failed with return code "%s"\n%s'
+                % (returncode, b"\n".join(output).decode(errors="replace"))
             )
 
     def _run_cmd(self, cmd, force_run=False):
@@ -132,10 +406,10 @@ class CliHdfs(GOEDfs):
             return 0, []
 
         with subprocess.Popen(cmd, stdout=PIPE, stderr=STDOUT) as proc:
+            assert proc.stdout is not None
             output = [_ for _ in proc.stdout if not self._ignorable_stderr(_)]
-            # TODO nj@2017-08-14 Python docs say wait() with stdout=PIPE is a bad idea
             cmd_returncode = proc.wait()
-            logger.debug("output: %s" % b"\n".join(output))
+            logger.debug("output: %s" % b"\n".join(output).decode(errors="replace"))
             logger.debug("returncode: %s" % cmd_returncode)
         return cmd_returncode, output
 
@@ -153,288 +427,3 @@ class CliHdfs(GOEDfs):
         "Pseudo-terminal will not be allocated..."
         """
         return True if stderr_line and b"Pseudo-terminal will not be allocated" in stderr_line else False
-
-    @staticmethod
-    def dfs_cmd(as_string=False):
-        """Return distribution appropriate 'hdfs dfs' command"""
-        dfs = ["hdfs", "dfs"]
-        if backend_distribution_default() == BACKEND_DISTRO_MAPR:
-            dfs = ["hadoop", "fs"]
-
-        if as_string:
-            dfs = " ".join(dfs)
-
-        return dfs
-
-    @property
-    def client(self):
-        logger.warning("Attempting to access 'client' in ssh based CliHdfs")
-
-    def mkdir(self, dfs_path):
-        assert dfs_path
-        assert isinstance(dfs_path, str)
-        logger.info("mkdir(%s)" % dfs_path)
-        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
-
-        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-mkdir", "-p", dfs_path]
-        returncode, output = self._run_cmd(cmd)
-        self._check_returncode(returncode, output)
-
-    @retry.Retry(
-        predicate=retry.if_exception_type(GOEDfsDeleteNotComplete),
-        deadline=DFS_RETRY_TIMEOUT,
-    )
-    def delete(self, dfs_path, recursive=False):
-        """Delete a file or directory and contents."""
-        assert dfs_path
-        assert isinstance(dfs_path, str)
-        logger.info("delete(%s, %s)" % (dfs_path, recursive))
-        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
-
-        if recursive:
-            cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-rm", "-f", "-r", dfs_path]
-        else:
-            cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-rm", "-f", dfs_path]
-        returncode, output = self._run_cmd(cmd)
-        self._check_returncode(returncode, output)
-
-        # If cloud DFS then check the files are no longer visible
-        if not self._dry_run:
-            scheme, _, _ = self._uri_component_split(dfs_path)
-            self._post_cloud_delete_wait(scheme)
-            if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER and self.stat(dfs_path):
-                self.debug("%s delete incomplete, retrying" % scheme)
-                raise GOEDfsDeleteNotComplete
-        return True
-
-    def rename(self, hdfs_src_path, hdfs_dst_path):
-        assert hdfs_src_path and hdfs_dst_path
-        logger.info("rename(%s, %s)" % (hdfs_src_path, hdfs_dst_path))
-        if not self._dry_run:
-            cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-mv", hdfs_src_path, hdfs_dst_path]
-            returncode, output = self._run_cmd(cmd)
-        else:
-            returncode, output = 0, []
-        self._check_returncode(returncode, output)
-
-    def rmdir(self, dfs_path, recursive=False):
-        assert dfs_path
-        assert isinstance(dfs_path, str)
-        logger.info("rmdir(%s, %s)" % (dfs_path, recursive))
-        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
-
-        if recursive:
-            return self.delete(dfs_path, recursive)
-        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-rmdir", dfs_path]
-        returncode, output = self._run_cmd(cmd)
-        self._check_returncode(returncode, output)
-        return True
-
-    def chmod(self, dfs_path, mode):
-        # mode in format rwx or g+w
-        assert dfs_path and mode and (re.match(r"^\d+$", mode) or re.match(r"^[ugo]+[+\-][rwx]+$", mode))
-        assert isinstance(dfs_path, str)
-        logger.info("chmod(%s, %s)" % (dfs_path, mode))
-        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
-
-        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-chmod", mode, dfs_path]
-        returncode, output = self._run_cmd(cmd)
-        self._check_returncode(returncode, output)
-
-    def chgrp(self, dfs_path, group):
-        assert dfs_path and group
-        assert isinstance(dfs_path, str)
-        logger.info("chgrp(%s, %s)" % (dfs_path, group))
-        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
-
-        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-chgrp", group, dfs_path]
-        returncode, output = self._run_cmd(cmd)
-        self._check_returncode(returncode, output)
-
-    # NOTE: this approach uses string processing that relies on '-ls' output being formatted such that
-    #       the absolute path of the entry appears at the end of each output line, and a forward slash
-    #       will never appear anywhere else in a given line.
-    def list_dir(self, dfs_path):
-        """Returns a list of directory contents as strings (not bytes)"""
-        assert dfs_path
-        assert isinstance(dfs_path, str)
-        logger.info("list_dir(%s)" % dfs_path)
-        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
-
-        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-ls", dfs_path]
-        returncode, output = self._run_cmd(cmd, force_run=True)
-        self._check_returncode(returncode, output)
-        return [_[_.find(b"/") :].strip().decode() for _ in output if self._valid_ls_line(_)]
-
-    def stat(self, dfs_path):
-        assert dfs_path
-        assert isinstance(dfs_path, str)
-        logger.info("stat(%s)" % dfs_path)
-        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
-
-        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-ls", "-d", dfs_path]
-        returncode, output = self._run_cmd(cmd, force_run=True)
-        if returncode == 0:
-            tidy_output = [_.strip().decode() for _ in output if self._valid_ls_line(_)]
-            if not tidy_output:
-                # we ran a successful command but have no files to report
-                self.debug("Stat command: %s" % cmd)
-                self.debug("Stat raw text: %s" % output)
-                return None
-            tokens = tidy_output[0].split()
-            if tokens:
-                # only deriving file permissions and file type because it is unknown how reliable 'ls' format
-                # is across versions/provider
-                # further attributes can be derived in the future as needed
-                # converting rwx style permissions to octal string to be consistent with webhdfs
-                file_type = DFS_TYPE_DIRECTORY if tokens[0] and tokens[0][0] == "d" else DFS_TYPE_FILE
-                file_length = int(tokens[4]) if tokens[4] and is_number(tokens[4]) else None
-                return {
-                    "permission": self.convert_rwx_perms_to_oct_str(tokens[0]),
-                    "type": file_type,
-                    "length": file_length,
-                }
-        else:
-            # Log the message, in many cases this will be a positive error, such as confirming a file doesn't
-            # exist. However in some cases it could contain useful debug information, hence logging as debug
-            self.debug("Stat command: %s" % cmd)
-            self.debug("Stat raw text: %s" % output)
-
-    def container_exists(self, scheme, container):
-        assert scheme and container
-        if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER:
-            return bool(self.stat(self.gen_uri(scheme, container, "")))
-        return False
-
-    def copy_from_local(self, local_path, dfs_path, overwrite=False):
-        """Two phase SCP to Hadoop node and then copy from local there."""
-        assert local_path
-        assert dfs_path
-        assert isinstance(dfs_path, str)
-        logger.info("copy_from_local(%s, %s)" % (local_path, dfs_path))
-        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
-
-        # Works in 2 steps, first scp file to Hadoop node and then invoke copyFromLocal
-        base_file = basename(local_path)
-        hadoop_temp_file = self._temp_file(base_file)
-
-        scp_cmd = self._scp_to(self._ssh_user, self._hdfs_host, local_path, hadoop_temp_file)
-        self.debug("SCP command: %s" % " ".join(scp_cmd))
-        returncode, output = self._run_cmd(scp_cmd)
-        self._check_returncode(returncode, output)
-
-        try:
-            cfl_opts = (["-f"] if overwrite else []) + [hadoop_temp_file, dfs_path]
-            cfl_cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-copyFromLocal"] + cfl_opts
-            self.debug("SSH command: %s" % " ".join(cfl_cmd))
-            returncode, output = self._run_cmd(cfl_cmd)
-            self._check_returncode(returncode, output)
-        finally:
-            # Even if copyFromLocal fails we still want to rm the temp file - no data left lying around
-            rm_cmd = self._ssh(self._ssh_user, self._hdfs_host) + [
-                "rm",
-                "-f",
-                hadoop_temp_file,
-            ]
-            returncode, output = self._run_cmd(rm_cmd)
-            self._check_returncode(returncode, output)
-
-    def copy_to_local(self, dfs_path, local_path, overwrite=False):
-        """Two phase copy to local on Hadoop node and then SCP to current node."""
-        if self._can_short_circuit_ssh(self._ssh_user, self._hdfs_host):
-            # Same user/host so no need for second phase
-            hadoop_temp_file = local_path
-        else:
-            base_file = basename(local_path)
-            hadoop_temp_file = self._temp_file(base_file)
-
-        if file_exists(local_path) and not overwrite:
-            raise GOEDfsException("Cannot copy file over existing file: %s" % local_path)
-
-        try:
-            # Phase 1: copy to local storage on Hadoop node
-            cfl_opts = [dfs_path, hadoop_temp_file]
-            cfl_cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-copyToLocal"] + cfl_opts
-            self.debug("SSH command: %s" % " ".join(cfl_cmd))
-            returncode, output = self._run_cmd(cfl_cmd)
-            self._check_returncode(returncode, output)
-
-            # Phase 2: copy from Hadoop node to local node
-            if not self._can_short_circuit_ssh(self._ssh_user, self._hdfs_host):
-                scp_cmd = self._scp_from(self._ssh_user, self._hdfs_host, hadoop_temp_file, local_path)
-                self.debug("SCP command: %s" % " ".join(scp_cmd))
-                returncode, output = self._run_cmd(scp_cmd)
-                self._check_returncode(returncode, output)
-        finally:
-            if not self._can_short_circuit_ssh(self._ssh_user, self._hdfs_host):
-                # Even if copyToLocal fails we still want to rm the temp file - no data left lying around
-                rm_cmd = self._ssh(self._ssh_user, self._hdfs_host) + [
-                    "rm",
-                    "-f",
-                    hadoop_temp_file,
-                ]
-                returncode, output = self._run_cmd(rm_cmd)
-                self._check_returncode(returncode, output)
-
-    def gen_uri(
-        self,
-        scheme,
-        container,
-        path_prefix,
-        backend_db=None,
-        table_name=None,
-        container_override=None,
-    ):
-        if not scheme or scheme == OFFLOAD_FS_SCHEME_INHERIT:
-            # Fall back to hdfs_data for backward compatibility
-            uri = gen_fs_uri(
-                self._hdfs_data,
-                self._db_path_suffix,
-                backend_db=backend_db,
-                table_name=table_name,
-            )
-        else:
-            prefix = self._hdfs_data if path_prefix is None else path_prefix
-            use_container = container if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER else None
-            uri = gen_fs_uri(
-                prefix,
-                self._db_path_suffix,
-                scheme=scheme,
-                container=container_override or use_container,
-                backend_db=backend_db,
-                table_name=table_name,
-            )
-        return uri
-
-    def read(self, dfs_path, as_str=False):
-        """Return contents of a file as a bytes object because we don't know anything about the contents"""
-        assert dfs_path
-        assert isinstance(dfs_path, str)
-        logger.info("read(%s)" % dfs_path)
-        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
-
-        cmd = self._ssh(self._ssh_user, self._hdfs_host) + CliHdfs.dfs_cmd() + ["-cat", dfs_path]
-        returncode, output = self._run_cmd(cmd, force_run=True)
-        self._check_returncode(returncode, output)
-        content = b"".join(output) if output else b""
-        if as_str:
-            content = content.decode()
-        return content
-
-    def write(self, dfs_path, data, overwrite=False):
-        assert dfs_path
-        assert isinstance(dfs_path, str)
-        logger.info("write(%s, data, %s)" % (dfs_path, overwrite))
-        dfs_path = self._normalize_hdfs_path(self._ssh_user, self._hdfs_host, dfs_path)
-
-        local_temp_file = self._temp_file()
-        write_mode = "wb" if isinstance(data, bytes) else "w"
-        with open(local_temp_file, write_mode) as fh:
-            fh.write(data)
-        try:
-            self.copy_from_local(local_temp_file, dfs_path, overwrite=overwrite)
-        finally:
-            # even if copy_from_local fails we still want to rm the temp file - no data left lying around
-            rm_cmd = ["rm", "-f", local_temp_file]
-            returncode, output = self._run_cmd(rm_cmd)
-            self._check_returncode(returncode, output)

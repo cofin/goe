@@ -29,23 +29,24 @@ DDL_FILE_HEADER_TEMPLATE = f"""-- {DDL_FILE_HEADER}
 def generate_ddl_file_path(owner: str, table_name: str, config: "OrchestrationConfig") -> str:
     """Generates a default path when DDL file option == AUTO."""
     file_name = standard_file_name(f"{owner}.{table_name}", extension=".sql", with_datetime=True)
-    log_path = os.path.join(config.log_path, file_name)
+    log_path = os.path.join(config.log_path or "", file_name)
     return log_path
 
 
-def validate_ddl_file(ddl_file: str):
+def validate_ddl_file(ddl_file: str) -> None:
     """Simple validation that a value supplied via ddl_file looks good.
 
     Only local paths are fully validated at this point because paths to cloud storage are
     prefixes and may not exist until the object is created.
+
+    Simplistic check that the file path looks like a cloud storage one.
+    We don't need to know the scheme right now, just validation that it is supported.
+    Assume local filesystem, we can validate the path.
     """
-    # Simplistic check that the file path looks like a cloud storage one.
     if ":" in ddl_file:
-        # We don't need to know the scheme right now, just validation that it is supported.
         _ = get_scheme_from_location_uri(ddl_file)
         return
 
-    # Assume local filesystem, we can validate the path.
     if os.path.exists(ddl_file):
         raise OffloadOptionError(f"DDL path already exists: {ddl_file}")
 
@@ -59,8 +60,11 @@ def normalise_ddl_file(
     offload_operation: "OffloadOperation",
     config: "OrchestrationConfig",
     messages: "OffloadMessages",
-):
-    """Validates path pointed to by ddl_file and generates a new path if AUTO. Mutates options."""
+) -> str | None:
+    """Validates path pointed to by ddl_file and generates a new path if AUTO. Mutates options.
+
+    Use an auto-generated path.
+    """
     if offload_operation.ddl_file:
         offload_operation.ddl_file = offload_operation.ddl_file.strip()
     else:
@@ -71,13 +75,13 @@ def normalise_ddl_file(
         offload_operation.execute = False
 
     if offload_operation.ddl_file.upper() == offload_constants.DDL_FILE_AUTO:
-        # Use an auto-generated path.
         offload_operation.ddl_file = generate_ddl_file_path(
             offload_operation.owner, offload_operation.table_name, config
         )
         return None
 
     validate_ddl_file(offload_operation.ddl_file)
+    return None
 
 
 def ddl_file_header() -> str:
@@ -89,21 +93,23 @@ def write_ddl_to_ddl_file(
     ddl: list,
     config: "OrchestrationConfig",
     messages: "OffloadMessages",
-):
-    """Take a list of DDL strings and write them to a file"""
+) -> None:
+    """Take a list of DDL strings and write them to a file
+
+    Cloud storage.
+    dry_run=False below because, even in preview mode we need to write the file.
+    Local filesystem.
+    """
     assert ddl_file
     ddl_str = "\n".join(ddl)
     header = ddl_file_header()
     ddl_file_contents = f"{header}\n{ddl_str}\n"
     if ":" in ddl_file:
-        # Cloud storage.
-        # dry_run=False below because, even in preview mode we need to write the file.
         dfs_client = get_dfs_from_options(config, messages, dry_run=False)
         if dfs_client.stat(ddl_file):
             raise OffloadOptionError(f"DDL path already exists: {ddl_file}")
         dfs_client.write(ddl_file, ddl_file_contents)
     else:
-        # Local filesystem.
         with open(ddl_file, "w") as f:
             f.write(ddl_file_contents)
     messages.notice(offload_constants.DDL_FILE_WRITE_MESSAGE_TEMPLATE.format(ddl_file))

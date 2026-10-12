@@ -16,7 +16,7 @@ be private and using underscore naming for "global" functions seemed wrong.
 import decimal
 import logging
 import re
-from datetime import date
+from datetime import date, datetime
 
 from numpy import datetime64
 
@@ -33,17 +33,7 @@ class SyntheticPartitionLiteralException(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
 
@@ -60,23 +50,36 @@ def gen_number_integral_floor_literal(number_value, granularity):
     return (floored_value * granularity).to_integral_value()
 
 
-###########################################################################
-# SyntheticPartitionLiteral
-###########################################################################
-
-
 class SyntheticPartitionLiteral:
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    @staticmethod
+    def gen_synthetic_literal_function(partition_column, table_columns):
+        """Generate a Python function which can be used to create a synthetic partition literal
+        partition_column can be a column name, which must exist in table_columns, or a column object.
+        """
+        part_col_obj: ColumnMetadataInterface | None
+        if isinstance(partition_column, ColumnMetadataInterface):
+            part_col_obj = partition_column
+        else:
+            part_col_obj = match_table_column(partition_column, table_columns)
+        assert part_col_obj is not None
+        source_column_name = part_col_obj.partition_info.source_column_name
+        source_column = match_table_column(source_column_name, table_columns)
+        return SyntheticPartitionLiteral._gen_synthetic_literal_function(part_col_obj, source_column)
+
+    @staticmethod
+    def gen_synthetic_literal(partition_column, table_columns, source_value):
+        conv_fn = SyntheticPartitionLiteral.gen_synthetic_literal_function(partition_column, table_columns)
+        return conv_fn(source_value)
 
     @staticmethod
     def _gen_date_as_string_literal(date_value, granularity):
-        """Python literal matching the outcome of BackendTableInterface._gen_synthetic_part_date_as_string_sql_expr()"""
+        """Python literal matching the outcome of BackendTableInterface._gen_synthetic_part_date_as_string_sql_expr()
+
+        Compare to None because Unix epoch is False in datetime64
+        """
         assert granularity in PART_COL_DATE_GRANULARITIES, "Unexpected granularity: %s" % granularity
 
         if date_value is None:
-            # Compare to None because Unix epoch is False in datetime64
             return None
 
         assert isinstance(date_value, (date, datetime64))
@@ -96,21 +99,29 @@ class SyntheticPartitionLiteral:
     def _gen_date_truncated_literal(date_value, granularity):
         """Python literal matching the outcome of
         BackendTableInterface._gen_synthetic_partition_date_truncated_sql_expr()
+
+        Use astype() to truncate to granularity and then switch back to day granularity
         """
         assert isinstance(date_value, (date, datetime64)), "%s is not of type (date, datetime64)" % type(date_value)
         assert granularity in PART_COL_DATE_GRANULARITIES, "Unexpected granularity: %s" % granularity
 
+        if isinstance(date_value, datetime):
+            date_truncated: date = date_value.replace(hour=0, minute=0, second=0, microsecond=0)
+            if granularity == PART_COL_GRANULARITY_MONTH:
+                date_truncated = date_truncated.replace(day=1)
+            elif granularity == PART_COL_GRANULARITY_YEAR:
+                date_truncated = date_truncated.replace(month=1, day=1)
+            return date_truncated
         if isinstance(date_value, date):
-            date_truncated = date_value.replace(hour=0, minute=0, second=0, microsecond=0)
+            date_truncated = date_value
             if granularity == PART_COL_GRANULARITY_MONTH:
                 date_truncated = date_truncated.replace(day=1)
             elif granularity == PART_COL_GRANULARITY_YEAR:
                 date_truncated = date_truncated.replace(month=1, day=1)
             return date_truncated
         if isinstance(date_value, datetime64):
-            # Use astype() to truncate to granularity and then switch back to day granularity
-            date_truncated = date_value.astype(f"datetime64[{granularity}]").astype("datetime64[D]")
-            return date_truncated
+            date_truncated_64 = date_value.astype(f"datetime64[{granularity}]").astype("datetime64[D]")
+            return date_truncated_64
 
     @staticmethod
     def _gen_number_integral_literal(number_value, granularity):
@@ -172,25 +183,3 @@ class SyntheticPartitionLiteral:
         else:
             raise NotImplementedError("Unsupported synthetic partition column data type: %s" % source_column.data_type)
         return partition_fn
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    @staticmethod
-    def gen_synthetic_literal_function(partition_column, table_columns):
-        """Generate a Python function which can be used to create a synthetic partition literal
-        partition_column can be a column name, which must exist in table_columns, or a column object.
-        """
-        if isinstance(partition_column, ColumnMetadataInterface):
-            part_col_obj = partition_column
-        else:
-            part_col_obj = match_table_column(partition_column, table_columns)
-        source_column_name = part_col_obj.partition_info.source_column_name
-        source_column = match_table_column(source_column_name, table_columns)
-        return SyntheticPartitionLiteral._gen_synthetic_literal_function(part_col_obj, source_column)
-
-    @staticmethod
-    def gen_synthetic_literal(partition_column, table_columns, source_value):
-        conv_fn = SyntheticPartitionLiteral.gen_synthetic_literal_function(partition_column, table_columns)
-        return conv_fn(source_value)

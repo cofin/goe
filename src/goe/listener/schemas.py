@@ -8,6 +8,11 @@ from typing import Any
 import msgspec
 from msgspec import field
 
+from goe.config.options import (
+    LISTENER_OFFLOAD_CSV_ALIASES,
+    LISTENER_OFFLOAD_RENAME_ALIASES,
+    OffloadOperationOptions,
+)
 from goe.lib.schemas import BaseStruct
 
 __all__ = (
@@ -261,26 +266,13 @@ class OffloadOptions(BaseStruct):
         """Convert OffloadOptions into a normalized dictionary restricted to EXPECTED_OFFLOAD_ARGS."""
         raw = {k: v for k, v in msgspec.structs.asdict(self).items() if v is not None}
 
-        alias_map = {
-            "target_table_name": "target_owner_name",
-            "bucket_hash_column": "bucket_hash_col",
-            "offload_chunk_count": "max_offload_chunk_count",
-            "allow_floating_point": "allow_floating_point_conversions",
-            "compress_backend_table": "compress_load_table",
-            "replace_hybrid_view": "reset_hybrid_view",
-        }
-        for alias_key, canonical_key in alias_map.items():
+        for alias_key, canonical_key in LISTENER_OFFLOAD_RENAME_ALIASES.items():
             if alias_key in raw and canonical_key not in raw:
                 raw[canonical_key] = raw.pop(alias_key)
             else:
                 raw.pop(alias_key, None)
 
-        csv_alias_map = {
-            "partitions": "partition_names_csv",
-            "sort_columns": "sort_columns_csv",
-            "partition_functions": "offload_partition_functions",
-        }
-        for alias_key, canonical_key in csv_alias_map.items():
+        for alias_key, canonical_key in LISTENER_OFFLOAD_CSV_ALIASES.items():
             if alias_key in raw and canonical_key not in raw:
                 val = raw.pop(alias_key)
                 raw[canonical_key] = ",".join(val) if isinstance(val, list) else str(val)
@@ -300,6 +292,10 @@ class OffloadOptions(BaseStruct):
         raw.pop("quiet", None)
         raw.pop("verbose", None)
         return raw
+
+    def to_operation_options(self) -> OffloadOperationOptions:
+        """Convert OffloadOptions into an OffloadOperationOptions instance hydrated with canonical defaults."""
+        return OffloadOperationOptions.from_mapping(self.to_params_dict())
 
 
 class CommandScheduled(BaseStruct):

@@ -3,6 +3,8 @@
 
 """data_type_controls: Library of functions used in GOE related to offload transport."""
 
+from typing import Any
+
 from goe.offload.offload_constants import (
     DBTYPE_HIVE,
     OFFLOAD_STATS_METHOD_COPY,
@@ -15,7 +17,9 @@ from goe.offload.operation.stats_controls import copy_rdbms_stats_to_backend
 from goe.orchestration import command_steps
 
 
-def announce_offload_chunk(chunk, offload_operation, messages: OffloadMessages, materialize=False):
+def announce_offload_chunk(
+    chunk: Any, offload_operation: Any, messages: OffloadMessages, materialize: bool = False
+) -> None:
     messages.log("")
     if materialize:
         messages.log("Materializing chunk", ansi_code="underline")
@@ -29,16 +33,19 @@ def announce_offload_chunk(chunk, offload_operation, messages: OffloadMessages, 
 
 
 def offload_data_to_target(
-    data_transport_client,
-    offload_source_table,
-    offload_target_table,
-    offload_operation,
-    offload_options,
-    source_data_client,
+    data_transport_client: Any,
+    offload_source_table: Any,
+    offload_target_table: Any,
+    offload_operation: Any,
+    offload_options: Any,
+    source_data_client: Any,
     messages: OffloadMessages,
-):
+) -> Any:
     """Offloads the data via whatever means is appropriate (including validation steps).
     Returns the number of rows offloaded, None if nothing to do (i.e. non execute mode).
+
+    exit early, skipping any stats steps (GOE-1300)
+    sync below is True when we are on the final insert (i.e. remaining partitions is empty)
     """
 
     def progress_message(total_partitions, chunk_partitions, todo_after_chunk):
@@ -77,7 +84,6 @@ def offload_data_to_target(
 
     if discarded_all_partitions:
         messages.log("No partitions to offload")
-        # exit early, skipping any stats steps (GOE-1300)
         return 0
     if source_data_client.partitions_to_offload.count() > 0:
         for i, (chunk, remaining) in enumerate(source_data_client.get_partitions_to_offload_chunks()):
@@ -87,7 +93,6 @@ def offload_data_to_target(
                 chunk.count(),
                 remaining.count(),
             )
-            # sync below is True when we are on the final insert (i.e. remaining partitions is empty)
             rows_imported = transport_and_load_offload_chunk_fn(
                 partition_chunk=chunk, chunk_count=i, sync=(not remaining.count())
             )

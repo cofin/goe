@@ -15,10 +15,6 @@ from goe.offload.offload_constants import (
 )
 from goe.offload.offload_messages import VVERBOSE
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 JAVA_PRIMITIVE_BOOLEAN = "Boolean"
 JAVA_PRIMITIVE_DOUBLE = "Double"
 JAVA_PRIMITIVE_FLOAT = "Float"
@@ -28,13 +24,7 @@ JAVA_PRIMITIVE_SHORT = "Short"
 JAVA_PRIMITIVE_STRING = "String"
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# OffloadStagingFileInterface
-###########################################################################
 
 
 class OffloadStagingFileInterface(metaclass=ABCMeta):
@@ -50,6 +40,7 @@ class OffloadStagingFileInterface(metaclass=ABCMeta):
         messages,
         dry_run=False,
     ):
+        """cache parameters in state"""
         assert load_db_name and table_name
         assert staging_file_format in (
             FILE_STORAGE_FORMAT_AVRO,
@@ -61,7 +52,6 @@ class OffloadStagingFileInterface(metaclass=ABCMeta):
         assert canonical_columns
         assert valid_column_list(canonical_columns)
 
-        # cache parameters in state
         self.load_db_name = load_db_name.lower()
         self.table_name = table_name.lower()
         self.file_format = staging_file_format
@@ -72,9 +62,39 @@ class OffloadStagingFileInterface(metaclass=ABCMeta):
 
         self._staging_columns = None
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def get_staging_columns(self):
+        """Return the list of columns appropriate for the staging file format, e.g. AvroColumn()s or ParquetColumn()s"""
+        if self._staging_columns is None:
+            self._staging_columns = self._map_from_canonical_columns()
+        return self._staging_columns
+
+    def get_canonical_staging_columns(self, use_staging_file_names=False):
+        """Return a list of canonical columns generated from staging columns.
+        This is different to the canonical columns used outside of offload transport as many columns are staged
+        as strings.
+        """
+        return [
+            self.to_canonical_column(staging_column, use_staging_file_name=use_staging_file_names)
+            for staging_column in self.get_staging_columns()
+        ]
+
+    @abstractmethod
+    def from_canonical_column(self, column):
+        """Translate an internal GOE column to a staging file column"""
+
+    @abstractmethod
+    def to_canonical_column(self, column, use_staging_file_name=False):
+        """Translate a staging file column to an internal GOE column"""
+
+    @abstractmethod
+    def get_java_primitive(self, staging_column):
+        """Return a java primitive for a staging column which will be used by Sqoop/Spark
+        when unloading data.
+        """
+
+    @abstractmethod
+    def get_file_schema_json(self, as_string=True):
+        pass
 
     def _log(self, msg, detail=None):
         self._messages.log(msg, detail=detail)
@@ -96,45 +116,3 @@ class OffloadStagingFileInterface(metaclass=ABCMeta):
         self._log("Staging columns:", detail=VVERBOSE)
         [self._log(str(_), detail=VVERBOSE) for _ in staging_columns]
         return staging_columns
-
-    # Enforced private methods
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def get_staging_columns(self):
-        """Return the list of columns appropriate for the staging file format, e.g. AvroColumn()s or ParquetColumn()s"""
-        if self._staging_columns is None:
-            self._staging_columns = self._map_from_canonical_columns()
-        return self._staging_columns
-
-    def get_canonical_staging_columns(self, use_staging_file_names=False):
-        """Return a list of canonical columns generated from staging columns.
-        This is different to the canonical columns used outside of offload transport as many columns are staged
-        as strings.
-        """
-        return [
-            self.to_canonical_column(staging_column, use_staging_file_name=use_staging_file_names)
-            for staging_column in self.get_staging_columns()
-        ]
-
-    # Enforced methods/properties
-
-    @abstractmethod
-    def from_canonical_column(self, column):
-        """Translate an internal GOE column to a staging file column"""
-
-    @abstractmethod
-    def to_canonical_column(self, column):
-        """Translate a staging file column to an internal GOE column"""
-
-    @abstractmethod
-    def get_java_primitive(self, staging_column):
-        """Return a java primitive for a staging column which will be used by Sqoop/Spark
-        when unloading data.
-        """
-
-    @abstractmethod
-    def get_file_schema_json(self, as_string=True):
-        pass

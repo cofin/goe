@@ -3,7 +3,8 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import TYPE_CHECKING
+
+from typing import TYPE_CHECKING, Any
 
 from goe.filesystem.goe_dfs import (
     AZURE_OFFLOAD_FS_SCHEMES,
@@ -20,10 +21,10 @@ if TYPE_CHECKING:
 
 def get_dfs_from_options(
     config: "OrchestrationConfig",
-    messages=None,
-    force_ssh=False,
-    dry_run=True,
-    do_not_connect=False,
+    messages: Any = None,
+    force_ssh: bool = False,
+    dry_run: bool = True,
+    do_not_connect: bool = False,
 ) -> "GOEDfs":
     """Helper function to get an appropriate GOEDfs object based on offload options."""
     if config.backend_distribution in HADOOP_BASED_BACKEND_DISTRIBUTIONS:

@@ -1,12 +1,10 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-# Standard Library
 import logging
 import logging.handlers
 from logging import Logger as BaseLogger
 
-# Third Party Libraries
 from gunicorn.glogging import Logger as GunciornLogger
 
 
@@ -16,14 +14,14 @@ class LogFormatter(logging.Formatter):
     red = "\x1b[31;20m"
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
-    format = "[%(asctime)s] [%(levelname)s ]    %(message)s [%(process)s]"
+    log_format = "[%(asctime)s] [%(levelname)s ]    %(message)s [%(process)s]"
 
     FORMATS = {
-        logging.DEBUG: grey + format + reset,
-        logging.INFO: grey + format + reset,
-        logging.WARNING: yellow + format + reset,
-        logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_red + format + reset,
+        logging.DEBUG: grey + log_format + reset,
+        logging.INFO: grey + log_format + reset,
+        logging.WARNING: yellow + log_format + reset,
+        logging.ERROR: red + log_format + reset,
+        logging.CRITICAL: bold_red + log_format + reset,
     }
 
     def format(self, record):
@@ -48,7 +46,6 @@ class StubbedGunicornLogger(GunciornLogger):
         self.access_logger = logging.getLogger("gunicorn.access")
         self.access_logger.addHandler(HANDLER)
         self.error_logger.setLevel("ERROR")
-        # self.access_logger.setLevel(str(settings.server.log_level).upper())
 
 
 class Logger:

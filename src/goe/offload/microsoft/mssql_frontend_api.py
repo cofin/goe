@@ -7,17 +7,14 @@
 Implements abstract methods from FrontendApiInterface.
 """
 
-# Standard Library
 import logging
 from datetime import datetime
 from textwrap import dedent
 from typing import Any
 
-# Third Party Libraries
 import pymssql
 from numpy import datetime64
 
-# GOE
 from goe.offload.frontend_api import (
     FETCH_ACTION_ALL,
     FETCH_ACTION_CURSOR,
@@ -34,34 +31,26 @@ from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.orchestration.execution_id import ExecutionId
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
-
-###############################################################################
-# CONSTANTS
-###############################################################################
 
 MSSQL_MAX_TABLE_NAME_LENGTH = 128
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
 def setup_mssql_session(server, port, database, username, password, appname=FRONTEND_TRACE_MODULE):
-    """Take a set of connection properties and return a SQL Server connection"""
+    """Take a set of connection properties and return a SQL Server connection
+
+    Must always use fetchall() - http://pymssql.org/en/latest/pymssql_examples.html#important-note-about-cursors
+    Setting conn_properties='' in order to connect to Azure. Left in as MSSQL is not production and it took me ages
+    to find the SO note:
+    https://stackoverflow.com/questions/52418707/connect-to-sybase-data-base-using-python-3-6-and-pymssql
+    """
     assert server
     assert port
     assert database
     assert username
     assert password
-    # Must always use fetchall() - http://pymssql.org/en/latest/pymssql_examples.html#important-note-about-cursors
     logger.debug('Connecting to DB "%s" as %s' % (database, username))
-    # Setting conn_properties='' in order to connect to Azure. Left in as MSSQL is not production and it took me ages
-    # to find the SO note:
-    #   https://stackoverflow.com/questions/52418707/connect-to-sybase-data-base-using-python-3-6-and-pymssql
     db_conn = pymssql.connect(
         server=server,
         user=username,
@@ -72,11 +61,6 @@ def setup_mssql_session(server, port, database, username, password, appname=FRON
         conn_properties="",
     )
     return db_conn
-
-
-###########################################################################
-# MSSQLFrontendApi
-###########################################################################
 
 
 class MSSQLFrontendApi(FrontendApiInterface):
@@ -93,7 +77,12 @@ class MSSQLFrontendApi(FrontendApiInterface):
         do_not_connect=False,
         trace_action=None,
     ):
-        """Standard CONSTRUCTOR"""
+        """Standard CONSTRUCTOR
+
+        Unit testing requires no db connection
+        Be careful caching in state, only cache values that cannot change for a different set of inputs
+        such as for a different db_user or table_name.
+        """
         super().__init__(
             connection_options,
             frontend_type,
@@ -112,11 +101,8 @@ class MSSQLFrontendApi(FrontendApiInterface):
         self._db_conn = None
         self._db_curs = None
         if not do_not_connect:
-            # Unit testing requires no db connection
             self._connect()
 
-        # Be careful caching in state, only cache values that cannot change for a different set of inputs
-        # such as for a different db_user or table_name.
         self._instance_compatible = None
         self._max_table_name_length = None
 
@@ -127,21 +113,16 @@ class MSSQLFrontendApi(FrontendApiInterface):
         except Exception:
             pass
 
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def close(self, force=False):
         self._disconnect(force=force)
 
-    def agg_validate_sample_column_names(self, schema, table_name, num_required: int = 5) -> list:
+    def agg_validate_sample_column_names(self, schema: str, table_name: str, num_required: int = 5) -> list[str]:
         raise NotImplementedError("MSSQL agg_validate_sample_column_names() not implemented.")
 
     def create_new_connection(self, user_name, user_password, trace_action_override=None):
         self._debug("Making new connection with user %s" % user_name)
         server, port, database = extract_connection_details_from_dsn(self._connection_options.rdbms_dsn)
         client = setup_mssql_session(server, port, database, user_name, user_password)
-        # client.autocommit = True
         return client
 
     def enclose_identifier(self, identifier):
@@ -190,8 +171,6 @@ class MSSQLFrontendApi(FrontendApiInterface):
         return MSSQL_TYPE_VARCHAR
 
     def get_columns(self, schema, table_name):
-        # TODO: byte_length - is this the same as Oracle query: CHARACTER_MAXIMUM_LENGTH / CHARACTER_OCTET_LENGTH
-        # TODO: hidden_column - do we have the concept of hidden_columns in MSSQL? If not remove from MSSQLColumn.from_mssql
         q = """
                     SELECT column_name
                     ,      ordinal_position                                 AS column_id
@@ -216,8 +195,6 @@ class MSSQLFrontendApi(FrontendApiInterface):
         return cols
 
     def get_current_scn(self) -> int:
-        # TODO: Is min_active_rowversion() for database equivalent to v$database.current_scn?
-        # https://www.mssqltips.com/sqlservertip/3423/sql-server-rowversion-functions-minactiverowversion-vs-dbts/
         raise NotImplementedError("MSSQL get_current_scn not implemented.")
 
     def get_db_unique_name(self) -> str:
@@ -228,8 +205,6 @@ class MSSQLFrontendApi(FrontendApiInterface):
         assert column_names
         if isinstance(column_names, str):
             column_names = [column_names]
-        projection = ",".join([self.enclose_identifier(_) for _ in column_names])
-        order_clause = f" ORDER BY {projection}" if order_results else ""
 
         raise NotImplementedError("MSSQL get_distinct_column_values not implemented.")
 
@@ -346,7 +321,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
     def split_partition_high_value_string(self, hv_string):
         raise NotImplementedError("MSSQL split_partition_high_value_string not implemented.")
 
-    def schema_exists(self, schema) -> bool:
+    def schema_exists(self, schema: str) -> bool:
         sql = dedent(
             """\
                      SELECT schema_name
@@ -356,7 +331,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
         row = self.execute_query_fetch_one(sql, query_params=(schema,), log_level=VVERBOSE)
         return bool(row)
 
-    def table_exists(self, schema, table_name) -> bool:
+    def table_exists(self, schema: str, table_name: str) -> bool:
         sql = dedent(
             """\
                      SELECT table_name
@@ -368,14 +343,14 @@ class MSSQLFrontendApi(FrontendApiInterface):
         row = self.execute_query_fetch_one(sql, query_params=(schema, table_name), log_level=VVERBOSE)
         return bool(row)
 
-    def to_frontend_literal(self, py_val, data_type=None) -> str:
+    def to_frontend_literal(self, py_val: Any, data_type: str | None = None) -> str:
         self._debug("Formatting %s literal: %s" % (type(py_val), repr(py_val)))
         self._debug("For data type: %s" % data_type)
         new_py_val = SynapseLiteral.format_literal(py_val, data_type=data_type)
         self._debug("Final %s literal: %s" % (type(py_val), str(new_py_val)))
         return new_py_val
 
-    def view_exists(self, schema, view_name) -> bool:
+    def view_exists(self, schema: str, view_name: str) -> bool:
         sql = dedent(
             """\
                      SELECT table_name
@@ -386,10 +361,6 @@ class MSSQLFrontendApi(FrontendApiInterface):
         )
         row = self.execute_query_fetch_one(sql, query_params=(schema, view_name), log_level=VVERBOSE)
         return bool(row)
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
 
     def _close_cursor(self):
         if self._db_conn and self._db_curs:
@@ -411,11 +382,11 @@ class MSSQLFrontendApi(FrontendApiInterface):
 
     def _create_table_sql_text(
         self,
-        schema,
-        table_name,
-        column_list,
-        partition_column_names,
-        table_properties=None,
+        schema: Any,
+        table_name: Any,
+        column_list: Any,
+        partition_column_names: Any,
+        table_properties: Any = None,
     ) -> str:
         """This is missing a lot compared to the backend Synapse equivalent, lots of scope for improvement."""
         if table_properties:
@@ -440,7 +411,6 @@ class MSSQLFrontendApi(FrontendApiInterface):
     def _disconnect(self, force=False):
         self._debug("Disconnecting from DB") if logger else None
         if not self._existing_connection or force:
-            # Only close a connection we created
             if self._db_curs:
                 self._close_cursor()
             try:
@@ -465,13 +435,14 @@ class MSSQLFrontendApi(FrontendApiInterface):
         assert sql
         assert isinstance(sql, (str, list))
         self._open_cursor()
-        run_opts = []  # self._execute_session_options(query_options, log_level=log_level)
+        run_opts: list[Any] = []
         run_sqls = []
         sqls = [sql] if isinstance(sql, str) else sql
         for i, run_sql in enumerate(sqls):
             self._log_or_not("%s SQL: %s" % (self._sql_engine_name, run_sql), log_level=log_level)
             run_sqls.append(run_sql)
             if not self._dry_run:
+                assert self._db_curs is not None
                 if query_params:
                     self._db_curs.execute(run_sql, self._to_native_query_params(query_params))
                 else:
@@ -490,6 +461,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
         query_params=None,
         profile=False,
         trace_action=None,
+        as_dict=False,
     ):
         """Run a query, fetch and return the results.
         Always opens/closes a fresh cursor to ensure we have a clean session environment with no settings
@@ -507,9 +479,8 @@ class MSSQLFrontendApi(FrontendApiInterface):
 
         self._open_cursor()
         try:
-            # TODO Do we have session options on MSSQL? Need to implement here if so.
-            # self._execute_session_options(query_options, log_level=log_level)
             self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
+            assert self._db_curs is not None
             if query_params:
                 self._db_curs.execute(sql, self._to_native_query_params(query_params))
             else:
@@ -517,8 +488,6 @@ class MSSQLFrontendApi(FrontendApiInterface):
             if fetch_action == FETCH_ACTION_ALL:
                 rows = self._db_curs.fetchall()
             elif fetch_action == FETCH_ACTION_ONE:
-                # Must always use fetchall() -
-                #   http://pymssql.org/en/latest/pymssql_examples.html#important-note-about-cursors
                 rows = self._db_curs.fetchall()
                 rows = rows[0] if rows else rows
             else:
@@ -571,10 +540,11 @@ class MSSQLFrontendApi(FrontendApiInterface):
         """Using a tuple for pymssql binds.
         For convenience, if it is already a tuple then turning a blind eye and returning it, this allows code
         migrated here from OffloadSourceTable to remain unchanged.
+
+        If not a tuple then must be a list of QueryParameter objects
         """
         if isinstance(query_params, tuple):
             return query_params
-        # If not a tuple then must be a list of QueryParameter objects
         assert isinstance(query_params, list)
         if query_params:
             assert isinstance(query_params[0], QueryParameter)

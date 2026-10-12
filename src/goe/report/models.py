@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 The GOE Authors
+# SPDX-License-Identifier: Apache-2.0
+
+"""Constants, exception, and partition-matching helper for the Offload Status Report."""
+
+import os
+
+from goe.offload import offload_constants
+from goe.offload.offload_metadata_functions import (
+    INCREMENTAL_PREDICATE_TYPE_LIST,
+)
+
+HTML = "html"
+TEXT = "text"
+JSON = "json"
+RAW = "raw"
+CSV = "csv"
+DETAIL_LEVEL = "detail"
+SUMMARY_LEVEL = "summary"
+DEFAULT_OUTPUT_FORMAT = TEXT
+DEFAULT_OUTPUT_LEVEL = SUMMARY_LEVEL
+DEFAULT_REPORT_NAME = "Offload_Status_Report"
+DEFAULT_REPORT_DIRECTORY = "%s/log" % os.environ.get("OFFLOAD_HOME", ".")
+DEFAULT_CSV_DELIMITER = ","
+DEFAULT_CSV_ENCLOSURE = '"'
+DEFAULT_DEMO_MODE = False
+
+
+divider = "=" * 100
+sub_divider = "-" * 100
+
+
+SOURCE_OWNER = "SOURCE_OWNER"
+SOURCE_TABLE = "SOURCE_TABLE"
+OFFLOADED_TABLES = "_OFFLOADED_TABLES"
+OFFLOADED_PARTS = "_OFFLOADED_PARTS"
+OFFLOADED_BYTES = "_OFFLOADED_BYTES"
+OFFLOADED_ROWS = "_OFFLOADED_ROWS"
+RETAINED_BYTES = "_RETAINED_BYTES"
+RETAINED_PARTS = "_RETAINED_PARTS"
+RETAINED_ROWS = "_RETAINED_ROWS"
+RECLAIMABLE_BYTES = "_RECLAIMABLE_BYTES"
+RECLAIMABLE_PARTS = "_RECLAIMABLE_PARTS"
+RECLAIMABLE_ROWS = "_RECLAIMABLE_ROWS"
+OFFLOAD_TYPE = "OFFLOAD_TYPE"
+OFFLOAD_OWNER = "OFFLOAD_OWNER"
+OFFLOAD_TABLE = "OFFLOAD_TABLE"
+OFFLOAD_TABLE_EXISTS = "OFFLOAD_TABLE_EXISTS"
+OFFLOAD_PART_KEY = "OFFLOAD_PART_KEY"
+HYBRID_OWNER = "HYBRID_OWNER"
+HYBRID_VIEW = "HYBRID_VIEW"
+HYBRID_VIEW_TYPE = "HYBRID_VIEW_TYPE"
+HYBRID_EXTERNAL_TABLE = "HYBRID_EXTERNAL_TABLE"
+AAPD_OBJECTS = "AAPD_OBJECTS"
+OBJECT_OWNER = "OBJECT_OWNER"
+OBJECT_NAME = "OBJECT_NAME"
+OBJECT_TYPE_DB = "OBJECT_TYPE_DB"
+OBJECT_TYPE_GOE = "OBJECT_TYPE_GOE"
+JOIN_OBJECTS_RDBMS = "JOIN_OBJECTS_RDBMS"
+JOIN_OBJECTS_OFFLOAD = "JOIN_OBJECTS_OFFLOAD"
+INCREMENTAL_UPDATE_OBJECTS_RDBMS = "INCREMENTAL_UPDATE_OBJECTS_RDBMS"
+INCREMENTAL_UPDATE_OBJECTS_OFFLOAD = "INCREMENTAL_UPDATE_OBJECTS_OFFLOAD"
+DEPENDENT_OBJECTS = "DEPENDENT_OBJECTS"
+INCREMENTAL_KEY = "INCREMENTAL_KEY"
+INCREMENTAL_HIGH_VALUE = "INCREMENTAL_HIGH_VALUE"
+INCREMENTAL_PREDICATE_TYPE = "INCREMENTAL_PREDICATE_TYPE"
+INCREMENTAL_PREDICATE_VALUE = "INCREMENTAL_PREDICATE_VALUE"
+INCREMENTAL_RANGE = "INCREMENTAL_RANGE"
+INCREMENTAL_UPDATE_METHOD = "INCREMENTAL_UPDATE_METHOD"
+OFFLOAD_BUCKET_COUNT = "OFFLOAD_BUCKET_COUNT"
+OFFLOAD_BUCKET_COLUMN = "OFFLOAD_BUCKET_COLUMN"
+OFFLOAD_BUCKET_METHOD = "OFFLOAD_BUCKET_METHOD"
+OFFLOAD_SORT_COLUMNS = "OFFLOAD_SORT_COLUMNS"
+OFFLOAD_PARTITION_FUNCTIONS = "OFFLOAD_PARTITION_FUNCTIONS"
+OFFLOAD_VERSION = "OFFLOAD_VERSION"
+SOURCE_IOT_TYPE = "SOURCE_IOT_TYPE"
+
+SUMMARY_KEYS = [
+    OFFLOADED_TABLES,
+    OFFLOADED_BYTES,
+    OFFLOADED_PARTS,
+    OFFLOADED_ROWS,
+    RETAINED_BYTES,
+    RETAINED_PARTS,
+    RETAINED_ROWS,
+    RECLAIMABLE_BYTES,
+    RECLAIMABLE_PARTS,
+    RECLAIMABLE_ROWS,
+]
+
+MULTIVALUE_KEYS = [
+    AAPD_OBJECTS,
+    DEPENDENT_OBJECTS,
+    INCREMENTAL_UPDATE_OBJECTS_RDBMS,
+    INCREMENTAL_UPDATE_OBJECTS_OFFLOAD,
+    JOIN_OBJECTS_RDBMS,
+    JOIN_OBJECTS_OFFLOAD,
+]
+
+
+SUCCESS = 0
+FAILURE = 1
+
+
+class OffloadStatusReportException(Exception):
+    pass
+
+
+def incremental_partition_match(row_high_value, table_high_value, incremental_predicate_type):
+    """Check if a partition is classified as offloaded
+
+    Maintaining Python 2 behaviour that <= None is False If we have a table high value then we are IPA and cannot have offloaded a DEFAULT partition This maintains Python 2 behaviour that str(...) <= datetime64(...) is False
+    """
+    if incremental_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST:
+        assert isinstance(row_high_value, list), f"LPA High Value type != list: {type(row_high_value)}"
+        return any(_ in row_high_value for _ in table_high_value)
+    if table_high_value is None:
+        return False
+    assert isinstance(row_high_value, tuple), f"RPA High Value type != tuple: {type(row_high_value)}"
+    if row_high_value == (offload_constants.PART_OUT_OF_LIST,):
+        return False
+    return bool(row_high_value <= table_high_value)

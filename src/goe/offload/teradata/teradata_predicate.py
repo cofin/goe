@@ -5,10 +5,9 @@
 
 """Offload predicate specialisations for Teradata."""
 
-from optparse import OptionValueError
-
 import numpy as np
 
+from goe.exceptions import OptionValueError
 from goe.offload import predicate_offload
 from goe.offload.teradata.teradata_column import (
     TERADATA_TYPE_DATE,

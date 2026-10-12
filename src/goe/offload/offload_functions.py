@@ -5,13 +5,11 @@
 
 """offload_functions: Library of functions used in goe.py and other offload related modules"""
 
-# NOTE: the idea of this module is to avoid dependency loops so be careful when importing
-#       from other goelib modules
-
 import inspect
 import math
 import re
 from datetime import date, datetime
+from typing import Any
 
 from numpy import datetime64
 
@@ -48,20 +46,8 @@ class OffloadFunctionException(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# Valid re for --older-than-date. Matches against human input as well as data
-# therefore needs to match both single and double digit MM & DD
 OLDER_THAN_DATE_PATTERN_RE = r"^\d{4}-\d\d?-\d\d?$"
-# Captures any string starting in a valid date ymd
 STARTS_WITH_DATE_PATTERN_RE = r"^\d{4}-\d\d-\d\d.*"
-
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
 
 
 def data_db_name(owner, opts):
@@ -117,6 +103,8 @@ def expand_columns_csv(columns_csv, reference_columns, retain_non_matching_names
                                include NULL as a measure and don't want to lose it. It is also useful if you want
                                to retain invalid input in the list to later throw an exception about it.
     Returns a list of column names.
+
+    There is a column match but with a different case so take the reference name.
     """
     if columns_csv is None:
         return []
@@ -133,7 +121,6 @@ def expand_columns_csv(columns_csv, reference_columns, retain_non_matching_names
             if pattern in reference_names:
                 new_columns.append(pattern)
             elif case_insensitive_in(pattern, reference_names):
-                # There is a column match but with a different case so take the reference name.
                 match_list = [_ for _ in reference_names if _.upper() == pattern.upper()]
                 new_columns.append(match_list[0])
             else:
@@ -158,7 +145,7 @@ def hvs_to_backend_sql_literals(threshold_cols, threshold_values, ipa_predicate_
     assert inspect.isfunction(to_literal_fn) or inspect.ismethod(to_literal_fn), "Invalid function type %s" % type(
         to_literal_fn
     )
-    new_threshold_values = []
+    new_threshold_values: Any = []
     if ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST:
         data_type = threshold_cols[0].data_type if threshold_cols else None
         for val_tuple in threshold_values:
@@ -186,6 +173,21 @@ def hybrid_threshold_clauses(
     col_enclosure_fn: Function used to enclose column identifiers, supercedes col_quoting_char
     Return tuple:
         (predicate for lower part of UNION, predicate for upper part of UNION)
+
+    the top half of the UNION ALL is of format:
+    (
+    col1 > hv1
+    OR (col1 = hv1 AND col2 > hv2)
+    OR (col1 = hv1 AND col2 = hv2 AND col3 > hv3)
+    OR (col1 = hv1 AND col2 = hv2 AND col3 = hv3)
+    )
+    the equality line "col1 = hv1 AND col2 = hv2 AND col3 = hv3" can move to bottom half if
+    hv2 or hv3 are MAXVALUE or if equality_with_gt == False
+    if MAXVALUE present (multi-col partitioning) then the equality moves to lower part of UNION
+    by default (i.e. no MAXVALUE complications) the bottom half of the UNION ALL is of format:
+    col1 < hv1
+    OR (col1 = hv1 AND col2 < hv2)
+    OR (col1 = hv1 AND col2 = hv2 AND col3 < hv3)
     """
 
     def quote_fn(col_name):
@@ -228,6 +230,7 @@ def hybrid_threshold_clauses(
         return exp[-1]
 
     def join_expression_strings(expressions, join_term="AND"):
+        """Bracket any ANDed expressions into a single expression"""
         assert expressions
         assert isinstance(expressions, list)
         assert isinstance(expressions[0], str)
@@ -236,7 +239,6 @@ def hybrid_threshold_clauses(
         else:
             clause = f" {join_term} ".join(expressions)
             if len(expressions) > 1:
-                # Bracket any ANDed expressions into a single expression
                 clause = "(" + clause + ")"
         return clause
 
@@ -252,20 +254,9 @@ def hybrid_threshold_clauses(
     assert len(lower_threshold_cols) == len(upper_threshold_cols)
     assert len(lower_threshold_cols) == len(offload_high_values)
 
-    # the top half of the UNION ALL is of format:
-    #   (
-    #       col1 > hv1
-    #   OR (col1 = hv1 AND col2 > hv2)
-    #   OR (col1 = hv1 AND col2 = hv2 AND col3 > hv3)
-    #   OR (col1 = hv1 AND col2 = hv2 AND col3 = hv3)
-    #   )
-    # the equality line "col1 = hv1 AND col2 = hv2 AND col3 = hv3" can move to bottom half if
-    # hv2 or hv3 are MAXVALUE or if equality_with_gt == False
-
     union_inclusivity_top = equality_with_gt
 
     if offload_constants.PART_OUT_OF_RANGE in offload_high_values:
-        # if MAXVALUE present (multi-col partitioning) then the equality moves to lower part of UNION
         offload_high_values = offload_high_values[: offload_high_values.index(offload_constants.PART_OUT_OF_RANGE)]
         union_inclusivity_top = False
 
@@ -289,13 +280,6 @@ def hybrid_threshold_clauses(
         view_threshold_clause = join_expression_strings(view_threshold_clauses, join_term="OR")
         if len(view_threshold_clauses) > 1 and not as_predicate_dsl:
             view_threshold_clause = "(" + view_threshold_clause + ")"
-
-    # by default (i.e. no MAXVALUE complications) the bottom half of the UNION ALL is of format:
-    #   (
-    #       col1 < hv1
-    #   OR (col1 = hv1 AND col2 < hv2)
-    #   OR (col1 = hv1 AND col2 = hv2 AND col3 < hv3)
-    #   )
 
     ext_pcol_list = [(col, hv) for col, hv in zip(lower_threshold_cols, list(offload_high_values))]
 
@@ -333,6 +317,12 @@ def hybrid_view_list_clauses(
     Unit test in tests/offload/test_offload_functions.py
     Return tuple:
         (predicate for the RDBMS side, predicate for the external table side)
+
+    incremental_high_values should always be a list of tuples
+    the top half of the UNION ALL is of format:
+    (col NOT IN (val1, val2, valn))
+    the lower half of the UNION ALL is of format:
+    (col IN (val1, val2, valn))
     """
 
     def quote_fn(col_name):
@@ -346,7 +336,6 @@ def hybrid_view_list_clauses(
     assert valid_column_list(upper_threshold_cols), invalid_column_list_message(upper_threshold_cols)
     assert len(lower_threshold_cols) == len(upper_threshold_cols)
     assert len(lower_threshold_cols) == 1, "Multi column LIST partitioning is not supported"
-    # incremental_high_values should always be a list of tuples
     assert isinstance(incremental_high_values, list), "Type %s is not list" % type(incremental_high_values)
     if incremental_high_values:
         assert isinstance(incremental_high_values[0], tuple), "Type %s is not tuple" % type(incremental_high_values[0])
@@ -359,15 +348,11 @@ def hybrid_view_list_clauses(
         hv_csv = incremental_hv_csv_from_list(flatten_lpa_individual_high_values(hv_subset))
         sub_in_lists.append(hv_csv)
 
-    # the top half of the UNION ALL is of format:
-    #   (col NOT IN (val1, val2, valn))
     upper_threshold_clause = " AND ".join(
         "%s NOT IN (%s)" % (quote_fn(upper_threshold_cols[0].name.upper()), _) for _ in sub_in_lists
     )
     upper_threshold_clause = "(" + upper_threshold_clause + ")"
 
-    # the lower half of the UNION ALL is of format:
-    #   (col IN (val1, val2, valn))
     lower_threshold_clause = " OR ".join(
         "%s IN (%s)" % (quote_fn(lower_threshold_cols[0].name.upper()), _) for _ in sub_in_lists
     )
@@ -419,6 +404,10 @@ def get_hybrid_threshold_clauses(
 
 
 def get_dsl_threshold_clauses(cols, ipa_predicate_type, incremental_high_values, equality_with_gt=None):
+    """With no override equality_with_gt should be True for less-than predicate
+
+    With no override equality_with_gt should be False for less-than-or-equal predicate
+    """
     if ipa_predicate_type in (
         INCREMENTAL_PREDICATE_TYPE_RANGE,
         INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE,
@@ -429,10 +418,8 @@ def get_dsl_threshold_clauses(cols, ipa_predicate_type, incremental_high_values,
             INCREMENTAL_PREDICATE_TYPE_RANGE,
             INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE,
         ):
-            # With no override equality_with_gt should be True for less-than predicate
             equality_with_gt = True if equality_with_gt is None else equality_with_gt
         else:
-            # With no override equality_with_gt should be False for less-than-or-equal predicate
             equality_with_gt = False if equality_with_gt is None else equality_with_gt
         return hybrid_threshold_clauses(
             cols,

@@ -3,6 +3,8 @@
 
 """Litestar exception classes and global error handlers for GOE Listener."""
 
+from typing import Any
+
 from litestar.exceptions import HTTPException, NotAuthorizedException, NotFoundException
 from litestar.response import Response
 
@@ -61,7 +63,7 @@ class CommandExecutionNotFound(NotFoundException):
         super().__init__(detail=f"Command Execution {execution_id} was not found")
 
 
-def generic_exception_handler(request, exc: Exception) -> Response:
+def generic_exception_handler(request: Any, exc: Exception) -> Response:
     """Handle generic unhandled exceptions."""
     detail = str(exc)
     status_code = getattr(exc, "status_code", 500)
@@ -71,7 +73,7 @@ def generic_exception_handler(request, exc: Exception) -> Response:
     )
 
 
-def http_exception_handler(request, exc: HTTPException) -> Response:
+def http_exception_handler(request: Any, exc: HTTPException) -> Response:
     """Handle HTTPException instances."""
     return Response(
         content=ErrorMessage(detail=exc.detail, status_code=exc.status_code),

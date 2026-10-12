@@ -3,22 +3,20 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """GOEDfs: Backend storage (e.g. HDFS) interaction library."""
 
 import logging
 import os
 import time
 from abc import ABCMeta, abstractmethod, abstractproperty
+from typing import Any
 from urllib.parse import urlparse
 
 from google.api_core import exceptions as google_exceptions
 from google.api_core import retry
 
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-
-###############################################################################
-# EXCEPTIONS
-###############################################################################
 
 
 class GOEDfsException(Exception):
@@ -33,14 +31,9 @@ class GOEDfsFilesNotVisible(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 DFS_TYPE_DIRECTORY = "DIRECTORY"
 DFS_TYPE_FILE = "FILE"
 
-# Retry timeout in seconds
 DFS_RETRY_TIMEOUT = 120
 
 GOE_DFS_AZURE = "AZURE"
@@ -49,21 +42,16 @@ GOE_DFS_S3 = "S3"
 GOE_DFS_SSH = "SSH"
 GOE_DFS_WEBHDFS = "WEBHDFS"
 
-# Generic Azure FS scheme used for Snowflake integration
 OFFLOAD_FS_SCHEME_AZURE = "azure"
-# Generic FS scheme indicating the scheme is derived from Hadoop database and not included explicitly in URIs
 OFFLOAD_FS_SCHEME_INHERIT = "inherit"
 OFFLOAD_FS_SCHEME_HDFS = "hdfs"
 OFFLOAD_FS_SCHEME_S3A = "s3a"
 OFFLOAD_FS_SCHEME_MAPRFS = "maprfs"
 OFFLOAD_FS_SCHEME_S3 = "s3"
 OFFLOAD_FS_SCHEME_GS = "gs"
-# Azure Blob Storage
 OFFLOAD_FS_SCHEME_WASB = "wasb"
 OFFLOAD_FS_SCHEME_WASBS = "wasbs"
-# Azure Data Lake Storage Gen1
 OFFLOAD_FS_SCHEME_ADL = "adl"
-# Azure Data Lake Storage Gen2
 OFFLOAD_FS_SCHEME_ABFS = "abfs"
 OFFLOAD_FS_SCHEME_ABFSS = "abfss"
 VALID_OFFLOAD_FS_SCHEMES = [
@@ -106,16 +94,9 @@ AZURE_OFFLOAD_FS_SCHEMES = [
 
 UNSUPPORTED_URI_SCHEME_EXCEPTION_TEXT = "Unsupported URI scheme"
 
-# Not using os.sep because that is the path separator of the edge node - not the DFS
 URI_SEP = "/"
 
-# Delay after deleting files from cloud storage. We have a retry but also give it chance.
 POST_CLOUD_DELETE_WAIT_SECONDS = 0.2
-
-
-###############################################################################
-# STANDALONE FUNCTIONS
-###############################################################################
 
 
 def uri_component_split(uri):
@@ -144,11 +125,11 @@ def get_scheme_from_location_uri(dfs_path):
 
 def gen_fs_uri(
     path_prefix: str,
-    db_path_suffix=None,
-    scheme=None,
-    container=None,
-    backend_db=None,
-    table_name=None,
+    db_path_suffix: str | None = None,
+    scheme: str | None = None,
+    container: str | None = None,
+    backend_db: str | None = None,
+    table_name: str | None = None,
 ) -> str:
     """Generates a file URI
     Note this is not getting an existing URI for an existing db or table, it generates a new one based on inputs
@@ -185,7 +166,12 @@ def gen_fs_uri(
     return scheme_str + container_str + URI_SEP + final_path
 
 
-def gen_load_uri_from_options(offload_options, hadoop_db=None, table_name=None, scheme_override=None) -> str:
+def gen_load_uri_from_options(
+    offload_options: Any,
+    hadoop_db: str | None = None,
+    table_name: str | None = None,
+    scheme_override: str | None = None,
+) -> str:
     """Returns a Hadoop file URI based on options config."""
     uri = gen_fs_uri(
         offload_options.hdfs_load,
@@ -196,18 +182,8 @@ def gen_load_uri_from_options(offload_options, hadoop_db=None, table_name=None, 
     return uri
 
 
-###############################################################################
-# LOGGING
-###############################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###############################################################################
-# GOEDfs
-###############################################################################
 
 
 class GOEDfs(metaclass=ABCMeta):
@@ -291,36 +267,12 @@ class GOEDfs(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def write(self, dfs_path: str, data, overwrite=False):
+    def write(self, dfs_path: str, data: Any, overwrite: bool = False) -> None:
         """Write some data to a remote file"""
 
     @abstractmethod
     def list_dir(self, dfs_path):
         """Return a list of file/directory names within dfs_path"""
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _post_cloud_delete_wait(self, scheme):
-        """For cloud storage sleep for a specific period (POST_CLOUD_DELETE_WAIT_SECONDS) after a delete"""
-        if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER:
-            self.debug("Post cloud delete sleep: %s" % POST_CLOUD_DELETE_WAIT_SECONDS)
-            time.sleep(POST_CLOUD_DELETE_WAIT_SECONDS)
-
-    @staticmethod
-    def _uri_component_split(dfs_path):
-        """Wrapper for global uri_component_split() but also removes leading
-        slash from path before returning values.
-        """
-        scheme, container, path = uri_component_split(dfs_path)
-        if path and path.startswith(URI_SEP):
-            path = path.lstrip(URI_SEP)
-        return scheme, container, path
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def log(self, msg):
         if self._messages:
@@ -352,18 +304,20 @@ class GOEDfs(metaclass=ABCMeta):
         return stats["permission"] if stats else stats
 
     def convert_rwx_perms_to_oct_str(self, perm_string):
-        """Take in incoming string of the format "-rwxr-x---" and return as a string of format "750" """
+        """Take in incoming string of the format "-rwxr-x---" and return as a string of format "750"
+
+        Only supports rwx keys. That should be fine for GOE usage
+        Remove directory part and any trailing characters (e.g. "+")
+        Sum up the octal value of each set of 3 perm characters
+        """
         logger.info("convert_rwx_perms_to_oct_str(%s)" % perm_string)
         if not perm_string:
             return None
         assert len(perm_string) >= 10, "Unexpected permission format %s" % perm_string
-        # Only supports rwx keys. That should be fine for GOE usage
         perm_values = {"r": 4, "w": 2, "x": 1}
         oct_str = ""
-        # Remove directory part and any trailing characters (e.g. "+")
         perm_string = perm_string[1:10]
         logger.debug("Trimmed string to %s" % perm_string)
-        # Sum up the octal value of each set of 3 perm characters
         for i in range(3):
             oct_str += str(sum([perm_values.get(char, 0) for char in list(perm_string[i * 3 : i * 3 + 3])]))
         logger.debug("Returning %s" % oct_str)
@@ -386,3 +340,19 @@ class GOEDfs(metaclass=ABCMeta):
             self.debug("Files in %s not yet visible, waiting" % dfs_path)
             raise GOEDfsFilesNotVisible
         return files
+
+    def _post_cloud_delete_wait(self, scheme):
+        """For cloud storage sleep for a specific period (POST_CLOUD_DELETE_WAIT_SECONDS) after a delete"""
+        if scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER:
+            self.debug("Post cloud delete sleep: %s" % POST_CLOUD_DELETE_WAIT_SECONDS)
+            time.sleep(POST_CLOUD_DELETE_WAIT_SECONDS)
+
+    @staticmethod
+    def _uri_component_split(dfs_path):
+        """Wrapper for global uri_component_split() but also removes leading
+        slash from path before returning values.
+        """
+        scheme, container, path = uri_component_split(dfs_path)
+        if path and path.startswith(URI_SEP):
+            path = path.lstrip(URI_SEP)
+        return scheme, container, path

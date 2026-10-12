@@ -5,13 +5,8 @@
 Unit tests in TestOrchestrationRepoClient.
 """
 
-# Standard Library
 import uuid
-from dataclasses import dataclass
-
-###########################################################################
-# ExecutionId
-###########################################################################
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -26,7 +21,7 @@ class ExecutionId:
         i = ExecutionId.from_bytes(s)
     """
 
-    id: uuid.UUID = None
+    id: uuid.UUID | None = field(default_factory=uuid.uuid4)
 
     def __init__(self, **kwargs):
         if "from_str" in kwargs:
@@ -45,21 +40,22 @@ class ExecutionId:
         return self.as_bytes()
 
     @staticmethod
-    def from_str(s: str):
+    def from_str(s: str) -> "ExecutionId":
         return ExecutionId(from_str=s)
 
     @staticmethod
-    def from_bytes(b: bytes):
+    def from_bytes(b: bytes) -> "ExecutionId":
         return ExecutionId(from_bytes=b)
 
     @staticmethod
-    def from_uuid(u: uuid.UUID):
+    def from_uuid(u: uuid.UUID) -> "ExecutionId":
         return ExecutionId(from_uuid=u)
 
     def as_str(self):
         return str(self.id)
 
     def as_bytes(self):
+        assert self.id is not None
         return self.id.bytes
 
     @staticmethod

@@ -35,12 +35,8 @@ from goe.orchestration import command_steps
 URL_SEP = "/"
 LIVY_SESSIONS_SUBURL = "sessions"
 LIVY_LOG_QUEUE_PATTERN = r"^\s*queue:\s*%s$"
-# Seconds between looped checks when creating a session
 LIVY_CONNECT_POLL_DELAY = 2
-# Number of polls when creating a session.
-# i.e. we'll wait LIVY_CONNECT_MAX_POLLS * LIVY_CONNECT_POLL_DELAY seconds
 LIVY_CONNECT_MAX_POLLS = 30
-# Seconds to allow between looped checks when running a Spark job
 LIVY_STATEMENT_POLL_DELAY = 5
 
 
@@ -56,7 +52,12 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
         messages,
         dfs_client,
     ):
-        """CONSTRUCTOR"""
+        """CONSTRUCTOR
+
+        cap the number of Livy sessions we will create before queuing
+        timeout and close Livy sessions when idle
+        For Livy we need to pass compression in as a config to the driving session
+        """
         self._offload_transport_method = OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY
         super().__init__(
             offload_source_table,
@@ -70,22 +71,41 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
 
         self._api_url = offload_options.offload_transport_livy_api_url
         self._livy_requests = OffloadTransportLivyRequests(offload_options, messages)
-        # cap the number of Livy sessions we will create before queuing
         self._livy_max_sessions = (
             int(offload_options.offload_transport_livy_max_sessions)
             if offload_options.offload_transport_livy_max_sessions
             else LIVY_MAX_SESSIONS
         )
-        # timeout and close Livy sessions when idle
         self._idle_session_timeout = int(offload_options.offload_transport_livy_idle_session_timeout)
-        # For Livy we need to pass compression in as a config to the driving session
         self._load_table_compression_pyspark_settings()
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def transport(self, partition_chunk=None):
+        """Run the data transport"""
+        self._reset_transport_context()
 
-    def _get_transport_app_name(self, sep=".") -> str:
+        def step_fn():
+            row_count = self._livy_import(partition_chunk)
+            staged_bytes = self._check_and_log_transported_files(row_count)
+            self._transport_context[TRANSPORT_CXT_BYTES] = staged_bytes
+            self._transport_context[TRANSPORT_CXT_ROWS] = row_count
+            self._target_table.post_transport_tasks(self._staging_file)
+            return row_count
+
+        return self._messages.offload_step(
+            command_steps.STEP_STAGING_TRANSPORT,
+            step_fn,
+            execute=(not self._dry_run),
+        )
+
+    def ping_source_rdbms(self):
+        return self._verify_rdbms_connectivity()
+
+    def _get_transport_app_name(
+        self,
+        sep: str = ".",
+        ts: bool = False,
+        name_override: str | None = None,
+    ) -> str:
         """Overload without table names"""
         return YARN_TRANSPORT_NAME
 
@@ -95,7 +115,7 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
     def _close_livy_session(self, session_url):
         try:
             self.log("Closing session: %s" % session_url, detail=VVERBOSE)
-            resp = self._livy_requests.delete(session_url)
+            self._livy_requests.delete(session_url)
         except Exception:
             self.log("Unable to close session: %s" % session_url, detail=VVERBOSE)
 
@@ -118,12 +138,10 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
         self.debug("_copy_goe_listener_jar_to_dfs()")
         spark_listener_jar_local_path = self._local_goe_listener_jar()
         if self._standalone_spark():
-            # Ensure jar file is on transport host local filesystem
             spark_listener_jar_remote_path = self._remote_copy_transport_file(
                 spark_listener_jar_local_path, self._offload_transport_cmd_host
             )
         else:
-            # Ensure jar file is copied to DFS
             spark_listener_jar_remote_path = os.path.join(self._offload_options.hdfs_home, GOE_LISTENER_JAR)
             self.log_dfs_cmd(
                 'copy_from_local("%s", "%s")' % (spark_listener_jar_local_path, spark_listener_jar_remote_path)
@@ -198,7 +216,6 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
             session_url = (self._api_url + resp.headers["location"]) if resp.headers.get("location") else None
             session_state = None
             polls = 0
-            # Wait until the state of the session is "idle" - not "starting"
             while polls <= LIVY_CONNECT_MAX_POLLS and session_url:
                 session_state = resp.json()["state"]
                 if session_state == "idle" and session_url:
@@ -221,14 +238,11 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
                         self._close_livy_session(session_url)
                         resp.raise_for_status()
                     elif not self._offload_options.vverbose:
-                        # Simulate the same dot progress we have with Sqoop offloads
                         write_progress_to_stdout()
                 else:
-                    # Something went wrong
                     self.log("Response text: %s" % resp.text, detail=VVERBOSE)
                     self._close_livy_session(session_url)
                     raise OffloadTransportException("REST session was not created: state=%s" % session_state)
-            # If we got here then we're timing out
             self.log("Response text: %s" % resp.text, detail=VVERBOSE)
             self._close_livy_session(session_url)
             raise OffloadTransportException("REST session was not created, timing out: state=%s" % session_state)
@@ -246,7 +260,6 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
                     re.IGNORECASE,
                 )
                 if [_ for _ in job_dict.get("log") if pattern.search(_)]:
-                    # Found a message in the log stating this is on the right queue for us
                     return True
                 return False
             return True
@@ -272,7 +285,6 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
                 detail=VVERBOSE,
             )
             if len(all_goe_sessions) < self._livy_max_sessions:
-                # create and use a new session
                 return self._create_livy_session()
             self.log(
                 "All goe capable Livy sessions: %s" % str(all_goe_sessions),
@@ -294,7 +306,6 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
         if resp.ok:
             statement_url = (self._api_url + resp.headers["location"]) if resp.headers.get("location") else None
             self.log("Submitted REST statement: %s" % statement_url, detail=VERBOSE)
-            # Wait until the state of the statement is "available" - not "running" or "waiting"
             polls = 0
             while True:
                 statement_state = resp.json()["state"]
@@ -305,7 +316,6 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
                     status = statement_output.get("status") if statement_output else None
                     if status != "ok":
                         raise OffloadTransportException("Spark statement has failed with status: %s" % status)
-                    # The REST response has CRs converted to plain text, change them back before return the value
                     statement_log = str(statement_output.get("data")).replace("\\n", "\n")
                     return statement_log
                 if statement_state in ("running", "waiting"):
@@ -322,7 +332,6 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
                         self.log("Response text: %s" % resp.text, detail=VERBOSE)
                         resp.raise_for_status()
                 else:
-                    # Something went wrong
                     self.log("Response text: %s" % resp.text, detail=VVERBOSE)
                     raise OffloadTransportException("Spark statement has unexpected state: %s" % statement_state)
         else:
@@ -332,7 +341,7 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
 
         return None
 
-    def _livy_import(self, partition_chunk=None) -> int | None:
+    def _livy_import(self, partition_chunk=None):
         """Submit PySpark code via Livy REST interface"""
         self._refresh_rdbms_action()
 
@@ -344,11 +353,8 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
         session_url = self._attach_livy_session()
         if not self._dry_run:
             self._start_validation_polling_thread()
-            job_output = self._submit_pyspark_to_session(session_url, pyspark_body)
+            self._submit_pyspark_to_session(session_url, pyspark_body)
             self._stop_validation_polling_thread()
-            # In theory we should be able to get rows_imported from Livy logging here but we can't get at
-            # the executor logger messages even if we put our Spark Listener in place, therefore we continue
-            # to use RDBMS SQL stats.
             rows_imported = self._rdbms_api.log_sql_stats(
                 self._rdbms_module,
                 self._rdbms_action,
@@ -357,6 +363,7 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
             )
             self._check_rows_imported(rows_imported)
             return rows_imported
+        return None
 
     def _verify_rdbms_connectivity(self):
         """Use a simple canary query for verification test"""
@@ -367,31 +374,6 @@ class OffloadTransportSparkLivy(OffloadTransportSpark):
         self._submit_pyspark_to_session(session_url, pyspark_body)
         return True
 
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def transport(self, partition_chunk=None) -> int | None:
-        """Run the data transport"""
-        self._reset_transport_context()
-
-        def step_fn():
-            row_count = self._livy_import(partition_chunk)
-            staged_bytes = self._check_and_log_transported_files(row_count)
-            self._transport_context[TRANSPORT_CXT_BYTES] = staged_bytes
-            self._transport_context[TRANSPORT_CXT_ROWS] = row_count
-            self._target_table.post_transport_tasks(self._staging_file)
-            return row_count
-
-        return self._messages.offload_step(
-            command_steps.STEP_STAGING_TRANSPORT,
-            step_fn,
-            execute=(not self._dry_run),
-        )
-
-    def ping_source_rdbms(self):
-        return self._verify_rdbms_connectivity()
-
 
 class OffloadTransportSparkLivyCanary(OffloadTransportSparkLivy):
     """Validate Spark Livy connectivity"""
@@ -399,6 +381,10 @@ class OffloadTransportSparkLivyCanary(OffloadTransportSparkLivy):
     def __init__(self, offload_options, messages):
         """CONSTRUCTOR
         This does not call up the stack to parent constructor because we only want a subset of functionality
+
+        cap the number of Livy sessions we will create before queuing
+        We don't want to leave this canary session hanging around but need it there for long enough to use it
+        The canary is unaware of any tables
         """
         assert offload_options.offload_transport_livy_api_url, "REST API URL has not been defined"
 
@@ -408,13 +394,11 @@ class OffloadTransportSparkLivyCanary(OffloadTransportSparkLivy):
 
         self._api_url = offload_options.offload_transport_livy_api_url
         self._livy_requests = OffloadTransportLivyRequests(offload_options, messages)
-        # cap the number of Livy sessions we will create before queuing
         self._livy_max_sessions = (
             int(offload_options.offload_transport_livy_max_sessions)
             if offload_options.offload_transport_livy_max_sessions
             else LIVY_MAX_SESSIONS
         )
-        # We don't want to leave this canary session hanging around but need it there for long enough to use it
         self._idle_session_timeout = 30
 
         self._dfs_client = get_dfs_from_options(
@@ -454,14 +438,9 @@ class OffloadTransportSparkLivyCanary(OffloadTransportSparkLivy):
         self._rdbms_module = FRONTEND_TRACE_MODULE
         self._rdbms_action = self._rdbms_api.generate_transport_action()
 
-        # The canary is unaware of any tables
         self._target_table = None
         self._rdbms_table = None
         self._staging_format = None
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def ping_source_rdbms(self):
         return self._verify_rdbms_connectivity()

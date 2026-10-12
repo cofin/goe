@@ -5,7 +5,7 @@
 
 from contextlib import contextmanager
 from itertools import groupby
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import oracledb as cxo
 
@@ -51,15 +51,10 @@ from goe.util.misc_functions import id_generator
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
-    from goe.offload.column_metadata import ColumnMetadataInterface
     from goe.offload.offload_messages import OffloadMessages
     from goe.offload.offload_source_data import OffloadSourcePartitions
     from goe.offload.offload_source_table import OffloadSourceTableInterface
 
-
-###########################################################################
-# CONSTANTS
-###########################################################################
 
 MAX_UNION_ALL_SPLITS = 1024
 
@@ -77,15 +72,6 @@ AND    sql_fulltext LIKE '%'||:action||'%'
 ORDER BY sql_id, child_number"""
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-###########################################################################
-# OffloadTransportOracleApi
-###########################################################################
-
-
 class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
     """Oracle specific methods"""
 
@@ -95,7 +81,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         rdbms_table_name: str,
         offload_options: "OrchestrationConfig",
         messages: "OffloadMessages",
-        dry_run=False,
+        dry_run: bool = False,
     ):
         super().__init__(
             rdbms_owner,
@@ -115,129 +101,19 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE,
         ]
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _get_adm_connection(self):
-        if not self._rdbms_adm_conn:
-            self._rdbms_adm_conn = get_rdbms_connection_for_oracle(
-                self._offload_options.ora_adm_user,
-                self._offload_options.ora_adm_pass,
-                self._rdbms_adm_dsn,
-                self._offload_options.use_oracle_wallet,
-            )
-        return self._rdbms_adm_conn
-
-    def _close_adm_connection(self):
-        if self._rdbms_adm_conn:
-            self._rdbms_adm_conn.close()
-        self._rdbms_adm_conn = None
-
-    def _get_app_connection(self):
-        if not self._rdbms_app_conn:
-            self._rdbms_app_conn = get_rdbms_connection_for_oracle(
-                self._offload_options.rdbms_app_user,
-                self._offload_options.rdbms_app_pass,
-                self._offload_transport_dsn,
-                self._offload_options.use_oracle_wallet,
-            )
-        return self._rdbms_app_conn
-
-    def _close_app_connection(self):
-        if self._rdbms_app_conn:
-            self._rdbms_app_conn.close()
-        self._rdbms_app_conn = None
-
-    def _get_fixed_goe_parameters(self):
-        if self._fixed_goe_parameters is None:
-            # GOE-1375
-            ora_conn = self._get_adm_connection()
-            if oracle_version_is_smart_scan_unsafe(ora_conn.version):
-                self._fixed_goe_parameters = {"CELL_OFFLOAD_PROCESSING": "FALSE"}
-            else:
-                self._fixed_goe_parameters = {}
-            self._close_adm_connection()
-        return self._fixed_goe_parameters
-
-    def _get_fixed_sqoop_parameters(self, max_ts_scale):
-        # These are defined to match parameters set by Sqoop/Oraoop
-        # Dependency on this TIME_ZONE=UTC with logic for avro_conv_fns appending UTC
-        ff_scale = self._get_ts_ff_scale(max_ts_scale)
-        return {
-            "TRACEFILE_IDENTIFIER": "'%s'" % FRONTEND_TRACE_ID,
-            "TIME_ZONE": "'UTC'",
-            "NLS_TIMESTAMP_TZ_FORMAT": "'YYYY-MM-DD HH24:MI:SS.FF%s TZH:TZM'" % ff_scale,
-            "NLS_TIMESTAMP_FORMAT": "'YYYY-MM-DD HH24:MI:SS.FF%s'" % ff_scale,
-            "NLS_DATE_FORMAT": "'YYYY-MM-DD HH24:MI:SS'",
-            '"_SERIAL_DIRECT_READ"': "TRUE",
-        }
-
-    def _get_ts_ff_scale(self, ts_scale):
-        """Return a string scale which can be tagged onto 'HH24:MI:SS.FF'"""
-        if ts_scale:
-            assert isinstance(ts_scale, int)
-            assert 0 <= ts_scale <= 9
-        return "" if ts_scale is None else str(ts_scale)
-
-    def _oracle_alter_session_statements(
-        self,
-        session_parameter_dict,
-        for_plsql=False,
-        include_semi_colons=False,
-        escape_semi_colons=False,
-    ):
-        """Format ALTER SESSION statements for inclusion in a data transport operation
-        return statements as a list, empty list if nothing to do
-        """
-        if not session_parameter_dict:
-            return []
-        alter_template = "ALTER SESSION SET %s=%s"
-        semi_colon = "\\;" if escape_semi_colons else ";"
-        if include_semi_colons:
-            alter_template += semi_colon
-
-        if for_plsql:
-            plsql_wrap_template = "EXECUTE IMMEDIATE q'!%s!'"
-            use_template = (plsql_wrap_template % alter_template) + semi_colon
-        else:
-            use_template = alter_template
-
-        alter_session_statements = [use_template % (k, v) for k, v in sorted(session_parameter_dict.items())]
-        return alter_session_statements
-
-    def _cx_getvalue(self, incoming):
-        return incoming.getvalue() if incoming and hasattr(incoming, "getvalue") else incoming
-
-    def _get_iot_single_partition_clause(self, partition_chunk):
-        """Return PARTITION(partition_name) clause partition_chunk if there is a single partition.
-        This is because we treat single partition IOT offloads like non-partitioned tables. It's a small
-        optimization to make up for the fact we cannot split IOT partitions by rowid range.
-        """
-        if partition_chunk and partition_chunk.count() == 1:
-            return f" PARTITION ({partition_chunk.partition_names().pop()})"
-        return ""
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def convert_query_import_expressions_on_rdbms_side(self):
         return False
 
     def generate_transport_action(self):
+        """Action in Oracle is trimmed at 32 bytes, we do the same here"""
         id_str = id_generator()
-        # Action in Oracle is trimmed at 32 bytes, we do the same here
         return ("%s_%s" % (id_str, self._rdbms_table_name.lower()))[:32]
 
-    def get_id_column_for_range_splitting(
-        self,
-        rdbms_table: "OffloadSourceTableInterface",
-    ) -> "ColumnMetadataInterface":
+    def get_id_column_for_range_splitting(self, rdbms_table):
         if len(rdbms_table.get_primary_key_columns()) != 1:
             return None
         pk_col = match_table_column(rdbms_table.get_primary_key_columns()[0], rdbms_table.columns)
-        if pk_col.data_type in (
+        if pk_col and pk_col.data_type in (
             ORACLE_TYPE_NUMBER,
             ORACLE_TYPE_DATE,
             ORACLE_TYPE_TIMESTAMP,
@@ -245,7 +121,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
             return pk_col
         return None
 
-    def get_id_range(self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk=None) -> tuple:
+    def get_id_range(self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk: Any = None) -> tuple:
         """Function to get the MIN and MAX values for an id column.
 
         Used to create non-overlapping ranges for splitting IOT tables between transport processes.
@@ -339,7 +215,6 @@ FROM  (
         if rdbms_column.data_type == ORACLE_TYPE_TIMESTAMP_LOCAL_TZ:
             cast_expression = f"CONCAT(CAST({column_expression} AS VARCHAR2(64)),' UTC')"
         elif rdbms_column.data_type == ORACLE_TYPE_TIMESTAMP_TZ:
-            # We need to cast this in the DB to ensure we use tzinfo matching the DB - not matching the client
             cast_expression = "TO_CHAR(%s,'YYYY-MM-DD HH24:MI:SS.FF%s TZH:TZM')" % (
                 column_expression,
                 ff_scale,
@@ -366,15 +241,10 @@ FROM  (
             and rdbms_column.data_scale > rdbms_column.data_precision
             and for_spark
         ):
-            # Oracle allows numbers with scale > precision (e.g. NUMBER(3,5)). Even with a customSchema of String
-            # Spark cannot handle this (tested up to Spark 2.3):
-            #   pyspark.sql.utils.AnalysisException: u'Decimal scale (5) cannot be greater than precision (3).;'
-            # Therefore we have this workaround:
             cast_expression = f"CAST({column_expression} AS NUMBER)"
         elif rdbms_column.data_type in (ORACLE_TYPE_BINARY_FLOAT, ORACLE_TYPE_BINARY_DOUBLE) and nan_values_as_null:
             cast_expression = f"CASE WHEN {column_expression} IN ('NaN','Infinity','-Infinity') THEN NULL ELSE {column_expression} END"
         elif rdbms_column.data_type == ORACLE_TYPE_XMLTYPE:
-            # Note, getClobVal() only works when the input column includes the table/alias reference.
             cast_expression = f'("{self._rdbms_table_name}".{column_expression}).getClobVal()'
         return cast_expression
 
@@ -398,14 +268,14 @@ FROM  (
 
     def get_rdbms_session_setup_commands(
         self,
-        module,
-        action,
-        custom_session_parameters,
-        include_fixed_sqoop=True,
-        for_plsql=False,
-        include_semi_colons=False,
-        escape_semi_colons=False,
-        max_ts_scale=None,
+        module: Any,
+        action: Any,
+        custom_session_parameters: Any,
+        include_fixed_sqoop: bool = True,
+        for_plsql: bool = False,
+        include_semi_colons: bool = False,
+        escape_semi_colons: bool = False,
+        max_ts_scale: Any = None,
     ) -> list:
         """Returns a list of strings to be executed in the data transport source RDBMS session"""
         assert type(custom_session_parameters) is dict
@@ -504,8 +374,6 @@ FROM  (
         self.debug(f"partition_count: {partition_count}")
         self.debug(f"subpartition_count: {subpartition_count}")
         if partition_count > 0 and partition_count >= parallelism and partition_count <= MAX_UNION_ALL_SPLITS:
-            # There are more partitions than parallel threads therefore it should be
-            # efficient to split by partition/subpartition, applies to both heap tables and IOTs
             if offload_by_subpartition:
                 self.log("Splitting subpartitioned table by subpartition", detail=VVERBOSE)
                 partition_by = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION
@@ -520,7 +388,6 @@ FROM  (
             )
             partition_by = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION
         elif is_iot:
-            # partition_count > 1 below because we treat a single partition IOT offload like a non-partitioned one.
             if (
                 partition_count > 1
                 and partition_count <= MAX_UNION_ALL_SPLITS
@@ -575,14 +442,14 @@ FROM  (
         rdbms_table: "OffloadSourceTableInterface",
         consistent_read: bool,
         transport_scn: int,
-        parallelism,
-        offload_by_subpartition,
-        mod_column,
+        parallelism: Any,
+        offload_by_subpartition: Any,
+        mod_column: Any,
         predicate_offload_clause: str,
-        partition_chunk: "OffloadSourcePartitions" = None,
-        pad: int = None,
-        id_col_min=None,
-        id_col_max=None,
+        partition_chunk: "OffloadSourcePartitions | None" = None,
+        pad: int | None = None,
+        id_col_min: Any = None,
+        id_col_max: Any = None,
     ) -> str:
         """Define a frontend query that will retrieve data from a table dividing it by a split method
         such as partition or rowid range.
@@ -609,22 +476,17 @@ FROM  (
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
         ):
+            assert partition_chunk is not None
             if partition_by == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION:
                 partition_clause = "PARTITION"
                 partition_names = partition_chunk.partition_names()
             else:
                 partition_clause = "SUBPARTITION"
                 if offload_by_subpartition:
-                    # subpartition-range offloads store their subpartition names as partition names
-                    # (i.e. one partition record per subpartition)
                     partition_names = partition_chunk.partition_names()
                 else:
-                    # partition-range offloads with few partitions but many subpartitions store their
-                    # subpartition names as a list per partition
                     partition_names = partition_chunk.subpartition_names()
 
-            # There are more partitions than parallel threads therefore it should be
-            # efficient to split by partition, applies to both heap tables and IOTs
             union_branch_template = 'SELECT g.*, %(batch)s AS %(batch_col)s FROM %(owner_table)s %(part_clause)s ("%(part_name)s")%(scn_clause)s g'
             row_source = union_all.join(
                 [
@@ -696,6 +558,7 @@ FROM  (
                 "extra_where_clause": extra_where_clause,
             }
         elif partition_by == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE:
+            assert id_split_col is not None
             part_clause = self._get_iot_single_partition_clause(partition_chunk)
             row_source = (
                 f"SELECT g.*, {rdbms_table.enclose_identifier(id_split_col.name)} AS {TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN}"
@@ -704,7 +567,7 @@ FROM  (
             if predicate_offload_clause:
                 row_source += "\nWHERE (%s)" % predicate_offload_clause
         elif partition_by == TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE:
-            # Create a range of min/max tuples spanning the entire id range
+            assert id_split_col is not None
             id_ranges = split_ranges_for_id_range(id_col_min, id_col_max, parallelism)
             union_branch_template = (
                 "SELECT g.*, %(batch)s AS %(batch_col)s FROM %(owner_table)s%(part_clause)s%(scn_clause)s g "
@@ -859,7 +722,7 @@ AND   action = :action
 GROUP BY sql_id, NVL(event,'CPU')
 ORDER BY seconds DESC"""
         q_params = {
-            "rdbms_app_user": str(self._offload_options.rdbms_app_user.upper()),
+            "rdbms_app_user": str((self._offload_options.rdbms_app_user or "").upper()),
             "start_datetime": start_datetime,
             "module": module,
             "action": action,
@@ -895,7 +758,6 @@ ORDER BY seconds DESC"""
             if default_type == cxo.DB_TYPE_NUMBER:
                 staging_column = match_table_column(name, staging_columns)
                 if not staging_column or not staging_column.safe_mapping or staging_column.is_string_based():
-                    # We are offloading to string and should convert the value to string
                     return cursor.var(str, 255, cursor.arraysize)
             elif default_type in (cxo.DB_TYPE_VARCHAR, cxo.DB_TYPE_CHAR):
                 return cursor.var(str, size, cursor.arraysize)
@@ -903,7 +765,6 @@ ORDER BY seconds DESC"""
                 return cursor.var(str, 255, cursor.arraysize)
 
         def setup_rdbms_session(ora_cursor):
-            # Dependency on this TIME_ZONE=UTC (inside offload.setup_offload_session()) with encode logic appending UTC.
             for session_statement in rdbms_session_setup_commands:
                 self.log("Oracle sql: %s" % session_statement, detail=VERBOSE)
                 if not self._dry_run:
@@ -944,7 +805,7 @@ ORDER BY seconds DESC"""
         """Return a query providing a value range for Sqoop --boundary-query option."""
         return f'"SELECT 0, {offload_transport_parallelism - 1} FROM dual"'
 
-    def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands) -> list:
+    def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands: Any) -> list:
         oraoop_d_options = [
             "-Doracle.sessionTimeZone=UTC",
             "-Doraoop.timestamp.string=true",
@@ -964,11 +825,10 @@ ORDER BY seconds DESC"""
         return sqoop_opts
 
     def sqoop_rdbms_specific_jvm_table_options(
-        self, partition_chunk, partition_type=None, is_iot=False, consistent_read=False
+        self, partition_chunk: Any, partition_type: Any = None, is_iot: bool = False, consistent_read: bool = False
     ) -> list:
         oraoop_options = []
         if is_iot and partition_type == OFFLOAD_PARTITION_TYPE_RANGE:
-            # Tactical work-a-round for CERN, sqoop offload of range partitioned IOTs requires parameter modifications
             oraoop_options += ["-Doraoop.chunk.method=partition"]
             oraoop_options += ["-Doraoop.import.consistent.read=false"]
         else:
@@ -984,8 +844,109 @@ ORDER BY seconds DESC"""
             ]
         return oraoop_options
 
-    def sqoop_rdbms_specific_table_options(self, rdbms_owner, table_name) -> list:
+    def sqoop_rdbms_specific_table_options(self, rdbms_owner: Any, table_name: Any) -> list:
         return [
             "--table",
             self._ssh_cli_safe_value((rdbms_owner + "." + table_name).upper()),
         ]
+
+    def _get_adm_connection(self):
+        if not self._rdbms_adm_conn:
+            self._rdbms_adm_conn = get_rdbms_connection_for_oracle(
+                self._offload_options.ora_adm_user,
+                self._offload_options.ora_adm_pass,
+                self._rdbms_adm_dsn,
+                self._offload_options.use_oracle_wallet,
+            )
+        return self._rdbms_adm_conn
+
+    def _close_adm_connection(self):
+        if self._rdbms_adm_conn:
+            self._rdbms_adm_conn.close()
+        self._rdbms_adm_conn = None
+
+    def _get_app_connection(self):
+        if not self._rdbms_app_conn:
+            self._rdbms_app_conn = get_rdbms_connection_for_oracle(
+                self._offload_options.rdbms_app_user,
+                self._offload_options.rdbms_app_pass,
+                self._offload_transport_dsn,
+                self._offload_options.use_oracle_wallet,
+            )
+        return self._rdbms_app_conn
+
+    def _close_app_connection(self):
+        if self._rdbms_app_conn:
+            self._rdbms_app_conn.close()
+        self._rdbms_app_conn = None
+
+    def _get_fixed_goe_parameters(self):
+        """GOE-1375"""
+        if self._fixed_goe_parameters is None:
+            ora_conn = self._get_adm_connection()
+            if oracle_version_is_smart_scan_unsafe(ora_conn.version):
+                self._fixed_goe_parameters = {"CELL_OFFLOAD_PROCESSING": "FALSE"}
+            else:
+                self._fixed_goe_parameters = {}
+            self._close_adm_connection()
+        return self._fixed_goe_parameters
+
+    def _get_fixed_sqoop_parameters(self, max_ts_scale):
+        """These are defined to match parameters set by Sqoop/Oraoop
+
+        Dependency on this TIME_ZONE=UTC with logic for avro_conv_fns appending UTC
+        """
+        ff_scale = self._get_ts_ff_scale(max_ts_scale)
+        return {
+            "TRACEFILE_IDENTIFIER": "'%s'" % FRONTEND_TRACE_ID,
+            "TIME_ZONE": "'UTC'",
+            "NLS_TIMESTAMP_TZ_FORMAT": "'YYYY-MM-DD HH24:MI:SS.FF%s TZH:TZM'" % ff_scale,
+            "NLS_TIMESTAMP_FORMAT": "'YYYY-MM-DD HH24:MI:SS.FF%s'" % ff_scale,
+            "NLS_DATE_FORMAT": "'YYYY-MM-DD HH24:MI:SS'",
+            '"_SERIAL_DIRECT_READ"': "TRUE",
+        }
+
+    def _get_ts_ff_scale(self, ts_scale):
+        """Return a string scale which can be tagged onto 'HH24:MI:SS.FF'"""
+        if ts_scale:
+            assert isinstance(ts_scale, int)
+            assert 0 <= ts_scale <= 9
+        return "" if ts_scale is None else str(ts_scale)
+
+    def _oracle_alter_session_statements(
+        self,
+        session_parameter_dict,
+        for_plsql=False,
+        include_semi_colons=False,
+        escape_semi_colons=False,
+    ):
+        """Format ALTER SESSION statements for inclusion in a data transport operation
+        return statements as a list, empty list if nothing to do
+        """
+        if not session_parameter_dict:
+            return []
+        alter_template = "ALTER SESSION SET %s=%s"
+        semi_colon = "\\;" if escape_semi_colons else ";"
+        if include_semi_colons:
+            alter_template += semi_colon
+
+        if for_plsql:
+            plsql_wrap_template = "EXECUTE IMMEDIATE q'!%s!'"
+            use_template = (plsql_wrap_template % alter_template) + semi_colon
+        else:
+            use_template = alter_template
+
+        alter_session_statements = [use_template % (k, v) for k, v in sorted(session_parameter_dict.items())]
+        return alter_session_statements
+
+    def _cx_getvalue(self, incoming):
+        return incoming.getvalue() if incoming and hasattr(incoming, "getvalue") else incoming
+
+    def _get_iot_single_partition_clause(self, partition_chunk):
+        """Return PARTITION(partition_name) clause partition_chunk if there is a single partition.
+        This is because we treat single partition IOT offloads like non-partitioned tables. It's a small
+        optimization to make up for the fact we cannot split IOT partitions by rowid range.
+        """
+        if partition_chunk and partition_chunk.count() == 1:
+            return f" PARTITION ({partition_chunk.partition_names().pop()})"
+        return ""

@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """Miscellaneous useful functions that do not fit anywhere else"""
 
 import datetime
@@ -19,14 +20,10 @@ import uuid
 from base64 import b64encode
 from copy import copy
 from hashlib import md5
+from typing import Any
 
 from dateutil import parser
 
-###############################################################################
-#  CONSTANTS
-###############################################################################
-
-# Python datatype recognition regexes for parse_python_from_string()
 REGEX_TRUE = re.compile("True", re.IGNORECASE)
 REGEX_FALSE = re.compile("False", re.IGNORECASE)
 REGEX_NONE = re.compile("None", re.IGNORECASE)
@@ -87,11 +84,13 @@ def chunk_list(lst, chunk_size):
 
 
 def set_goelib_logging(log_level, extra_loggers=None):
-    """Set "global" logging parameters and exclude all non-goelib loggers"""
+    """Set "global" logging parameters and exclude all non-goelib loggers
+
+    Disable library loggers
+    """
     if not extra_loggers:
         extra_loggers = []
 
-    # Disable library loggers
     for logger_name in logging.Logger.manager.loggerDict:
         if logger_name != "__main__" and logger_name not in extra_loggers and not logger_name.startswith("goelib"):
             logging.getLogger(logger_name).level = logging.CRITICAL
@@ -106,6 +105,8 @@ def set_goelib_logging(log_level, extra_loggers=None):
 def parse_python_from_string(value):
     """Translate string 'value' into Python datatype
     based on 'appearance'
+
+    datetime ?
     """
     assert isinstance(value, str)
 
@@ -118,7 +119,6 @@ def parse_python_from_string(value):
     elif REGEX_NONE.match(value):
         value = None
     else:
-        # datetime ?
         try:
             value = parser.parse(value)
         except ValueError:
@@ -127,12 +127,12 @@ def parse_python_from_string(value):
     return value
 
 
-def csv_split(csv: str, sep=",") -> list:
+def csv_split(csv: str, sep: str = ",") -> list[str]:
     """Trivial function that splits a CSV and strip()s the tokens"""
     return [_.strip() for _ in csv.split(sep)]
 
 
-def csvkv_to_dict(csvkv, sep=",", pythonize=True) -> dict:
+def csvkv_to_dict(csvkv: str, sep: str = ",", pythonize: bool = True) -> dict[str, Any]:
     """Transform: key1=value1, key2=value2,...
     to: {key1: value1, key2:value2, ...}
     """
@@ -146,7 +146,7 @@ def csvkv_to_dict(csvkv, sep=",", pythonize=True) -> dict:
     return ret
 
 
-def split_not_in_quotes(to_split: str, sep=" ", exclude_empty_tokens=False) -> list:
+def split_not_in_quotes(to_split: str, sep: str = " ", exclude_empty_tokens: bool = False) -> list[str]:
     """Split a string by a separator but only when the separator is not inside quotes.
     re pattern taken from this comment:
         https://stackoverflow.com/a/2787979/10979853
@@ -180,12 +180,14 @@ def timedelta_to_str(td):
 
 
 def is_number(s):
-    """Return True if string: 's' can be converted to a number, False otherwise"""
+    """Return True if string: 's' can be converted to a number, False otherwise
+
+    For some strange reason, boolean is 'int' in python
+    i.e. float(True) = 1.0 - we do not want that
+    """
     if s is None:
         return False
 
-    # For some strange reason, boolean is 'int' in python
-    # i.e. float(True) = 1.0 - we do not want that
     if type(s) in (bool, bool):
         return False
 
@@ -223,6 +225,8 @@ def truncate_number(n, digits_to_keep=0):
     digits_to_keep has two forms
         >= 0: Truncate decimal places, e.g. truncate_number(123.456, 1) == 123.4
         < 0: Additionally truncate digits to left of decimal place, e.g. truncate_number(123.456, -1) == 120
+
+    Ensure we have enough headroom to multiply by digits_to_keep
     """
 
     def remove_exponent(d):
@@ -234,7 +238,6 @@ def truncate_number(n, digits_to_keep=0):
     else:
         num = n
     original_context = decimal.getcontext()
-    # Ensure we have enough headroom to multiply by digits_to_keep
     tn_context = decimal.Context(prec=MAX_SUPPORTED_PRECISION + abs(digits_to_keep) + 1)
     decimal.setcontext(tn_context)
     multiplier = tn_context.power(10, digits_to_keep)
@@ -290,17 +293,15 @@ def typed_property(name, expected_type):
     """
     storage_name = "_" + name
 
-    @property
-    def prop(self):
+    def fget(self):
         return getattr(self, storage_name)
 
-    @prop.setter
-    def prop(self, value):
+    def fset(self, value):
         if not isinstance(value, expected_type):
             raise TypeError("%s must be a %s" % (name, str(expected_type)))
         setattr(self, storage_name, value)
 
-    return prop
+    return property(fget, fset)
 
 
 def get_option(options, name, repl=None):
@@ -331,7 +332,6 @@ def trunc_with_hash(s, hash_length, max_length, force_append_hash=False, hash_ca
     if len(s) <= max_length and not force_append_hash:
         return s
     stem = s[: max_length - hash_length - 1]
-    # hash -> b64 it into chars -> keep identifier chars and trim to hash_length
     minihash = b64encode(md5(s.encode()).digest()).decode()
     minihash = re.sub(r"[\W\s]", "", minihash)[:hash_length]
     if hash_case_conv_fn:
@@ -485,14 +485,13 @@ def human_size_to_bytes(size, binary_sizes=True):
     return None
 
 
-# not used tempfile.mkstemp for get_temp_path/write_temp_file as sometimes
-# want to generate a file name to use remotely or fully control the random section
-def get_temp_path(tmp_dir: str = "/tmp", prefix: str = "goe_tmp_", suffix: str = ""):
+def get_temp_path(tmp_dir: str = "/tmp", prefix: str = "goe_tmp_", suffix: str = "") -> str:
+    """Generate a temporary file path with a controlled prefix, UUID, and suffix."""
     suffix_str = (".%s" % suffix.lstrip(".")) if suffix else ""
     return os.path.join(tmp_dir, "%s%s%s" % (prefix, str(uuid.uuid4()), suffix_str))
 
 
-def write_temp_file(data, prefix: str = "goe_tmp_", suffix: str = ""):
+def write_temp_file(data: str, prefix: str = "goe_tmp_", suffix: str = "") -> str:
     """Writes some data to a temporary file and returns the path to the file"""
     tmp_path = get_temp_path(prefix=prefix, suffix=suffix)
     with open(tmp_path, "w") as fh:
@@ -514,13 +513,14 @@ def obscure_list_items(list_of_items, to_obscure):
     to_obscure:  A list of items to obscure, e.g.
                  [{'item': 'super-sensitive', 'prior': '--pwd', 'sub': 'XXXXXX' {...}]
                    'prior' and 'sub' are optional, 'sub' defaults to "?"
+
+    Obscure the item if it matches the value 'item' and, optionally, the prior item in the list match 'prior'
     """
     safe_list = copy(list_of_items)
     if not to_obscure:
         return safe_list
 
     for itm in to_obscure:
-        # Obscure the item if it matches the value 'item' and, optionally, the prior item in the list match 'prior'
         safe_list = [
             (
                 itm.get("sub", "?")
@@ -535,8 +535,8 @@ def obscure_list_items(list_of_items, to_obscure):
 
 
 def get_os_username():
+    """Do not use os.getlogin because if the user used sudo it would return the original parent login."""
     try:
-        # Do not use os.getlogin because if the user used sudo it would return the original parent login.
         return getpass.getuser()
     except Exception:
         return os.environ.get("USER")
@@ -548,7 +548,10 @@ def ansi_c_string_safe(shell_command):
 
 
 def match_case(token, affix, position, operation):
-    """Join a string to another string or substitute a string but in the same case (upper or lower)."""
+    """Join a string to another string or substitute a string but in the same case (upper or lower).
+
+    All bets are off
+    """
     assert token and operation in ("concatenate", "substitute")
     if operation == "concatenate":
         assert position in ("prefix", "suffix") and affix
@@ -564,14 +567,12 @@ def match_case(token, affix, position, operation):
                 + token
                 + (affix.lower() if position == "suffix" else "")
             )
-        # All bets are off
         return (affix if position == "prefix" else "") + token + (affix if position == "suffix" else "")
     if operation == "substitute":
         if affix.isupper():
             return (token % affix).upper()
         if affix.islower():
             return (token % affix).lower()
-        # All bets are off
         return token % affix
 
 
@@ -641,6 +642,8 @@ def format_list_for_logging(content_list, underline_char="="):
         Header1 LongerHeader
         ======= ============
         Blah             123
+
+    No table data so just return headings
     """
 
     def width_fn(x):
@@ -661,7 +664,6 @@ def format_list_for_logging(content_list, underline_char="="):
         header_format.format(*[(underline_char * _) for _ in widths]),
     ]
     if len(content_list) < 2:
-        # No table data so just return headings
         return "\n".join(table_rows + ["No data"])
     row_format = " ".join(
         ("{%s: %s%s}" % (i, justify_fn(c), w)) for i, (w, c) in enumerate(zip(widths, content_list[1]))
@@ -706,14 +708,15 @@ def to_str(bytes_or_str):
 def wildcard_matches_in_list(pattern, list_of_names, case_sensitive=True):
     """Return a list of strings in list_of_names that match the simple wildcard pattern.
     pattern only supports '*' as special character.
+
+    Protect against any attempted regex use in pattern
+    Reinstate any '*' wildcards
+    Anchor the pattern
     """
     if not list_of_names:
         return []
-    # Protect against any attempted regex use in pattern
     pattern = re.escape(pattern)
-    # Reinstate any '*' wildcards
     pattern = pattern.replace("\\*", ".*")
-    # Anchor the pattern
     pattern = rf"^{pattern}$"
     pattern_re = re.compile(pattern) if case_sensitive else re.compile(pattern, re.IGNORECASE)
     matches = [_ for _ in list_of_names if pattern_re.match(_)]

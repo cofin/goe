@@ -53,18 +53,8 @@ from goe.offload.staging.staging_file import (
     OffloadStagingFileInterface,
 )
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# OffloadStagingAvroFile
-###########################################################################
 
 
 class OffloadStagingAvroFile(OffloadStagingFileInterface):
@@ -95,9 +85,20 @@ class OffloadStagingAvroFile(OffloadStagingFileInterface):
         if dry_run:
             logger.info("* Dry run *")
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def from_canonical_column(self, column):
+        """Translate an internal GOE column to an Avro column"""
+        return self._from_canonical_column_to_avro(column)
+
+    def to_canonical_column(self, column, use_staging_file_name=False):
+        """Translate an Avro column to an internal GOE column"""
+        return self._from_avro_to_canonical_column(column, use_staging_file_name=use_staging_file_name)
+
+    def get_file_schema_json(self, as_string=True):
+        json_string = self._get_avro_schema_json_string()
+        return json_string if as_string else json.loads(json_string)
+
+    def get_java_primitive(self, staging_column):
+        return self._get_avro_java_primitive(staging_column)
 
     def _from_canonical_column_to_avro(self, column):
         """Translate an internal GOE column to an Avro column
@@ -252,6 +253,7 @@ class OffloadStagingAvroFile(OffloadStagingFileInterface):
         return avro_schema
 
     def _get_avro_java_primitive(self, staging_column):
+        """Let the calling program use implicit conversion"""
         canonical_column = match_table_column(staging_column.name, self._canonical_columns)
         if staging_column.data_type == AVRO_TYPE_BOOLEAN:
             return JAVA_PRIMITIVE_BOOLEAN
@@ -263,34 +265,10 @@ class OffloadStagingAvroFile(OffloadStagingFileInterface):
             return JAVA_PRIMITIVE_INTEGER
         if staging_column.data_type == AVRO_TYPE_LONG:
             return JAVA_PRIMITIVE_LONG
+        assert canonical_column is not None
         if canonical_column.data_type not in (GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY):
             return JAVA_PRIMITIVE_STRING
-        # Let the calling program use implicit conversion
         return None
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def from_canonical_column(self, column):
-        """Translate an internal GOE column to an Avro column"""
-        return self._from_canonical_column_to_avro(column)
-
-    def to_canonical_column(self, column, use_staging_file_name=False):
-        """Translate an Avro column to an internal GOE column"""
-        return self._from_avro_to_canonical_column(column, use_staging_file_name=use_staging_file_name)
-
-    def get_file_schema_json(self, as_string=True):
-        json_string = self._get_avro_schema_json_string()
-        return json_string if as_string else json.loads(json_string)
-
-    def get_java_primitive(self, staging_column):
-        return self._get_avro_java_primitive(staging_column)
-
-
-###########################################################################
-# OffloadStagingAvroImpalaFile
-###########################################################################
 
 
 class OffloadStagingAvroImpalaFile(OffloadStagingAvroFile):
@@ -320,14 +298,6 @@ class OffloadStagingAvroImpalaFile(OffloadStagingAvroFile):
         logger.info("OffloadStagingAvroImpalaFile setup: (%s, %s)" % (load_db_name, table_name))
         if dry_run:
             logger.info("* Dry run *")
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def from_canonical_column(self, column):
         """Translate an internal GOE column to an Avro/Impala column"""

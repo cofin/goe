@@ -10,11 +10,6 @@ from goe.offload.column_metadata import (
     ColumnMetadataInterface,
 )
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# Data types
 HADOOP_TYPE_BOOLEAN = "BOOLEAN"
 HADOOP_TYPE_CHAR = "CHAR"
 HADOOP_TYPE_STRING = "STRING"
@@ -34,11 +29,6 @@ HADOOP_TYPE_DATE = "DATE"
 HADOOP_TYPE_TIMESTAMP = "TIMESTAMP"
 HADOOP_TYPE_INTERVAL_DS = "INTERVAL_DAY_TIME"
 HADOOP_TYPE_INTERVAL_YM = "INTERVAL_YEAR_MONTH"
-
-
-###########################################################################
-# CLASSES
-###########################################################################
 
 
 class HadoopColumn(ColumnMetadataInterface):

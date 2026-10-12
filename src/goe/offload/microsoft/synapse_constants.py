@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-# Authentication mechanisms
 SYNAPSE_AUTH_MECHANISM_SQL_PASSWORD = "SqlPassword"
 SYNAPSE_AUTH_MECHANISM_AD_PASSWORD = "ActiveDirectoryPassword"
 SYNAPSE_AUTH_MECHANISM_AD_MSI = "ActiveDirectoryMsi"

@@ -18,13 +18,8 @@ from goe.offload.offload_source_table import (
 )
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
-
-###########################################################################
-# CONSTANTS
-###########################################################################
 
 PARTITION_TYPE_COLUMNAR = "COLUMNAR"
 
@@ -86,7 +81,6 @@ GRAMMAR = r"""
     _OPERATOR: /[=<>]/
 """
 
-# These constants need to match token in above grammar
 RANGE_NODE = "match_range_n"
 CASE_NODE = "match_case_n"
 COLUMNAR_NODE = "match_columnar"
@@ -106,18 +100,8 @@ class UnsupportedPartitionExpression(Exception):
     pass
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
 def get_parser():
     return lark.Lark(GRAMMAR, start="check_constraint")
-
-
-###########################################################################
-# TeradataPartitionExpression
-###########################################################################
 
 
 class TeradataPartitionExpression:
@@ -128,6 +112,12 @@ class TeradataPartitionExpression:
         pseudo_column: 'PARTIITON#Ln'.
         ranges: list[str] of ranges for a RANGE_N expression:
             [start SQL literal, end SQL literal, interval SQL literal]
+
+        Currently we only support RANGE_N or RANGE_N combined with columnar.
+        Columnar alone so we can drop out here without ranges.
+        Pick up the first RANGE_N node.
+        The RANGE_N node only has 2 children: a column and a list of between expressions
+        We expect 3 children of ranges nodes
         """
         assert isinstance(constraint_text, str)
         try:
@@ -142,7 +132,6 @@ class TeradataPartitionExpression:
 
         matched_nodes = [_.data for _ in self._ast.children]
         if not matched_nodes or not set(matched_nodes).issubset({RANGE_NODE, COLUMNAR_NODE}):
-            # Currently we only support RANGE_N or RANGE_N combined with columnar.
             if COLUMNAR_NODE in matched_nodes:
                 raise UnsupportedPartitionExpression(
                     f"Only single RANGE_N partition expressions combined with columnar partitioning are supported: {constraint_text}"
@@ -156,17 +145,14 @@ class TeradataPartitionExpression:
             )
 
         if RANGE_NODE not in matched_nodes and COLUMNAR_NODE in matched_nodes:
-            # Columnar alone so we can drop out here without ranges.
             self.partition_type = PARTITION_TYPE_COLUMNAR
             return
 
-        # Pick up the first RANGE_N node.
         range_node_index = matched_nodes.index(RANGE_NODE)
         fn_node = self._ast.children[range_node_index]
         self.partition_type = NODE_PARTITION_TYPES[fn_node.data]
         self.pseudo_column = "PARTITION#L" + str(range_node_index + 1)
 
-        # The RANGE_N node only has 2 children: a column and a list of between expressions
         self.column = fn_node.children[0].value
 
         ranges = []
@@ -176,7 +162,6 @@ class TeradataPartitionExpression:
                 "range_n_number_range",
             ):
                 continue
-            # We expect 3 children of ranges nodes
             if len(range_node.children) != 3:
                 raise UnsupportedPartitionExpression(
                     f"RANGE_N BETWEEN expression does not contain 3 elements: {[_.value for _ in range_node.children]}"

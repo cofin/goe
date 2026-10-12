@@ -6,22 +6,17 @@
 """OffloadTransportMSSQLApi: Library for logic/interaction with source MSSQL system during offload transport."""
 
 from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any
 
+from goe.offload.column_metadata import ColumnMetadataInterface
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
+from goe.offload.offload_source_data import OffloadSourcePartitions
+from goe.offload.offload_source_table import OffloadSourceTableInterface
 from goe.offload.offload_transport_rdbms_api import OffloadTransportRdbmsApiInterface
 from goe.util.misc_functions import id_generator
 
-###########################################################################
-# CONSTANTS
-###########################################################################
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-###########################################################################
-# OffloadTransportMSSQLApi
-###########################################################################
+if TYPE_CHECKING:
+    pass
 
 
 class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
@@ -44,25 +39,22 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
         )
         self.debug("OffloadTransportMSSQLApi setup: (%s, %s)" % (rdbms_owner, rdbms_table_name))
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def generate_transport_action(self):
         id_str = id_generator()
         return "%s_%s" % (id_str, self._rdbms_table_name.lower())
 
     def get_id_column_for_range_splitting(
         self,
-        rdbms_table,
-    ) -> str:
+        rdbms_table: OffloadSourceTableInterface,
+    ) -> ColumnMetadataInterface:
         raise NotImplementedError("MSSQL get_id_column_for_range_splitting() pending implementation")
 
-    def get_id_range(self, rdbms_col_name: str, partition_chunk=None) -> tuple:
+    def get_id_range(
+        self,
+        rdbms_col_name: str,
+        predicate_offload_clause: str = "",
+        partition_chunk: Any = None,
+    ) -> tuple[Any, ...]:
         raise NotImplementedError("MSSQL get_id_range() pending implementation")
 
     def get_rdbms_query_cast(
@@ -80,15 +72,15 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
 
     def get_rdbms_session_setup_commands(
         self,
-        module,
-        action,
-        custom_session_parameters,
-        include_fixed_sqoop=True,
-        for_plsql=False,
-        include_semi_colons=False,
-        escape_semi_colons=False,
-        max_ts_scale=None,
-    ) -> list:
+        module: Any,
+        action: Any,
+        custom_session_parameters: Any,
+        include_fixed_sqoop: bool = True,
+        for_plsql: bool = False,
+        include_semi_colons: bool = False,
+        escape_semi_colons: bool = False,
+        max_ts_scale: Any = None,
+    ) -> list[Any]:
         raise NotImplementedError("MSSQL get_rdbms_session_setup_commands() not implemented.")
 
     def get_rdbms_session_setup_hint(self, custom_session_parameters, max_ts_scale):
@@ -100,42 +92,41 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
 
     def get_transport_split_type(
         self,
-        partition_chunk,
-        rdbms_table,
-        parallelism,
-        rdbms_partition_type,
-        rdbms_columns,
+        partition_chunk: OffloadSourcePartitions,
+        rdbms_table: OffloadSourceTableInterface,
+        parallelism: int,
+        rdbms_partition_type: str,
         offload_by_subpartition: bool,
-        predicate_offload_clause,
+        predicate_offload_clause: str,
         native_range_split_available: bool = False,
-    ) -> tuple:
+    ) -> tuple[Any, ...]:
         raise NotImplementedError("MSSQL get_transport_split_type() not implemented.")
 
     def get_transport_row_source_query(
         self,
-        partition_by_prm,
-        rdbms_table,
+        partition_by_prm: Any,
+        rdbms_table: Any,
         consistent_read: bool,
         transport_scn: int,
-        parallelism,
-        offload_by_subpartition,
-        mod_column,
-        predicate_offload_clause,
-        partition_chunk=None,
-        pad=None,
-        id_col_min=None,
-        id_col_max=None,
+        parallelism: Any,
+        offload_by_subpartition: Any,
+        mod_column: Any,
+        predicate_offload_clause: Any,
+        partition_chunk: Any = None,
+        pad: Any = None,
+        id_col_min: Any = None,
+        id_col_max: Any = None,
     ) -> str:
         raise NotImplementedError("MSSQL get_transport_row_source_query() not implemented.")
 
     def get_transport_row_source_query_hint_block(self) -> str:
         raise NotImplementedError("MSSQL get_transport_row_source_query_hint_block() not implemented.")
 
-    def jdbc_driver_name(self) -> str:
+    def jdbc_driver_name(self):
         return None
 
-    def jdbc_url(self):
-        return '"jdbc:sqlserver://' + self._offload_transport_dsn + '"'
+    def jdbc_url(self) -> str:
+        return '"jdbc:sqlserver://' + (self._offload_transport_dsn or "") + '"'
 
     def log_sql_stats(
         self,
@@ -161,18 +152,22 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
     ):
         raise NotImplementedError("MSSQL query_import_extraction() not implemented")
 
-    def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands) -> list:
+    def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands: Any) -> list[Any]:
         return []
 
     def sqoop_rdbms_specific_jvm_table_options(
-        self, partition_chunk, partition_type=None, is_iot=False, consistent_read=False
-    ) -> list:
+        self,
+        partition_chunk: Any,
+        partition_type: Any = None,
+        is_iot: bool = False,
+        consistent_read: bool = False,
+    ) -> list[Any]:
         return []
 
-    def sqoop_rdbms_specific_options(self) -> list:
+    def sqoop_rdbms_specific_options(self) -> list[Any]:
         return []
 
-    def sqoop_rdbms_specific_table_options(self, rdbms_owner, table_name) -> list:
+    def sqoop_rdbms_specific_table_options(self, rdbms_owner: Any, table_name: Any) -> list[Any]:
         return [
             "--",
             "--schema",

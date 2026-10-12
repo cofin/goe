@@ -25,7 +25,7 @@ def check_table_structure(
     frontend_table: "OffloadSourceTableInterface",
     backend_table: "BackendTableInterface",
     messages: OffloadMessages,
-):
+) -> None:
     """Compare frontend and backend columns are compatible to allow Offload to proceed.
 
     Throws an exception if there is a mismatch.
@@ -34,11 +34,13 @@ def check_table_structure(
       - Check names match, case insensitive.
       - Check data types are compatible via canonical classes, e.g. is_numeric().
       - Check data types are compatible across valid remappings, e.g. frontend date to backend string.
+
+    Check case insensitive names match.
+    Check data types are compatible via canonical classes.
     """
     frontend_cols = frontend_table.columns
     backend_cols = backend_table.get_non_synthetic_columns()
 
-    # Check case insensitive names match.
     new_frontend_cols, missing_frontend_cols = check_table_columns_by_name(frontend_cols, backend_cols)
     if new_frontend_cols or missing_frontend_cols:
         check_table_columns_by_name_logging(
@@ -52,7 +54,6 @@ def check_table_structure(
             f"{OFFLOAD_SCHEMA_CHECK_EXCEPTION_TEXT}: {frontend_table.owner}.{frontend_table.table_name}"
         )
 
-    # Check data types are compatible via canonical classes.
     invalid_combinations = check_table_columns_by_type(frontend_table, backend_table)
     if invalid_combinations:
         check_table_columns_by_type_logging(frontend_table, backend_table, invalid_combinations, messages)
@@ -80,7 +81,7 @@ def check_table_columns_by_name_logging(
     new_frontend_cols: list,
     missing_frontend_cols: list,
     messages: OffloadMessages,
-):
+) -> None:
     if not new_frontend_cols and not missing_frontend_cols:
         return
     column_table = [(frontend_table.frontend_db_name(), backend_table.backend_db_name())]
@@ -102,23 +103,26 @@ def check_table_columns_by_type(
 
     Returns:
         A dict of frontend column names with the incompatible backend data type.
+
+    The types are close enough.
+    The types are a valid offload combination.
+    If we get here then we have an invalid combination
     """
     invalid_combinations = {}
     target_canonical_cols = backend_table.get_canonical_columns()
     for rdbms_col in frontend_table.columns:
         target_canonical_col = match_table_column(rdbms_col.name, target_canonical_cols)
+        assert target_canonical_col is not None
         if (
             (rdbms_col.is_number_based() and target_canonical_col.is_number_based())
             or (rdbms_col.is_string_based() and target_canonical_col.is_string_based())
             or (rdbms_col.is_date_based() and target_canonical_col.is_date_based())
         ):
-            # The types are close enough.
             continue
         if frontend_table.valid_canonical_override(rdbms_col, target_canonical_col):
-            # The types are a valid offload combination.
             continue
-        # If we get here then we have an invalid combination
         backend_col = match_table_column(rdbms_col.name, backend_table.get_columns())
+        assert backend_col is not None
         invalid_combinations[rdbms_col.name] = backend_col.data_type
     return invalid_combinations
 
@@ -128,7 +132,7 @@ def check_table_columns_by_type_logging(
     backend_table: "BackendTableInterface",
     invalid_combinations: dict,
     messages: OffloadMessages,
-):
+) -> None:
     if not invalid_combinations:
         return
     column_table = [

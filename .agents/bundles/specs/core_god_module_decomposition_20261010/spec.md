@@ -2,16 +2,17 @@
 type: Spec
 flow_id: core_god_module_decomposition_20261010
 title: "Chapter 2.2: Core God-Module Decomposition (Orchestration, Status Report, Source Data & Transport)"
-state: planned
+state: completed
 plan_revision: 3
 plan_commit: null
-state_revision: 0
+state_revision: 5
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: finish
+operation_targets:
+  - core_god_module_decomposition_20261010
+last_verified_checkpoint: 71c18e8
 created_at: 2026-10-10T16:00:00Z
-updated_at: 2026-10-11T00:10:00Z
+updated_at: 2026-10-11T18:01:15Z
 description: "Decompose goe.py, offload_status_report.py, offload_source_data.py, offload_transport.py and offload_transport_factory.py into cohesive modules by verbatim moves, delete proven dead code, and leave each legacy module as a definition-free re-export facade that serves exactly its observed import surface."
 tags:
   - refactoring
@@ -91,16 +92,16 @@ Tasks are sequential (each ends green) even though their files are disjoint, so 
 
 ## Implementation Plan
 
-- [ ] 1.1 [Decompose `goe.py` into `src/goe/orchestration/`](tasks/1.1.md)
-- [ ] 1.2 [Decompose `offload_status_report.py` into `src/goe/report/`](tasks/1.2.md)
-- [ ] 1.3 [Decompose `offload_source_data.py` into `src/goe/offload/source_data/`](tasks/1.3.md)
-- [ ] 1.4 [Decompose `offload_transport.py` and its factory into `src/goe/offload/transport/`](tasks/1.4.md)
+- [x] 1.1 [Decompose `goe.py` into `src/goe/orchestration/`](tasks/1.1.md) (91d4036)
+- [x] 1.2 [Decompose `offload_status_report.py` into `src/goe/report/`](tasks/1.2.md) (4cc4d5c)
+- [x] 1.3 [Decompose `offload_source_data.py` into `src/goe/offload/source_data/`](tasks/1.3.md) (cede44d)
+- [x] 1.4 [Decompose `offload_transport.py` and its factory into `src/goe/offload/transport/`](tasks/1.4.md) (71c18e8)
 
 ## Continuity Snapshot
 
-- **State**: `planned`; current task: none; claimant: none; last verified checkpoint: none.
+- **State**: `completed`; current task: none; claimant: none; last verified checkpoint: `71c18e8`.
 - **Decisions**: `D-2.2-A` (missing HTML template) and `D-2.2-B` (OSR constructor seam) resolved as described in §5.
-- **Blockers**: Chapter 2.1 complete (option structs, builders deleted); PRD 1 golden suite present.
-- **Next exact step**: claim Task 1.1 and write `tests/unit/orchestration/test_goe_orchestration_characterization.py` (Step 1).
-- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Blockers**: none.
+- **Next exact step**: proceed to Chapter 2.3 (`strict_mypy_type_safety_ratchet_20261010`).
+- **Plan identity**: `plan_revision: 3`, `plan_commit: null`. **State identity**: `state_revision: 5`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/architecture/`, `.agents/bundles/knowledge/transport/`, `.agents/bundles/knowledge/patterns/offload-and-typing.md`.

@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """OracleOrchestrationRepoClient: Oracle implementation of API for get/put of orchestration metadata."""
 
 import logging
@@ -52,10 +53,6 @@ if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 OFFLOAD_METADATA_ORA_TYPE_NAME = "OFFLOAD_METADATA_OT"
 OFFLOAD_PARTITION_ORA_TYPE_NAME = "OFFLOAD_PARTITION_OT"
 OFFLOAD_PARTITIONS_ORA_TYPE_NAME = "OFFLOAD_PARTITION_NTT"
@@ -63,18 +60,8 @@ OFFLOAD_PARTITIONS_ORA_TYPE_NAME = "OFFLOAD_PARTITION_NTT"
 METADATA_SOURCE_TYPE_VIEW = "VIEW"
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# OracleOrchestrationRepoClient
-###########################################################################
 
 
 class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
@@ -85,174 +72,20 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         connection_options: "OrchestrationConfig",
         messages: "OffloadMessages",
         dry_run: bool = False,
-        trace_action: str = None,
-    ):
+        trace_action: str | None = None,
+    ) -> None:
         super().__init__(connection_options, messages, dry_run=dry_run, trace_action=trace_action)
         self._repo_user = self._connection_options.ora_repo_user
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _drop_metadata(self, frontend_owner: str, frontend_name: str):
-        logger.debug(f"Dropping metadata: {frontend_owner}, {frontend_name}")
-        assert frontend_owner
-        assert frontend_name
-        # In Oracle we expect the identifying owner/name to be upper case
-        frontend_owner = frontend_owner.upper()
-        frontend_name = frontend_name.upper()
-        self._frontend_api.execute_function(
-            "offload_repo.delete_offload_metadata",
-            arg_list=[frontend_owner, frontend_name],
-            not_when_dry_running=True,
-            commit=True,
-        )
-
-    def _get_metadata(self, frontend_owner: str, frontend_name: str) -> dict:
-        logger.debug(f"Fetching metadata: {frontend_owner}, {frontend_name}")
-        assert frontend_owner
-        assert frontend_name
-        # In Oracle we expect the identifying owner/name to be upper case
-        frontend_owner = frontend_owner.upper()
-        frontend_name = frontend_name.upper()
-        metadata_obj = self._frontend_api.execute_function(
-            "offload_repo.get_offload_metadata",
-            return_type=oracledb.DB_TYPE_OBJECT,
-            return_type_name=self._get_ora_type_object_name(OFFLOAD_METADATA_ORA_TYPE_NAME),
-            arg_list=[frontend_owner, frontend_name],
-            log_level=VVERBOSE,
-        )
-        if metadata_obj:
-            return self._ora_object_to_metadata_dict(metadata_obj)
-        return None
-
-    def _get_offload_metadata_ora_type_object(self):
-        """This subverts FrontendApi because it has knowledge about oracledb. We are in an Oracle only class
-        so this is slightly less terrible but still not ideal.
-        """
-        return self._get_ora_type_object(OFFLOAD_METADATA_ORA_TYPE_NAME)
-
-    def _get_ora_type_object(self, repo_type_name: str, owner_override: str = None):
-        qualified_name = self._get_ora_type_object_name(repo_type_name, owner_override=owner_override)
-        return self._frontend_api.oracle_get_type_object(qualified_name)
-
-    def _get_ora_type_object_name(self, repo_type_name: str, owner_override: str = None):
-        return f'"{(owner_override or self._repo_user).upper()}"."{repo_type_name.upper()}"'
-
-    def _metadata_dict_to_ora_object(self, metadata_dict):
-        """Used to convert a Python dict of metadata to an Oracle object type ready for saving to the database."""
-        logger.debug(f"Converting metadata: {metadata_dict}")
-        metadata_obj = self._get_offload_metadata_ora_type_object()
-        metadata_obj.FRONTEND_OBJECT_OWNER = metadata_dict[OFFLOADED_OWNER]
-        metadata_obj.FRONTEND_OBJECT_NAME = metadata_dict[OFFLOADED_TABLE]
-        metadata_obj.BACKEND_OBJECT_OWNER = metadata_dict[HADOOP_OWNER]
-        metadata_obj.BACKEND_OBJECT_NAME = metadata_dict[HADOOP_TABLE]
-        metadata_obj.OFFLOAD_TYPE = metadata_dict[OFFLOAD_TYPE]
-        metadata_obj.OFFLOAD_RANGE_TYPE = metadata_dict[INCREMENTAL_RANGE]
-        metadata_obj.OFFLOAD_KEY = metadata_dict[INCREMENTAL_KEY]
-        metadata_obj.OFFLOAD_HIGH_VALUE = metadata_dict[INCREMENTAL_HIGH_VALUE]
-        metadata_obj.OFFLOAD_PREDICATE_TYPE = metadata_dict[INCREMENTAL_PREDICATE_TYPE]
-        if metadata_dict[INCREMENTAL_PREDICATE_VALUE] is None:
-            metadata_obj.OFFLOAD_PREDICATE_VALUE = metadata_dict[INCREMENTAL_PREDICATE_VALUE]
-        else:
-            metadata_obj.OFFLOAD_PREDICATE_VALUE = self._metadata_dict_to_json_string(
-                metadata_dict[INCREMENTAL_PREDICATE_VALUE]
-            )
-        metadata_obj.OFFLOAD_SNAPSHOT = metadata_dict[OFFLOAD_SNAPSHOT]
-        metadata_obj.OFFLOAD_HASH_COLUMN = metadata_dict[OFFLOAD_BUCKET_COLUMN]
-        metadata_obj.OFFLOAD_SORT_COLUMNS = metadata_dict[OFFLOAD_SORT_COLUMNS]
-        metadata_obj.OFFLOAD_PARTITION_FUNCTIONS = metadata_dict[OFFLOAD_PARTITION_FUNCTIONS]
-        metadata_obj.COMMAND_EXECUTION = metadata_dict[COMMAND_EXECUTION].as_bytes()
-        return metadata_obj
-
-    def _ora_object_to_metadata_dict(self, metadata_obj):
-        """Converts the Oracle object type to a Python dict of metadata to be used in orchestration."""
-        metadata_dict = {
-            HADOOP_OWNER: metadata_obj.BACKEND_OBJECT_OWNER,
-            HADOOP_TABLE: metadata_obj.BACKEND_OBJECT_NAME,
-            OFFLOAD_TYPE: metadata_obj.OFFLOAD_TYPE,
-            OFFLOADED_OWNER: metadata_obj.FRONTEND_OBJECT_OWNER,
-            OFFLOADED_TABLE: metadata_obj.FRONTEND_OBJECT_NAME,
-            INCREMENTAL_KEY: metadata_obj.OFFLOAD_KEY or None,
-            INCREMENTAL_HIGH_VALUE: (
-                metadata_obj.OFFLOAD_HIGH_VALUE.read() if metadata_obj.OFFLOAD_HIGH_VALUE else None
-            ),
-            INCREMENTAL_RANGE: metadata_obj.OFFLOAD_RANGE_TYPE or None,
-            INCREMENTAL_PREDICATE_TYPE: metadata_obj.OFFLOAD_PREDICATE_TYPE or None,
-            INCREMENTAL_PREDICATE_VALUE: (
-                deserialize_object(metadata_obj.OFFLOAD_PREDICATE_VALUE.read())
-                if metadata_obj.OFFLOAD_PREDICATE_VALUE
-                else None
-            ),
-            OFFLOAD_BUCKET_COLUMN: metadata_obj.OFFLOAD_HASH_COLUMN or None,
-            OFFLOAD_SORT_COLUMNS: metadata_obj.OFFLOAD_SORT_COLUMNS or None,
-            OFFLOAD_SNAPSHOT: metadata_obj.OFFLOAD_SNAPSHOT or None,
-            OFFLOAD_PARTITION_FUNCTIONS: metadata_obj.OFFLOAD_PARTITION_FUNCTIONS or None,
-            COMMAND_EXECUTION: ExecutionId.from_bytes(metadata_obj.COMMAND_EXECUTION),
-        }
-        return metadata_dict
-
-    def _offload_partitions_to_ora_object(
-        self,
-        offload_partitions: list,
-        offload_partition_level: int,
-        frontend_schema: str,
-        frontend_table_name: str,
-    ):
-        """Used to convert a Python dict of metadata to an Oracle object type ready for saving to the database."""
-        logger.debug("Converting offload_partitions")
-        partitions_ntt = self._get_ora_type_object(OFFLOAD_PARTITIONS_ORA_TYPE_NAME)
-        if not offload_partitions:
-            return partitions_ntt
-        partition_obj = self._get_ora_type_object(OFFLOAD_PARTITION_ORA_TYPE_NAME)
-        for partition in offload_partitions:
-            partition_obj.TABLE_OWNER = frontend_schema
-            partition_obj.TABLE_NAME = frontend_table_name
-            partition_obj.PARTITION_NAME = partition.partition_name
-            partition_obj.PARTITION_LEVEL = offload_partition_level
-            partition_obj.PARTITION_BYTES = partition.size_in_bytes
-            partition_obj.PARTITION_BOUNDARY = partition.partition_literal
-            partitions_ntt.append(partition_obj)
-        return partitions_ntt
-
-    def _set_metadata(
-        self,
-        metadata: dict | OrchestrationMetadata,
-    ):
-        assert metadata
-        # In Oracle we expect the identifying owner/name to be upper case
-        frontend_owner = metadata[OFFLOADED_OWNER].upper()
-        frontend_name = metadata[OFFLOADED_TABLE].upper()
-        logger.debug(f"Writing metadata: {frontend_owner}, {frontend_name}")
-        if isinstance(metadata, OrchestrationMetadata):
-            metadata = metadata.as_dict()
-        ora_metadata = self._metadata_dict_to_ora_object(metadata)
-        self._frontend_api.execute_function(
-            "offload_repo.save_offload_metadata",
-            arg_list=[frontend_owner, frontend_name, ora_metadata],
-            not_when_dry_running=True,
-            commit=True,
-        )
-        # FrontendApi logging won't show metadata values due to being in an Oracle type. So we log it here for
-        # benefit of support.
-        self._log(f"Saved metadata: {metadata!s}", detail=VERBOSE)
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def set_offload_metadata(
         self,
-        metadata: dict | OrchestrationRepoClientInterface,
-    ):
+        metadata: dict | OrchestrationMetadata,
+    ) -> None:
         self._set_metadata(metadata)
 
-    def drop_offload_metadata(self, frontend_owner: str, frontend_name: str):
+    def drop_offload_metadata(self, frontend_owner: str, frontend_name: str) -> None:
         self._drop_metadata(frontend_owner, frontend_name)
 
-    #
-    # COMMAND EXECUTION LOGGING METHODS
-    #
     def start_command(
         self,
         execution_id: ExecutionId,
@@ -423,12 +256,9 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             not_when_dry_running=True,
         )
 
-    #
-    # ORACLE LISTENER API METHODS
-    #
-
     def get_offloadable_schemas(self):
-        sql = f"""
+        """Return offloadable schemas and hybrid schema status."""
+        sql = rf"""
         WITH valid_schemas AS (
                 SELECT owner AS schema_name
                 ,      count(*) table_count
@@ -438,7 +268,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
                     SELECT grantee
                     FROM dba_role_privs
                     WHERE granted_role = 'GOE_OFFLOAD_ROLE'
-                    AND grantee LIKE '%\_H' escape '\\'
+                    AND grantee LIKE '%\_H' escape '\'
                 )
                 AND owner NOT IN (
                 'ANONYMOUS' , 'APEX_PUBLIC_USER' , 'APPQOSSYS'
@@ -500,7 +330,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             , s.table_count
         ORDER BY
             s.owner
-        """  # noqa: W605
+        """
 
         return self._frontend_api.execute_query_fetch_all(
             sql,
@@ -509,8 +339,8 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         )
 
     def get_schema_tables(self, schema_name):
+        """Relevant unsupported column name pattern number to inject into the SQL..."""
         backend = self._connection_options.backend_distribution
-        # Relevant unsupported column name pattern number to inject into the SQL...
         if backend == BACKEND_DISTRO_CDH:
             unsupported_column_pattern = "1"
         elif backend == BACKEND_DISTRO_GCP:
@@ -1032,3 +862,140 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             query_params=query_params,
             log_level=None,
         )
+
+    def _drop_metadata(self, frontend_owner: str, frontend_name: str) -> None:
+        logger.debug(f"Dropping metadata: {frontend_owner}, {frontend_name}")
+        assert frontend_owner
+        assert frontend_name
+        frontend_owner = frontend_owner.upper()
+        frontend_name = frontend_name.upper()
+        self._frontend_api.execute_function(
+            "offload_repo.delete_offload_metadata",
+            arg_list=[frontend_owner, frontend_name],
+            not_when_dry_running=True,
+            commit=True,
+        )
+
+    def _get_metadata(self, frontend_owner: str, frontend_name: str) -> dict | None:
+        logger.debug(f"Fetching metadata: {frontend_owner}, {frontend_name}")
+        assert frontend_owner
+        assert frontend_name
+        frontend_owner = frontend_owner.upper()
+        frontend_name = frontend_name.upper()
+        metadata_obj = self._frontend_api.execute_function(
+            "offload_repo.get_offload_metadata",
+            return_type=oracledb.DB_TYPE_OBJECT,
+            return_type_name=self._get_ora_type_object_name(OFFLOAD_METADATA_ORA_TYPE_NAME),
+            arg_list=[frontend_owner, frontend_name],
+            log_level=VVERBOSE,
+        )
+        if metadata_obj:
+            return self._ora_object_to_metadata_dict(metadata_obj)
+        return None
+
+    def _get_offload_metadata_ora_type_object(self):
+        """This subverts FrontendApi because it has knowledge about oracledb. We are in an Oracle only class
+        so this is slightly less terrible but still not ideal.
+        """
+        return self._get_ora_type_object(OFFLOAD_METADATA_ORA_TYPE_NAME)
+
+    def _get_ora_type_object(self, repo_type_name: str, owner_override: str | None = None) -> Any:
+        qualified_name = self._get_ora_type_object_name(repo_type_name, owner_override=owner_override)
+        return self._frontend_api.oracle_get_type_object(qualified_name)
+
+    def _get_ora_type_object_name(self, repo_type_name: str, owner_override: str | None = None) -> str:
+        return f'"{(owner_override or self._repo_user or "").upper()}"."{repo_type_name.upper()}"'
+
+    def _metadata_dict_to_ora_object(self, metadata_dict):
+        """Used to convert a Python dict of metadata to an Oracle object type ready for saving to the database."""
+        logger.debug(f"Converting metadata: {metadata_dict}")
+        metadata_obj = self._get_offload_metadata_ora_type_object()
+        metadata_obj.FRONTEND_OBJECT_OWNER = metadata_dict[OFFLOADED_OWNER]
+        metadata_obj.FRONTEND_OBJECT_NAME = metadata_dict[OFFLOADED_TABLE]
+        metadata_obj.BACKEND_OBJECT_OWNER = metadata_dict[HADOOP_OWNER]
+        metadata_obj.BACKEND_OBJECT_NAME = metadata_dict[HADOOP_TABLE]
+        metadata_obj.OFFLOAD_TYPE = metadata_dict[OFFLOAD_TYPE]
+        metadata_obj.OFFLOAD_RANGE_TYPE = metadata_dict[INCREMENTAL_RANGE]
+        metadata_obj.OFFLOAD_KEY = metadata_dict[INCREMENTAL_KEY]
+        metadata_obj.OFFLOAD_HIGH_VALUE = metadata_dict[INCREMENTAL_HIGH_VALUE]
+        metadata_obj.OFFLOAD_PREDICATE_TYPE = metadata_dict[INCREMENTAL_PREDICATE_TYPE]
+        if metadata_dict[INCREMENTAL_PREDICATE_VALUE] is None:
+            metadata_obj.OFFLOAD_PREDICATE_VALUE = metadata_dict[INCREMENTAL_PREDICATE_VALUE]
+        else:
+            metadata_obj.OFFLOAD_PREDICATE_VALUE = self._metadata_dict_to_json_string(
+                metadata_dict[INCREMENTAL_PREDICATE_VALUE]
+            )
+        metadata_obj.OFFLOAD_SNAPSHOT = metadata_dict[OFFLOAD_SNAPSHOT]
+        metadata_obj.OFFLOAD_HASH_COLUMN = metadata_dict[OFFLOAD_BUCKET_COLUMN]
+        metadata_obj.OFFLOAD_SORT_COLUMNS = metadata_dict[OFFLOAD_SORT_COLUMNS]
+        metadata_obj.OFFLOAD_PARTITION_FUNCTIONS = metadata_dict[OFFLOAD_PARTITION_FUNCTIONS]
+        metadata_obj.COMMAND_EXECUTION = metadata_dict[COMMAND_EXECUTION].as_bytes()
+        return metadata_obj
+
+    def _ora_object_to_metadata_dict(self, metadata_obj):
+        """Converts the Oracle object type to a Python dict of metadata to be used in orchestration."""
+        metadata_dict = {
+            HADOOP_OWNER: metadata_obj.BACKEND_OBJECT_OWNER,
+            HADOOP_TABLE: metadata_obj.BACKEND_OBJECT_NAME,
+            OFFLOAD_TYPE: metadata_obj.OFFLOAD_TYPE,
+            OFFLOADED_OWNER: metadata_obj.FRONTEND_OBJECT_OWNER,
+            OFFLOADED_TABLE: metadata_obj.FRONTEND_OBJECT_NAME,
+            INCREMENTAL_KEY: metadata_obj.OFFLOAD_KEY or None,
+            INCREMENTAL_HIGH_VALUE: (
+                metadata_obj.OFFLOAD_HIGH_VALUE.read() if metadata_obj.OFFLOAD_HIGH_VALUE else None
+            ),
+            INCREMENTAL_RANGE: metadata_obj.OFFLOAD_RANGE_TYPE or None,
+            INCREMENTAL_PREDICATE_TYPE: metadata_obj.OFFLOAD_PREDICATE_TYPE or None,
+            INCREMENTAL_PREDICATE_VALUE: (
+                deserialize_object(metadata_obj.OFFLOAD_PREDICATE_VALUE.read())
+                if metadata_obj.OFFLOAD_PREDICATE_VALUE
+                else None
+            ),
+            OFFLOAD_BUCKET_COLUMN: metadata_obj.OFFLOAD_HASH_COLUMN or None,
+            OFFLOAD_SORT_COLUMNS: metadata_obj.OFFLOAD_SORT_COLUMNS or None,
+            OFFLOAD_SNAPSHOT: metadata_obj.OFFLOAD_SNAPSHOT or None,
+            OFFLOAD_PARTITION_FUNCTIONS: metadata_obj.OFFLOAD_PARTITION_FUNCTIONS or None,
+            COMMAND_EXECUTION: ExecutionId.from_bytes(metadata_obj.COMMAND_EXECUTION),
+        }
+        return metadata_dict
+
+    def _offload_partitions_to_ora_object(
+        self,
+        offload_partitions: list | None,
+        offload_partition_level: int | None,
+        frontend_schema: str,
+        frontend_table_name: str,
+    ) -> Any:
+        """Used to convert a Python dict of metadata to an Oracle object type ready for saving to the database."""
+        logger.debug("Converting offload_partitions")
+        partitions_ntt = self._get_ora_type_object(OFFLOAD_PARTITIONS_ORA_TYPE_NAME)
+        if not offload_partitions:
+            return partitions_ntt
+        partition_obj = self._get_ora_type_object(OFFLOAD_PARTITION_ORA_TYPE_NAME)
+        for partition in offload_partitions:
+            partition_obj.TABLE_OWNER = frontend_schema
+            partition_obj.TABLE_NAME = frontend_table_name
+            partition_obj.PARTITION_NAME = partition.partition_name
+            partition_obj.PARTITION_LEVEL = offload_partition_level
+            partition_obj.PARTITION_BYTES = partition.size_in_bytes
+            partition_obj.PARTITION_BOUNDARY = partition.partition_literal
+            partitions_ntt.append(partition_obj)
+        return partitions_ntt
+
+    def _set_metadata(
+        self,
+        metadata: dict | OrchestrationMetadata,
+    ) -> None:
+        assert metadata
+        metadata_dict: dict = metadata.as_dict() if isinstance(metadata, OrchestrationMetadata) else metadata
+        frontend_owner = metadata_dict[OFFLOADED_OWNER].upper()
+        frontend_name = metadata_dict[OFFLOADED_TABLE].upper()
+        logger.debug(f"Writing metadata: {frontend_owner}, {frontend_name}")
+        ora_metadata = self._metadata_dict_to_ora_object(metadata_dict)
+        self._frontend_api.execute_function(
+            "offload_repo.save_offload_metadata",
+            arg_list=[frontend_owner, frontend_name, ora_metadata],
+            not_when_dry_running=True,
+            commit=True,
+        )
+        self._log(f"Saved metadata: {metadata_dict!s}", detail=VERBOSE)

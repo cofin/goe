@@ -94,27 +94,12 @@ from goe.util.misc_functions import (
 )
 from goe.util.password_tools import PasswordTools
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())  # Disabling logging by default
+logger.addHandler(logging.NullHandler())
 
-# Regular expression matching invalid identifier characters, as a constant to ensure compiled only once.
-# According to https://docs.snowflake.com/en/sql-reference/identifiers-syntax.html#double-quoted-identifiers,
-# double quoted identifiers can have any character.
 SNOWFLAKE_INVALID_IDENTIFIER_CHARS_RE = re.compile(r"[\"]", re.IGNORECASE)
 
-# Identifier used when making a connection to Snowflake in order for Snowflake to:
-#   "better understand the usage patterns associated with specific partner integrations"
-# We should not change this without also changing the identifier in the partner portal.
 SNOWFLAKE_CONNECTION_IDENTIFIER = "GOE"
-
-
-###########################################################################
-# BackendSnowflakeApi
-###########################################################################
 
 
 class BackendSnowflakeApi(BackendApiInterface):
@@ -127,6 +112,10 @@ class BackendSnowflakeApi(BackendApiInterface):
         no_caching=False,
         do_not_connect=False,
     ):
+        """Allow true bind variables
+
+        An incorrect snowflake_warehouse does not cause an exception above (2020-12-01), check below with USE
+        """
         super().__init__(
             connection_options,
             backend_type,
@@ -142,7 +131,6 @@ class BackendSnowflakeApi(BackendApiInterface):
 
         self._client = None
         if not do_not_connect:
-            # Allow true bind variables
             snowflake.connector.paramstyle = "qmark"
 
             if connection_options.snowflake_pem_file:
@@ -180,297 +168,11 @@ class BackendSnowflakeApi(BackendApiInterface):
                 session_parameters=self._execute_global_session_parameters(),
                 application=SNOWFLAKE_CONNECTION_IDENTIFIER,
             )
-            # An incorrect snowflake_warehouse does not cause an exception above (2020-12-01), check below with USE
             self._use_warehouse(connection_options.snowflake_warehouse, log_level=VVERBOSE)
         self._cursor = None
 
         self._sql_engine_name = "Snowflake"
         self._target_version = None
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _backend_capabilities(self):
-        return SNOWFLAKE_BACKEND_CAPABILITIES
-
-    def _catalog_name(self):
-        """Using "catalog" because used in INFORMATION_SCHEMA to avoid confusion of using term "database" """
-        if self._client:
-            return self._client.database
-        return self._connection_options.snowflake_database
-
-    def _close_cursor(self):
-        if self._client and self._cursor:
-            try:
-                self._cursor.close()
-            except Exception as exc:
-                self._log("Exception closing cursor:\n%s" % str(exc), detail=VVERBOSE)
-
-    def _execute_ddl_or_dml(
-        self,
-        sql,
-        sync=None,
-        query_options=None,
-        log_level=VERBOSE,
-        profile=None,
-        no_log_items=None,
-    ):
-        """See interface for parameter descriptions.
-        sync is ignored on Snowflake.
-        """
-        assert sql
-        assert isinstance(sql, (str, list))
-
-        self._open_cursor()
-        run_opts = self._execute_session_options(query_options, log_level=log_level)
-        run_sqls = self._execute_sqls(sql, log_level=log_level, profile=profile, no_log_items=no_log_items)
-        self._close_cursor()
-        return run_opts + run_sqls
-
-    def _execute_global_session_parameters(self, log_level=VVERBOSE):
-        """On Snowflake we do not need to execute these, just return them to be used during connection."""
-        return self._global_session_parameters
-
-    def _execute_query_fetch_x(
-        self,
-        sql,
-        fetch_action=FETCH_ACTION_ALL,
-        query_options=None,
-        log_level=None,
-        time_sql=False,
-        not_when_dry_running=False,
-        query_params=None,
-        profile=None,
-        as_dict=False,
-    ):
-        """Run a query and fetch results
-        query_options: key/value pairs for session settings
-        query_params: list of bind values for 1..n params in sql as described in:
-                      https://docs.snowflake.com/en/user-guide/python-connector-example.html#binding-data
-        log_level: None = no logging. Otherwise VERBOSE/VVERBOSE etc
-        time_sql: If logging then log SQL elapsed time
-        not_when_dry_running: Some SQL will only work in execute mode, such as queries on a load table
-        as_dict: When True each row is returned as a dict keyed by column name rather than a tuple/list.
-        """
-        assert sql
-
-        if self._dry_run and not_when_dry_running:
-            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
-            return None
-
-        t1 = datetime.now().replace(microsecond=0)
-
-        self._open_cursor()
-        try:
-            self._execute_session_options(query_options, log_level=log_level)
-            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
-            self._cursor.execute(sql, query_params)
-            if fetch_action == FETCH_ACTION_ALL:
-                rows = self._cursor.fetchall()
-                if as_dict:
-                    columns = self._cursor_projection(self._cursor)
-                    rows = [self._cursor_row_to_dict(columns, _) for _ in rows]
-            elif fetch_action == FETCH_ACTION_ONE:
-                rows = self._cursor.fetchone()
-                if as_dict:
-                    columns = self._cursor_projection(self._cursor)
-                    rows = self._cursor_row_to_dict(columns, rows)
-            else:
-                rows = None
-
-            if profile:
-                self._log(self._get_query_profile(), detail=VVERBOSE)
-        finally:
-            if fetch_action in (FETCH_ACTION_ALL, FETCH_ACTION_ONE):
-                self._close_cursor()
-
-        if time_sql:
-            t2 = datetime.now().replace(microsecond=0)
-            self._log("Elapsed time: %s" % (t2 - t1), detail=VVERBOSE)
-
-        if fetch_action == FETCH_ACTION_CURSOR:
-            return self._cursor
-        return rows
-
-    def _execute_session_options(self, query_options, log_level):
-        return_list = []
-        if query_options:
-            for prep_sql in self._format_query_options(query_options):
-                self._log_or_not(
-                    "%s SQL: %s" % (self._sql_engine_name, prep_sql),
-                    log_level=log_level,
-                )
-                if self._client:
-                    self._cursor.execute(prep_sql)
-                return_list.append(prep_sql)
-        return return_list
-
-    def _execute_sqls(self, sql, log_level=VERBOSE, profile=None, no_log_items=None):
-        return_list = []
-        sqls = [sql] if isinstance(sql, str) else sql
-        self._open_cursor()
-        try:
-            for i, run_sql in enumerate(sqls):
-                self._log_or_not(
-                    "%s SQL: %s" % (self._sql_engine_name, run_sql),
-                    log_level=log_level,
-                    no_log_items=no_log_items,
-                )
-                return_list.append(run_sql)
-                if not self._dry_run:
-                    self._cursor.execute(run_sql)
-                    if profile:
-                        self._log(self._get_query_profile(), detail=VVERBOSE)
-        finally:
-            self._close_cursor()
-        return return_list
-
-    @staticmethod
-    def _fixed_session_parameters():
-        """Dictionary of fixed session parameters for Snowflake"""
-        return {
-            "AUTOCOMMIT": "TRUE",
-            "QUERY_TAG": "GOE",
-            "TIMESTAMP_NTZ_OUTPUT_FORMAT": "YYYY-MM-DD HH24:MI:SS.FF9",
-            "TIMESTAMP_TZ_OUTPUT_FORMAT": "YYYY-MM-DD HH24:MI:SS.FF9 TZHTZM",
-            "TIME_OUTPUT_FORMAT": "HH24:MI:SS.FF9",
-        }
-
-    @staticmethod
-    def _format_query_options(query_options=None):
-        """Format SET commands for Snowflake.
-        query_options: key/value pairs for session settings.
-        """
-
-        def prep_param_value(v):
-            if isinstance(v, str):
-                return backtick_sandwich(v, ch="'")
-            if isinstance(v, float):
-                return repr(v)
-            return str(v)
-
-        if not query_options:
-            return []
-        assert isinstance(query_options, dict)
-        return [f"ALTER SESSION SET {k}={prep_param_value(v)}" for k, v in query_options.items()]
-
-    def _get_private_key_from_pemfile(self, pem_file, pem_passphrase):
-        pass_tool = PasswordTools()
-        return pass_tool.get_private_key_from_pkcs8_pem_file(pem_file, passphrase=pem_passphrase)
-
-    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
-        assert db_name and table_name
-        if sample_perc is not None and sample_perc >= 0 and self.query_sample_clause_supported():
-            if self.is_view(db_name, table_name):
-                return "SAMPLE ROW (%s)" % sample_perc
-            return "SAMPLE BLOCK (%s)" % sample_perc
-        return ""
-
-    def _get_query_profile(self, query_identifier=None):
-        """On Snowflake query_identifier is not used.
-        We look for a query using the existing cursor.
-        From Snowflake docs re QUERY_HISTORY view:
-            Latency for the view may be up to 45 minutes.
-        We don't see the same comment for QUERY_HISTORY table function.
-        There's no query id parameter to functions so we filter on result set.
-        This function has a built in retry because, in testing, we've frequently seen a delay of 1s in seeing data.
-        """
-
-        def get_query_history_after_delay(wait_seconds):
-            time.sleep(wait_seconds)
-            sql = dedent(
-                """\
-                 SELECT *
-                 FROM TABLE(
-                    %s.information_schema.query_history_by_session(end_time_range_end => CURRENT_TIMESTAMP,
-                                                                   result_limit => 1)
-                 )
-                 WHERE query_id = ?"""
-                % self.enclose_identifier(self._catalog_name())
-            )
-            self._cursor.execute(sql, [self._cursor.sfqid])
-            return self._cursor.fetchone()
-
-        def str_fn(x):
-            return x if isinstance(x, str) else str(x)
-
-        assert self._cursor
-        assert not self._cursor.is_closed()
-        self._log("Fetching query history for id: %s" % self._cursor.sfqid, detail=VVERBOSE)
-        # Found the data was not always there instantly, so added a brief pause
-        row = get_query_history_after_delay(0.5)
-        if not row:
-            self._log("Query history not found (after attempt 1)", detail=VVERBOSE)
-            row = get_query_history_after_delay(2)
-        if not row:
-            self._log("Query history not found (after attempt 2)", detail=VVERBOSE)
-            return ""
-        profile_keys = [_[0] for _ in self._cursor.description]
-        stats = [("Statistic", "Value")]
-        stats.extend(sorted(zip(profile_keys, [str_fn(_) for _ in row])))
-        return format_list_for_logging(stats)
-
-    def _get_snowflake_ddl(
-        self,
-        db_name,
-        object_name,
-        object_type,
-        as_list=False,
-        terminate_sql=False,
-        for_replace=False,
-    ):
-        assert db_name and object_name
-        self._log("Fetching DDL: %s.%s" % (db_name, object_name), detail=VVERBOSE)
-        sql = "SELECT get_ddl('%s', '%s')" % (
-            object_type,
-            self.enclose_object_reference(db_name, object_name),
-        )
-        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
-        if not row:
-            raise BackendApiException("Object does not exist for DDL retrieval: %s.%s" % (db_name, object_name))
-        ddl_str = row[0]
-        self._debug("Object DDL: %s" % ddl_str)
-        if not terminate_sql:
-            ddl_str = ddl_str.rstrip(";")
-        if as_list:
-            return ddl_str.split("\n")
-        return ddl_str
-
-    def _invalid_identifier_character_re(self):
-        return SNOWFLAKE_INVALID_IDENTIFIER_CHARS_RE
-
-    def _open_cursor(self):
-        self._cursor = self._client.cursor() if self._client else None
-
-    def _role_granted_to_user(self, role_name, user_name):
-        """Check if the role is granted to user, returns True/False"""
-        assert role_name
-        assert user_name
-        sql = (
-            "SELECT role_name FROM %s.information_schema.applicable_roles WHERE role_name = ? AND grantee = ?"
-            % self.enclose_identifier(self._catalog_name())
-        )
-        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[role_name, user_name])
-        return bool(row)
-
-    def _use_warehouse(self, warehouse_name, log_level=VERBOSE):
-        assert warehouse_name
-        try:
-            return self.execute_ddl("USE WAREHOUSE %s" % warehouse_name, log_level=log_level)
-        except snowflake.connector.ProgrammingError as exc:
-            self._log(traceback.format_exc(), detail=VVERBOSE)
-            raise BackendApiException("Snowflake warehouse %s is not usable: %s" % (warehouse_name, str(exc)))
-
-    def _warehouse_exists(self, warehouse_name):
-        """Check the Warehouse exists, returns True/False"""
-        sql = "SHOW WAREHOUSES LIKE '%s'" % warehouse_name
-        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
-        return bool(row)
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def add_columns(self, db_name, table_name, column_tuples, sync=None):
         """See interface spec for description"""
@@ -837,10 +539,10 @@ class BackendSnowflakeApi(BackendApiInterface):
         return backtick_sandwich(identifier, ch=self.enclosure_character())
 
     def enclose_object_reference(self, db_name, object_name):
+        """This only happens during unit tests"""
         assert db_name and object_name
         snowflake_db = self._catalog_name()
         if snowflake_db is None:
-            # This only happens during unit tests
             return ".".join([self.enclose_identifier(db_name), self.enclose_identifier(object_name)])
         return ".".join(
             [
@@ -1099,6 +801,11 @@ class BackendSnowflakeApi(BackendApiInterface):
         return SNOWFLAKE_TYPE_TEXT
 
     def get_columns(self, db_name, table_name):
+        """Snowflake information_schema queries are faster if database is in FROM clause than when via column predicate
+
+        Information schema does not expose lengths of BINARY columns, need supplementary information from DESCRIBE
+        """
+
         def get_binary_lengths_from_desc(db_name, table_name):
             """Information schema does not expose lengths of BINARY columns, this function gets the correct information
             from DESCRIBE and stores it in a dictionary.
@@ -1123,7 +830,6 @@ class BackendSnowflakeApi(BackendApiInterface):
         backend_columns = []
         binary_byte_lengths = {}
 
-        # Snowflake information_schema queries are faster if database is in FROM clause than when via column predicate
         sql = dedent(
             """\
             SELECT column_name, data_type, is_nullable, character_maximum_length, character_octet_length
@@ -1136,10 +842,9 @@ class BackendSnowflakeApi(BackendApiInterface):
         col_rows = self.execute_query_fetch_all(
             sql,
             log_level=VVERBOSE,
-            query_params=[self._client.database, db_name, table_name],
+            query_params=[self._catalog_name(), db_name, table_name],
         )
         if any(_[1] == SNOWFLAKE_TYPE_BINARY for _ in col_rows):
-            # Information schema does not expose lengths of BINARY columns, need supplementary information from DESCRIBE
             binary_byte_lengths = get_binary_lengths_from_desc(db_name, table_name)
         for col in col_rows:
             (
@@ -1259,6 +964,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         )
         try:
             self.execute_query_get_cursor(sql, log_level=VVERBOSE, query_params=[query_id])
+            assert self._cursor is not None
             row = self._cursor.fetchone()
             if not row:
                 raise BackendApiException(
@@ -1267,8 +973,8 @@ class BackendSnowflakeApi(BackendApiInterface):
             profile_keys = [_[0] for _ in self._cursor.description]
             stats = sorted(zip(profile_keys, list(row)))
             longest_key = max(len(_) for _ in profile_keys)
-            stats = ["{k: <{pad}}: {v}".format(k=k, v=v, pad=longest_key) for k, v in stats]
-            return "\n".join(stats)
+            formatted_stats = ["{k: <{pad}}: {v}".format(k=k, v=v, pad=longest_key) for k, v in stats]
+            return "\n".join(formatted_stats)
         except snowflake.connector.errors.ProgrammingError:
             raise BackendApiException("Query plan not found for session id: %s, query id: %s" % (session_id, query_id))
         finally:
@@ -1276,12 +982,14 @@ class BackendSnowflakeApi(BackendApiInterface):
                 self._close_cursor()
 
     def get_session_option(self, option_name):
+        """LIKE is case insensitive
+
+        Second field in SHOW PARAMETERS is value
+        """
         if not option_name:
             return None
-        # LIKE is case insensitive
         sql = "SHOW PARAMETERS LIKE '%s'" % option_name
         row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
-        # Second field in SHOW PARAMETERS is value
         return row[1] if row else None
 
     def get_table_ddl(self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False):
@@ -1328,14 +1036,14 @@ class BackendSnowflakeApi(BackendApiInterface):
         return row_count
 
     def get_table_size(self, db_name, table_name, no_cache=False):
-        # no_cache is ignored on Snowflake because we use SQL to get the size.
+        """no_cache is ignored on Snowflake because we use SQL to get the size."""
         assert db_name and table_name
         size_bytes, _ = self.get_table_size_and_row_count(db_name, table_name)
         return size_bytes
 
     def get_table_size_and_row_count(self, db_name, table_name):
+        """Snowflake information_schema queries are faster if database is in FROM clause than when via column predicate"""
         assert db_name and table_name
-        # Snowflake information_schema queries are faster if database is in FROM clause than when via column predicate
         sql = dedent(
             """\
                 SELECT bytes, row_count
@@ -1346,7 +1054,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         row = self.execute_query_fetch_one(
             sql,
             log_level=VVERBOSE,
-            query_params=[self._client.database, db_name, table_name],
+            query_params=[self._catalog_name(), db_name, table_name],
         )
         return row or (None, None)
 
@@ -1356,9 +1064,11 @@ class BackendSnowflakeApi(BackendApiInterface):
             https://community.snowflake.com/s/article/LINEAR-keyword-missing-in-clustering-key-column-in-information-schema-table-table
         In Snowflake, cluster keys can be expressions, Offload does not support that therefore we
         filter the results by real table columns.
+
+        Snowflake information_schema queries are faster if database is in FROM clause than when via column predicate
+        Drive by cluster key to maintain column order
         """
         assert db_name and table_name
-        # Snowflake information_schema queries are faster if database is in FROM clause than when via column predicate
         sql = r"""SELECT REGEXP_REPLACE(clustering_key, '(LINEAR)?\\((.*)\\)','\\2')
                   FROM   %s.information_schema.tables
                   WHERE  table_catalog = ? AND table_schema = ? AND table_name = ?""" % self.enclose_identifier(
@@ -1367,13 +1077,12 @@ class BackendSnowflakeApi(BackendApiInterface):
         row = self.execute_query_fetch_one(
             sql,
             log_level=VVERBOSE,
-            query_params=[self._client.database, db_name, table_name],
+            query_params=[self._catalog_name(), db_name, table_name],
         )
         if not row or not row[0]:
             return []
         cluster_key_expressions = [unsurround(_.upper().strip(), self.enclosure_character()) for _ in row[0].split(",")]
         column_names = set(self.get_column_names(db_name, table_name, conv_fn=lambda x: x.upper()))
-        # Drive by cluster key to maintain column order
         cluster_columns = [_ for _ in cluster_key_expressions if _ in column_names]
         return ",".join(cluster_columns) if as_csv else cluster_columns
 
@@ -1417,6 +1126,8 @@ class BackendSnowflakeApi(BackendApiInterface):
         """Check a Snowflake File Format exists. This is Snowflake only, hence snowflake in the method name.
         format_type can optionally be passed in to verify any existing file_format is for the correct file type.
         It is public so that BackendSnowflakeTable can call it.
+
+        We've additionally asked for a check that the file_format_type matches a specific value
         """
         assert self._backend_type == DBTYPE_SNOWFLAKE
         sql = dedent(
@@ -1429,10 +1140,9 @@ class BackendSnowflakeApi(BackendApiInterface):
         row = self.execute_query_fetch_one(
             sql,
             log_level=VVERBOSE,
-            query_params=[self._client.database, db_name, file_format_name],
+            query_params=[self._catalog_name(), db_name, file_format_name],
         )
         if row and format_type:
-            # We've additionally asked for a check that the file_format_type matches a specific value
             if format_type.upper() != row[0].upper():
                 raise BackendApiException(
                     "File format %s has file type mismatch: %s != %s"
@@ -1449,9 +1159,6 @@ class BackendSnowflakeApi(BackendApiInterface):
         It is public so that BackendTable can call it.
         """
         assert self._backend_type == DBTYPE_SNOWFLAKE
-        # Docs cover IN DATABASE but it is not supported yet (also mentioned in docs):
-        # https://docs.snowflake.com/en/sql-reference/sql/show-integrations.html
-        # sql = "SHOW STORAGE INTEGRATIONS LIKE '%s' IN DATABASE %s" % (integration_name, self._client.database)
         sql = "SHOW STORAGE INTEGRATIONS LIKE '%s'" % integration_name
         row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
         return bool(row)
@@ -1459,6 +1166,8 @@ class BackendSnowflakeApi(BackendApiInterface):
     def snowflake_stage_exists(self, db_name, stage_name, url_prefix=None):
         """Check a Snowflake Stage exists. This is Snowflake only, hence snowflake in the method name.
         It is public so that BackendTable can call it.
+
+        We've additionally asked for a check that the stage_url matches a specific value
         """
         assert self._backend_type == DBTYPE_SNOWFLAKE
         sql = dedent(
@@ -1468,10 +1177,9 @@ class BackendSnowflakeApi(BackendApiInterface):
             WHERE  stage_catalog = ? AND stage_schema = ? AND stage_name = ?"""
             % self.enclose_identifier(self._catalog_name())
         )
-        query_params = [self._client.database, db_name, stage_name]
+        query_params = [self._catalog_name(), db_name, stage_name]
         row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=query_params)
         if row and url_prefix:
-            # We've additionally asked for a check that the stage_url matches a specific value
             if not row[0].lower().startswith(url_prefix.lower()):
                 raise BackendApiException(
                     "Snowflake stage %s has URL mismatch: %s does not start with %s"
@@ -1516,7 +1224,7 @@ class BackendSnowflakeApi(BackendApiInterface):
             """SELECT schema_name FROM %s.information_schema.schemata WHERE catalog_name = ?"""
             % self.enclose_identifier(self._catalog_name())
         )
-        query_params = [self._client.database]
+        query_params = [self._catalog_name()]
         if db_name_filter:
             sql += " AND schema_name %s ?" % ("LIKE" if case_sensitive else "ILIKE")
             query_params.append(db_name_filter.replace("*", "%"))
@@ -1528,7 +1236,7 @@ class BackendSnowflakeApi(BackendApiInterface):
             """SELECT table_name FROM %s.information_schema.tables WHERE table_catalog = ? AND table_schema = ?"""
             % self.enclose_identifier(self._catalog_name())
         )
-        query_params = [self._client.database, db_name]
+        query_params = [self._catalog_name(), db_name]
         if table_name_filter:
             sql += " AND table_name %s ?" % ("LIKE" if case_sensitive else "ILIKE")
             query_params.append(table_name_filter.replace("*", "%"))
@@ -1543,7 +1251,7 @@ class BackendSnowflakeApi(BackendApiInterface):
                 WHERE procedure_catalog = ?
                 AND   procedure_schema = ?"""
         ) % self.enclose_identifier(self._catalog_name())
-        query_params = [self._client.database, db_name]
+        query_params = [self._catalog_name(), db_name]
         if udf_name_filter:
             sql += "\nAND   procedure_name %s ?" % ("LIKE" if case_sensitive else "ILIKE")
             query_params.append(udf_name_filter.replace("*", "%"))
@@ -1554,7 +1262,7 @@ class BackendSnowflakeApi(BackendApiInterface):
             """SELECT table_name FROM %s.information_schema.views WHERE table_catalog = ? AND table_schema = ?"""
             % self.enclose_identifier(self._catalog_name())
         )
-        query_params = [self._client.database, db_name]
+        query_params = [self._catalog_name(), db_name]
         if view_name_filter:
             sql += " AND table_name %s ?" % ("LIKE" if case_sensitive else "ILIKE")
             query_params.append(view_name_filter.replace("*", "%"))
@@ -1701,7 +1409,7 @@ class BackendSnowflakeApi(BackendApiInterface):
             if any((_[3], _[4], _[1]) == (self._catalog_name(), db_name, table_name) for _ in rows):
                 return True
         except snowflake.connector.ProgrammingError as exc:
-            if "not exist" in exc.msg:
+            if "not exist" in (exc.msg or ""):
                 return False
             raise
         return False
@@ -1755,7 +1463,11 @@ class BackendSnowflakeApi(BackendApiInterface):
         )
 
     def udf_details(self, db_name, udf_name):
-        """Get details of a Snowflake UDF"""
+        """Get details of a Snowflake UDF
+
+        UDF parameters are embedded in a string, e.g.:
+        (ARG1 FLOAT, ARG2 STRING)
+        """
         sql = dedent(
             """\
                 SELECT data_type, argument_signature
@@ -1764,15 +1476,13 @@ class BackendSnowflakeApi(BackendApiInterface):
                 AND   procedure_schema = ?
                 AND   procedure_name = ?"""
         ) % self.enclose_identifier(self._catalog_name())
-        query_params = [self._client.database, db_name, udf_name]
+        query_params = [self._catalog_name(), db_name, udf_name]
         rows = self.execute_query_fetch_all(sql, log_level=VVERBOSE, query_params=query_params)
         udfs = []
         for row in rows:
             return_type = row[0] if row else None
             parameters = []
             if row and row[1]:
-                # UDF parameters are embedded in a string, e.g.:
-                # (ARG1 FLOAT, ARG2 STRING)
                 arg_strings = re.findall(r"[A-Z0-9_]+ [A-Z0-9_]+", row[1])
                 if arg_strings:
                     parameters = [tuple(_.split()) for _ in arg_strings]
@@ -1780,6 +1490,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         return udfs
 
     def valid_canonical_override(self, column, canonical_override):
+        """Snowflake FLOAT is always stored as DOUBLE therefore no canonical FLOAT below"""
         assert isinstance(column, SnowflakeColumn)
         if isinstance(canonical_override, CanonicalColumn):
             target_type = canonical_override.data_type
@@ -1787,7 +1498,6 @@ class BackendSnowflakeApi(BackendApiInterface):
             target_type = canonical_override
         if column.is_number_based():
             if column.data_type == SNOWFLAKE_TYPE_FLOAT:
-                # Snowflake FLOAT is always stored as DOUBLE therefore no canonical FLOAT below
                 return bool(target_type in [GOE_TYPE_DECIMAL, GOE_TYPE_DOUBLE])
             return target_type in NUMERIC_CANONICAL_TYPES
         if column.is_date_based():
@@ -1832,7 +1542,7 @@ class BackendSnowflakeApi(BackendApiInterface):
             if any((_[3], _[4], _[1]) == (self._catalog_name(), db_name, view_name) for _ in rows):
                 return True
         except snowflake.connector.ProgrammingError as exc:
-            if "not exist" in exc.msg:
+            if "not exist" in (exc.msg or ""):
                 return False
             raise
         return False
@@ -2010,3 +1720,285 @@ class BackendSnowflakeApi(BackendApiInterface):
         if column.data_type == GOE_TYPE_INTERVAL_YM:
             return new_column(column, SNOWFLAKE_TYPE_TEXT, safe_mapping=False)
         raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
+
+    def _backend_capabilities(self):
+        return SNOWFLAKE_BACKEND_CAPABILITIES
+
+    def _catalog_name(self):
+        """Using "catalog" because used in INFORMATION_SCHEMA to avoid confusion of using term "database" """
+        if self._client:
+            return self._client.database
+        return self._connection_options.snowflake_database
+
+    def _close_cursor(self):
+        if self._client and self._cursor:
+            try:
+                self._cursor.close()
+            except Exception as exc:
+                self._log("Exception closing cursor:\n%s" % str(exc), detail=VVERBOSE)
+
+    def _execute_ddl_or_dml(
+        self,
+        sql,
+        sync=None,
+        query_options=None,
+        log_level=VERBOSE,
+        profile=None,
+        no_log_items=None,
+    ):
+        """See interface for parameter descriptions.
+        sync is ignored on Snowflake.
+        """
+        assert sql
+        assert isinstance(sql, (str, list))
+
+        self._open_cursor()
+        run_opts = self._execute_session_options(query_options, log_level=log_level)
+        run_sqls = self._execute_sqls(sql, log_level=log_level, profile=profile, no_log_items=no_log_items)
+        self._close_cursor()
+        return run_opts + run_sqls
+
+    def _execute_global_session_parameters(self, log_level=VVERBOSE):
+        """On Snowflake we do not need to execute these, just return them to be used during connection."""
+        return self._global_session_parameters
+
+    def _execute_query_fetch_x(
+        self,
+        sql,
+        fetch_action=FETCH_ACTION_ALL,
+        query_options=None,
+        log_level=None,
+        time_sql=False,
+        not_when_dry_running=False,
+        query_params=None,
+        profile=None,
+        as_dict=False,
+    ):
+        """Run a query and fetch results
+        query_options: key/value pairs for session settings
+        query_params: list of bind values for 1..n params in sql as described in:
+                      https://docs.snowflake.com/en/user-guide/python-connector-example.html#binding-data
+        log_level: None = no logging. Otherwise VERBOSE/VVERBOSE etc
+        time_sql: If logging then log SQL elapsed time
+        not_when_dry_running: Some SQL will only work in execute mode, such as queries on a load table
+        as_dict: When True each row is returned as a dict keyed by column name rather than a tuple/list.
+        """
+        assert sql
+
+        if self._dry_run and not_when_dry_running:
+            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
+            return None
+
+        t1 = datetime.now().replace(microsecond=0)
+
+        self._open_cursor()
+        assert self._cursor is not None
+        try:
+            self._execute_session_options(query_options, log_level=log_level)
+            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
+            self._cursor.execute(sql, query_params)
+            if fetch_action == FETCH_ACTION_ALL:
+                rows = self._cursor.fetchall()
+                if as_dict:
+                    columns = self._cursor_projection(self._cursor)
+                    rows = [self._cursor_row_to_dict(columns, _) for _ in rows]
+            elif fetch_action == FETCH_ACTION_ONE:
+                rows = self._cursor.fetchone()
+                if as_dict:
+                    columns = self._cursor_projection(self._cursor)
+                    rows = self._cursor_row_to_dict(columns, rows)
+            else:
+                rows = None
+
+            if profile:
+                self._log(self._get_query_profile(), detail=VVERBOSE)
+        finally:
+            if fetch_action in (FETCH_ACTION_ALL, FETCH_ACTION_ONE):
+                self._close_cursor()
+
+        if time_sql:
+            t2 = datetime.now().replace(microsecond=0)
+            self._log("Elapsed time: %s" % (t2 - t1), detail=VVERBOSE)
+
+        if fetch_action == FETCH_ACTION_CURSOR:
+            return self._cursor
+        return rows
+
+    def _execute_session_options(self, query_options, log_level):
+        return_list = []
+        if query_options:
+            for prep_sql in self._format_query_options(query_options):
+                self._log_or_not(
+                    "%s SQL: %s" % (self._sql_engine_name, prep_sql),
+                    log_level=log_level,
+                )
+                if self._client:
+                    assert self._cursor is not None
+                    self._cursor.execute(prep_sql)
+                return_list.append(prep_sql)
+        return return_list
+
+    def _execute_sqls(self, sql, log_level=VERBOSE, profile=None, no_log_items=None):
+        return_list = []
+        sqls = [sql] if isinstance(sql, str) else sql
+        self._open_cursor()
+        try:
+            for i, run_sql in enumerate(sqls):
+                self._log_or_not(
+                    "%s SQL: %s" % (self._sql_engine_name, run_sql),
+                    log_level=log_level,
+                    no_log_items=no_log_items,
+                )
+                return_list.append(run_sql)
+                if not self._dry_run:
+                    assert self._cursor is not None
+                    self._cursor.execute(run_sql)
+                    if profile:
+                        self._log(self._get_query_profile(), detail=VVERBOSE)
+        finally:
+            self._close_cursor()
+        return return_list
+
+    @staticmethod
+    def _fixed_session_parameters():
+        """Dictionary of fixed session parameters for Snowflake"""
+        return {
+            "AUTOCOMMIT": "TRUE",
+            "QUERY_TAG": "GOE",
+            "TIMESTAMP_NTZ_OUTPUT_FORMAT": "YYYY-MM-DD HH24:MI:SS.FF9",
+            "TIMESTAMP_TZ_OUTPUT_FORMAT": "YYYY-MM-DD HH24:MI:SS.FF9 TZHTZM",
+            "TIME_OUTPUT_FORMAT": "HH24:MI:SS.FF9",
+        }
+
+    @staticmethod
+    def _format_query_options(query_options=None):
+        """Format SET commands for Snowflake.
+        query_options: key/value pairs for session settings.
+        """
+
+        def prep_param_value(v):
+            if isinstance(v, str):
+                return backtick_sandwich(v, ch="'")
+            if isinstance(v, float):
+                return repr(v)
+            return str(v)
+
+        if not query_options:
+            return []
+        assert isinstance(query_options, dict)
+        return [f"ALTER SESSION SET {k}={prep_param_value(v)}" for k, v in query_options.items()]
+
+    def _get_private_key_from_pemfile(self, pem_file, pem_passphrase):
+        pass_tool = PasswordTools()
+        return pass_tool.get_private_key_from_pkcs8_pem_file(pem_file, passphrase=pem_passphrase)
+
+    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
+        assert db_name and table_name
+        if sample_perc is not None and sample_perc >= 0 and self.query_sample_clause_supported():
+            if self.is_view(db_name, table_name):
+                return "SAMPLE ROW (%s)" % sample_perc
+            return "SAMPLE BLOCK (%s)" % sample_perc
+        return ""
+
+    def _get_query_profile(self, query_identifier=None):
+        """On Snowflake query_identifier is not used.
+        We look for a query using the existing cursor.
+        From Snowflake docs re QUERY_HISTORY view:
+            Latency for the view may be up to 45 minutes.
+        We don't see the same comment for QUERY_HISTORY table function.
+        There's no query id parameter to functions so we filter on result set.
+        This function has a built in retry because, in testing, we've frequently seen a delay of 1s in seeing data.
+
+        Found the data was not always there instantly, so added a brief pause
+        """
+
+        def get_query_history_after_delay(wait_seconds):
+            time.sleep(wait_seconds)
+            sql = dedent(
+                """\
+                 SELECT *
+                 FROM TABLE(
+                    %s.information_schema.query_history_by_session(end_time_range_end => CURRENT_TIMESTAMP,
+                                                                   result_limit => 1)
+                 )
+                 WHERE query_id = ?"""
+                % self.enclose_identifier(self._catalog_name())
+            )
+            assert self._cursor is not None
+            self._cursor.execute(sql, [self._cursor.sfqid])
+            return self._cursor.fetchone()
+
+        def str_fn(x):
+            return x if isinstance(x, str) else str(x)
+
+        assert self._cursor
+        assert not self._cursor.is_closed()
+        self._log("Fetching query history for id: %s" % self._cursor.sfqid, detail=VVERBOSE)
+        row = get_query_history_after_delay(0.5)
+        if not row:
+            self._log("Query history not found (after attempt 1)", detail=VVERBOSE)
+            row = get_query_history_after_delay(2)
+        if not row:
+            self._log("Query history not found (after attempt 2)", detail=VVERBOSE)
+            return ""
+        profile_keys = [_[0] for _ in self._cursor.description]
+        stats = [("Statistic", "Value")]
+        stats.extend(sorted(zip(profile_keys, [str_fn(_) for _ in row])))
+        return format_list_for_logging(stats)
+
+    def _get_snowflake_ddl(
+        self,
+        db_name,
+        object_name,
+        object_type,
+        as_list=False,
+        terminate_sql=False,
+        for_replace=False,
+    ):
+        assert db_name and object_name
+        self._log("Fetching DDL: %s.%s" % (db_name, object_name), detail=VVERBOSE)
+        sql = "SELECT get_ddl('%s', '%s')" % (
+            object_type,
+            self.enclose_object_reference(db_name, object_name),
+        )
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
+        if not row:
+            raise BackendApiException("Object does not exist for DDL retrieval: %s.%s" % (db_name, object_name))
+        ddl_str = row[0]
+        self._debug("Object DDL: %s" % ddl_str)
+        if not terminate_sql:
+            ddl_str = ddl_str.rstrip(";")
+        if as_list:
+            return ddl_str.split("\n")
+        return ddl_str
+
+    def _invalid_identifier_character_re(self):
+        return SNOWFLAKE_INVALID_IDENTIFIER_CHARS_RE
+
+    def _open_cursor(self):
+        self._cursor = self._client.cursor() if self._client else None
+
+    def _role_granted_to_user(self, role_name, user_name):
+        """Check if the role is granted to user, returns True/False"""
+        assert role_name
+        assert user_name
+        sql = (
+            "SELECT role_name FROM %s.information_schema.applicable_roles WHERE role_name = ? AND grantee = ?"
+            % self.enclose_identifier(self._catalog_name())
+        )
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[role_name, user_name])
+        return bool(row)
+
+    def _use_warehouse(self, warehouse_name, log_level=VERBOSE):
+        assert warehouse_name
+        try:
+            return self.execute_ddl("USE WAREHOUSE %s" % warehouse_name, log_level=log_level)
+        except snowflake.connector.ProgrammingError as exc:
+            self._log(traceback.format_exc(), detail=VVERBOSE)
+            raise BackendApiException("Snowflake warehouse %s is not usable: %s" % (warehouse_name, str(exc)))
+
+    def _warehouse_exists(self, warehouse_name):
+        """Check the Warehouse exists, returns True/False"""
+        sql = "SHOW WAREHOUSES LIKE '%s'" % warehouse_name
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
+        return bool(row)

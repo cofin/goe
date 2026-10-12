@@ -21,18 +21,8 @@ from goe.offload.teradata.teradata_column import (
     TERADATA_TYPE_VARBYTE,
 )
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# TeradataLiteral
-###########################################################################
 
 
 class TeradataLiteral(FormatLiteralInterface):
@@ -43,18 +33,24 @@ class TeradataLiteral(FormatLiteralInterface):
         """Translate a Python value to a Teradata literal.
         Without a data type the code should infer a literal from the Python type.
         No special formatting is required for numeric literals, we just convert to str().
+
+        Assuming DATE based on string length
+        Assuming TIMESTAMP if no data_type specified
         """
 
         def format_date_for_data_type(str_val, data_type):
+            """Value is date part only
+
+            Value is up to seconds only
+            %z in strftime does not have a colon in the timezone offset which Teradata requires
+            """
             if data_type == TERADATA_TYPE_DATE:
                 return "DATE '%s'" % str_val[:10]
             if data_type == TERADATA_TYPE_TIMESTAMP:
                 adjusted_str = str_val
                 if len(adjusted_str) == 10:
-                    # Value is date part only
                     adjusted_str += " 00:00:00.0"
                 elif len(adjusted_str) == 19:
-                    # Value is up to seconds only
                     adjusted_str += ".0"
                 ts_maxscale = 6
                 adjusted_str = str_val[: 20 + ts_maxscale]
@@ -62,7 +58,6 @@ class TeradataLiteral(FormatLiteralInterface):
             if data_type == TERADATA_TYPE_TIME:
                 return "TIME '%s'" % str_val
             if data_type == TERADATA_TYPE_TIMESTAMP_TZ and re.match(RE_TIMEZONE_NO_COLON, str_val):
-                # %z in strftime does not have a colon in the timezone offset which Teradata requires
                 return f"'{str_val[:-2]}:{str_val[-2:]}'"
             return str_val
 
@@ -74,17 +69,14 @@ class TeradataLiteral(FormatLiteralInterface):
             elif data_type:
                 new_py_val = format_date_for_data_type(str(python_value).replace("T", " "), data_type)
             elif len(str(python_value)) <= 10:
-                # Assuming DATE based on string length
                 new_py_val = format_date_for_data_type(str(python_value).replace("T", " "), TERADATA_TYPE_DATE)
             else:
-                # Assuming TIMESTAMP if no data_type specified
                 new_py_val = format_date_for_data_type(str(python_value).replace("T", " "), TERADATA_TYPE_TIMESTAMP)
         elif isinstance(python_value, date):
             if data_type == TERADATA_TYPE_DATE:
                 new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d"), data_type)
             elif data_type == TERADATA_TYPE_TIMESTAMP_TZ:
-                if not python_value.tzinfo:
-                    # Assume empty TZ means UTC
+                if not getattr(python_value, "tzinfo", None):
                     new_py_val = format_date_for_data_type(
                         python_value.strftime("%Y-%m-%d %H:%M:%S.%f +00:00"), data_type
                     )
@@ -95,10 +87,8 @@ class TeradataLiteral(FormatLiteralInterface):
             elif data_type:
                 new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d %H:%M:%S.%f"), data_type)
             elif len(str(python_value)) <= 10:
-                # Assuming DATE based on string length
                 new_py_val = format_date_for_data_type(python_value.strftime("%Y-%m-%d"), TERADATA_TYPE_DATE)
             else:
-                # Assuming TIMESTAMP if no data_type specified
                 new_py_val = format_date_for_data_type(
                     python_value.strftime("%Y-%m-%d %H:%M:%S.%f"),
                     TERADATA_TYPE_TIMESTAMP,

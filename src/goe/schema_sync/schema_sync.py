@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from goe.goe import get_common_options, log
+from goe.goe import log
 from goe.orchestration import command_steps
 from goe.orchestration.orchestration_lock import (
     OrchestrationLockTimeout,
@@ -26,28 +26,6 @@ normal, verbose, vverbose = list(range(3))
 SCHEMA_SYNC_LOCKED_MESSAGE_TEXT = "Another Schema Sync process has locked"
 
 
-def get_schema_sync_opts():
-    opt = get_common_options(usage="usage: %prog [options]")
-
-    opt.add_option(
-        "--include",
-        dest="include",
-        help="CSV list of schemas, schema.tables or tables to examine for change detection and evolution. Supports wildcards (using *). Example formats: SCHEMA1, SCHEMA*, SCHEMA1.TABLE1,SCHEMA1.TABLE2,SCHEMA2.TAB*, SCHEMA1.TAB*, *.TABLE1,*.TABLE2, *.TAB*",
-    )
-    opt.add_option(
-        "--command-file",
-        dest="command_file",
-        help="Name of an additional log file to record the commands that have been applied (if the -x/--execute option has been used) or should be applied (if the -x/--execute option has not been used). Supplied as full or relative path",
-    )
-
-    remove_options = ["--skip-steps", "--log-path"]
-
-    # Strip away the options we don't need
-    [opt.remove_option(option) for option in remove_options]
-
-    return opt
-
-
 def normalise_schema_sync_options(options):
     if options.vverbose:
         options.verbose = True
@@ -59,11 +37,11 @@ def normalise_schema_sync_options(options):
 
 
 def schema_sync(
-    options,
+    options: Any,
     messages: "OffloadMessages",
     execution_id: "ExecutionId",
     repo_client: "OrchestrationRepoClientInterface",
-):
+) -> int:
     messages.setup_offload_step(
         error_before_step=options.error_before_step,
         error_after_step=options.error_after_step,
@@ -128,7 +106,7 @@ def schema_sync(
         else:
             log("No changes detected")
 
-    if options.command_file:
+    if options.command_file and cmd_file is not None:
         if tables_in_scope and cmd_file.commands_in_file():
             messages.notice('Command file written to "%s"' % options.command_file)
         else:

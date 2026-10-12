@@ -4,7 +4,6 @@
 """'goe validate' subcommand for cross-database aggregation validation."""
 
 import sys
-from optparse import Values
 from typing import TYPE_CHECKING, Any
 
 import rich_click as click
@@ -13,14 +12,14 @@ from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribu
 from goe.cli.common import common_options, extract_common_options
 
 if TYPE_CHECKING:
+    from goe.config.options import AggValidateOptions
     from goe.scripts.agg_validate import (
-        get_agg_validate_options,
         post_process_args,
         run_agg_validate,
     )
 
 _LAZY_IMPORTS: LazyImportMap = {
-    "get_agg_validate_options": ("goe.scripts.agg_validate", "get_agg_validate_options"),
+    "AggValidateOptions": ("goe.config.options", "AggValidateOptions"),
     "post_process_args": ("goe.scripts.agg_validate", "post_process_args"),
     "run_agg_validate": ("goe.scripts.agg_validate", "run_agg_validate"),
 }
@@ -100,16 +99,9 @@ def validate(ctx: click.Context, **kwargs: Any) -> None:
     """Execute aggregate validation across databases."""
     bind_lazy_imports(__name__, _LAZY_IMPORTS)
     common_opts = extract_common_options(ctx, kwargs)
-    parser = get_agg_validate_options()
-    defaults = parser.get_default_values()
-    options_dict = defaults.__dict__.copy()
-    options_dict.update(common_opts)
-
-    for k, v in kwargs.items():
-        if v is not None:
-            options_dict[k] = v
-
-    options = Values(options_dict)
+    overrides: dict[str, Any] = dict(common_opts)
+    overrides.update({key: value for key, value in kwargs.items() if value is not None})
+    options = AggValidateOptions.from_mapping(overrides)
     post_process_args(options)
     ret = run_agg_validate(options)
     sys.exit(0 if ret else 1)

@@ -10,7 +10,7 @@ be either:
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from google.cloud import bigquery
 
@@ -42,18 +42,8 @@ if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# BackendBigQueryTable
-###########################################################################
 
 
 class BackendBigQueryTable(BackendTableInterface):
@@ -65,13 +55,13 @@ class BackendBigQueryTable(BackendTableInterface):
         table_name: str,
         backend_type: str,
         orchestration_options: "OrchestrationConfig",
-        messages,
-        orchestration_operation=None,
-        hybrid_metadata=None,
-        dry_run=False,
-        existing_backend_api=None,
-        do_not_connect=False,
-    ):
+        messages: Any,
+        orchestration_operation: Any = None,
+        hybrid_metadata: Any = None,
+        dry_run: bool = False,
+        existing_backend_api: Any = None,
+        do_not_connect: bool = False,
+    ) -> None:
         """CONSTRUCTOR"""
         super().__init__(
             db_name,
@@ -87,8 +77,8 @@ class BackendBigQueryTable(BackendTableInterface):
         )
 
         self._sql_engine_name = "BigQuery"
-        self._log_profile_after_final_table_load = True
-        self._log_profile_after_verification_queries = True
+        setattr(self, "_log_profile_after_final_table_load", True)
+        setattr(self, "_log_profile_after_verification_queries", True)
         self._load_table_path = self._get_dfs_client().gen_uri(
             self._orchestration_config.offload_fs_scheme,
             self._orchestration_config.offload_fs_container,
@@ -98,11 +88,157 @@ class BackendBigQueryTable(BackendTableInterface):
         )
         self._kms_key_name = self._db_api.kms_key_name()
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def cleanup_staging_area(self):
+        self._drop_load_table()
+        self._rm_load_table_location()
 
-    def _create_load_table(self, staging_file, with_terminator=False) -> list:
+    def compute_final_table_stats(self, incremental_stats, materialized_join=False):
+        """Do nothing on BigQuery"""
+
+    def create_backend_table(self, with_terminator: bool = False) -> list:
+        """Create a table in BigQuery based on object state.
+        Creating a new table may change our world view so the function drops state if in execute mode.
+        If dry_run then we leave state in place to allow other operations to preview.
+        """
+        partition_column_names = get_column_names(self.get_partition_columns())
+        cmds = self._db_api.create_table(
+            self.db_name,
+            self.table_name,
+            self.get_columns(),
+            partition_column_names,
+            sort_column_names=self._sort_columns,
+            with_terminator=with_terminator,
+        )
+        if not self._dry_run:
+            self._drop_state()
+        return cmds
+
+    def create_db(self, with_terminator: bool = False) -> list:
+        return self._create_final_db(
+            location=self._orchestration_config.bigquery_dataset_location,
+            with_terminator=with_terminator,
+        )
+
+    def create_load_db(self, with_terminator: bool = False) -> list:
+        """Create a load database."""
+        if self._db_api.load_db_transport_supported():
+            return self._create_load_db(
+                location=self._orchestration_config.bigquery_dataset_location,
+                with_terminator=with_terminator,
+            )
+        return []
+
+    def empty_staging_area(self, staging_file):
+        self._rm_load_table_location()
+
+    def get_default_location(self):
+        """Not applicable to BigQuery"""
+        return
+
+    def get_staging_table_location(self):
+        return self._load_table_path
+
+    def load_final_table(self, sync=None):
+        """Copy data from the staged load table into the final BigQuery table"""
+        self._debug(
+            "Loading %s.%s from %s.%s"
+            % (
+                self.db_name,
+                self.table_name,
+                self._load_db_name,
+                self._load_table_name,
+            )
+        )
+        select_expression_tuples = [(self.get_final_table_cast(col), col.name.upper()) for col in self.get_columns()]
+        sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples)
+        self._execute_dml(
+            sqls,
+            query_options=query_options,
+            profile=self._log_profile_after_final_table_load,
+        )
+
+    def load_materialized_join(
+        self,
+        threshold_cols=None,
+        gte_threshold_vals=None,
+        lt_threshold_vals=None,
+        insert_predicates=None,
+        sync=None,
+    ):
+        """Copy data from the load view into the final BigQuery table"""
+        if insert_predicates:
+            assert isinstance(insert_predicates, list)
+        self._debug(
+            "Loading %s.%s from %s.%s"
+            % (
+                self.db_name,
+                self.table_name,
+                self._load_db_name,
+                self._load_table_name,
+            )
+        )
+        select_expression_tuples = [(self.get_final_table_cast(col), col.name.upper()) for col in self.get_columns()]
+        sqls, query_options = self._gen_mat_join_insert_sqls(
+            select_expression_tuples,
+            threshold_cols,
+            gte_threshold_vals,
+            lt_threshold_vals,
+            insert_predicates=insert_predicates,
+        )
+        self._execute_dml(
+            sqls,
+            query_options=query_options,
+            profile=self._log_profile_after_final_table_load,
+        )
+
+    def partition_function_requires_granularity(self):
+        return True
+
+    def post_transport_tasks(self, staging_file):
+        """On BigQuery we create the load table AFTER creating the Avro datafiles."""
+        self._recreate_load_table(staging_file)
+
+    def predicate_has_rows(self, predicate):
+        if not self.exists():
+            return False
+
+        sql = "SELECT 1 FROM %s WHERE (%s) LIMIT 1" % (
+            self._db_api.enclose_object_reference(self.db_name, self.table_name),
+            bigquery_predicate.predicate_to_where_clause(self.get_columns(), predicate),
+        )
+        return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
+
+    def predicate_to_where_clause(self, predicate, columns_override=None):
+        return bigquery_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
+
+    def result_cache_area_exists(self):
+        return self._result_cache_db_exists()
+
+    def setup_result_cache_area(self):
+        """Prepare result cache area for Hybrid Queries"""
+        if self.create_database_supported() and self._user_requested_create_backend_db:
+            self._create_result_cache_db(location=self._orchestration_config.bigquery_dataset_location)
+
+    def setup_staging_area(self, staging_file):
+        """Prepare any staging area for BigQuery OffloadTransport"""
+        if self.create_database_supported() and self._user_requested_create_backend_db:
+            self._create_load_db(location=self._orchestration_config.bigquery_dataset_location)
+        self._rm_load_table_location()
+        self.get_staging_table_location()
+
+    def staging_area_exists(self):
+        if not self._load_db_exists():
+            self._warning("Staging database %s does not exist" % self._load_db_name)
+        return self._load_db_exists()
+
+    def validate_type_conversions(self, staging_columns: list) -> None:
+        """Validate the staged data before we insert it into the final backend table.
+        BigQuery catches overflowing casts but this way we can spot them beforehand and
+        provide the user with SQL to view offending values.
+        """
+        self._validate_final_table_casts(staging_columns, log_profile=self._log_profile_after_verification_queries)
+
+    def _create_load_table(self, staging_file: Any, with_terminator: bool = False) -> list:
         """Create the staging/load table in BigQuery
         Defining a URI for location is tricky. Initially we had *.avro but Avro files written by Spark ThriftServer
         didn't match. Restrictions on the URI:
@@ -124,7 +260,8 @@ class BackendBigQueryTable(BackendTableInterface):
 
         We've gone with part* to identify Avro files.
         """
-        no_columns = no_partition_cols = []
+        no_columns: list[Any] = []
+        no_partition_cols: list[Any] = []
         load_table_location = "%s/part*" % (self.get_staging_table_location())
         return self._db_api.create_table(
             self._load_db_name,
@@ -234,14 +371,8 @@ class BackendBigQueryTable(BackendTableInterface):
         """We use INT64 synthetic values on BigQuery, synthetic_partition_digits is ignored"""
         to_synth_expr = column_expr
         if backend_col.data_type == BIGQUERY_TYPE_INT64:
-            # There are a number of values around 15-18 digits that round weirdly when using INT64, for example:
-            # > SELECT FLOOR(CAST(9999999999999999 AS INT64));
-            # 1.0E16
-            # Therefore we use NUMERIC for intermediate arithmetic instead
             to_synth_expr = f"CAST({to_synth_expr} AS {BIGQUERY_TYPE_NUMERIC})"
         elif backend_col.data_type == BIGQUERY_TYPE_NUMERIC:
-            # NUMERIC only supports 9 decimal places so any value containing many zeros or
-            # a power of 10 granularity > 9 digits poses a threat. Safe option is to use BIGNUMERIC.
             to_synth_expr = f"CAST({to_synth_expr} AS {BIGQUERY_TYPE_BIGNUMERIC})"
         to_synth_expr = "CAST(FLOOR(%s / %s) * %s AS %s)" % (
             to_synth_expr,
@@ -266,7 +397,7 @@ class BackendBigQueryTable(BackendTableInterface):
     def _rm_load_table_location(self):
         self._rm_dfs_dir(self.get_staging_table_location())
 
-    def _staging_to_backend_cast(self, rdbms_column, backend_column, staging_column) -> tuple:
+    def _staging_to_backend_cast(self, rdbms_column: Any, backend_column: Any, staging_column: Any) -> tuple:
         """Returns correctly cast or overridden columns ready for insert/select to final table.
         BigQuery implementation.
         """
@@ -292,14 +423,12 @@ class BackendBigQueryTable(BackendTableInterface):
             return f"PARSE_TIME('%H:%M:%E*S', {expr})"
 
         def parse_timestamp(expr, safe_cast=False):
-            # PARSE_TIMESTAMP() understands time zone names and numeric formats ([+-]nn:nn) so no complex logic required
             if safe_cast:
                 return f"SAFE.PARSE_TIMESTAMP('%F %H:%M:%E*S %Z', {expr})"
             return f"PARSE_TIMESTAMP('%F %H:%M:%E*S %Z', {expr})"
 
         def date_to_string_format(expr, has_time_element):
             if has_time_element:
-                # We need a string containing the full timestamp spec including microseconds and 4 digit year.
                 return f"FORMAT_DATETIME('%E4Y-%m-%d %H:%M:%E6S', PARSE_DATETIME('%F %H:%M:%E*S', {expr}))"
             return f"FORMAT_DATE('%E4Y-%m-%d', PARSE_DATE('%F', {expr}))"
 
@@ -327,7 +456,6 @@ class BackendBigQueryTable(BackendTableInterface):
         return_type = backend_column.format_data_type().upper()
 
         if isinstance(staging_column, BigQueryColumn) and staging_column.data_type == backend_column.data_type:
-            # Same column type and data type so no need to CAST, this is only possible when materializing a join
             self._log(
                 "No cast of %s required for matching load data type: %s"
                 % (backend_column.name, staging_column.data_type),
@@ -337,7 +465,6 @@ class BackendBigQueryTable(BackendTableInterface):
             if staging_file_int64_match(backend_column, staging_column) or staging_file_float64_match(
                 backend_column, staging_column
             ):
-                # Same data type so no need to CAST
                 self._log(
                     "No cast required for matching data types: %s/%s"
                     % (staging_column.data_type, backend_column.data_type),
@@ -358,11 +485,9 @@ class BackendBigQueryTable(BackendTableInterface):
             return_vcast = parse_time(self._format_staging_column_name(staging_column), safe_cast=True)
         elif rdbms_column.is_time_zone_based():
             if not backend_column.is_string_based():
-                # BigQuery TIMESTAMP is time zoned so we do not normalise to UTC.
                 return_cast = parse_timestamp(self._format_staging_column_name(staging_column))
                 return_vcast = parse_timestamp(self._format_staging_column_name(staging_column), safe_cast=True)
                 if not backend_column.is_time_zone_based():
-                    # Cast the time zoned data to the type of the backend column.
                     return_cast = cast(return_cast, backend_column.data_type)
                     return_vcast = cast(return_cast, backend_column.data_type, safe_cast=True)
         elif rdbms_column.is_date_based():
@@ -397,158 +522,3 @@ class BackendBigQueryTable(BackendTableInterface):
             return return_cast, return_type, return_vcast
         return_cast = self._format_staging_column_name(staging_column)
         return return_cast, None, return_cast
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def cleanup_staging_area(self):
-        self._drop_load_table()
-        self._rm_load_table_location()
-
-    def compute_final_table_stats(self, incremental_stats, materialized_join=False):
-        """Do nothing on BigQuery"""
-
-    def create_backend_table(self, with_terminator=False) -> list:
-        """Create a table in BigQuery based on object state.
-        Creating a new table may change our world view so the function drops state if in execute mode.
-        If dry_run then we leave state in place to allow other operations to preview.
-        """
-        partition_column_names = get_column_names(self.get_partition_columns())
-        cmds = self._db_api.create_table(
-            self.db_name,
-            self.table_name,
-            self.get_columns(),
-            partition_column_names,
-            sort_column_names=self._sort_columns,
-            with_terminator=with_terminator,
-        )
-        if not self._dry_run:
-            self._drop_state()
-        return cmds
-
-    def create_db(self, with_terminator=False) -> list:
-        return self._create_final_db(
-            location=self._orchestration_config.bigquery_dataset_location,
-            with_terminator=with_terminator,
-        )
-
-    def create_load_db(self, with_terminator=False) -> list:
-        """Create a load database."""
-        if self._db_api.load_db_transport_supported():
-            return self._create_load_db(
-                location=self._orchestration_config.bigquery_dataset_location,
-                with_terminator=with_terminator,
-            )
-        return []
-
-    def empty_staging_area(self, staging_file):
-        self._rm_load_table_location()
-
-    def get_default_location(self):
-        """Not applicable to BigQuery"""
-        return
-
-    def get_staging_table_location(self):
-        # Use cached location to avoid re-doing same thing multiple times
-        return self._load_table_path
-
-    def load_final_table(self, sync=None):
-        """Copy data from the staged load table into the final BigQuery table"""
-        self._debug(
-            "Loading %s.%s from %s.%s"
-            % (
-                self.db_name,
-                self.table_name,
-                self._load_db_name,
-                self._load_table_name,
-            )
-        )
-        select_expression_tuples = [(self.get_final_table_cast(col), col.name.upper()) for col in self.get_columns()]
-        sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples)
-        self._execute_dml(
-            sqls,
-            query_options=query_options,
-            profile=self._log_profile_after_final_table_load,
-        )
-
-    def load_materialized_join(
-        self,
-        threshold_cols=None,
-        gte_threshold_vals=None,
-        lt_threshold_vals=None,
-        insert_predicates=None,
-        sync=None,
-    ):
-        """Copy data from the load view into the final BigQuery table"""
-        if insert_predicates:
-            assert isinstance(insert_predicates, list)
-        self._debug(
-            "Loading %s.%s from %s.%s"
-            % (
-                self.db_name,
-                self.table_name,
-                self._load_db_name,
-                self._load_table_name,
-            )
-        )
-        select_expression_tuples = [(self.get_final_table_cast(col), col.name.upper()) for col in self.get_columns()]
-        sqls, query_options = self._gen_mat_join_insert_sqls(
-            select_expression_tuples,
-            threshold_cols,
-            gte_threshold_vals,
-            lt_threshold_vals,
-            insert_predicates=insert_predicates,
-        )
-        self._execute_dml(
-            sqls,
-            query_options=query_options,
-            profile=self._log_profile_after_final_table_load,
-        )
-
-    def partition_function_requires_granularity(self):
-        return True
-
-    def post_transport_tasks(self, staging_file):
-        """On BigQuery we create the load table AFTER creating the Avro datafiles."""
-        self._recreate_load_table(staging_file)
-
-    def predicate_has_rows(self, predicate):
-        if not self.exists():
-            return False
-
-        sql = "SELECT 1 FROM %s WHERE (%s) LIMIT 1" % (
-            self._db_api.enclose_object_reference(self.db_name, self.table_name),
-            bigquery_predicate.predicate_to_where_clause(self.get_columns(), predicate),
-        )
-        return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
-
-    def predicate_to_where_clause(self, predicate, columns_override=None):
-        return bigquery_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
-
-    def result_cache_area_exists(self):
-        return self._result_cache_db_exists()
-
-    def setup_result_cache_area(self):
-        """Prepare result cache area for Hybrid Queries"""
-        if self.create_database_supported() and self._user_requested_create_backend_db:
-            self._create_result_cache_db(location=self._orchestration_config.bigquery_dataset_location)
-
-    def setup_staging_area(self, staging_file):
-        """Prepare any staging area for BigQuery OffloadTransport"""
-        if self.create_database_supported() and self._user_requested_create_backend_db:
-            self._create_load_db(location=self._orchestration_config.bigquery_dataset_location)
-        self._rm_load_table_location()
-        self.get_staging_table_location()
-
-    def staging_area_exists(self):
-        if not self._load_db_exists():
-            self._warning("Staging database %s does not exist" % self._load_db_name)
-        return self._load_db_exists()
-
-    def validate_type_conversions(self, staging_columns: list):
-        """Validate the staged data before we insert it into the final backend table.
-        BigQuery catches overflowing casts but this way we can spot them beforehand and
-        provide the user with SQL to view offending values.
-        """
-        self._validate_final_table_casts(staging_columns, log_profile=self._log_profile_after_verification_queries)

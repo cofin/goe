@@ -11,7 +11,7 @@ import logging
 import re
 from abc import ABCMeta, abstractmethod
 from copy import copy
-from typing import Optional
+from typing import Any
 
 from goe.util.misc_functions import str_summary_of_self
 
@@ -19,10 +19,6 @@ from goe.util.misc_functions import str_summary_of_self
 class ColumnMetadataException(Exception):
     pass
 
-
-###############################################################################
-# CONSTANTS
-###############################################################################
 
 GOE_TYPE_FIXED_STRING = "FIXED_STRING"
 GOE_TYPE_LARGE_STRING = "LARGE_STRING"
@@ -116,26 +112,12 @@ CANONICAL_CHAR_SEMANTICS_BYTE = "BYTE"
 CANONICAL_CHAR_SEMANTICS_CHAR = "CHAR"
 CANONICAL_CHAR_SEMANTICS_UNICODE = "UNICODE"
 
-# Substitution template for GOE_PART_ column names
 SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE = "GOE_PART_%s_%s"
 
-# Regular expression extracting granularity/source name from synthetic partition column name.
 SYNTHETIC_PARTITION_COLUMN_NAME_RE = re.compile(r"(^GOE_PART_)(Y|M|D|\d+|U\d+)_([A-Z0-9$#_]+$)", re.IGNORECASE)
 
-# A column name replacement for when the source columns contain special characters.
 STAGING_FILE_SIMPLIFIED_NAME_TOKEN = "_GOE_SPECIAL_CHAR_COLUMN"
 STAGING_FILE_UNSUPPORTED_NAME_CHARACTERS = [" ", "-", "#"]
-
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-# TODO nj@2020-03-09 The number and type of "helper" functions here indicates that further refactoring is required.
-#                    Columns are currently a simple list of column objects but should be reworked as a top level
-#                    Columns object which has the list of columns as an attribute. That way we all of these global
-#                    functions will have access to the column and not need a column_list parameter.
-#                    The top-level object could implement __iter__ to attempt backward compatibility?
 
 
 def get_column_names(column_list, conv_fn=None):
@@ -152,11 +134,12 @@ def get_column_names(column_list, conv_fn=None):
 def get_partition_columns(column_list):
     """Simple helper function to get sorted list of columns where partition_info is set.
     Return bucket columns before partition columns to maintain historical outcome.
+
+    Sort part_cols by partition_info.position
     """
     if not column_list:
         return []
     part_cols = [_ for _ in column_list if _.partition_info]
-    # Sort part_cols by partition_info.position
     return sorted(part_cols, key=lambda x: x.partition_info.position)
 
 
@@ -176,22 +159,19 @@ def get_partition_source_column_names(column_list, conv_fn=None):
     return [partition_info(_).source_column_name for _ in columns or []]
 
 
-def is_safe_mapping(prior_safe_mapping, new_safe_mapping) -> bool:
+def is_safe_mapping(prior_safe_mapping: Any, new_safe_mapping: Any = None) -> bool:
     """Ensure we don't overwrite an unsafe mapping with a safe one."""
     if new_safe_mapping is None:
-        # No action
-        return prior_safe_mapping
+        return bool(prior_safe_mapping)
     if not new_safe_mapping:
-        # We're saying a mapping is unsafe which overrides all other states
-        return new_safe_mapping
+        return bool(new_safe_mapping)
     if new_safe_mapping and prior_safe_mapping is None:
-        # We can say it's safe if there was no previous state
-        return new_safe_mapping
-    return prior_safe_mapping
+        return bool(new_safe_mapping)
+    return bool(prior_safe_mapping)
 
 
 def match_partition_column_by_source(source_column_name, column_list):
-    """Looks for, and returns, a partition column with a specific source_column_name in a list of columns"""
+    """Looks for, and returns, a column with a specific source_column_name in a list of columns"""
     assert source_column_name
     assert isinstance(column_list, list)
     if column_list:
@@ -205,7 +185,7 @@ def match_partition_column_by_source(source_column_name, column_list):
     return None
 
 
-def match_table_column(search_name: str, column_list: list) -> Optional["ColumnMetadataInterface"]:
+def match_table_column(search_name: str, column_list: list) -> "ColumnMetadataInterface | None":
     """Looks for, and returns, a column with name search_name in a list of table columns.
 
     Case insensitive matching.
@@ -274,12 +254,7 @@ def str_list_of_columns(column_list, with_cr=True):
 
 
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())  # Disabling logging by default
-
-
-###########################################################################
-# ColumnPartitionInfo
-###########################################################################
+logger.addHandler(logging.NullHandler())
 
 
 class ColumnPartitionInfo:
@@ -322,14 +297,6 @@ class ColumnPartitionInfo:
     def __repr__(self):
         return str_summary_of_self(self)
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def synthetic_name(self, full_column_list, source_column_name_override=None, position_override=None):
         """Generate a synthetic column name from partition attributes.
         source_column_name_override: Pass in a specific name to use in the resulting synthetic name
@@ -344,7 +311,7 @@ class ColumnPartitionInfo:
         if self.function:
             position = position_override if position_override is not None else self.position
             synth_desc = "U" + str(position)
-        elif source_column.is_number_based() and self.digits:
+        elif source_column and source_column.is_number_based() and self.digits:
             synth_desc = ("{:0%sd}" % self.digits).format(int(self.granularity))
         else:
             synth_desc = str(self.granularity)
@@ -352,11 +319,6 @@ class ColumnPartitionInfo:
             SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE
             % (synth_desc, source_column_name_override or self.source_column_name)
         ).upper()
-
-
-###########################################################################
-# ColumnMetadataInterface
-###########################################################################
 
 
 class ColumnMetadataInterface(metaclass=ABCMeta):
@@ -394,63 +356,16 @@ class ColumnMetadataInterface(metaclass=ABCMeta):
         self.data_precision = self._optional_integer(data_precision)
         self.data_scale = self._optional_integer(data_scale)
         self.nullable = self._optional_boolean(nullable)
-        # data_default could be of any type so cannot be validated
         self.data_default = data_default
         self.safe_mapping = self._optional_boolean(safe_mapping)
         self.partition_info = self._optional_object(partition_info, ColumnPartitionInfo)
-        # Only used for staging file columns.
-        self.staging_file_column_name = None
+        self.staging_file_column_name: str | None = None
 
     def __str__(self):
         return str_summary_of_self(self)
 
     def __repr__(self):
         return str_summary_of_self(self)
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _required_string(self, column_attribute):
-        assert column_attribute
-        assert isinstance(column_attribute, str)
-        return column_attribute
-
-    def _optional_integer(self, column_attribute):
-        if column_attribute:
-            assert isinstance(column_attribute, int), f"{type(column_attribute)} is not int"
-        return column_attribute
-
-    def _optional_boolean(self, column_attribute):
-        if column_attribute is not None:
-            if isinstance(column_attribute, str):
-                if column_attribute.upper() in ("Y", "YES", "TRUE"):
-                    return True
-                if column_attribute.upper() in ("N", "NO", "FALSE"):
-                    return False
-                raise ColumnMetadataException("Invalid boolean value: %s" % column_attribute)
-            assert isinstance(column_attribute, bool)
-            return column_attribute
-        return None
-
-    def _required_boolean(self, column_attribute):
-        assert column_attribute is not None
-        return self._optional_boolean(column_attribute)
-
-    def _optional_object(self, column_attribute, object_type):
-        if column_attribute:
-            assert isinstance(column_attribute, object_type)
-        return column_attribute
-
-    def _optional_upper_in(self, column_attribute, valid_list):
-        if column_attribute:
-            column_attribute = column_attribute.upper()
-            assert column_attribute in valid_list
-        return column_attribute
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     @abstractmethod
     def format_data_type(self):
@@ -540,6 +455,44 @@ class ColumnMetadataInterface(metaclass=ABCMeta):
             self.staging_file_column_name = f"{STAGING_FILE_SIMPLIFIED_NAME_TOKEN}_{column_position}"
         else:
             self.staging_file_column_name = self.name
+        return self.staging_file_column_name
+
+    def _required_string(self, column_attribute):
+        assert column_attribute
+        assert isinstance(column_attribute, str)
+        return column_attribute
+
+    def _optional_integer(self, column_attribute):
+        if column_attribute:
+            assert isinstance(column_attribute, int), f"{type(column_attribute)} is not int"
+        return column_attribute
+
+    def _optional_boolean(self, column_attribute):
+        if column_attribute is not None:
+            if isinstance(column_attribute, str):
+                if column_attribute.upper() in ("Y", "YES", "TRUE"):
+                    return True
+                if column_attribute.upper() in ("N", "NO", "FALSE"):
+                    return False
+                raise ColumnMetadataException("Invalid boolean value: %s" % column_attribute)
+            assert isinstance(column_attribute, bool)
+            return column_attribute
+        return None
+
+    def _required_boolean(self, column_attribute):
+        assert column_attribute is not None
+        return self._optional_boolean(column_attribute)
+
+    def _optional_object(self, column_attribute, object_type):
+        if column_attribute:
+            assert isinstance(column_attribute, object_type)
+        return column_attribute
+
+    def _optional_upper_in(self, column_attribute, valid_list):
+        if column_attribute:
+            column_attribute = column_attribute.upper()
+            assert column_attribute in valid_list
+        return column_attribute
 
 
 class CanonicalColumn(ColumnMetadataInterface):
@@ -579,7 +532,7 @@ class CanonicalColumn(ColumnMetadataInterface):
             self.data_length = CANONICAL_TYPE_BYTE_LENGTHS[data_type]
 
     def format_data_type(self):
-        # We should never need to format a canonical column
+        """We should never need to format a canonical column"""
         raise NotImplementedError("format_data_type() is not applicable to a CanonicalColumn")
 
     def has_time_element(self):
@@ -590,7 +543,7 @@ class CanonicalColumn(ColumnMetadataInterface):
         return bool(self.data_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
 
     def is_nan_capable(self):
-        # We should never need to this for a canonical column
+        """We should never need to this for a canonical column"""
         raise NotImplementedError("is_nan_capable() is not applicable to a CanonicalColumn")
 
     def is_number_based(self):

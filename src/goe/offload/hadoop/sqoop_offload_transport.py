@@ -28,7 +28,6 @@ from goe.offload.offload_transport_rdbms_api import (
 from goe.orchestration import command_steps
 from goe.util.misc_functions import split_not_in_quotes, write_temp_file
 
-# Sqoop constants
 SQOOP_OPTIONS_FILE_PREFIX = "goe-sqoop-options-"
 SQOOP_LOG_ROW_COUNT_PATTERN = r"^.*mapreduce\.ImportJobBase: Retrieved (\d+) records\.\r?$"
 SQOOP_LOG_MODULE_PATTERN = r"^.*dbms_application_info.set_module\(module_name => '(.+)', action_name => '(.+)'\)"
@@ -70,9 +69,26 @@ class OffloadTransportStandardSqoop(OffloadTransport):
         self._sqoop_mapreduce_map_memory_mb = offload_operation.sqoop_mapreduce_map_memory_mb
         self._sqoop_mapreduce_map_java_opts = offload_operation.sqoop_mapreduce_map_java_opts
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def transport(self, partition_chunk=None):
+        """Table centric Sqoop transport"""
+        self._reset_transport_context()
+
+        def step_fn():
+            row_count = self._sqoop_import(partition_chunk)
+            staged_bytes = self._check_and_log_transported_files(row_count)
+            self._transport_context[TRANSPORT_CXT_BYTES] = staged_bytes
+            self._transport_context[TRANSPORT_CXT_ROWS] = row_count
+            self._target_table.post_transport_tasks(self._staging_file)
+            return row_count
+
+        return self._messages.offload_step(
+            command_steps.STEP_STAGING_TRANSPORT,
+            step_fn,
+            execute=(not self._dry_run),
+        )
+
+    def ping_source_rdbms(self):
+        return self._verify_rdbms_connectivity()
 
     def _sqoop_cli_safe_value(self, cmd_option_string):
         return self._ssh_cli_safe_value(cmd_option_string)
@@ -166,7 +182,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
         return app_user_option, app_pass_option, extra_jvm_options, no_log_password
 
     def _check_for_ora_errors(self, cmd_out):
-        # Need to think about checks for non-Oracle rdbms
+        """Need to think about checks for non-Oracle rdbms"""
         ora_errors = [line for line in (cmd_out or "").splitlines() if "ORA-" in line]
         if ora_errors:
             self.log("Sqoop exited cleanly, but the following errors were found in the output:")
@@ -186,6 +202,13 @@ class OffloadTransportStandardSqoop(OffloadTransport):
         return std_d_options
 
     def _sqoop_import(self, partition_chunk=None):
+        """Ignore the actual table options and redirect to the options file instead
+
+        In order to let Impala/Hive drop the load table in the future we need g+w
+        Even in a sqoop failure we still want to chmod the load directory - if it exists
+        if we fail while coping with a Sqoop failure then do nothing except log it
+        if we created a Sqoop options file, let's remove it
+        """
         self.debug("_sqoop_import()")
         sqoop_rm_commands = None
         self._refresh_rdbms_action()
@@ -221,7 +244,6 @@ class OffloadTransportStandardSqoop(OffloadTransport):
                 sqoop_rm_commands,
                 options_file_remote_path,
             ) = self._remote_copy_sqoop_control_file(options_file_local_path)
-            # Ignore the actual table options and redirect to the options file instead
             offload_source_options = ["--options-file", options_file_remote_path]
 
         self._run_os_cmd(self._ssh_cmd_prefix() + ["mkdir", "-p", self._offload_options.sqoop_outdir])
@@ -279,12 +301,10 @@ class OffloadTransportStandardSqoop(OffloadTransport):
                         payload=None,
                         validation_polling_interval=self._validation_polling_interval,
                     )
-            # In order to let Impala/Hive drop the load table in the future we need g+w
             self.log_dfs_cmd('chmod(%s, "g+w")' % self._staging_table_location)
             if not self._dry_run:
                 self._dfs_client.chmod(self._staging_table_location, mode="g+w")
         except:
-            # Even in a sqoop failure we still want to chmod the load directory - if it exists
             self.log_dfs_cmd(
                 '(exception resilience) chmod(%s, "g+w")' % self._staging_table_location,
                 detail=VVERBOSE,
@@ -293,14 +313,12 @@ class OffloadTransportStandardSqoop(OffloadTransport):
                 try:
                     self._dfs_client.chmod(self._staging_table_location, mode="g+w")
                 except Exception as exc:
-                    # if we fail while coping with a Sqoop failure then do nothing except log it
                     self.log(
                         "Unable to chmod(%s): %s" % (self._staging_table_location, str(exc)),
                         detail=VVERBOSE,
                     )
             raise
 
-        # if we created a Sqoop options file, let's remove it
         if sqoop_rm_commands:
             [self._run_os_cmd(_) for _ in sqoop_rm_commands]
 
@@ -313,7 +331,10 @@ class OffloadTransportStandardSqoop(OffloadTransport):
         )
 
     def _verify_rdbms_connectivity(self):
-        """Use a simple canary query for verification test"""
+        """Use a simple canary query for verification test
+
+        if we got this far then we're in good shape
+        """
         rdbms_source_query = self._rdbms_api.get_rdbms_canary_query()
 
         (
@@ -344,33 +365,7 @@ class OffloadTransportStandardSqoop(OffloadTransport):
 
         rc, cmd_out = self._run_os_cmd(self._ssh_cmd_prefix() + sqoop_cmd, no_log_items=no_log_password)
         self._check_for_ora_errors(cmd_out)
-        # if we got this far then we're in good shape
         return True
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def transport(self, partition_chunk=None) -> int | None:
-        """Table centric Sqoop transport"""
-        self._reset_transport_context()
-
-        def step_fn():
-            row_count = self._sqoop_import(partition_chunk)
-            staged_bytes = self._check_and_log_transported_files(row_count)
-            self._transport_context[TRANSPORT_CXT_BYTES] = staged_bytes
-            self._transport_context[TRANSPORT_CXT_ROWS] = row_count
-            self._target_table.post_transport_tasks(self._staging_file)
-            return row_count
-
-        return self._messages.offload_step(
-            command_steps.STEP_STAGING_TRANSPORT,
-            step_fn,
-            execute=(not self._dry_run),
-        )
-
-    def ping_source_rdbms(self):
-        return self._verify_rdbms_connectivity()
 
 
 class OffloadTransportSqoopByQuery(OffloadTransportStandardSqoop):
@@ -399,18 +394,15 @@ class OffloadTransportSqoopByQuery(OffloadTransportStandardSqoop):
             dfs_client,
         )
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
     def _sqoop_by_query_options(self, partition_chunk, write_options_to_file=False):
         """Options dictating that Sqoop should process a GOE defined query which splits data into groups ready for
         distributing amongst mappers
+
+        No double quotes below - they break Sqoop
+        Column aliases included for correct AVRO identification
         """
-        # No double quotes below - they break Sqoop
         sqoop_d_options = ["-Dmapred.child.java.opts=-Duser.timezone=UTC"]
         colexpressions, colnames = self._build_offload_query_lists()
-        # Column aliases included for correct AVRO identification
         sql_projection = self._sql_projection_from_offload_query_expression_list(
             colexpressions, colnames, no_newlines=True
         )
@@ -469,6 +461,9 @@ class OffloadTransportSqoopCanary(OffloadTransportStandardSqoop):
     def __init__(self, offload_options, messages):
         """CONSTRUCTOR
         This does not call up the stack to parent constructor because we only want a subset of functionality
+
+        No OraOop for canary queries
+        The canary is unaware of any tables
         """
         self._offload_options = offload_options
         self._messages = messages
@@ -495,7 +490,6 @@ class OffloadTransportSqoopCanary(OffloadTransportStandardSqoop):
         self._sqoop_additional_options = orchestration_defaults.sqoop_additional_options_default()
         self._sqoop_mapreduce_map_memory_mb = None
         self._sqoop_mapreduce_map_java_opts = None
-        # No OraOop for canary queries
         self._offload_options.sqoop_disable_direct = True
 
         self._rdbms_api = offload_transport_rdbms_api_factory(
@@ -509,14 +503,9 @@ class OffloadTransportSqoopCanary(OffloadTransportStandardSqoop):
         self._rdbms_module = FRONTEND_TRACE_MODULE
         self._rdbms_action = self._rdbms_api.generate_transport_action()
 
-        # The canary is unaware of any tables
         self._target_table = None
         self._rdbms_table = None
         self._staging_format = None
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def ping_source_rdbms(self):
         return self._verify_rdbms_connectivity()

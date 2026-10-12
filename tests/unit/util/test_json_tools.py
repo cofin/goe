@@ -7,10 +7,8 @@ from decimal import Decimal
 from pathlib import Path
 
 import numpy as np
-import pytest
 from sqlspec.utils.serializers import DEFAULT_TYPE_ENCODERS
 
-from goe.orchestration.execution_id import ExecutionId
 from goe.util.json_tools import (
     convert_field_to_camel_case,
     deserialize_object,

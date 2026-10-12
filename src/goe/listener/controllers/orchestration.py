@@ -18,18 +18,11 @@ from goe.orchestration.execution_id import ExecutionId
 from goe.util.sync_tools import async_
 
 
-def _normalize_execution_id(raw_id: Any) -> str:
-    """Convert raw bytes or UUID execution_id values into canonical string form."""
-    if isinstance(raw_id, bytes):
-        return ExecutionId.from_bytes(raw_id).as_str()
-    return str(raw_id)
-
-
 class OrchestrationController(SecureController):
     """Controller for /api/orchestration endpoints."""
 
     path = "/api/orchestration"
-    tags: ClassVar[list[str]] = ["Orchestration"]
+    tags = ["Orchestration"]
     auth: ClassVar[AuthenticationPolicy] = required("console-key")
 
     @get("/executions/", mcp_tool="get_command_executions")
@@ -125,3 +118,10 @@ class OrchestrationController(SecureController):
         )
 
         return schemas.CommandScheduled(execution_id=str(execution_identifier.id))
+
+
+def _normalize_execution_id(raw_id: Any) -> str:
+    """Convert raw bytes or UUID execution_id values into canonical string form."""
+    if isinstance(raw_id, bytes):
+        return ExecutionId.from_bytes(raw_id).as_str()
+    return str(raw_id)

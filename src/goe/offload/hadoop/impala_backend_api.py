@@ -65,23 +65,8 @@ from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.util.better_impyla import from_impala_size
 from goe.util.goe_version import GOEVersion
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# BackendImpalaApi
-###########################################################################
 
 
 class BackendImpalaApi(BackendHadoopApi):
@@ -109,87 +94,6 @@ class BackendImpalaApi(BackendHadoopApi):
         logger.info("BackendImpalaApi")
         if dry_run:
             logger.info("* Dry run *")
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _backend_capabilities(self):
-        return IMPALA_BACKEND_CAPABILITIES
-
-    def _execute_ddl_or_dml(
-        self,
-        sql,
-        sync=None,
-        query_options=None,
-        log_level=VERBOSE,
-        profile=None,
-        no_log_items=None,
-    ):
-        """See interface for parameter descriptions."""
-        assert sql
-        assert isinstance(sql, (str, list))
-
-        if sync is not None:
-            # don't change the original query_options
-            query_options = copy(query_options) if query_options else {}
-            query_options["SYNC_DDL"] = "TRUE" if sync else "FALSE"
-
-        if self._hive_conn:
-            self._hive_conn.refresh_cursor()
-            self._execute_global_session_parameters(log_level=None)
-        run_opts = self._execute_session_options(query_options, log_level=log_level)
-        run_sqls = self._execute_sqls(sql, log_level=log_level, profile=profile, no_log_items=no_log_items)
-        return run_opts + run_sqls
-
-    def _fetch_show_functions(self, db_name, udf_name_filter=None):
-        assert db_name
-        if udf_name_filter:
-            sql = "SHOW FUNCTIONS IN %s LIKE '%s'" % (
-                self.enclose_identifier(db_name),
-                udf_name_filter.lower(),
-            )
-        else:
-            sql = "SHOW FUNCTIONS IN %s" % self.enclose_identifier(db_name)
-        return self.execute_query_fetch_all(sql, log_level=VVERBOSE)
-
-    def _get_hadoop_connection_exception_message_template(self):
-        """Impala"""
-        return """Successfully connected to %(host)s:%(port)s, but rejected. Possible reasons:
-
- 1) Kerberos is configured for Impala, but not configured in your environment file (or vice versa)
- 2) SSL is configured for Impala, but not configured in your environment file (or vice versa)
- 3) A process is listening at %(host)s:%(port)s, but it is not HiveServer2
- 4) LDAP is configured for Impala, but incorrect%(enc_text)s credentials were supplied
- 5) Invalid hiveserver2 authentication method is used. In non-kerberized environments Impala requires NOSASL
-"""
-
-    def _get_query_profile(self, query_identifier=None):
-        """Get Impala profile. query_identifier ignored on Impala."""
-        return self._hive_conn.get_profile()
-
-    def _get_table_stats(self, hive_stats, as_dict=False, part_stats=False):
-        """Impala override
-        Unfortunately HiveTableStats is not consistent in return value on Impala!
-        Therefore we have this Impala overload to ensure we always return three items
-        """
-        if part_stats:
-            tab_stats, col_stats, part_stats = hive_stats.get_table_stats(
-                self._backend_type, as_dict=as_dict, messages=None, partstats=part_stats
-            )
-        else:
-            part_stats = None
-            tab_stats, col_stats = hive_stats.get_table_stats(
-                self._backend_type, as_dict=as_dict, messages=None, partstats=part_stats
-            )
-        return tab_stats, part_stats, col_stats
-
-    def _partition_clause_null_constant(self):
-        return "NULL"
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def alter_sort_columns(self, db_name, table_name, sort_column_names, sync=None):
         assert db_name and table_name
@@ -422,7 +326,11 @@ class BackendImpalaApi(BackendHadoopApi):
         return False
 
     def from_canonical_column(self, column, decimal_padding_digits=0):
-        """Translate an internal GOE column to an Impala column."""
+        """Translate an internal GOE column to an Impala column.
+
+        Impala has a different outcome to Hive for GOE_TYPE_BINARY and GOE_TYPE_LARGE_BINARY
+        We deal with them here and then fall back into the parent code
+        """
 
         def new_column(
             col,
@@ -445,8 +353,6 @@ class BackendImpalaApi(BackendHadoopApi):
                 safe_mapping=safe_mapping,
             )
 
-        # Impala has a different outcome to Hive for GOE_TYPE_BINARY and GOE_TYPE_LARGE_BINARY
-        # We deal with them here and then fall back into the parent code
         if column.data_type == GOE_TYPE_BINARY:
             return new_column(column, HADOOP_TYPE_STRING)
         if column.data_type == GOE_TYPE_LARGE_BINARY:
@@ -557,8 +463,6 @@ FROM   %(from_db_table)s%(where)s""" % {
         assert db_name and table_name
         hive_table = self._get_hive_table(db_name, table_name)
         hive_parts = hive_table.table_partitions()
-        # HiveTable on Impala contains these keys that we'll pick out and use:
-        # {'Format', '#Rows', 'Size'}
         table_partitions = {
             k: self._table_partition_info(
                 partition_id=k,
@@ -575,7 +479,6 @@ FROM   %(from_db_table)s%(where)s""" % {
         assert db_name and table_name
         hive_table = self._get_hive_table(db_name, table_name, no_cache=no_cache)
         if self.get_partition_columns(db_name, table_name):
-            # we get the size from each partition
             partitions = self.get_table_partitions(db_name, table_name)
             self._log("Summing size of %s partitions" % len(partitions), detail=VVERBOSE)
             size_bytes = 0
@@ -717,12 +620,85 @@ FROM   %(from_db_table)s%(where)s""" % {
             return_type = row[0] if row else None
             parameters = []
             if row and row[1]:
-                # UDF parameters are embedded in a string, no names for parameters, e.g.:
-                # goe_bucket(DECIMAL(38,0), SMALLINT)
-                # Find all text in the signature between the outer parentheses
                 m = re.search(r"[^(]*\((.*)\)", row[1])
                 if m:
                     arg_types = [_.strip() for _ in m.groups()[0].split(", ")]
                     parameters = [UdfParameter(None, _) for _ in arg_types]
             udfs.append(UdfDetails(db_name, udf_name, return_type, parameters))
         return udfs
+
+    def _backend_capabilities(self):
+        return IMPALA_BACKEND_CAPABILITIES
+
+    def _execute_ddl_or_dml(
+        self,
+        sql,
+        sync=None,
+        query_options=None,
+        log_level=VERBOSE,
+        profile=None,
+        no_log_items=None,
+    ):
+        """See interface for parameter descriptions.
+
+        don't change the original query_options
+        """
+        assert sql
+        assert isinstance(sql, (str, list))
+
+        if sync is not None:
+            query_options = copy(query_options) if query_options else {}
+            query_options["SYNC_DDL"] = "TRUE" if sync else "FALSE"
+
+        if self._hive_conn:
+            self._hive_conn.refresh_cursor()
+            self._execute_global_session_parameters(log_level=None)
+        run_opts = self._execute_session_options(query_options, log_level=log_level)
+        run_sqls = self._execute_sqls(sql, log_level=log_level, profile=profile, no_log_items=no_log_items)
+        return run_opts + run_sqls
+
+    def _fetch_show_functions(self, db_name, udf_name_filter=None):
+        assert db_name
+        if udf_name_filter:
+            sql = "SHOW FUNCTIONS IN %s LIKE '%s'" % (
+                self.enclose_identifier(db_name),
+                udf_name_filter.lower(),
+            )
+        else:
+            sql = "SHOW FUNCTIONS IN %s" % self.enclose_identifier(db_name)
+        return self.execute_query_fetch_all(sql, log_level=VVERBOSE)
+
+    def _get_hadoop_connection_exception_message_template(self):
+        """Impala"""
+        return """Successfully connected to %(host)s:%(port)s, but rejected. Possible reasons:
+
+ 1) Kerberos is configured for Impala, but not configured in your environment file (or vice versa)
+ 2) SSL is configured for Impala, but not configured in your environment file (or vice versa)
+ 3) A process is listening at %(host)s:%(port)s, but it is not HiveServer2
+ 4) LDAP is configured for Impala, but incorrect%(enc_text)s credentials were supplied
+ 5) Invalid hiveserver2 authentication method is used. In non-kerberized environments Impala requires NOSASL
+"""
+
+    def _get_query_profile(self, query_identifier=None):
+        """Get Impala profile. query_identifier ignored on Impala."""
+        assert self._hive_conn is not None
+        return self._hive_conn.get_profile()
+
+    def _get_table_stats(self, hive_stats, as_dict=False, part_stats=False):
+        """Impala override
+        Unfortunately HiveTableStats is not consistent in return value on Impala!
+        Therefore we have this Impala overload to ensure we always return three items
+        """
+        if part_stats:
+            tab_stats, col_stats, part_stats = hive_stats.get_table_stats(
+                self._backend_type, as_dict=as_dict, messages=None, partstats=part_stats
+            )
+        else:
+            part_stats = None
+            tab_stats, col_stats = hive_stats.get_table_stats(
+                self._backend_type, as_dict=as_dict, messages=None, partstats=part_stats
+            )
+        return tab_stats, part_stats, col_stats
+
+    def _partition_clause_null_constant(self):
+        return "NULL"

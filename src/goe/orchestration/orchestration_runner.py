@@ -5,15 +5,12 @@
 Utilized by both CLI and Orchestration Listener.
 """
 
-# Standard Library
 import logging
 import sys
 import traceback
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.config.orchestration_config import OrchestrationConfig
-
-# GOE
 from goe.goe import (
     OffloadOperation,
     get_log_fh,
@@ -43,7 +40,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
 
@@ -51,13 +47,8 @@ class OrchestrationRunnerException(Exception):
     pass
 
 
-###########################################################################
-# CONSTANTS
-###########################################################################
-
 COMMAND_ID_CONNECT = "CONNECT"
 
-# TODO NJ@2022-07-08 Shall we start giving commands better log file names?
 LOG_FILE_PREFIXES = {
     COMMAND_ID_CONNECT: "connect",
     orchestration_constants.COMMAND_OFFLOAD: "offload",
@@ -65,38 +56,24 @@ LOG_FILE_PREFIXES = {
 }
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
-###########################################################################
-# OrchestrationRunner
-###########################################################################
-
-
 class OrchestrationRunner:
     """OrchestrationRunner: Library providing simple entry point for orchestration commands."""
 
     def __init__(self, config_overrides=None, suppress_stdout=False):
         self._config = self._gen_config(config_overrides, suppress_stdout=suppress_stdout)
-        # State refreshed by each command, not necessarily static.
         self._execution_id: ExecutionId | None = None
         self._messages: OffloadMessages | None = None
         self._max_hybrid_name_length: int | None = None
 
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def offload(
         self,
-        params,
+        params: Any,
         execution_id: ExecutionId | None = None,
         reuse_log: bool = False,
         messages_override: OffloadMessages | None = None,
-    ):
+    ) -> Any:
         """Run an offload based on incoming params.
+
         params: Can be a dict or an OptParse object.
         execution_id: A UUID used to uniquely identify the Offload. Can be generted internally or provided as
                       an override.
@@ -135,18 +112,18 @@ class OrchestrationRunner:
             repo_client.close(force=True)
             raise
         finally:
-            if not reuse_log:
+            if not reuse_log and self._messages is not None:
                 self._messages.close_log()
 
         return status
 
     def schema_sync(
         self,
-        params,
+        params: Any,
         execution_id: ExecutionId | None = None,
         reuse_log: bool = False,
         messages_override: OffloadMessages | None = None,
-    ):
+    ) -> Any:
         """Run Schema Sync using incoming params."""
         repo_client = self._init_command(
             orchestration_constants.COMMAND_SCHEMA_SYNC,
@@ -156,18 +133,12 @@ class OrchestrationRunner:
             messages_override=messages_override,
         )
 
-        # TODO schema_sync() currently only supports params of type Opt/Argparse, not a dict. When we
-        #      add Schema Sync to Listener we'll need to change this.
         command_id = self._command_begin(orchestration_constants.COMMAND_SCHEMA_SYNC, params, repo_client)
         try:
             raise OrchestrationRunnerException("Schema Sync no longer exists")
         except Exception as exc:
             self._command_fail(command_id, exc, repo_client)
             raise
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
 
     def _build_offload_source_table(self, operation):
         return OffloadSourceTable.create(
@@ -178,7 +149,7 @@ class OrchestrationRunner:
             dry_run=(not operation.execute),
         )
 
-    def _build_repo_client(self, messages, dry_run=False) -> "OrchestrationRepoClientInterface":
+    def _build_repo_client(self, messages: Any, dry_run: bool = False) -> "OrchestrationRepoClientInterface":
         return orchestration_repo_client_factory(
             self._config,
             messages,
@@ -202,9 +173,9 @@ class OrchestrationRunner:
     def _command_begin(
         self,
         command_type: str,
-        params,
+        params: Any,
         repo_client: "OrchestrationRepoClientInterface",
-        operation=None,
+        operation: Any = None,
     ) -> int:
         assert command_type
         assert params
@@ -212,6 +183,7 @@ class OrchestrationRunner:
         assert self._execution_id
 
         try:
+            command_input: Any
             if isinstance(params, dict):
                 command_input = params
             else:
@@ -238,7 +210,7 @@ class OrchestrationRunner:
             raise
         return command_id
 
-    def _command_end(self, command_id: int, repo_client: "OrchestrationRepoClientInterface"):
+    def _command_end(self, command_id: int, repo_client: "OrchestrationRepoClientInterface") -> None:
         assert repo_client
         try:
             repo_client.end_command(command_id, orchestration_constants.COMMAND_SUCCESS)
@@ -252,7 +224,7 @@ class OrchestrationRunner:
         command_id: int,
         external_exc: Exception,
         repo_client: "OrchestrationRepoClientInterface",
-    ):
+    ) -> None:
         assert repo_client
         self._log_error(f"Failing command due to exception: {external_exc!s}", detail=VVERBOSE)
         self._log(
@@ -269,12 +241,12 @@ class OrchestrationRunner:
             self._log(f"Exception stack: {traceback.format_exc()}", detail=VVERBOSE)
             raise
 
-    def _execute_from_params(self, params) -> bool:
+    def _execute_from_params(self, params: Any) -> bool:
         if isinstance(params, dict):
-            return params["execute"]
-        return params.execute
+            return bool(params["execute"])
+        return bool(params.execute)
 
-    def _gen_config(self, config_overrides, suppress_stdout=False) -> OrchestrationConfig:
+    def _gen_config(self, config_overrides: Any, suppress_stdout: bool = False) -> OrchestrationConfig:
         overrides = config_overrides or {}
         if suppress_stdout:
             overrides["suppress_stdout"] = suppress_stdout
@@ -290,17 +262,15 @@ class OrchestrationRunner:
 
     def _gen_offload_operation(
         self,
-        params,
+        params: Any,
         repo_client: "OrchestrationRepoClientInterface",
-    ):
+    ) -> Any:
         """Return an OffloadOperation object based on either a parameter dict or OptParse object."""
         try:
             max_hybrid_name_length = self._get_max_hybrid_identifier_length(
                 dry_run=bool(not self._execute_from_params(params))
             )
             if isinstance(params, dict):
-                # Non-CLI APIs are dict driven therefore we construct via "from_dict".
-                # Also will be threaded and not-safe to pass in shared repo_client.
                 op = OffloadOperation.from_dict(
                     params,
                     self._config,
@@ -310,8 +280,6 @@ class OrchestrationRunner:
                     max_hybrid_name_length=max_hybrid_name_length,
                 )
             else:
-                # CLI has an OptParse object therefore we construct via "from_options".
-                # Also will not be threaded and safe to pass in shared repo_client.
                 op = OffloadOperation.from_options(
                     params,
                     self._config,
@@ -356,7 +324,7 @@ class OrchestrationRunner:
     def _init_command(
         self,
         command: str,
-        params,
+        params: Any,
         execution_id: ExecutionId | None = None,
         reuse_log: bool = False,
         messages_override: OffloadMessages | None = None,
@@ -370,7 +338,6 @@ class OrchestrationRunner:
         self._messages = messages_override or self._gen_messages(self._execution_id, command)
         try:
             if messages_override and self._messages.execution_id is None:
-                # We are testing and have no execution id.
                 self._messages.set_execution_id(self._execution_id)
             self._log(
                 "{} ExecutionId: {}".format(
@@ -385,24 +352,20 @@ class OrchestrationRunner:
             self._log(f"Exception stack: {traceback.format_exc()}", detail=VVERBOSE)
             raise
 
-    def _init_command_log(self, command: str, params, reuse_log=False) -> None:
+    def _init_command_log(self, command: str, params: Any, reuse_log: bool = False) -> None:
         """Create a log file for the orchestration command and set the global file handle in goe.py."""
 
         def get_owner_table_for_command():
             if command == COMMAND_ID_CONNECT:
                 return None
-            # We need to create the log before doing anything else, which means haven't rationalised the
-            # contents of params yet. It could be a dict or a namespace.
             param_name = "owner_table"
             owner_table = params.get(param_name) if isinstance(params, dict) else getattr(params, param_name, None)
             if not owner_table:
                 raise OrchestrationRunnerException(f"Missing owner/table parameter for command: {command}")
             return owner_table
 
-        # Install current config as global goe.py options.
         init(self._config)
         if not reuse_log:
-            # Create log file for command and install it as global goe.py logging file handle.
             owner_table_token = get_owner_table_for_command()
             log_prefix = LOG_FILE_PREFIXES[command]
             if owner_table_token:
@@ -426,9 +389,11 @@ class OrchestrationRunner:
 
     def _log_error(self, msg, detail=NORMAL):
         logger.error(msg)
-        self._messages.log(msg, detail=detail)
+        if self._messages is not None:
+            self._messages.log(msg, detail=detail)
 
     def _log_final_messages(self, command_type, dry_run):
+        assert self._messages is not None
         self._messages.log_step_deltas()
         if self._messages.get_messages():
             self._messages.offload_step(
@@ -439,6 +404,7 @@ class OrchestrationRunner:
             )
 
     def _offload(self, operation, offload_source_table, offload_target_table):
+        assert self._messages is not None
         with orchestration_lock_for_table(
             offload_source_table.owner,
             offload_source_table.table_name,

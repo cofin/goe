@@ -3,7 +3,6 @@
 
 """OffloadMessages: Library for handling messages"""
 
-# Standard Library
 import logging
 import os
 import sys
@@ -19,7 +18,6 @@ from goe.util.goe_log_fh import GOELogFileHandle
 from goe.util.misc_functions import standard_log_name
 
 if TYPE_CHECKING:
-    # GOE
     from goe.persistence.orchestration_repo_client import (
         OrchestrationRepoClientInterface,
     )
@@ -61,7 +59,6 @@ COLORS = {
 FORCED_EXCEPTION_TEXT = "Forcing exception"
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
 
@@ -91,8 +88,8 @@ class OffloadMessages:
         if command_type:
             assert command_type in orchestration_constants.ALL_COMMAND_CODES, f"Unknown command type: {command_type}"
 
-        self.messages = {"notices": [], "warnings": [], "events": []}
-        self.steps = {}
+        self.messages: dict[str, list[Any]] = {"notices": [], "warnings": [], "events": []}
+        self.steps: dict[str, Any] = {}
         self._log_fh = log_fh
         self._detail = detail
         self._ansi = ansi
@@ -103,14 +100,6 @@ class OffloadMessages:
         self._repo_client = repo_client
         self._command_type = command_type
         self._stdout_in_error = False
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     @staticmethod
     def from_options(
@@ -182,9 +171,8 @@ class OffloadMessages:
         not using self._ansi but passing in as parameter.
         """
         if ansi and color_name:
-            if type(color_name) not in (list, tuple):
-                color_name = [color_name]
-            return "".join([COLORS.get(cn, "") for cn in color_name]) + str(txt) + COLORS.get("none")
+            color_names = [color_name] if not isinstance(color_name, (list, tuple)) else list(color_name)
+            return "".join([COLORS.get(cn, "") for cn in color_names]) + str(txt) + COLORS.get("none", "")
         return txt
 
     def init_log(self, log_dir, log_name):
@@ -205,88 +193,20 @@ class OffloadMessages:
     def get_log_fh_name(self):
         return self._log_fh.name
 
-    ########################################################################################
-    #   Use of log function vs info/detail/debug functions
-    ########################################################################################
-    #
-    #   Using the log function
-    #   ----------------------
-    #
-    #   1. log is the function that writes to log file and optionally to STDOUT. Its
-    #      simple usage is:
-    #
-    #        messages.log('Some message')
-    #
-    #   2. log *always* writes to log file regardless of the verbosity level set for
-    #      the session (NORMAL, VERBOSE [-v] or VVERBOSE [--vv]). This means that every
-    #      call to messages.log you include in your programs will be logged to file.
-    #
-    #   3. log will also print to STDOUT unless the verbosity level set in the detail
-    #      parameter is higher than the level set for the session execution. If you wish
-    #      to prevent your log message appearing on STDOUT, there are two ways to achieve
-    #      this:
-    #
-    #        a) original method - ensure the value passed to the detail parameter is
-    #           higher than the logging level set for the session. For example, if your
-    #           program is running at VERBOSE (-v) level and you only want the messages
-    #           in the log file, this will prevent STDOUT printing:
-    #
-    #             messages.log('Message to go to log file only', detail=VVERBOSE)
-    #
-    #        b) new method - a dedicated constant for the detail parameter is now
-    #           available with a clear usage:
-    #
-    #             messages.log('Message to go to log file only', detail=SUPPRESS_STDOUT)
-    #
-    #   Using the info, detail, debug functions
-    #   ---------------------------------------
-    #
-    #   1. These will only call the log function if your program's verbosity level is
-    #      high enough. In other words:
-    #
-    #        a) messages.info('Some message') will only log if verbosity is at least NORMAL
-    #        b) messages.detail('Some message') will only log if verbosity is at least VERBOSE
-    #        c) messages.debug('Some message') will only log if verbosity is at least VVERBOSE
-    #
-    #   2. printing to STDOUT is controlled in the same way as documented above for the log
-    #      function, e.g.:
-    #
-    #        messages.debug('VVERBOSE message in log file only when using --vv', detail=SUPPRESS_STDOUT)
-    #
-    #   Do I use the log function or the info/detail/debug set of functions in my program?
-    #   ----------------------------------------------------------------------------------
-    #
-    #   1. Most GOE programs use log because we want all information in the log files at
-    #      all times, regardless of user's command-line verbosity setting. Something that a
-    #      customer might not be able to re-run (such as an offload) but needs support with
-    #      clearly has to guarantee sufficient logging at all times.
-    #
-    #   2. Some GOE programs are trivial to re-run and do not require debug-amounts of
-    #      logging for everyday use. If an issue occurs and the program is trivial to re-run
-    #      with a --vv option to create debug logging, then the program can use the
-    #      info/detail/debug functions to express the developer's intention for when the
-    #      information is logged to file (i.e. under which verbosity conditions). A good
-    #      example is the Offload Status Report. This is a query-only tool that can
-    #      preprocess a large amount of query data. In debug mode it will be useful to
-    #      see the intermediate data, but we wouldn't want all of this detailed data dumped
-    #      to log file every time. Therefore, messages.debug() calls in the Offload Status
-    #      Report program will only write to logfile (and STDOUT unless suppressed) when
-    #      the report is executed with the --vv/VVERBOSE logging level.
-    #
-    ########################################################################################
-
     def log(self, line, detail=NORMAL, ansi_code=None):
+        """Write to log file and optionally to STDOUT based on session verbosity and detail level."""
+
         def fh_log(line):
             self._log_fh.write((line or "") + "\n")
             self._log_fh.flush()
 
         def stdout_log(line):
+            """Writing to screen is non-essential, if we lost stdout we are still logging to file."""
             if not self._stdout_in_error:
                 try:
                     sys.stdout.write((line or "") + "\n")
                     sys.stdout.flush()
                 except OSError as exc:
-                    # Writing to screen is non-essential, if we lost stdout we are still logging to file.
                     fh_log(f"Disabling STDOUT logging due to: {exc!s}")
                     self._stdout_in_error = True
 
@@ -344,11 +264,11 @@ class OffloadMessages:
         self,
         step_constant: str,
         step_fn: Callable,
-        execute=True,
-        optional=False,
+        execute: bool = True,
+        optional: bool = False,
         command_type: str | None = None,
-        mandatory_step=False,
-        record_step_delta=True,
+        mandatory_step: bool = False,
+        record_step_delta: bool = True,
     ) -> Any:
         """Produce nicely formatted offload step output with elapsed time and return the value of step_fn().
 
@@ -376,7 +296,7 @@ class OffloadMessages:
                 return ts2 - start_time
 
         def step_repo_logging(check_command_type):
-            # TODO In Console phase 1 we will not log the details of the commands below.
+            """TODO In Console phase 1 we will not log the details of the commands below."""
             return bool(
                 check_command_type
                 not in (
@@ -458,12 +378,12 @@ class OffloadMessages:
 
     def setup_offload_step(
         self,
-        skip=None,
-        error_before_step=None,
-        error_after_step=None,
+        skip: Any = None,
+        error_before_step: Any = None,
+        error_after_step: Any = None,
         repo_client: "OrchestrationRepoClientInterface | None" = None,
         command_type: str | None = None,
-    ):
+    ) -> None:
         """Cache some operational attributes that can be used by offload_step().
         error_before_step and error_after_step are for test purposes, they cache a step name before or after
         which we should throw an exception. The step name is case insensitive with spaces replaced by underscores.

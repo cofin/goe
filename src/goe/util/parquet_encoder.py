@@ -22,30 +22,81 @@ from goe.offload.staging.parquet.parquet_staging_file import (
     PARQUET_TYPE_STRING,
 )
 
-###########################################################################
-# ParquetEncoder
-###########################################################################
-
 
 class ParquetEncoder(QueryImportInterface):
     """This is not a general purpose Parquet encoder, but handles the schema types we use in Offload Transport."""
 
     def __init__(self, schema, messages, compression=False, base64_columns=None):
+        """Below can be '1.0' or '2.0', according to documentation:
+
+        1.0 is more portable
+        2.0 introduced a new serialized data page format
+        Cloudera say: "Data using the version 2.0 of Parquet writer might not be consumable
+        by Impala, due to use of the RLE_DICTIONARY encoding."
+        """
         super().__init__(schema, messages, compression=compression, base64_columns=base64_columns)
 
         self.schema = self._schema_to_pyarrow(schema)
         self._codec = "SNAPPY" if compression else "NONE"
-        # Below can be '1.0' or '2.0', according to documentation:
-        #   1.0 is more portable
-        #   2.0 introduced a new serialized data page format
-        # Cloudera say: "Data using the version 2.0 of Parquet writer might not be consumable
-        #                by Impala, due to use of the RLE_DICTIONARY encoding."
         self._parquet_version = "1.0"
         self._buffer_bytes = 1024 * 1024 * 20
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def write_from_cursor(self, local_output_path, extraction_cursor, source_columns, fetch_size=None):
+        """fetch_size optional because not all frontends take a parameter to fetchmany().
+
+        buffer_table builds up to a size threshold at which point we write to Parquet and start again
+        Write full PyArrow buffer
+        Write remaining contents of PyArrow buffer
+        """
+
+        def write_as_parquet(writer, table):
+            writer.write_table(table=table)
+            self._log(
+                "Writing buffered rows/MBs: %s/%.1f" % (table.num_rows, float(table.nbytes) / 1024 / 1024),
+                detail=VVERBOSE,
+            )
+
+        assert local_output_path
+        assert isinstance(local_output_path, str)
+
+        ts1 = time.time()
+        column_names = [_[0] for _ in extraction_cursor.description]
+
+        buffer_table = None
+        self._log(
+            "Writing Parquet(version=%s, compression=%s)" % (self._parquet_version, self._codec),
+            detail=VVERBOSE,
+        )
+        self._debug(f"extraction_cursor format: {extraction_cursor.description!s}")
+        writer = parquet.ParquetWriter(
+            local_output_path,
+            schema=self.schema,
+            version=self._parquet_version,
+            compression=self._codec,
+        )
+        try:
+            for row_batch in self._extract_rows(extraction_cursor, fetch_size=fetch_size):
+                columnar = self._rowbased_to_columnar(column_names, row_batch)
+                columnar = self._wrangle_data(columnar, source_columns)
+                if buffer_table is None:
+                    buffer_table = pyarrow.Table.from_pydict(columnar, schema=self.schema)
+                else:
+                    table = pyarrow.Table.from_pydict(columnar, schema=self.schema)
+                    buffer_table = pyarrow.concat_tables([buffer_table, table])
+                if buffer_table.nbytes > self._buffer_bytes:
+                    write_as_parquet(writer, buffer_table)
+                    buffer_table = None
+            if buffer_table:
+                write_as_parquet(writer, buffer_table)
+        finally:
+            try:
+                writer.close()
+            except:
+                pass
+
+        ts2 = time.time()
+        self._log("Extract & write elapsed: %.1fs" % (ts2 - ts1), detail=VVERBOSE)
+        return extraction_cursor.rowcount
 
     def _extract_rows(self, extraction_cursor, fetch_size):
         def do_fetch(cursor):
@@ -71,6 +122,7 @@ class ParquetEncoder(QueryImportInterface):
         new_columnar = {}
         for column_name, data in columnar.items():
             source_column = match_table_column(column_name, source_columns)
+            assert source_column is not None
             if match_table_column(column_name, self._base64_columns):
                 base64_fn = self._get_base64_encode_fn(source_column.data_type)
                 new_data = [base64_fn(_) if _ is not None else _ for _ in data]
@@ -116,62 +168,3 @@ class ParquetEncoder(QueryImportInterface):
             PARQUET_TYPE_STRING: pyarrow.string(),
         }
         return type_map[schema_type]
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def write_from_cursor(self, local_output_path, extraction_cursor, source_columns, fetch_size=None):
-        """fetch_size optional because not all frontends take a parameter to fetchmany()."""
-
-        def write_as_parquet(writer, table):
-            writer.write_table(table=table)
-            self._log(
-                "Writing buffered rows/MBs: %s/%.1f" % (table.num_rows, float(table.nbytes) / 1024 / 1024),
-                detail=VVERBOSE,
-            )
-
-        assert local_output_path
-        assert isinstance(local_output_path, str)
-
-        ts1 = time.time()
-        column_names = [_[0] for _ in extraction_cursor.description]
-
-        # buffer_table builds up to a size threshold at which point we write to Parquet and start again
-        buffer_table = None
-        self._log(
-            "Writing Parquet(version=%s, compression=%s)" % (self._parquet_version, self._codec),
-            detail=VVERBOSE,
-        )
-        self._debug(f"extraction_cursor format: {extraction_cursor.description!s}")
-        writer = parquet.ParquetWriter(
-            local_output_path,
-            schema=self.schema,
-            version=self._parquet_version,
-            compression=self._codec,
-        )
-        try:
-            for row_batch in self._extract_rows(extraction_cursor, fetch_size=fetch_size):
-                columnar = self._rowbased_to_columnar(column_names, row_batch)
-                columnar = self._wrangle_data(columnar, source_columns)
-                if buffer_table is None:
-                    buffer_table = pyarrow.Table.from_pydict(columnar, schema=self.schema)
-                else:
-                    table = pyarrow.Table.from_pydict(columnar, schema=self.schema)
-                    buffer_table = pyarrow.concat_tables([buffer_table, table])
-                if buffer_table.nbytes > self._buffer_bytes:
-                    # Write full PyArrow buffer
-                    write_as_parquet(writer, buffer_table)
-                    buffer_table = None
-            if buffer_table:
-                # Write remaining contents of PyArrow buffer
-                write_as_parquet(writer, buffer_table)
-        finally:
-            try:
-                writer.close()
-            except:
-                pass
-
-        ts2 = time.time()
-        self._log("Extract & write elapsed: %.1fs" % (ts2 - ts1), detail=VVERBOSE)
-        return extraction_cursor.rowcount

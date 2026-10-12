@@ -80,12 +80,13 @@ eg. (column(EVENT_TIME) >= datetime(2020-01-01)) AND (column(EVENT_CODE) IN (num
 import datetime
 import logging
 import traceback
-from optparse import OptionValueError
+from typing import Any, Literal
 
 import lark
 import numpy as np
 from lark import Token, Tree
 
+from goe.exceptions import OptionValueError
 from goe.offload.column_metadata import (
     ColumnMetadataInterface,
     get_partition_columns,
@@ -96,7 +97,6 @@ from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
 
 dev_log = logging.getLogger("goe")
 
-# usage hints provided in the OptionValueError error text for expected but missing tokens
 RULE_HINT = {
     "column": "column:         column(<column_name>)",
     "integer_value": "numeric value:  numeric(<signed_integer>) or numeric(<signed_decimal>)",
@@ -126,6 +126,7 @@ def python_timestamp_to_string(python_ts, with_time=True, subsecond=0):
         return None
     if isinstance(python_ts, np.datetime64):
         if with_time and subsecond:
+            np_unit: Literal["ns", "us", "ms"]
             if subsecond > 6:
                 np_unit = "ns"
             elif subsecond > 3:
@@ -154,6 +155,7 @@ class handle_parse_errors:
 
     def __exit__(self, exc_type, exc, tb):
         if isinstance(exc, (lark.exceptions.UnexpectedToken, lark.exceptions.UnexpectedCharacters)):
+            considered_rules: Any
             if hasattr(exc, "considered_tokens"):
                 considered_rules = [t.rule for t in exc.considered_tokens]
             else:
@@ -176,7 +178,7 @@ class handle_parse_errors:
             raise OptionValueError("Encountered EOF before reaching end of valid offload predicate.")
         if isinstance(exc, lark.exceptions.VisitError):
             dev_log.debug("Exception while processing:")
-            dev_log.debug(exc.obj.pretty())
+            dev_log.debug(exc.obj.pretty() if isinstance(exc.obj, Tree) else str(exc.obj))
             dev_log.debug("Traceback:")
             dev_log.debug("".join(traceback.format_tb(tb)))
             raise exc.orig_exc
@@ -256,9 +258,9 @@ class RawToInternalAST(lark.Transformer):
     """Turn value strings into internal "python values" format, extract infix operators into parent-child relationship"""
 
     def quoted_value(self, node_type, items):
+        """strip surrounding quotes, remove escape chars"""
         (value,) = items
         assert value.startswith('"') and value.endswith('"')
-        # strip surrounding quotes, remove escape chars
         return Tree(node_type, [value.update(value=value[1:-1].replace('\\"', '"'))])
 
     literal_value = lambda self, items: self.quoted_value("literal_value", items)
@@ -312,6 +314,7 @@ class GenericPredicateToTyped(lark.Transformer):
     """
 
     def __init__(self, columns):
+        """map of node_type (Tree.data member) to list of data types used in columns"""
         assert isinstance(columns, list)
         if columns:
             assert isinstance(columns[0], ColumnMetadataInterface), "Invalid column type: %s" % type(columns[0])
@@ -319,7 +322,6 @@ class GenericPredicateToTyped(lark.Transformer):
         self.column_name_to_type = {col.name.upper(): col.data_type for col in columns}
 
         self.invalid_data_types = [_.data_type for _ in columns if not _.valid_for_offload_predicate()]
-        # map of node_type (Tree.data member) to list of data types used in columns
         valid_columns = [_ for _ in columns if _.valid_for_offload_predicate()]
         self.valid_node_data_types = {
             "numeric_value": list(set(_.data_type for _ in valid_columns if _.is_number_based())),
@@ -348,10 +350,10 @@ class GenericPredicateToTyped(lark.Transformer):
                 )
 
     def enrich_value_type(self, items, node_type):
+        """index -1 because column children may be (schema, column) and we want to look up on column name"""
         lhs, rhs = items
 
         if lhs.data == "column":
-            # index -1 because column children may be (schema, column) and we want to look up on column name
             data_type = self.resolve_column_type(lhs.children[-1].value)
             if rhs.data == "value_list":
                 self.check_data_type(set(c.data for c in rhs.children), data_type)
@@ -422,19 +424,22 @@ class GenericPredicateToDSL(GenericPredicateToSQL):
     column = lambda self, items: "column(%s)" % ".".join(items)
 
     def numeric_value(self, items):
+        """deal with typed predicate"""
         value = items[0].value
-        value = value[0] if isinstance(value, tuple) else value  # deal with typed predicate
+        value = value[0] if isinstance(value, tuple) else value
         value = np.format_float_positional(value, trim="-") if isinstance(value, float) else value
         return "numeric(%s)" % value
 
     def string_value(self, items):
+        """deal with typed predicate"""
         value = items[0].value
-        value = value[0] if isinstance(value, tuple) else value  # deal with typed predicate
+        value = value[0] if isinstance(value, tuple) else value
         return 'string("%s")' % value
 
     def datetime_value(self, items):
+        """deal with typed predicate"""
         value = items[0].value
-        value = value[0] if isinstance(value, tuple) else value  # deal with typed predicate
+        value = value[0] if isinstance(value, tuple) else value
         assert isinstance(value, np.datetime64)
         str_value = str(value).replace("T", " ")
         return "datetime(%s)" % str_value[:29]
@@ -459,8 +464,8 @@ class TypedPredicateToLiterals(lark.Transformer):
         return Token("LITERAL", str(value))
 
     def numeric_value(self, items):
+        """logic here could be based on DB data_type, but that is for subclasses to override"""
         value, data_type = items[0].value
-        # logic here could be based on DB data_type, but that is for subclasses to override
         if isinstance(value, float):
             return Token("LITERAL", np.format_float_positional(value, trim="-"))
         return Token("LITERAL", str(value))
@@ -474,7 +479,7 @@ class TypedPredicateToLiterals(lark.Transformer):
 
 class TypedPredicateToBinds(lark.Transformer):
     def __init__(self):
-        self.binds = {}
+        self.binds: Any = {}
 
     def __default__(self, data, children, meta):
         """Register self.binds as meta as we ascend up the tree, so the top node will have binds accessible in .meta"""

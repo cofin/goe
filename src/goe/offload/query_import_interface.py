@@ -11,18 +11,6 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_NCLOB,
 )
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-###########################################################################
-# QueryImportInterface
-###########################################################################
-
 
 class QueryImportInterface(metaclass=ABCMeta):
     """Abstract base class which acts as an interface for backend specific Avro and Parquet based sub-classes.
@@ -41,9 +29,9 @@ class QueryImportInterface(metaclass=ABCMeta):
             ORACLE_TYPE_CLOB,
         ]
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    @abstractmethod
+    def write_from_cursor(self, local_output_path, extraction_cursor, source_columns, fetch_size=None):
+        """fetch_size optional because not all frontends take a parameter to fetchmany()."""
 
     def _debug(self, msg):
         self._messages.log(msg, detail=VVERBOSE)
@@ -52,8 +40,8 @@ class QueryImportInterface(metaclass=ABCMeta):
         self._messages.log(msg, detail=detail)
 
     def _get_base64_encode_fn(self, rdbms_data_type):
+        """BLOB should not undergo any character conversion therefore avoiding write_utf8"""
         if rdbms_data_type in self._source_data_types_requiring_read:
-            # BLOB should not undergo any character conversion therefore avoiding write_utf8
             return lambda x: base64.b64encode(x.read())
         return lambda x: base64.b64encode(x)
 
@@ -68,11 +56,3 @@ class QueryImportInterface(metaclass=ABCMeta):
 
     def _strip_trailing_dot(self, strval):
         return strval.removesuffix(".")
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    @abstractmethod
-    def write_from_cursor(self, local_output_path, extraction_cursor, source_columns, fetch_size=None):
-        """fetch_size optional because not all frontends take a parameter to fetchmany()."""

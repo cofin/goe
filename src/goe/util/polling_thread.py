@@ -5,10 +5,7 @@ import queue
 import threading
 import time
 import traceback
-
-###########################################################################
-# PollingThread
-###########################################################################
+from typing import Any
 
 
 class PollingThread(threading.Thread):
@@ -24,14 +21,10 @@ class PollingThread(threading.Thread):
         assert isinstance(name, str), "name must be a str"
         threading.Thread.__init__(self, name=name)
         self._event = threading.Event()
-        self._results_queue = queue.Queue()
+        self._results_queue: queue.Queue[Any] = queue.Queue()
         self._interval = interval
-        self._exception = None
+        self._exception: str | None = None
         self._run_function = run_function
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def run(self):
         """Override threading.Thread.run()
@@ -39,11 +32,9 @@ class PollingThread(threading.Thread):
         """
         while True:
             try:
-                # Fetch the results from the function and add to the queue
                 self.add_to_queue(self._run_function())
                 time.sleep(self._interval)
             except:
-                # Store thread exception as a property to be checked by the caller
                 self._exception = traceback.format_exc()
                 break
             finally:
@@ -68,10 +59,6 @@ class PollingThread(threading.Thread):
         while not self._results_queue.empty():
             queue_contents.append(self._results_queue.get())
         return queue_contents
-
-    ###########################################################################
-    # PROPERTIES
-    ###########################################################################
 
     @property
     def event(self):

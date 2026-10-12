@@ -3,10 +3,11 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """OrchestrationMetadata: Object containing orchestration metadata for a single hybrid object."""
 
 import logging
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any
 
 from goe.offload.predicate_offload import GenericPredicate
 from goe.persistence.factory.orchestration_repo_client_factory import (
@@ -20,11 +21,6 @@ if TYPE_CHECKING:
     )
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# Metadata key constants
 HADOOP_OWNER = "HADOOP_OWNER"
 HADOOP_TABLE = "HADOOP_TABLE"
 OFFLOAD_TYPE = "OFFLOAD_TYPE"
@@ -59,7 +55,6 @@ ALL_METADATA_ATTRIBUTES = [
     COMMAND_EXECUTION,
 ]
 
-# Map of object attribute names and their metadata key
 METADATA_ATTRIBUTES = {
     "backend_owner": HADOOP_OWNER,
     "backend_table": HADOOP_TABLE,
@@ -99,11 +94,6 @@ INCREMENTAL_PREDICATE_TYPES = [
 ]
 
 
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-
 def add_missing_metadata_keys(metadata_dict):
     assert isinstance(metadata_dict, dict)
     for key_name in METADATA_ATTRIBUTES.values():
@@ -141,13 +131,7 @@ def hwm_column_names_from_predicates(offload_predicates):
 
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# OrchestrationMetadata
-###########################################################################
 
 
 class OrchestrationMetadata:
@@ -164,12 +148,12 @@ class OrchestrationMetadata:
 
     def __init__(
         self,
-        metadata: Union[dict, "OrchestrationMetadata"],
-        connection_options=None,
-        messages=None,
-        client=None,
-        dry_run=False,
-    ):
+        metadata: "dict | OrchestrationMetadata",
+        connection_options: Any = None,
+        messages: Any = None,
+        client: "OrchestrationRepoClientInterface | None" = None,
+        dry_run: bool = False,
+    ) -> None:
         """Object containing orchestration metadata for a single hybrid object.
         metadata: Either a dict or metadata object to seed the new metadata object.
         client: Used to interact with metadata repo, only required if drop or save will be used.
@@ -180,9 +164,10 @@ class OrchestrationMetadata:
         logger.debug("Instantiating OrchestrationMetadata from metadata")
         assert isinstance(metadata, (dict, OrchestrationMetadata))
         if client:
-            self._client = build_client(connection_options, messages, client, dry_run=dry_run)
+            self._client: "OrchestrationRepoClientInterface | None" = build_client(
+                connection_options, messages, client, dry_run=dry_run
+            )
         else:
-            # We'll be lazy with client and only create it if we need it
             self._client = None
         if isinstance(metadata, OrchestrationMetadata):
             self._metadata = metadata.as_dict()
@@ -196,11 +181,11 @@ class OrchestrationMetadata:
     def from_name(
         frontend_owner: str,
         frontend_name: str,
-        connection_options=None,
-        messages=None,
-        client=None,
-        dry_run=False,
-    ):
+        connection_options: Any = None,
+        messages: Any = None,
+        client: "OrchestrationRepoClientInterface | None" = None,
+        dry_run: bool = False,
+    ) -> "OrchestrationMetadata | None":
         """Instantiate a metadata object by owner/name"""
         logger.debug(f"Instantiating OrchestrationMetadata from name: {frontend_owner}.{frontend_name}")
         client = build_client(connection_options, messages, client, dry_run=dry_run)
@@ -238,19 +223,6 @@ class OrchestrationMetadata:
     def __str__(self):
         return str(self._metadata)
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _get_client(self) -> "OrchestrationRepoClientInterface":
-        if not self._client:
-            self._client = build_client(self._connection_options, self._messages, None, dry_run=self._dry_run)
-        return self._client
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
     def as_dict(self):
         return self._metadata
 
@@ -267,12 +239,14 @@ class OrchestrationMetadata:
         self._get_client().set_offload_metadata(self._metadata)
 
     def decode_incremental_predicate_values(self, as_dsl=False):
-        """Take incremental_predicate_value metadata and turn it back into the structure used during Offload."""
+        """Take incremental_predicate_value metadata and turn it back into the structure used during Offload.
+
+        We've converted from DSL to GenericPredicate and back again just in case formatting changes, we want to
+        let GenericPredicate.dsl return a consistent format.
+        """
         if not self._metadata or not self.incremental_predicate_value:
             return None
         if as_dsl:
-            # We've converted from DSL to GenericPredicate and back again just in case formatting changes, we want to
-            # let GenericPredicate.dsl return a consistent format.
             return [GenericPredicate(_).dsl for _ in self.incremental_predicate_value]
         return [GenericPredicate(_) for _ in self.incremental_predicate_value]
 
@@ -319,10 +293,6 @@ class OrchestrationMetadata:
         """
         self._metadata["OFFLOADED_OWNER"] = offloaded_owner
         self._metadata["OFFLOADED_TABLE"] = offloaded_table
-
-    ###########################################################################
-    # PUBLIC ATTRIBUTES. Most are readonly.
-    ###########################################################################
 
     @property
     def backend_owner(self):
@@ -411,3 +381,8 @@ class OrchestrationMetadata:
     @property
     def repo_client(self):
         return self._get_client()
+
+    def _get_client(self) -> "OrchestrationRepoClientInterface":
+        if not self._client:
+            self._client = build_client(self._connection_options, self._messages, None, dry_run=self._dry_run)
+        return self._client

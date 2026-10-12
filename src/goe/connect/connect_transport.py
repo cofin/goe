@@ -5,6 +5,7 @@ import copy
 import re
 import subprocess
 import traceback
+from typing import Any
 
 from goe.connect.connect_backend import (
     get_cli_hdfs,
@@ -56,6 +57,7 @@ from goe.util.gcp_credentials import resolve_gcloud_impersonation_principal
 
 
 def test_credential_api_alias(options, orchestration_config):
+    """Using hadoop_ssh_user below and not offload_transport_user because this is running a Hadoop CLI command"""
     if not orchestration_config.offload_transport_password_alias:
         return
 
@@ -71,7 +73,6 @@ def test_credential_api_alias(options, orchestration_config):
         jvm_overrides.append(
             credential_provider_path_jvm_override(orchestration_config.offload_transport_credential_provider_path)
         )
-    # Using hadoop_ssh_user below and not offload_transport_user because this is running a Hadoop CLI command
     cmd = (
         ssh_cmd_prefix(orchestration_config.hadoop_ssh_user, host=host)
         + ["hadoop", "credential"]
@@ -82,9 +83,10 @@ def test_credential_api_alias(options, orchestration_config):
     try:
         log("Cmd: %s" % " ".join(cmd), detail=VVERBOSE)
         cmd_out = subprocess.check_output(cmd)
+        cmd_out_str = cmd_out.decode() if isinstance(cmd_out, bytes) else str(cmd_out)
         m = re.search(
             r"^%s[\r]?$" % re.escape(orchestration_config.offload_transport_password_alias),
-            cmd_out,
+            cmd_out_str,
             re.MULTILINE | re.IGNORECASE,
         )
 
@@ -130,11 +132,12 @@ def run_sqoop_tests(options, orchestration_config, messages):
 
 
 def run_spark_tests(options, orchestration_config, messages):
+    no_source_table: Any = None
     if not (
-        is_livy_available(orchestration_config, None)
-        or is_spark_submit_available(orchestration_config, None)
-        or is_spark_gcloud_available(orchestration_config, None)
-        or is_spark_thrift_available(orchestration_config, None)
+        is_livy_available(orchestration_config, no_source_table)
+        or is_spark_submit_available(orchestration_config, no_source_table)
+        or is_spark_gcloud_available(orchestration_config, no_source_table)
+        or is_spark_thrift_available(orchestration_config, no_source_table)
     ):
         log("Skipping Spark tests because not configured", detail=VVERBOSE)
         return
@@ -173,12 +176,10 @@ def test_spark_thrift_server(options, orchestration_config, messages):
         backend_spark_api = test_backend_db_connectivity(spark_options, orchestration_config, messages)
         del backend_spark_api
 
-    # test_backend_db_connectivity() will exit on failure so we know it is sound to proceed if we get this far
     if (
         orchestration_config.offload_transport_spark_thrift_host
         and orchestration_config.offload_transport_spark_thrift_port
     ):
-        # we only connect back to the RDBMS from Spark for offload transport
         data_transport_client = spark_thrift_jdbc_connectivity_checker(orchestration_config, messages)
         verify_offload_transport_rdbms_connectivity(data_transport_client, "Spark Thrift Server")
 
@@ -205,7 +206,6 @@ def test_spark_livy_api(orchestration_config, messages):
     except Exception as exc:
         detail(str(exc))
         failure(test_name)
-        # no sense in more Livy checks if this fails
         return
 
     data_transport_client = spark_livy_jdbc_connectivity_checker(orchestration_config, messages)
@@ -228,7 +228,6 @@ def test_spark_submit(orchestration_config, messages):
     else:
         detail("Executable %s does not exist" % orchestration_config.offload_transport_spark_submit_executable)
         failure(test_name)
-        # no sense in more spark-submit checks if this fails
         return
 
     data_transport_client = spark_submit_jdbc_connectivity_checker(orchestration_config, messages)
@@ -255,19 +254,19 @@ def test_spark_gcloud(orchestration_config, messages):
     else:
         detail(f"Executable {OFFLOAD_TRANSPORT_SPARK_GCLOUD_EXECUTABLE} does not exist")
         failure(test_name)
-        # no sense in more gcloud checks if this fails
         return
 
-    if is_spark_gcloud_dataproc_available(orchestration_config, None, messages=messages):
+    no_source_table: Any = None
+    if is_spark_gcloud_dataproc_available(orchestration_config, no_source_table, messages=messages):
         data_transport_client = spark_dataproc_jdbc_connectivity_checker(orchestration_config, messages)
         verify_offload_transport_rdbms_connectivity(data_transport_client, "Google Managed Spark")
 
-    if is_spark_gcloud_batches_available(orchestration_config, None, messages=messages):
+    if is_spark_gcloud_batches_available(orchestration_config, no_source_table, messages=messages):
         data_transport_client = spark_dataproc_batches_jdbc_connectivity_checker(orchestration_config, messages)
         verify_offload_transport_rdbms_connectivity(data_transport_client, "Google Managed Spark serverless")
 
 
-def report_gcloud_identity(orchestration_config) -> None:
+def report_gcloud_identity(orchestration_config: Any) -> None:
     """Report the gcloud caller impersonation and Managed Spark runtime identities used by the Dataproc transports.
 
     Warns when a permanent cluster is configured with GOOGLE_DATAPROC_SERVICE_ACCOUNT but no caller impersonation,

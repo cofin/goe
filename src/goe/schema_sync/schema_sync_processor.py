@@ -5,7 +5,7 @@
 
 """SchemaSyncProcessor: Library for processing Schema Sync operations"""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.goe import log
@@ -36,11 +36,11 @@ class SchemaSyncProcessor:
 
     def __init__(
         self,
-        options,
+        options: Any,
         messages: "OffloadMessages",
         execution_id: "ExecutionId",
         repo_client: "OrchestrationRepoClientInterface",
-    ):
+    ) -> None:
         self._messages = messages
         self._options = options
         self._execution_id = execution_id
@@ -56,7 +56,7 @@ class SchemaSyncProcessor:
         log("Process changes: %s.%s" % (double_quote_sandwich(table_owner), double_quote_sandwich(table_name)))
 
         table_exception = None
-        table_commands = []
+        table_commands: list[Any] = []
 
         if cmd_file:
             source_table = "%s.%s" % (
@@ -87,7 +87,6 @@ class SchemaSyncProcessor:
                 cmd_file.write("")
 
             if table_exception:
-                # Step returned an exception so do not run any more steps
                 break
 
         return table_exception, table_commands

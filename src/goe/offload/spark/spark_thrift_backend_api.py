@@ -27,17 +27,8 @@ from goe.offload.offload_constants import SPARK_BACKEND_CAPABILITIES
 from goe.offload.offload_messages import VVERBOSE
 from goe.util.hs2_connection import HS2_OPTIONS
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())  # Disabling logging by default
-
-
-###########################################################################
-# BackendSparkThriftApi
-###########################################################################
+logger.addHandler(logging.NullHandler())
 
 
 class BackendSparkThriftApi(BackendHiveApi):
@@ -52,8 +43,11 @@ class BackendSparkThriftApi(BackendHiveApi):
         no_caching=False,
         do_not_connect=False,
     ):
-        """CONSTRUCTOR"""
-        # We want code from HiveBackendApi but not the constructor, for that we go right back to the interface
+        """CONSTRUCTOR
+
+        We want code from HiveBackendApi but not the constructor, for that we go right back to the interface
+        Whenever we make a new connection we should set global session parameters
+        """
         super(BackendHadoopApi, self).__init__(
             connection_options,
             backend_type,
@@ -77,33 +71,10 @@ class BackendSparkThriftApi(BackendHiveApi):
                 host_override=self._spark_thrift_host,
                 port_override=self._spark_thrift_port,
             )
-            # Whenever we make a new connection we should set global session parameters
             self._execute_global_session_parameters()
 
         self._cached_hive_tables = {}
         self._cached_hive_table_stats = {}
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _backend_capabilities(self):
-        return SPARK_BACKEND_CAPABILITIES
-
-    def _format_storage_format_clause(self, storage_format):
-        return "STORED AS %s" % storage_format
-
-    def _get_hadoop_connection_exception_message_template(self):
-        return """Successfully connected to %(host)s:%(port)s, but rejected. Possible reasons:
-
-        1) Kerberos is configured for Impala, but not configured in your environment file (or vice versa)
-        2) A process is listening at %(host)s:%(port)s, but it is not HiveServer2
-        3) LDAP is configured for the ThriftServer, but incorrect%(enc_text)s credentials were supplied
-        4) Invalid hiveserver2 authentication method is used"""
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def backend_report_info(self):
         """Reporting information about the type of backend and how to display
@@ -140,13 +111,15 @@ class BackendSparkThriftApi(BackendHiveApi):
         return self._legacy_column_list_to_type(legacy_columns)
 
     def get_missing_hive_table_stats(self, db_name, table_name, colstats=True, as_dict=False):
-        # See note in get_partition_columns() for commentary
+        """See note in get_partition_columns() for commentary"""
         raise NotImplementedError("get_missing_hive_table_stats() is not implemented for Spark")
 
     def get_partition_columns(self, db_name, table_name):
-        # Hive relies on better_impyla.HiveTable to get this info and it doesn't work because
-        # Impyla get_tables()/get_databases() methods don't work for Spark.
-        # If Spark ever become a first class citizen we need address this.
+        """Hive relies on better_impyla.HiveTable to get this info and it doesn't work because
+
+        Impyla get_tables()/get_databases() methods don't work for Spark.
+        If Spark ever become a first class citizen we need address this.
+        """
         raise NotImplementedError("get_partition_columns() is not implemented for Spark")
 
     def get_session_option(self, option_name):
@@ -178,27 +151,26 @@ class BackendSparkThriftApi(BackendHiveApi):
         return ddl_str
 
     def get_table_location(self, db_name, table_name):
-        # See note in get_partition_columns() for commentary
+        """See note in get_partition_columns() for commentary"""
         raise NotImplementedError("get_table_location() is not implemented for Spark")
 
     def get_table_partition_count(self, db_name, table_name):
-        # See note in get_partition_columns() for commentary
+        """See note in get_partition_columns() for commentary"""
         raise NotImplementedError("get_table_partition_count() is not implemented for Spark")
 
     def get_table_partitions(self, db_name, table_name):
-        # See note in get_partition_columns() for commentary
+        """See note in get_partition_columns() for commentary"""
         raise NotImplementedError("get_table_partitions() is not implemented for Spark")
 
     def get_table_row_count_from_metadata(self, db_name, table_name):
-        # See note in get_partition_columns() for commentary
+        """See note in get_partition_columns() for commentary"""
         raise NotImplementedError("get_table_row_count_from_metadata() is not implemented for Spark")
 
-    def get_table_size(self, db_name, table_name):
-        # See note in get_partition_columns() for commentary
+    def get_table_size(self, db_name, table_name, no_cache=False):
         raise NotImplementedError("get_table_size() is not implemented for Spark")
 
     def get_table_stats(self, db_name, table_name, as_dict=False):
-        # See note in get_partition_columns() for commentary
+        """See note in get_partition_columns() for commentary"""
         raise NotImplementedError("get_table_stats() is not implemented for Spark")
 
     def get_user_name(self):
@@ -216,9 +188,23 @@ class BackendSparkThriftApi(BackendHiveApi):
         return []
 
     def rename_table(self, from_db_name, from_table_name, to_db_name, to_table_name, sync=None):
-        # See note in get_partition_columns() for commentary
+        """See note in get_partition_columns() for commentary"""
         raise NotImplementedError("rename_table() is not implemented for Spark")
 
     def target_version(self):
         """No version available via SQL for Spark"""
         return
+
+    def _backend_capabilities(self):
+        return SPARK_BACKEND_CAPABILITIES
+
+    def _format_storage_format_clause(self, storage_format):
+        return "STORED AS %s" % storage_format
+
+    def _get_hadoop_connection_exception_message_template(self):
+        return """Successfully connected to %(host)s:%(port)s, but rejected. Possible reasons:
+
+        1) Kerberos is configured for Impala, but not configured in your environment file (or vice versa)
+        2) A process is listening at %(host)s:%(port)s, but it is not HiveServer2
+        3) LDAP is configured for the ThriftServer, but incorrect%(enc_text)s credentials were supplied
+        4) Invalid hiveserver2 authentication method is used"""

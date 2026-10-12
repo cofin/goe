@@ -3,13 +3,13 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """OrchestrationDefaults: Library of functions providing default values for command line options.
 This is a temporary measure in order to get the code out of goe.py and into a single location, in the
 future we expect to refactor all option processing, including defaults, and this module will hopefully become
 redundant at that time.
 """
 
-# Standard Library
 import logging
 import os
 
@@ -39,21 +39,11 @@ from goe.offload.offload_constants import (
 from goe.util.misc_functions import is_pos_int
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
 
 
 class OrchestrationDefaultsException(Exception):
     pass
-
-
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
 
 
 def bool_option_from_string(opt_name, opt_val):
@@ -70,16 +60,11 @@ def posint_option_from_string(opt_name, opt_val, allow_zero=False):
     raise OrchestrationDefaultsException(f"Invalid positive integer value {opt_name}: {opt_val}")
 
 
-def time_in_seconds_from_string(opt_name, opt_val: str):
+def time_in_seconds_from_string(opt_name: str, opt_val: str) -> int:
+    """Convert a string duration to seconds, rounding millisecond values down to 0."""
     if opt_val.endswith("ms"):
-        # Anything that ends in ms we round down to 0 seconds.
         return 0
     return int(opt_val)
-
-
-###########################################################################
-# GOE DEFAULTS
-###########################################################################
 
 
 def allow_decimal_scale_rounding_default() -> bool:
@@ -169,7 +154,7 @@ def force_default():
 
 
 def frontend_db_type_default():
-    # Referencing SRCDB_VENDOR for backward compatibility
+    """Referencing SRCDB_VENDOR for backward compatibility"""
     frontend_distro = (os.environ.get("FRONTEND_DISTRIBUTION") or os.environ.get("SRCDB_VENDOR") or "").lower()
     if frontend_distro in [
         DBTYPE_MSSQL,
@@ -269,10 +254,11 @@ def log_level_default():
     return log_level.lower() if log_level else log_level
 
 
-def log_path_default():
+def log_path_default() -> str:
     log_path = os.environ.get("OFFLOAD_LOGDIR")
-    if not log_path and os.environ.get("OFFLOAD_HOME"):
-        log_path = os.path.join(os.environ.get("OFFLOAD_HOME"), "log")
+    offload_home = os.environ.get("OFFLOAD_HOME")
+    if not log_path and offload_home:
+        log_path = os.path.join(offload_home, "log")
     log_path = log_path or "."
     return log_path
 
@@ -306,8 +292,8 @@ def offload_predicate_modify_hybrid_view_default():
 
 
 def offload_stats_method_default(operation_name=None):
+    """Return the default offload stats method, ignoring COPY when presenting."""
     if operation_name == PRESENT_OP_NAME and os.environ.get("OFFLOAD_STATS_METHOD") == OFFLOAD_STATS_METHOD_COPY:
-        # COPY is not valid for present so ignore any COPY setting in the env file which would be in place for offload
         return OFFLOAD_STATS_METHOD_NATIVE
     return os.environ.get("OFFLOAD_STATS_METHOD") or OFFLOAD_STATS_METHOD_NATIVE
 
@@ -324,9 +310,10 @@ def purge_backend_table_default():
     return False
 
 
-def query_engine_default():
-    if os.environ.get("QUERY_ENGINE") is not None:
-        return os.environ.get("QUERY_ENGINE").lower()
+def query_engine_default() -> str:
+    query_engine = os.environ.get("QUERY_ENGINE")
+    if query_engine is not None:
+        return query_engine.lower()
     return DBTYPE_HIVE if os.environ.get("HIVE_SERVER_PORT") == "10000" else DBTYPE_IMPALA
 
 
@@ -380,11 +367,6 @@ def version_default():
 
 def vverbose_default():
     return False
-
-
-###########################################################################
-# BACKEND HADOOP DEFAULTS
-###########################################################################
 
 
 def hadoop_host_default():
@@ -473,11 +455,6 @@ def webhdfs_verify_ssl_default():
     return os.environ.get("WEBHDFS_VERIFY_SSL")
 
 
-###########################################################################
-# BACKEND SNOWFLAKE DEFAULTS
-###########################################################################
-
-
 def snowflake_database_default():
     return os.environ.get("SNOWFLAKE_DATABASE")
 
@@ -520,11 +497,6 @@ def snowflake_stage_default():
 
 def snowflake_warehouse_default():
     return os.environ.get("SNOWFLAKE_WAREHOUSE")
-
-
-###########################################################################
-# BACKEND SYNAPSE DEFAULTS
-###########################################################################
 
 
 def synapse_auth_mechanism_default():
@@ -579,11 +551,6 @@ def synapse_user_default():
     return os.environ.get("SYNAPSE_USER")
 
 
-###########################################################################
-# FRONTEND ORACLE DEFAULTS
-###########################################################################
-
-
 def ora_adm_pass_default():
     return os.environ.get("ORA_ADM_PASS")
 
@@ -608,11 +575,6 @@ def oracle_dsn_default():
     return os.environ.get("ORA_CONN")
 
 
-###########################################################################
-# FRONTEND MSSQL DEFAULTS
-###########################################################################
-
-
 def mssql_app_user_default():
     return os.environ.get("MSSQL_APP_USER")
 
@@ -623,11 +585,6 @@ def mssql_app_pass_default():
 
 def mssql_dsn_default():
     return os.environ.get("MSSQL_CONN")
-
-
-###########################################################################
-# FRONTEND TERADATA DEFAULTS
-###########################################################################
 
 
 def teradata_adm_pass_default():
@@ -654,11 +611,6 @@ def teradata_repo_user_default():
     return os.environ.get("TERADATA_REPO_USER")
 
 
-###########################################################################
-# OFFLOAD DFS DEFAULTS
-###########################################################################
-
-
 def offload_fs_scheme_default() -> str:
     return os.environ.get("OFFLOAD_FS_SCHEME", "inherit")
 
@@ -681,11 +633,6 @@ def offload_fs_azure_account_name_default() -> str | None:
 
 def offload_fs_azure_account_key_default() -> str | None:
     return os.environ.get("OFFLOAD_FS_AZURE_ACCOUNT_KEY")
-
-
-###########################################################################
-# OFFLOAD TRANSPORT DEFAULTS
-###########################################################################
 
 
 def compress_load_table_default() -> bool:
@@ -727,7 +674,7 @@ def offload_transport_auth_using_oracle_wallet_default() -> bool:
 
 
 def offload_transport_cmd_host_default():
-    # for backward compatibility we still use SQOOP_CMD_HOST as a fallback
+    """for backward compatibility we still use SQOOP_CMD_HOST as a fallback"""
     return os.environ.get("OFFLOAD_TRANSPORT_CMD_HOST") or os.environ.get("SQOOP_CMD_HOST")
 
 
@@ -761,12 +708,12 @@ def offload_transport_livy_api_verify_ssl_default():
 
 
 def offload_transport_parallelism_default() -> str:
-    # still including SQOOP_PARALLELISM as a fallback for backwards compatibility
+    """still including SQOOP_PARALLELISM as a fallback for backwards compatibility"""
     return os.environ.get("OFFLOAD_TRANSPORT_PARALLELISM") or os.environ.get("SQOOP_PARALLELISM") or "2"
 
 
 def offload_transport_password_alias_default() -> str | None:
-    # still including SQOOP_PASSWORD_ALIAS as a fallback for backwards compatibility
+    """still including SQOOP_PASSWORD_ALIAS as a fallback for backwards compatibility"""
     return os.environ.get("OFFLOAD_TRANSPORT_PASSWORD_ALIAS") or os.environ.get("SQOOP_PASSWORD_ALIAS")
 
 
@@ -779,7 +726,7 @@ def offload_transport_rdbms_session_parameters_default() -> str:
 
 
 def offload_transport_small_table_threshold_default() -> str:
-    # 20M default is based on approximate crossover between startup overhead of Sqoop vs QueryImport elapsed time
+    """20M default is based on approximate crossover between startup overhead of Sqoop vs QueryImport elapsed time"""
     return os.environ.get("OFFLOAD_TRANSPORT_SMALL_TABLE_THRESHOLD") or "20M"
 
 
@@ -828,7 +775,7 @@ def oracle_adm_dsn_default() -> str | None:
 
 
 def offload_transport_user_default() -> str | None:
-    # Includes HADOOP_SSH_USER for backwards compatibility
+    """Includes HADOOP_SSH_USER for backwards compatibility"""
     return os.environ.get("OFFLOAD_TRANSPORT_USER") or os.environ.get("HADOOP_SSH_USER")
 
 
@@ -862,11 +809,6 @@ def sqoop_password_file_default() -> str | None:
 
 def sqoop_queue_name_default() -> str | None:
     return os.environ.get("SQOOP_QUEUE_NAME")
-
-
-###########################################################################
-# GOE LISTENER DEFAULTS
-###########################################################################
 
 
 def listener_host_default() -> str | None:

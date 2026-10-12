@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """ParallelExecutor: Parallel execution of tasks with various methods"""
 
 import concurrent.futures
@@ -11,27 +12,15 @@ import logging
 from goe.util.misc_functions import typed_property
 
 
-###############################################################################
-# EXCEPTIONS
-###############################################################################
 class ParallelExecException(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# 'not executed' job completion status
-# I.e.: file was not copied because it was deemed the same
 STATUS_NOOP = "<noop>"
 
 
-###############################################################################
-# LOGGING
-###############################################################################
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())  # Disabling logging by default
+logger.addHandler(logging.NullHandler())
 
 
 class ParallelExecutor:
@@ -49,26 +38,9 @@ class ParallelExecutor:
 
         logger.debug("ParallelExecutor() object successfully initialized")
 
-    def _initialize(self):
-        """Initialize internal counters"""
-        self._submitted = 0  # Number of jobs submitted
-        self._executed = 0  # .. executed
-        self._successful = 0  # .. successful
-        self._failed = 0  # .. failed
-        self._noop = 0  # .. Noop
-        self._tasks = {}  # Task-by-id tracking
-
-    ###########################################################################
-    # PROPERTIES
-    ###########################################################################
-
     @property
     def tasks(self):
         return self._tasks
-
-    ###########################################################################
-    # PUBLIC ROUTINES
-    ###########################################################################
 
     def execute_sequentially(self, job_tasks, ids=False):
         """Execute 'job_tasks' sequentially (aka: 'not in threads')
@@ -76,10 +48,12 @@ class ParallelExecutor:
         No need to 'kill_on_first_error' as the first exception will take care of that
 
         This may be useful for debugging
+
+        Execute the command
+        Display final status
         """
         assert job_tasks
 
-        status = []
         self._initialize()
 
         logger.debug("Starting sequential execution")
@@ -97,7 +71,7 @@ class ParallelExecutor:
                     del args[0]
 
             self._submitted += 1
-            st = task(*args)  # Execute the command
+            st = task(*args)
             logger.debug("Result for job: %s is: %s" % (job_id, st))
             self._tasks[job_id] = st
 
@@ -109,7 +83,6 @@ class ParallelExecutor:
             else:
                 self._failed += 1
 
-        # Display final status
         logger.debug(
             "OVERALL STATUS=%s. Submitted: %d Executed: %d Successful: %d Failed: %d Noop: %d"
             % (
@@ -133,6 +106,10 @@ class ParallelExecutor:
                      + track tasks by id
 
         Returns 'overall' status (individual statuses ANDed together)
+
+        Submit 'individual tasks' for parallel execution
+        Wait for and grab results
+        Display final status
         """
         assert job_tasks
 
@@ -144,7 +121,6 @@ class ParallelExecutor:
         logger.debug("Starting execution with: %s parallel threads" % parallel)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as executor:
-            # Submit 'individual tasks' for parallel execution
             submitted_threads = {}
             for thread_id, task_item in enumerate(job_tasks):
                 if not isinstance(task_item, list):
@@ -160,7 +136,6 @@ class ParallelExecutor:
                     submitted_threads[executor.submit(task, *args)] = thread_id
                 self._submitted += 1
 
-            # Wait for and grab results
             for future in concurrent.futures.as_completed(submitted_threads):
                 thread_id = submitted_threads[future]
                 try:
@@ -186,7 +161,6 @@ class ParallelExecutor:
                     self._executed += 1
                     self._failed += 1
 
-        # Display final status
         logger.debug(
             "OVERALL STATUS=%s. Submitted: %d Executed: %d Successful: %d Failed: %d Noop: %d"
             % (
@@ -200,3 +174,20 @@ class ParallelExecutor:
         )
 
         return list(self._tasks.values())
+
+    def _initialize(self):
+        """Initialize internal counters
+
+        Number of jobs submitted
+        .. executed
+        .. successful
+        .. failed
+        .. Noop
+        Task-by-id tracking
+        """
+        self._submitted = 0
+        self._executed = 0
+        self._successful = 0
+        self._failed = 0
+        self._noop = 0
+        self._tasks = {}

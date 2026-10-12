@@ -5,13 +5,10 @@
 We needed a new home that would avoid circular dependencies
 """
 
-# Try not to import any modules in here, this module is widely imported and we've previously had subtle side effects
-
 LOG_LEVEL_INFO = "info"
 LOG_LEVEL_DETAIL = "detail"
 LOG_LEVEL_DEBUG = "debug"
 
-# DB types
 DBTYPE_BIGQUERY = "bigquery"
 DBTYPE_HIVE = "hive"
 DBTYPE_IMPALA = "impala"
@@ -31,38 +28,25 @@ PART_COL_DATE_GRANULARITIES = [
     PART_COL_GRANULARITY_YEAR,
 ]
 
-# These constants are visible in some exception messages so I've used hyphens to beautify a little
 PART_OUT_OF_LIST = "OUT-OF-LIST"
 PART_OUT_OF_RANGE = "OUT-OF-RANGE"
 
-# Table/file storage formats, currently used for final and load table definitions
 FILE_STORAGE_FORMAT_AVRO = "AVRO"
 FILE_STORAGE_FORMAT_BIGTABLE = "BIGTABLE"
 FILE_STORAGE_FORMAT_ORC = "ORC"
 FILE_STORAGE_FORMAT_PARQUET = "PARQUET"
 FILE_STORAGE_FORMAT_PARQUET_IMPALA = "PARQUETFILE"
 
-# Table/file storage compression codecs, currently used for final table definitions and option values
 FILE_STORAGE_COMPRESSION_CODEC_GZIP = "GZIP"
 FILE_STORAGE_COMPRESSION_CODEC_SNAPPY = "SNAPPY"
 FILE_STORAGE_COMPRESSION_CODEC_ZLIB = "ZLIB"
 
-# Backend distribution constants for those little variations between the backends.
-# These should not be used where capabilities and the BackendApi can deal with
-# differences. Mainly used for testing but occasionally used for other purposes.
-# Cloudera Data Hub
 BACKEND_DISTRO_CDH = "CDH"
-# Amazon Elastic Map Reduce
 BACKEND_DISTRO_EMR = "EMR"
-# Google Cloud Platform
 BACKEND_DISTRO_GCP = "GCP"
-# Hortonworks Data Platform
 BACKEND_DISTRO_HDP = "HDP"
-# MapR Data Platform
 BACKEND_DISTRO_MAPR = "MAPR"
-# Snowflake Cloud Warehouse
 BACKEND_DISTRO_SNOWFLAKE = "SNOWFLAKE"
-# Microsoft Azure Synapse Analytics
 BACKEND_DISTRO_MSAZURE = "MSAZURE"
 HADOOP_BASED_BACKEND_DISTRIBUTIONS = [
     BACKEND_DISTRO_CDH,
@@ -71,16 +55,15 @@ HADOOP_BASED_BACKEND_DISTRIBUTIONS = [
     BACKEND_DISTRO_MAPR,
 ]
 
-# Stats related constants.
 OFFLOAD_STATS_METHOD_COPY = "COPY"
 OFFLOAD_STATS_METHOD_HISTORY = "HISTORY"
 OFFLOAD_STATS_METHOD_NATIVE = "NATIVE"
 OFFLOAD_STATS_METHOD_NONE = "NONE"
 
-EMPTY_BACKEND_TABLE_STATS_LIST = [-1, 0, 0]  # num_rows, num_bytes, avg_row_len
+EMPTY_BACKEND_TABLE_STATS_LIST = [-1, 0, 0]
 EMPTY_BACKEND_TABLE_STATS_DICT = {"num_rows": -1, "num_bytes": 0, "avg_row_len": 0}
-EMPTY_BACKEND_COLUMN_STATS_LIST = []
-EMPTY_BACKEND_COLUMN_STATS_DICT = {}
+EMPTY_BACKEND_COLUMN_STATS_LIST: list[object] = []
+EMPTY_BACKEND_COLUMN_STATS_DICT: dict[str, object] = {}
 
 RDBMS_MAX_DESCRIPTOR_LENGTH = 30
 
@@ -92,10 +75,8 @@ PRESENT_OP_NAME = "present"
 NOT_NULL_PROPAGATION_AUTO = "AUTO"
 NOT_NULL_PROPAGATION_NONE = "NONE"
 
-# This parameter value is documented so do not change without reviewing config template and documentation
 OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED = -1
 
-# Offload transport constants
 LIVY_IDLE_SESSION_TIMEOUT = 600
 LIVY_MAX_SESSIONS = 10
 OFFLOAD_TRANSPORT_AUTO = "AUTO"
@@ -103,10 +84,8 @@ OFFLOAD_TRANSPORT_GOE = "GOE"
 OFFLOAD_TRANSPORT_GCP = "GCP"
 OFFLOAD_TRANSPORT_SQOOP = "SQOOP"
 
-# DDL file
 DDL_FILE_AUTO = "AUTO"
 
-# Exception markers
 ADJUSTED_BACKEND_IDENTIFIER_MESSAGE_TEXT = "Using adjusted backend table name"
 CONFLICTING_DATA_ID_OPTIONS_EXCEPTION_TEXT = "Conflicting data identification options"
 INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT = "Invalid data type conversion for column"
@@ -141,10 +120,6 @@ TOTAL_ROWS_OFFLOADED_LOG_TEXT = "Total rows offloaded"
 DDL_FILE_EXECUTE_MESSAGE_TEXT = "Switching command to non-execute mode due to --ddl-file option"
 DDL_FILE_WRITE_MESSAGE_TEMPLATE = "Table DDL has been written to file: {}"
 
-# Offload capabilities we can switch on/off by backend db type
-# Any capabilities that are version specific will have extra code in the BackendApi method
-# You must add an explanation as to what the capability does so that developers know what
-# to research for future backends
 
 """ CAPABILITY_BUCKET_HASH_COLUMN
     Can the backend make use of a hash column.
@@ -303,7 +278,6 @@ CAPABILITY_TABLE_STATS_COMPUTE = "table_stats_compute"
 CAPABILITY_TABLE_STATS_GET = "table_stats_get"
 CAPABILITY_TABLE_STATS_SET = "table_stats_set"
 
-# Frontend capabilities
 CAPABILITY_GOE_HAS_DB_CODE_COMPONENT = "goe_has_db_code_component"
 CAPABILITY_HYBRID_SCHEMA = "hybrid_schema"
 
@@ -332,7 +306,6 @@ HIVE_BACKEND_CAPABILITIES = {
     CAPABILITY_PARTITION_BY_COLUMN: True,
     CAPABILITY_PARTITION_BY_STRING: True,
     CAPABILITY_QUERY_SAMPLE_CLAUSE: False,
-    # EMR does support Ranger so this could be set to True once properly tested (GOE-1878)
     CAPABILITY_RANGER: False,
     CAPABILITY_SCHEMA_EVOLUTION: True,
     CAPABILITY_SENTRY: False,
@@ -345,7 +318,6 @@ HIVE_BACKEND_CAPABILITIES = {
     CAPABILITY_TABLE_STATS_SET: False,
 }
 
-# This may be an inefficient copy but importing copy into this widely used module was causing side effects
 IMPALA_BACKEND_CAPABILITIES = {k: v for k, v in HIVE_BACKEND_CAPABILITIES.items()}
 
 IMPALA_BACKEND_CAPABILITIES.update(
@@ -363,7 +335,6 @@ IMPALA_BACKEND_CAPABILITIES.update(
     }
 )
 
-# While Spark is a bare-minimum implementation we set all capabilities to False
 SPARK_BACKEND_CAPABILITIES = {k: False for k, v in HIVE_BACKEND_CAPABILITIES.items()}
 
 BIGQUERY_BACKEND_CAPABILITIES = {
@@ -480,7 +451,6 @@ SYNAPSE_BACKEND_CAPABILITIES = {
 MSSQL_FRONTEND_CAPABILITIES = {
     CAPABILITY_CANONICAL_DATE: True,
     CAPABILITY_CANONICAL_TIME: True,
-    # This may actually be actually true but we don't support it
     CAPABILITY_CASE_SENSITIVE: False,
     CAPABILITY_GOE_HAS_DB_CODE_COMPONENT: False,
     CAPABILITY_HYBRID_SCHEMA: False,
@@ -490,7 +460,6 @@ MSSQL_FRONTEND_CAPABILITIES = {
     CAPABILITY_LOW_HIGH_VALUE_FROM_STATS: False,
     CAPABILITY_NAN: True,
     CAPABILITY_PARAMETERIZED_QUERIES: False,
-    # Once we support Schema Sync we can enable these attributes.
     CAPABILITY_SCHEMA_EVOLUTION: False,
     CAPABILITY_GOE_SCHEMA_SYNC: False,
 }
@@ -498,7 +467,6 @@ MSSQL_FRONTEND_CAPABILITIES = {
 ORACLE_FRONTEND_CAPABILITIES = {
     CAPABILITY_CANONICAL_DATE: False,
     CAPABILITY_CANONICAL_TIME: False,
-    # This is actually true but we don't support it
     CAPABILITY_CASE_SENSITIVE: False,
     CAPABILITY_GOE_HAS_DB_CODE_COMPONENT: True,
     CAPABILITY_GOE_LIST_PARTITION_APPEND: True,
@@ -524,7 +492,6 @@ TERADATA_FRONTEND_CAPABILITIES = {
     CAPABILITY_LOW_HIGH_VALUE_FROM_STATS: False,
     CAPABILITY_NAN: False,
     CAPABILITY_PARAMETERIZED_QUERIES: True,
-    # Once we support Schema Sync we can enable these attributes.
     CAPABILITY_SCHEMA_EVOLUTION: False,
     CAPABILITY_GOE_SCHEMA_SYNC: False,
 }

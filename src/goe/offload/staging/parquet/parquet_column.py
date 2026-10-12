@@ -7,10 +7,6 @@
 
 from goe.offload.column_metadata import ColumnMetadataInterface
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 PARQUET_TYPE_BINARY = "BINARY"
 PARQUET_TYPE_BOOLEAN = "BOOLEAN"
 PARQUET_TYPE_DOUBLE = "DOUBLE"
@@ -18,11 +14,6 @@ PARQUET_TYPE_FLOAT = "FLOAT"
 PARQUET_TYPE_INT32 = "INT32"
 PARQUET_TYPE_INT64 = "INT64"
 PARQUET_TYPE_STRING = "STRING"
-
-
-###########################################################################
-# CLASSES
-###########################################################################
 
 
 class StagingParquetColumn(ColumnMetadataInterface):
@@ -55,19 +46,21 @@ class StagingParquetColumn(ColumnMetadataInterface):
         )
 
     def format_data_type(self):
-        # Currently no staging data types have a length/precision/scale so no formatting required
+        """Currently no staging data types have a length/precision/scale so no formatting required"""
         return self.data_type
 
     def has_time_element(self):
-        """Does the column data contain a time"""
-        # We should not need to this for a staging column
+        """Does the column data contain a time
+
+        We should not need to this for a staging column
+        """
         raise NotImplementedError("has_time_element() is not applicable to a StagingParquetColumn")
 
     def is_binary(self):
         return bool(self.data_type == PARQUET_TYPE_BINARY)
 
     def is_nan_capable(self):
-        # We should not need to this for a staging column
+        """We should not need to this for a staging column"""
         raise NotImplementedError("is_nan_capable() is not applicable to a StagingParquetColumn")
 
     def is_number_based(self):

@@ -10,20 +10,8 @@ from numpy import datetime64
 
 from goe.offload.format_literal import FormatLiteralInterface
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())  # Disabling logging by default
-
-###########################################################################
-# PysparkLiteral
-###########################################################################
+logger.addHandler(logging.NullHandler())
 
 
 class PysparkLiteral(FormatLiteralInterface):

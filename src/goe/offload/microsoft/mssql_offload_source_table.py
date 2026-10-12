@@ -66,21 +66,7 @@ from goe.offload.microsoft.mssql_column import (
 from goe.offload.offload_source_table import OffloadSourceTableInterface
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# CONSTANTS
-###########################################################################
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-###########################################################################
-# CLASSES
-###########################################################################
 
 
 class MSSQLSourceTable(OffloadSourceTableInterface):
@@ -95,6 +81,12 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         dry_run=False,
         do_not_connect=False,
     ):
+        """attributes below are specified as private so they can be enforced
+
+        (where relevant) as properties via base class
+        Unit testing requires no db connection
+        TODO NJ@2017-02-28 Implement table stats when we pick up MSSQL work again
+        """
         assert schema_name and table_name and connection_options
         assert hasattr(connection_options, "rdbms_app_user")
         assert hasattr(connection_options, "rdbms_app_pass")
@@ -115,8 +107,6 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         if dry_run:
             logger.info("* Dry run *")
 
-        # attributes below are specified as private so they can be enforced
-        # (where relevant) as properties via base class
         self._iot_type = None
         self._partitioned = None
         self._partition_type = None
@@ -126,156 +116,15 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         self._parallelism = None
 
         if not do_not_connect:
-            # Unit testing requires no db connection
             self._get_table_details()
             self._columns_setter(self._get_column_details(), skip_exists_check=True)
             if self._table_exists:
                 self._size_in_bytes = self._get_table_size()
                 self._hash_bucket_candidate = self._get_hash_bucket_candidate()
-                # TODO NJ@2017-02-28 Implement table stats when we pick up MSSQL work again
                 self._table_stats = None
             else:
                 self._hash_bucket_candidate = None
                 self._table_stats = None
-
-    ###############################################################################
-    # PRIVATE METHODS
-    ###############################################################################
-
-    def _extra_data_type_supported_checks(self):
-        # Check (n)varchar is not max precision
-        if [tc.name for tc in self._columns if "varchar" in tc.data_type and tc.data_length == -1]:
-            [
-                self._messages.log("MAX precision not supported for (n)varchar column: %s" % tc.name)
-                for tc in self._columns
-                if "varchar" in tc.data_type and tc.data_length == -1
-            ]
-            return False
-
-        return True
-
-    def _get_column_low_high_values(self, column_name, from_stats=True, sample_perc=1):
-        raise NotImplementedError("MSSQL _get_column_low_high_values not implemented.")
-
-    def _get_table_details(self):
-        logger.debug("_get_table_details: %s, %s" % (self.owner, self.table_name))
-        # order of columns important as referenced in helper functions
-        q = """
-            WITH partitions AS (
-                SELECT DISTINCT partition_number
-                ,      rows
-                FROM   sys.tables       t
-                       INNER JOIN
-                       sys.partitions   p
-                       ON (p.object_id = t.object_id)
-                       INNER JOIN
-                       sys.schemas      s
-                       ON (t.schema_id = s.schema_id)
-                WHERE  s.name = %s
-                AND    t.name = %s
-                )
-            SELECT NULL             AS iot_type
-            ,      SUM(rows)        AS num_rows
-            ,      CASE
-                     WHEN MAX(partition_number) > 1
-                     THEN 'YES'
-                     ELSE 'NO'
-                   END              AS partitioned
-            ,      NULL             AS partitioning_type
-            FROM partitions"""
-
-        # TODO: what if we don't have SELECT ON SCHEMA::xyz granted TO [GOE_APP] - below will cause exception
-        row = self._db_api.execute_query_fetch_one(q, query_params=(self.owner, self.table_name))
-        if row:
-            (
-                self._iot_type,
-                self._stats_num_rows,
-                self._partitioned,
-                self._partition_type,
-            ) = row
-            self._table_exists = True if self._stats_num_rows is not None else False
-        else:
-            self._table_exists = False
-
-    def _get_columns_with_partition_info(self, part_col_names_override=None):
-        raise NotImplementedError("MSSQL _get_columns_with_partition_info not implemented.")
-
-    def _get_hash_bucket_candidate(self):
-        """Seems that unlike Oracle, column statistics are manually created using for e.g.:
-           CREATE STATISTICS STATS_COL1 ON SH_TEST.ALL_SUPPORTED_DATA_TYPES_NOPK (COL1) WITH FULLSCAN
-        Unfortuntately it seems access to view statistcs is done through stored procedures rather than viewing system views
-        We can list the statistics objects on a table using:
-            SP_AUTOSTATS "sh_test.all_supported_data_types_nopk"
-        And for each statistic object (called "Index Name") we can get the density using
-            DBCC SHOW_STATISTICS ("sh_test.all_supported_data_types_nopk", stats_col4) WITH DENSITY_VECTOR
-        The "All density" is the value we need (0 best, 1 worst)
-        For now this is the best we have, the column with the "All density" value closest to 0
-        In the absence of any column stats we return None and goe.py will use the first column in the table
-        SP_AUTOSTATS is not valid for Azure Serverless SQL Pools
-        """
-        rows = self._db_api.execute_query_fetch_all(f'SP_AUTOSTATS "{self.owner}.{self.table_name}"')
-        hash_bucket_density, hash_bucket_column_name = 2, None
-        if rows:
-            for row in rows:
-                stats_rows = self._db_api.execute_query_fetch_all(
-                    f'DBCC SHOW_STATISTICS ("{self.owner}.{self.table_name}", {row[0]}) WITH DENSITY_VECTOR'
-                )
-                stats_col = [stats_row for stats_row in stats_rows if len(stats_row[2].split(",")) == 1]
-                if len(stats_col) > 0:
-                    if stats_col[0][0] < hash_bucket_density:
-                        hash_bucket_density, hash_bucket_column_name = (
-                            stats_col[0][0],
-                            stats_col[0][2],
-                        )
-            return hash_bucket_column_name
-        return None
-
-    def _get_table_stats(self):
-        # TODO NJ@2017-02-07 When we revisit MSSQL support we need to decide if having the stats is required
-        raise NotImplementedError("MSSQL table_stats not implemented.")
-        # return self._table_stats
-
-    def _is_compression_enabled(self) -> bool:
-        raise NotImplementedError("MSSQL _is_compression_enabled not implemented.")
-
-    def _sample_data_types_compression_factor(self):
-        raise NotImplementedError("MSSQL _sample_data_types_compression_factor not implemented.")
-
-    def _sample_data_types_data_sample_parallelism(self, data_sample_parallelism):
-        raise NotImplementedError("MSSQL _sample_data_types_compression_factor not implemented.")
-
-    def _sample_data_types_data_sample_pct(self, data_sample_pct):
-        raise NotImplementedError("MSSQL _sample_data_types_data_sample_pct not implemented.")
-
-    def _sample_data_types_date_as_string_column(self, column_name):
-        raise NotImplementedError("MSSQL _sample_data_types_date_as_string_column not implemented.")
-
-    def _sample_data_types_decimal_column(self, column, data_precision, data_scale):
-        return MSSQLColumn(
-            column.name,
-            MSSQL_TYPE_NUMERIC,
-            data_precision=data_precision,
-            data_scale=data_scale,
-            nullable=column.nullable,
-            safe_mapping=False,
-        )
-
-    def _sample_data_types_max_pct(self):
-        raise NotImplementedError("MSSQL _sample_data_types_max_pct not implemented.")
-
-    def _sample_data_types_min_pct(self):
-        raise NotImplementedError("MSSQL _sample_data_types_min_pct not implemented.")
-
-    def _sample_data_types_min_gb(self):
-        """1GB seems like a good target"""
-        return 1
-
-    def _sample_perc_sql_clause(self, data_sample_pct) -> str:
-        return ""
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     @property
     def partition_type(self):
@@ -293,7 +142,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
     def parallelism(self):
         return self._parallelism
 
-    def decode_partition_high_values(self, hv_csv, strict=True) -> tuple:
+    def decode_partition_high_values(self, hv_csv: object, strict: bool = True) -> tuple[object, ...]:
         raise NotImplementedError("MSSQL decode_partition_high_values not implemented.")
 
     def enable_offload_by_subpartition(self, desired_state=True):
@@ -392,8 +241,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
     def to_rdbms_literal_with_sql_conv_fn(self, py_val, rdbms_data_type):
         raise NotImplementedError("MSSQL to_rdbms_literal_with_sql_conv_fn() not implemented.")
 
-    def get_suitable_sample_size(self, bytes_override=None) -> int:
-        # Return something even though sampling is not implemented
+    def get_suitable_sample_size(self, bytes_override: object = None) -> int:
         return 0
 
     def sample_rdbms_data_types(
@@ -406,7 +254,6 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         backend_max_decimal_scale,
         allow_decimal_scale_rounding,
     ):
-        # Return something even though sampling is not implemented
         return []
 
     def supported_partition_data_types(self):
@@ -419,15 +266,22 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         raise NotImplementedError("MSSQL partition_has_rows() not implemented.")
 
     def predicate_has_rows(self, predicate):
-        raise NotImplementedError(self.__class__.__name__ + "." + inspect.currentframe().f_code.co_names)
+        frame = inspect.currentframe()
+        raise NotImplementedError(f"{self.__class__.__name__}.{frame.f_code.co_names if frame else ()}")
 
     def predicate_to_where_clause(self, predicate, columns_override=None):
-        raise NotImplementedError(self.__class__.__name__ + "." + inspect.currentframe().f_code.co_names)
+        frame = inspect.currentframe()
+        raise NotImplementedError(f"{self.__class__.__name__}.{frame.f_code.co_names if frame else ()}")
 
     def predicate_to_where_clause_with_binds(self, predicate):
-        raise NotImplementedError(self.__class__.__name__ + "." + inspect.currentframe().f_code.co_names)
+        frame = inspect.currentframe()
+        raise NotImplementedError(f"{self.__class__.__name__}.{frame.f_code.co_names if frame else ()}")
 
     def valid_canonical_override(self, column, canonical_override):
+        """Ideally we would log something here but this class has no messages object
+
+        self._log('Unknown canonical type in mapping: %s' % target_type, detail=VVERBOSE)
+        """
         assert isinstance(column, MSSQLColumn)
         if isinstance(canonical_override, CanonicalColumn):
             target_type = canonical_override.data_type
@@ -464,13 +318,19 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         if column.data_type == MSSQL_TYPE_TIME:
             return bool(target_type == GOE_TYPE_TIME)
         if target_type not in ALL_CANONICAL_TYPES:
-            # Ideally we would log something here but this class has no messages object
-            # self._log('Unknown canonical type in mapping: %s' % target_type, detail=VVERBOSE)
             return False
         return False
 
     def to_canonical_column(self, column):
-        """Translate an MSSQL column to an internal GOE column"""
+        """Translate an MSSQL column to an internal GOE column
+
+        Process a couple of edge cases
+        e.g. NUMBER(3,5) scale > precision
+        e.g. NUMBER(10,-5)
+        Integral numbers
+        The precision overflows our canonical integral types so store as a decimal
+        If precision & scale are None then this is unsafe, otherwise leave it None to let new_column() logic take over
+        """
 
         def new_column(
             col,
@@ -542,15 +402,11 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
             data_precision = column.data_precision
             data_scale = column.data_scale
             if data_precision is not None and data_scale is not None:
-                # Process a couple of edge cases
                 if data_scale > data_precision:
-                    # e.g. NUMBER(3,5) scale > precision
                     data_precision = data_scale
                 elif data_scale < 0:
-                    # e.g. NUMBER(10,-5)
                     data_scale = 0
             if data_scale == 0:
-                # Integral numbers
                 if data_precision >= 1 and data_precision <= 2:
                     integral_type = GOE_TYPE_INTEGER_1
                 elif data_precision >= 3 and data_precision <= 4:
@@ -562,10 +418,8 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
                 elif data_precision >= 19 and data_precision <= 38:
                     integral_type = GOE_TYPE_INTEGER_38
                 else:
-                    # The precision overflows our canonical integral types so store as a decimal
                     integral_type = GOE_TYPE_DECIMAL
                 return new_column(column, integral_type, data_precision=data_precision, data_scale=0)
-            # If precision & scale are None then this is unsafe, otherwise leave it None to let new_column() logic take over
             safe_mapping = False if data_precision is None and data_scale is None else None
             return new_column(
                 column,
@@ -589,7 +443,7 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         raise NotImplementedError("Unsupported MSSQL data type: %s" % column.data_type)
 
     def from_canonical_column(self, column):
-        # Present is not yet in scope
+        """Present is not yet in scope"""
         raise NotImplementedError("MSSQL from_canonical_column() not implemented.")
 
     def gen_column(
@@ -635,9 +489,135 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         return MSSQL_TYPE_VARCHAR
 
     def transform_regexp_replace_expression(self, backend_column, regexp_replace_pattern, regexp_replace_string):
-        # SQL Server has no support for regular expressions without writing a function
+        """SQL Server has no support for regular expressions without writing a function"""
         raise NotImplementedError("MSSQL transform_regexp_replace_expression() not implemented.")
 
     def transform_translate_expression(self, backend_column, from_string, to_string):
-        # SQL Server has support for TRANSLATE() only for versions 2017 and above
+        """SQL Server has support for TRANSLATE() only for versions 2017 and above"""
         raise NotImplementedError("MSSQL transform_translate_expression() not implemented.")
+
+    def _extra_data_type_supported_checks(self):
+        if [tc.name for tc in (self._columns or []) if "varchar" in tc.data_type and tc.data_length == -1]:
+            [
+                self._messages.log("MAX precision not supported for (n)varchar column: %s" % tc.name)
+                for tc in (self._columns or [])
+                if "varchar" in tc.data_type and tc.data_length == -1
+            ]
+            return False
+
+        return True
+
+    def _get_column_low_high_values(self, column_name, from_stats=True, sample_perc=1):
+        raise NotImplementedError("MSSQL _get_column_low_high_values not implemented.")
+
+    def _get_table_details(self):
+        logger.debug("_get_table_details: %s, %s" % (self.owner, self.table_name))
+        q = """
+            WITH partitions AS (
+                SELECT DISTINCT partition_number
+                ,      rows
+                FROM   sys.tables       t
+                       INNER JOIN
+                       sys.partitions   p
+                       ON (p.object_id = t.object_id)
+                       INNER JOIN
+                       sys.schemas      s
+                       ON (t.schema_id = s.schema_id)
+                WHERE  s.name = %s
+                AND    t.name = %s
+                )
+            SELECT NULL             AS iot_type
+            ,      SUM(rows)        AS num_rows
+            ,      CASE
+                     WHEN MAX(partition_number) > 1
+                     THEN 'YES'
+                     ELSE 'NO'
+                   END              AS partitioned
+            ,      NULL             AS partitioning_type
+            FROM partitions"""
+
+        row = self._db_api.execute_query_fetch_one(q, query_params=(self.owner, self.table_name))
+        if row:
+            (
+                self._iot_type,
+                self._stats_num_rows,
+                self._partitioned,
+                self._partition_type,
+            ) = row
+            self._table_exists = True if self._stats_num_rows is not None else False
+        else:
+            self._table_exists = False
+
+    def _get_columns_with_partition_info(self, part_col_names_override=None):
+        raise NotImplementedError("MSSQL _get_columns_with_partition_info not implemented.")
+
+    def _get_hash_bucket_candidate(self):
+        """Seems that unlike Oracle, column statistics are manually created using for e.g.:
+           CREATE STATISTICS STATS_COL1 ON SH_TEST.ALL_SUPPORTED_DATA_TYPES_NOPK (COL1) WITH FULLSCAN
+        Unfortuntately it seems access to view statistcs is done through stored procedures rather than viewing system views
+        We can list the statistics objects on a table using:
+            SP_AUTOSTATS "sh_test.all_supported_data_types_nopk"
+        And for each statistic object (called "Index Name") we can get the density using
+            DBCC SHOW_STATISTICS ("sh_test.all_supported_data_types_nopk", stats_col4) WITH DENSITY_VECTOR
+        The "All density" is the value we need (0 best, 1 worst)
+        For now this is the best we have, the column with the "All density" value closest to 0
+        In the absence of any column stats we return None and goe.py will use the first column in the table
+        SP_AUTOSTATS is not valid for Azure Serverless SQL Pools
+        """
+        rows = self._db_api.execute_query_fetch_all(f'SP_AUTOSTATS "{self.owner}.{self.table_name}"')
+        hash_bucket_density, hash_bucket_column_name = 2, None
+        if rows:
+            for row in rows:
+                stats_rows = self._db_api.execute_query_fetch_all(
+                    f'DBCC SHOW_STATISTICS ("{self.owner}.{self.table_name}", {row[0]}) WITH DENSITY_VECTOR'
+                )
+                stats_col = [stats_row for stats_row in stats_rows if len(stats_row[2].split(",")) == 1]
+                if len(stats_col) > 0:
+                    if stats_col[0][0] < hash_bucket_density:
+                        hash_bucket_density, hash_bucket_column_name = (
+                            stats_col[0][0],
+                            stats_col[0][2],
+                        )
+            return hash_bucket_column_name
+        return None
+
+    def _get_table_stats(self):
+        raise NotImplementedError("MSSQL table_stats not implemented.")
+
+    def _is_compression_enabled(self) -> bool:
+        raise NotImplementedError("MSSQL _is_compression_enabled not implemented.")
+
+    def _sample_data_types_compression_factor(self):
+        raise NotImplementedError("MSSQL _sample_data_types_compression_factor not implemented.")
+
+    def _sample_data_types_data_sample_parallelism(self, data_sample_parallelism):
+        raise NotImplementedError("MSSQL _sample_data_types_compression_factor not implemented.")
+
+    def _sample_data_types_data_sample_pct(self, data_sample_pct):
+        raise NotImplementedError("MSSQL _sample_data_types_data_sample_pct not implemented.")
+
+    def _sample_data_types_date_as_string_column(self, column_name):
+        raise NotImplementedError("MSSQL _sample_data_types_date_as_string_column not implemented.")
+
+    def _sample_data_types_decimal_column(self, column, data_precision, data_scale):
+        return MSSQLColumn(
+            column.name,
+            MSSQL_TYPE_NUMERIC,
+            data_precision=data_precision,
+            data_scale=data_scale,
+            nullable=column.nullable,
+            safe_mapping=False,
+        )
+
+    def _sample_data_types_max_pct(self):
+        raise NotImplementedError("MSSQL _sample_data_types_max_pct not implemented.")
+
+    def _sample_data_types_min_pct(self):
+        raise NotImplementedError("MSSQL _sample_data_types_min_pct not implemented.")
+
+    def _sample_data_types_min_gb(self):
+        """1GB seems like a good target"""
+        return 1
+
+    def _sample_perc_sql_clause(self, data_sample_pct: object) -> str:
+        return ""

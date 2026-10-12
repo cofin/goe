@@ -50,22 +50,8 @@ from goe.offload.offload_constants import (
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.util.better_impyla import HDFS_NULL_PART_KEY_CONSTANT
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# BackendHiveApi
-###########################################################################
 
 
 class BackendHiveApi(BackendHadoopApi):
@@ -95,76 +81,6 @@ class BackendHiveApi(BackendHadoopApi):
         logger.info("BackendHiveApi")
         if dry_run:
             logger.info("* Dry run *")
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _backend_capabilities(self):
-        return HIVE_BACKEND_CAPABILITIES
-
-    def _execute_ddl_or_dml(
-        self,
-        sql,
-        sync=None,
-        query_options=None,
-        log_level=VERBOSE,
-        profile=None,
-        no_log_items=None,
-    ):
-        """See interface for parameter descriptions
-        sync: No concept of sync vs async on Hive
-        profile: profile not available on Hive
-        """
-        assert sql
-        assert isinstance(sql, (str, list))
-
-        if self._hive_conn:
-            self._hive_conn.refresh_cursor()
-            self._execute_global_session_parameters(log_level=None)
-        run_opts = self._execute_session_options(query_options, log_level=log_level)
-        run_sqls = self._execute_sqls(sql, log_level=log_level, no_log_items=no_log_items)
-        return run_opts + run_sqls
-
-    def _format_storage_format_clause(self, storage_format):
-        if storage_format == FILE_STORAGE_FORMAT_AVRO:
-            return """ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
-STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
-OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'"""
-        return "STORED AS %s" % storage_format
-
-    def _get_hadoop_connection_exception_message_template(self):
-        """Hive"""
-        return """Successfully connected to %(host)s:%(port)s, but rejected. Possible reasons:
-
- 1) Kerberos is configured for Impala, but not configured in your environment file (or vice versa)
- 2) A process is listening at %(host)s:%(port)s, but it is not HiveServer2
- 3) LDAP is configured for Hive, but incorrect%(enc_text)s credentials were supplied
- 4) Invalid hiveserver2 authentication method is used. In non-kerberized environments Hive
-    must match hive-site.xml: hive.server2.authentication"""
-
-    def _get_table_stats(self, hive_stats, as_dict=False, part_stats=False):
-        """Hive"""
-        metastore = self.get_session_option("hive.metastore.client.factory.class")
-        if metastore and "AWSGLUE" in metastore.upper():
-            col_stats = False
-        else:
-            col_stats = True
-        tab_stats, part_stats, col_stats = hive_stats.get_table_stats(
-            self._backend_type,
-            as_dict=as_dict,
-            messages=None,
-            partstats=part_stats,
-            colstats=col_stats,
-        )
-        return tab_stats, part_stats, col_stats
-
-    def _partition_clause_null_constant(self):
-        return HDFS_NULL_PART_KEY_CONSTANT
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def alter_sort_columns(self, db_name, table_name, sort_column_names, sync=None):
         """Do nothing on Hive, sorting is implemented in INSERT rather than table DDL"""
@@ -439,10 +355,10 @@ FROM   %(from_db_table)s%(where)s%(dist_by)s%(sort_by)s""" % {
         return option_setting
 
     def get_table_partitions(self, db_name, table_name):
+        """HiveTable on Hive doesn't give us anything other than the partition key"""
         assert db_name and table_name
         hive_table = self._get_hive_table(db_name, table_name)
         hive_parts = hive_table.table_partitions()
-        # HiveTable on Hive doesn't give us anything other than the partition key
         table_partitions = {k: self._table_partition_info(partition_id=k) for k in list(hive_parts.keys())}
         return table_partitions
 
@@ -504,8 +420,6 @@ FROM   %(from_db_table)s%(where)s%(dist_by)s%(sort_by)s""" % {
         return 128
 
     def min_datetime_value(self):
-        # TODO nj@2020-01-10 Return value should be year 0001 but using 1000 due to OffloadTransport bug: GOE-1441
-        # return datetime64('0001-01-01')
         return datetime64("1000-01-01")
 
     def refresh_table_files(self, db_name, table_name, sync=None):
@@ -543,3 +457,65 @@ FROM   %(from_db_table)s%(where)s%(dist_by)s%(sort_by)s""" % {
 
     def udf_details(self, db_name, udf_name):
         raise NotImplementedError("udf_details is not implemented on Hive")
+
+    def _backend_capabilities(self):
+        return HIVE_BACKEND_CAPABILITIES
+
+    def _execute_ddl_or_dml(
+        self,
+        sql,
+        sync=None,
+        query_options=None,
+        log_level=VERBOSE,
+        profile=None,
+        no_log_items=None,
+    ):
+        """See interface for parameter descriptions
+        sync: No concept of sync vs async on Hive
+        profile: profile not available on Hive
+        """
+        assert sql
+        assert isinstance(sql, (str, list))
+
+        if self._hive_conn:
+            self._hive_conn.refresh_cursor()
+            self._execute_global_session_parameters(log_level=None)
+        run_opts = self._execute_session_options(query_options, log_level=log_level)
+        run_sqls = self._execute_sqls(sql, log_level=log_level, no_log_items=no_log_items)
+        return run_opts + run_sqls
+
+    def _format_storage_format_clause(self, storage_format):
+        if storage_format == FILE_STORAGE_FORMAT_AVRO:
+            return """ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
+STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'"""
+        return "STORED AS %s" % storage_format
+
+    def _get_hadoop_connection_exception_message_template(self):
+        """Hive"""
+        return """Successfully connected to %(host)s:%(port)s, but rejected. Possible reasons:
+
+ 1) Kerberos is configured for Impala, but not configured in your environment file (or vice versa)
+ 2) A process is listening at %(host)s:%(port)s, but it is not HiveServer2
+ 3) LDAP is configured for Hive, but incorrect%(enc_text)s credentials were supplied
+ 4) Invalid hiveserver2 authentication method is used. In non-kerberized environments Hive
+    must match hive-site.xml: hive.server2.authentication"""
+
+    def _get_table_stats(self, hive_stats, as_dict=False, part_stats=False):
+        """Hive"""
+        metastore = self.get_session_option("hive.metastore.client.factory.class")
+        if metastore and "AWSGLUE" in metastore.upper():
+            col_stats = False
+        else:
+            col_stats = True
+        tab_stats, part_stats, col_stats = hive_stats.get_table_stats(
+            self._backend_type,
+            as_dict=as_dict,
+            messages=None,
+            partstats=part_stats,
+            colstats=col_stats,
+        )
+        return tab_stats, part_stats, col_stats
+
+    def _partition_clause_null_constant(self):
+        return HDFS_NULL_PART_KEY_CONSTANT

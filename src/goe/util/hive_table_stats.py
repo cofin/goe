@@ -3,12 +3,14 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """hive_table_stats: Grab, collect or set hive (mostly impala) table and column statistics"""
 
 import logging
 import random
 import re
 from collections import defaultdict
+from typing import Any
 
 from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_BIGINT,
@@ -33,38 +35,21 @@ from goe.util.hive_ddl_transform import DDLTransform
 from goe.util.misc_functions import is_number
 
 
-###############################################################################
-# EXCEPTIONS
-###############################################################################
 class HiveTableStatsException(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# Regex to parse DECIMAL data type
 REGEX_DECIMAL = re.compile("(DECIMAL\\()([\\d]+)", re.IGNORECASE)
 
-# Column statistics (headers)
 COL_STATS = ("ndv", "num_nulls", "avg_col_len", "low_val", "high_val", "max_col_len")
 
-# Percentage of 'distinct values'/'total records', if below column is considered 'low cardinality'
 LOW_CARDINALITY_THRESHOLD = 0.25
 
-# Prefix for a temporary 'stats' view
 TEMP_VIEW_PREFIX = "goe_tempview_"
 
-# Default 'fudge factor' for num_bytes statistic (issue #263)
 FUDGE_NUM_BYTES = 0.25
 
-# Impyla craps out when fetching NULLs, so replacing with a plug
 FAKE_HIVE_NULL = -424242
-
-###############################################################################
-# GLOBAL FUNCTIONS
-###############################################################################
 
 
 def parse_stats_into_tab_col(stats):
@@ -81,32 +66,34 @@ def parse_stats_into_tab_col(stats):
      col1 max_col_len,
      ...
      coln max_col_len]
+
+    _parse_stats_into_tab_col() begins here
+    Re-cast the column stats tuple as a list of tuples (one per column)...
+    no of stats per column (+1 for name)
+    Replace None with 0 for stats
+    Replacing fake ndv() data with NULL if Hive
+    Adjusting column types (some of them ints & floats)
+    Complete the tab stats by summing up the average column sizes
+    to generate a notional table size and avg row length...
     """
-    # _parse_stats_into_tab_col() begins here
-    tab_stats = EMPTY_BACKEND_TABLE_STATS_DICT
-    col_stats = EMPTY_BACKEND_COLUMN_STATS_DICT
+    tab_stats: dict[Any, Any] = EMPTY_BACKEND_TABLE_STATS_DICT
+    col_stats: dict[Any, Any] = EMPTY_BACKEND_COLUMN_STATS_DICT
 
     tab_stats["num_rows"], stats = int(stats[0]), stats[1:]
 
-    # Re-cast the column stats tuple as a list of tuples (one per column)...
-    n = len(COL_STATS) + 1  # no of stats per column (+1 for name)
+    n = len(COL_STATS) + 1
     while stats:
-        # Replace None with 0 for stats
         current_stats, stats = stats[:n], stats[n:]
         col_name, current_col_stats = current_stats[0], current_stats[1:]
 
         col_dict = dict(list(zip(COL_STATS, current_col_stats)))
 
-        # Replacing fake ndv() data with NULL if Hive
         if col_dict["ndv"] == FAKE_HIVE_NULL:
             col_dict["ndv"] = None
 
-        # Adjusting column types (some of them ints & floats)
         col_dict = {k: adjust_col_type(k, v) for k, v in list(col_dict.items())}
         col_stats[col_name] = col_dict
 
-    # Complete the tab stats by summing up the average column sizes
-    # to generate a notional table size and avg row length...
     for col in col_stats:
         avg_col_len = col_stats[col]["avg_col_len"] if col_stats[col]["avg_col_len"] else 0
 
@@ -117,7 +104,7 @@ def parse_stats_into_tab_col(stats):
 
 
 def adjust_col_type(name, value):
-    ret = None
+    ret: Any = None
 
     if name in ("ndv", "max_col_len"):
         ret = None if not value else int(value)
@@ -134,7 +121,10 @@ def adjust_col_type(name, value):
 
 
 def transform_stats_as_tuples(tab_stats, col_stats, column_names):
-    """Transform tab/col stats from dictionaries to value tuples"""
+    """Transform tab/col stats from dictionaries to value tuples
+
+    Grabbing columns from the table as we need them properly sorted
+    """
     tab_stats = (
         tab_stats["num_rows"],
         tab_stats["num_bytes"],
@@ -142,7 +132,6 @@ def transform_stats_as_tuples(tab_stats, col_stats, column_names):
     )
 
     xform_col_stats = []
-    # Grabbing columns from the table as we need them properly sorted
     for col_name in column_names:
         xform_col_stats.append(
             (
@@ -160,23 +149,22 @@ def transform_stats_as_tuples(tab_stats, col_stats, column_names):
     return tab_stats, col_stats
 
 
-###############################################################################
-# LOGGING
-###############################################################################
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())  # Disabling logging by default
+logger.addHandler(logging.NullHandler())
 
 
 class HiveTableStats:
     """Grab, collect or set hive/impala table statistics"""
 
     def __init__(self, hive_table, date_columns=None):
-        """CONSTRUCTOR"""
+        """CONSTRUCTOR
+
+        DDL transformation object
+        """
 
         self._table = hive_table
         self._date_columns = [] if not date_columns else date_columns
 
-        # DDL transformation object
         self._transform = DDLTransform()
 
         logger.debug("Initialized HiveTableStats() object for: %s.%s" % (self._table.db_name, self._table.table_name))
@@ -193,10 +181,6 @@ class HiveTableStats:
 
         return cls(hive_table, date_columns)
 
-    ###########################################################################
-    # PROPERTIES
-    ###########################################################################
-
     @property
     def db_table(self):
         return "%s.%s" % (self._table.db_name, self._table.table_name)
@@ -204,10 +188,6 @@ class HiveTableStats:
     @property
     def hive(self):
         return self._table.connection
-
-    ###########################################################################
-    # PUBLIC ROUTINES
-    ###########################################################################
 
     def sample_partitions(
         self,
@@ -219,6 +199,9 @@ class HiveTableStats:
         """Detect object type (table or view) and call appropriate partition sampling routine
 
         scan_if_sample_fails: Switch to full scan if sample fails for any reason
+
+        Partitioned table
+        Non-Partitioned table
         """
         percent = float(percent)
         object_type = "VIEW" if self._table.is_view() else "TABLE"
@@ -228,10 +211,8 @@ class HiveTableStats:
         if object_type == "VIEW":
             tab_final, col_final = self.sample_partitions_view(percent, as_dict, num_bytes_fudge)
         elif len(self._table.table_partitions()) > 0:
-            # Partitioned table
             tab_final, col_final = self.sample_partitions_table(percent, as_dict, num_bytes_fudge)
         else:
-            # Non-Partitioned table
             logger.warning("Object: %s is NOT partitioned. Can't partition-sample" % self.db_table)
 
         if not tab_final and scan_if_sample_fails:
@@ -241,7 +222,10 @@ class HiveTableStats:
         return tab_final, col_final
 
     def sample_partitions_table(self, percent=0.1, as_dict=False, num_bytes_fudge=FUDGE_NUM_BYTES):
-        """Scan specific percentage of 'partitions' in a table and 'project' statistics from them"""
+        """Scan specific percentage of 'partitions' in a table and 'project' statistics from them
+
+        Replace stats with sensible structures if they are empty
+        """
         percent = float(percent)
         logger.info(
             "Sampling statistics for %.2f%% of partitions for table: %s with: %.2f num_stats fudge factor"
@@ -279,7 +263,6 @@ class HiveTableStats:
             )
             raise HiveTableStatsException(e)
         finally:
-            # Replace stats with sensible structures if they are empty
             tab_final = self._nvl_table_stats(tab_final, as_dict)
             col_final = self._nvl_column_stats(col_final, as_dict)
 
@@ -292,6 +275,10 @@ class HiveTableStats:
         2. Create temporary view by injecting 'partition sample' where clause
         3. Collect statistics on a temp view and 'project' overall statistics from the numbers
         4. Drop temp view
+
+        HiveTable() object for a temporary stats view
+        Drop temporary view whether stat collection was successful or not
+        Replace stats with sensible structures if they are empty
         """
         percent = float(percent)
         logger.info(
@@ -318,7 +305,6 @@ class HiveTableStats:
                 temp_db_view = "%s.%s" % (self._table.db_name, temp_view)
                 self._create_temp_view(temp_db_view, temp_view_ddl)
 
-                # HiveTable() object for a temporary stats view
                 temp_view_obj = HiveTable(self._table.db_name, temp_view, self.hive)
                 tab_stats, col_stats = self._scan_object_stats(temp_view_obj)
                 tab_final, col_final = self._project_stats_from_samples(
@@ -339,16 +325,17 @@ class HiveTableStats:
             )
             raise HiveTableStatsException(e)
         finally:
-            # Drop temporary view whether stat collection was successful or not
             self._drop_temp_view(temp_db_view)
-            # Replace stats with sensible structures if they are empty
             tab_final = self._nvl_table_stats(tab_final, as_dict)
             col_final = self._nvl_column_stats(col_final, as_dict)
 
         return tab_final, col_final
 
     def scan(self, as_dict=False):
-        """(full) Scan table/view and calculate statistics"""
+        """(full) Scan table/view and calculate statistics
+
+        Replace stats with sensible structures if they are empty
+        """
         logger.info("Calculating (exact) statistics for table: %s" % self.db_table)
         tab_final, col_final = None, None
 
@@ -364,7 +351,6 @@ class HiveTableStats:
             )
             raise HiveTableStatsException(e)
         finally:
-            # Replace stats with sensible structures if they are empty
             tab_final = self._nvl_table_stats(tab_final, as_dict)
             col_final = self._nvl_column_stats(col_final, as_dict)
 
@@ -440,10 +426,6 @@ class HiveTableStats:
             }
             for part_str in partitions
         }
-
-    ###########################################################################
-    # PRIVATE ROUTINES
-    ###########################################################################
 
     def _hive_table(self, db_table=None):
         """Either re-use HiveTable() for original object or create new one if required"""
@@ -598,7 +580,6 @@ class HiveTableStats:
             )
 
         for partition_spec in hive_table.table_partitions(as_spec=True):
-            # partition_spec: [('offload_bucket_id', 0), ('goe_part_m_time_id', '2012-09')]
             for part in partition_spec:
                 name, value = part
                 if col_name == name:
@@ -621,6 +602,14 @@ class HiveTableStats:
         sample_tab_stats = [{'num_rows': , 'num_bytes': , 'avg_row_len':  '}, ]
         sample_col_stats = [{'col_name': , 'ndv': , 'num_nulls': , 'avg_col_len': , 'low_val': , 'high_val': 'max_col_len': }, ]
 
+        Estimate table stats
+        Categorize columns into high/low cardinality
+        Estimate column stats (chosing [0] as an example as all 'samples' should have the same 'schema')
+        Other places in this class assume length 2 for offload_bucket_id so assuming same below
+        "NULL cardinality" (because of unimplemented ndv() in Hive is considered HIGH cardinality)
+        No simple way to reason about low/high values for high cardinality columns
+        low/high values are passed to OFFLOAD package as strings
+        These stats should be the same between high/low cardinality
         """
 
         def categorize_by_cardinality(sample_tab_stats, sample_col_stats):
@@ -628,7 +617,7 @@ class HiveTableStats:
 
             Return: True if column is 'LOW CARDINALITY', False otherwise
             """
-            low_cardinality = {}
+            low_cardinality_samples: dict[str, list[bool]] = {}
 
             for tab_s, col_s in zip(sample_tab_stats, sample_col_stats):
                 for col in col_s:
@@ -649,23 +638,21 @@ class HiveTableStats:
                             round(LOW_CARDINALITY_THRESHOLD * 100.0, 2),
                         )
                     )
-                    if col_name not in low_cardinality:
-                        low_cardinality[col_name] = []
-                    low_cardinality[col_name].append(is_low_cardinality)
+                    if col_name not in low_cardinality_samples:
+                        low_cardinality_samples[col_name] = []
+                    low_cardinality_samples[col_name].append(is_low_cardinality)
 
-            for col in low_cardinality:
-                # Column is 'low cardinality' if >50% of partitions is low cardinality
-                no_low_cardinality = sum(1 for _ in low_cardinality[col] if _)
-                low_cardinality[col] = True if no_low_cardinality > len(low_cardinality[col]) * 0.5 else False
+            low_cardinality: dict[str, bool] = {}
+            for col, samples in low_cardinality_samples.items():
+                no_low_cardinality = sum(1 for _ in samples if _)
+                low_cardinality[col] = True if no_low_cardinality > len(samples) * 0.5 else False
                 logger.debug("Column: %s is %s cardinality" % (col, "LOW" if low_cardinality[col] else "HIGH"))
 
             return low_cardinality
 
-        # _project_stats_from_samples() begins here
-        tab_stats = {}
-        col_stats = defaultdict(dict)
+        tab_stats: dict[str, Any] = {}
+        col_stats: dict[Any, dict[str, Any]] = defaultdict(dict)
 
-        # Estimate table stats
         tab_stats["num_rows"] = int(
             round(sum(_["num_rows"] for _ in sample_tab_stats) * 1.0 / scanned_partitions * total_partitions)
         )
@@ -676,10 +663,8 @@ class HiveTableStats:
             round(sum(_["avg_row_len"] for _ in sample_tab_stats) * 1.0 / len(sample_tab_stats))
         )
 
-        # Categorize columns into high/low cardinality
         low_cardinality = categorize_by_cardinality(sample_tab_stats, sample_col_stats)
 
-        # Estimate column stats (chosing [0] as an example as all 'samples' should have the same 'schema')
         col_names = list(sample_col_stats[0].keys())
         for col in col_names:
             if self._is_partition_column(col, partitioned_table):
@@ -692,7 +677,6 @@ class HiveTableStats:
                     col_stats[col]["max_col_len"] = 2
                 else:
                     col_stats[col]["ndv"] = total_partitions
-                    # Other places in this class assume length 2 for offload_bucket_id so assuming same below
                     len_fn = lambda x: len(x) if isinstance(x, str) else 2
                     col_stats[col]["max_col_len"] = max(list(map(len_fn, partition_values)))
             elif low_cardinality[col]:
@@ -703,7 +687,6 @@ class HiveTableStats:
                 col_stats[col]["high_val"] = max(_[col]["high_val"] for _ in sample_col_stats)
                 col_stats[col]["max_col_len"] = max(_[col]["max_col_len"] for _ in sample_col_stats)
             else:
-                # "NULL cardinality" (because of unimplemented ndv() in Hive is considered HIGH cardinality)
                 if any(_[col]["ndv"] is None for _ in sample_col_stats):
                     col_stats[col]["ndv"] = None
                 else:
@@ -712,16 +695,13 @@ class HiveTableStats:
                             sum(_[col]["ndv"] for _ in sample_col_stats) * 1.0 / scanned_partitions * total_partitions
                         )
                     )
-                # No simple way to reason about low/high values for high cardinality columns
                 col_stats[col]["low_val"] = None
                 col_stats[col]["high_val"] = None
                 col_stats[col]["max_col_len"] = max(_[col]["max_col_len"] for _ in sample_col_stats)
 
-            # low/high values are passed to OFFLOAD package as strings
             col_stats[col]["low_val"] = None if col_stats[col]["low_val"] is None else str(col_stats[col]["low_val"])
             col_stats[col]["high_val"] = None if col_stats[col]["high_val"] is None else str(col_stats[col]["high_val"])
 
-            # These stats should be the same between high/low cardinality
             col_stats[col]["num_nulls"] = int(
                 round(sum(_[col]["num_nulls"] for _ in sample_col_stats) * 1.0 / scanned_partitions * total_partitions)
             )
@@ -739,6 +719,9 @@ class HiveTableStats:
         (for the time being, only limited to 1 'dependent' partitioned table)
 
         Return: 'where clause', partitioned_table, total # of partitions, # of sampled partitions
+
+        Is 'db_table' partitioned ? (self._choose_partitions_to_sample() will return [] if it's not)
+        Exit on the 1st partitioned table (current restriction)
         """
         where_clause, partitioned_table, total_partitions, partitions_to_sample = (
             None,
@@ -757,7 +740,6 @@ class HiveTableStats:
             db_table = "%s.%s" % (db_name, table_name)
             hive_table = self._hive_table(db_table)
 
-            # Is 'db_table' partitioned ? (self._choose_partitions_to_sample() will return [] if it's not)
             sample_partitions = [_ for _ in self._choose_partitions_to_sample(percent, hive_table)]
             if sample_partitions:
                 logger.info("Identified dependent partitioned table: %s" % db_table)
@@ -770,7 +752,6 @@ class HiveTableStats:
                 partitions_to_sample = len(sample_partitions)
                 logger.info("Partitions to sample for: %s is: %d" % (db_table, partitions_to_sample))
 
-                # Exit on the 1st partitioned table (current restriction)
                 break
 
         if not where_clause:
@@ -834,9 +815,9 @@ class HiveTableStats:
         and return the 'difference': tab_diff, col_diff
         as {'key': {'base': ..., 'sample': ..., 'diff': ...} dictionaries
         """
-        tab_diff, col_diff = defaultdict(dict), defaultdict(dict)
+        tab_diff: dict[Any, dict[str, Any]] = defaultdict(dict)
+        col_diff: dict[Any, dict[str, Any]] = defaultdict(dict)
 
-        # Table stats
         for stat in tab_base:
             tab_diff[stat]["base"] = tab_base[stat]
             tab_diff[stat]["sample"] = tab_sample[stat]
@@ -846,7 +827,6 @@ class HiveTableStats:
             else:
                 tab_diff[stat]["pct"] = 10000
 
-        # Column stats
         for col in col_base:
             for stat in col_base[col]:
                 if col not in col_diff:
@@ -940,6 +920,7 @@ class HiveTableStats:
 
         def parse_impala_size_expr(size):
             m = re.match("([\\d\\.]+)([BKMGTP])", str(size))
+            assert m is not None
             multi = {
                 "B": 1,
                 "K": 1024,
@@ -953,8 +934,8 @@ class HiveTableStats:
         owner_table = "`%s`.`%s`" % (self._table.db_name, self._table.table_name)
         logger.info("Fetching Impala table/column stats on %s" % owner_table)
 
-        tab_stats = [-1, 0, 0]  # num_rows, num_bytes, avg_row_len
-        col_stats = []  # col_name, ndv, num_nulls, avg_col_len, low_value, high_value, max_col_len
+        tab_stats: Any = [-1, 0, 0]
+        col_stats: Any = []
 
         sqls = [
             "SHOW %s STATS `%s`.`%s`" % (s, self._table.db_name, self._table.table_name) for s in ["TABLE", "COLUMN"]
@@ -972,7 +953,6 @@ class HiveTableStats:
                     tab_stats = [rows, size, 0]
 
                 if tab_stats[0] > -1:
-                    # Fetch Impala column stats, clean them up and derive remaining table stats...
                     logger.debug("Fetching column stats: %s" % sqls[0])
                     c = self.hive.execute(sqls[1], lambda c: c, as_dict=False)
                     colpos = self._parse_impala_stats_header(c.description)
@@ -990,7 +970,7 @@ class HiveTableStats:
             if "SHOW TABLE STATS not applicable to a view" not in str(e):
                 raise
 
-        part_stats = []
+        part_stats: Any = []
         if partstats and len(self._table.table_partitions()) > 0:
             for k, v in self._table.table_partitions().items():
                 rows = v["#Rows"]
@@ -1113,6 +1093,8 @@ class HiveTableStats:
         """Manually set column stats on an Impala table
         col_stats = {name: {ndv, num_nulls, avg_col_len, low_value, high_value}, ...}
         Manually setting columns stats is valid from CDH5.8 onwards
+
+        we don't cater for maxSize as RDBMS does not store that in stats
         """
 
         def is_variable_size_data_type(data_type):
@@ -1129,7 +1111,6 @@ class HiveTableStats:
             logger.debug("Blank column stats - NOOP")
             return
 
-        # we don't cater for maxSize as RDBMS does not store that in stats
         table_columns = self._table.table_columns(as_dict=True)
         for col_name in col_stat_dict:
             col_stats = col_stat_dict[col_name]
@@ -1182,29 +1163,35 @@ class HiveTableStats:
               For column level stats we don't perform any rollup. We only (for now) need to determine if the columns have stats.
               To prevent having to do <num cols> * <num partitions> calls to Hive to get all of them, we only check for the
               presence of stats on the first column in the table in each partition.
+
+        Partitioned table
+        double quote the partition value otherwise Hive throws an error
+        Table/Partition Stats
+        there could be millions of partitions so let's not log them all
+        Column Stats
+        old HiveQL format
+        Non-Partitioned table
+        only return partitions with None entries for num_rows and columns with None entries for ndv
         """
 
         owner_table = "`%s`.`%s`" % (self._table.db_name, self._table.table_name)
         logger.info("Fetching Hive table/column stats on %s" % owner_table)
 
-        part_stats = []  # part_name, num_rows, num_bytes, avg_row_len
-        tab_stats = [-1, 0, None]  # num_rows, num_bytes, avg_row_len
-        col_stats = []  # col_name, ndv, num_nulls, avg_col_len, low_value, high_value, max_col_len
+        part_stats: Any = []
+        tab_stats: Any = [-1, 0, None]
+        col_stats: Any = []
 
         object_type = "VIEW" if self._table.is_view() else "TABLE"
         logger.info("Determined object: %s of type: %s" % (self.db_table, object_type))
         num_partitions = len(self._table.table_partitions())
 
         if object_type == "TABLE" and num_partitions > 0:
-            # Partitioned table
             for pnum, partition in enumerate(self._table.table_partitions()):
                 part_keys = partition.split("/")
                 part_strings = []
                 for part_key in part_keys:
-                    # double quote the partition value otherwise Hive throws an error
                     part_strings.append(re.sub(r"(?<=\=)(.*)", r'"\1"', part_key))
                 part_string = ",".join(part_strings)
-                # Table/Partition Stats
                 sql = "DESCRIBE EXTENDED %s.%s PARTITION (%s)" % (
                     self._table.db_name,
                     self._table.table_name,
@@ -1212,7 +1199,6 @@ class HiveTableStats:
                 )
                 logger.debug("Fetching table/partition stats: %s" % sql)
                 if messages and pnum in (0, num_partitions - 1):
-                    # there could be millions of partitions so let's not log them all
                     messages.log("Hadoop sql: %s" % sql, VERBOSE)
                     if num_partitions > 2 and pnum == 0:
                         messages.log(
@@ -1242,14 +1228,12 @@ class HiveTableStats:
                 else:
                     part_stats += [(part_string, None, None, 0)]
 
-                # Column Stats
                 if colstats:
                     first_column = self._table.table_columns(as_dict=True)[0]["col_name"]
                     sql_engine_version = self._table.connection.sql_engine_version()
                     if self._table.db_type == DBTYPE_HIVE and (
                         sql_engine_version is None or GOEVersion(sql_engine_version) < GOEVersion("2.0.0")
                     ):
-                        # old HiveQL format
                         sql = "DESCRIBE FORMATTED %s.%s %s PARTITION (%s)" % (
                             self._table.db_name,
                             self._table.table_name,
@@ -1277,7 +1261,6 @@ class HiveTableStats:
                     max_col_len = cs[7] if cs[7] and "from deserializer" not in cs[7] else None
                     col_stats += [(part_string, name, ndv, nulls, avg, minv, maxv, max_col_len)]
         elif object_type == "TABLE" and num_partitions == 0:
-            # Non-Partitioned table
             sql = "DESCRIBE EXTENDED %s.%s" % (
                 self._table.db_name,
                 self._table.table_name,
@@ -1295,7 +1278,6 @@ class HiveTableStats:
                 tab_stats[0] += max(int(f[1]), 0)
                 tab_stats[1] += max(int(f[0]), 0)
 
-            # Column Stats
             if colstats:
                 first_column = self._table.table_columns(as_dict=True)[0]["col_name"]
                 sql = "DESCRIBE FORMATTED `%s`.`%s` `%s`" % (
@@ -1317,7 +1299,6 @@ class HiveTableStats:
                 col_stats += [("global", name, ndv, nulls, avg, minv, maxv, max_col_len)]
 
         if missing:
-            # only return partitions with None entries for num_rows and columns with None entries for ndv
             part_stats = [part for part in part_stats if part[1] is None]
             col_stats = [col for col in col_stats if col[2] is None]
 

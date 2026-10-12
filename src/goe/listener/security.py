@@ -5,7 +5,6 @@
 
 import secrets
 from datetime import UTC, datetime
-from typing import ClassVar
 
 from litestar.connection import ASGIConnection
 from litestar.openapi.spec import SecurityScheme
@@ -33,7 +32,7 @@ API_KEY_HEADER = "x-goe-console-key"
 class ConsoleKeySlot(CredentialSlot[str | None]):
     """Extract the x-goe-console-key header from the incoming ASGI connection."""
 
-    name: ClassVar[str] = "header:x-goe-console-key"
+    name: str = "header:x-goe-console-key"
 
     def extract(self, connection: ASGIConnection) -> CredentialExtraction[str | None]:
         """Extract the console key header or fall back to local mode when unconfigured."""
@@ -55,9 +54,9 @@ class ConsoleKeySlot(CredentialSlot[str | None]):
 class ConsoleKeyAuthenticator(CredentialVerifier[str | None, str]):
     """Verify the presented console key against settings.shared_token."""
 
-    name: ClassVar[str] = "console-key"
-    slot: ClassVar[str] = ConsoleKeySlot.name
-    participates_by_default: ClassVar[bool] = True
+    name: str = "console-key"
+    slot: str = ConsoleKeySlot.name
+    participates_by_default: bool = True
 
     async def authenticate(
         self,
@@ -86,7 +85,7 @@ class ConsoleKeyAuthenticator(CredentialVerifier[str | None, str]):
 class ConsoleKeyIdentityResolver(IdentityResolver[str, str]):
     """Resolve authenticated claims into a Principal."""
 
-    async def resolve(self, claims: str) -> Principal[str] | None:
+    async def resolve(self, claims: str) -> Principal[str]:
         """Build a Principal from the verified claims identifier."""
         return Principal(
             id=claims,

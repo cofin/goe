@@ -30,6 +30,7 @@ Comment from nj@2019-11-06:
 
 import logging
 from abc import ABCMeta, abstractmethod
+from typing import Any
 
 from goe.filesystem.goe_dfs import (
     OFFLOAD_FS_SCHEME_ABFS,
@@ -108,10 +109,6 @@ class BackendApiConnectionException(Exception):
     pass
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
 IMPALA_SHUFFLE_HINT = "SHUFFLE"
 IMPALA_NOSHUFFLE_HINT = "NOSHUFFLE"
 
@@ -130,7 +127,6 @@ FETCH_ACTION_CURSOR = "cursor"
 
 SORT_COLUMNS_UNLIMITED = 100
 
-# Reporting info dictionary keys
 REPORT_ATTR_BACKEND_CLASS = "backend_class"
 REPORT_ATTR_BACKEND_TYPE = "backend_type"
 REPORT_ATTR_BACKEND_DISPLAY_NAME = "backend_display_name"
@@ -139,17 +135,7 @@ REPORT_ATTR_BACKEND_HOST_INFO = "backend_host_info"
 
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# GLOBAL FUNCTIONS
-###########################################################################
-
-###########################################################################
-# UdfDetails
-###########################################################################
 
 
 class UdfParameter:
@@ -194,11 +180,6 @@ class UdfDetails:
         return str_summary_of_self(self)
 
 
-###########################################################################
-# BackendApiInterface
-###########################################################################
-
-
 class BackendApiInterface(metaclass=ABCMeta):
     """Abstract base class which acts as an interface for backend specific sub-classes
     no_caching: Prevents state from being cached between calls. When testing we don't want caching
@@ -230,491 +211,6 @@ class BackendApiInterface(metaclass=ABCMeta):
 
     def __del__(self):
         self.close()
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _log(self, msg, detail=None, ansi_code=None, no_log_items=None):
-        """Write to offload log file.
-        no_log_items: See self._validate_no_log_items() for description
-        """
-        no_log_items = self._validate_no_log_items(no_log_items)
-        if no_log_items:
-            log_msg = msg
-            for itm in no_log_items:
-                log_msg = log_msg.replace(itm["item"], itm.get("sub", "?"))
-        else:
-            log_msg = msg
-        self._messages.log(log_msg, detail=detail, ansi_code=ansi_code)
-        if detail == VVERBOSE:
-            logger.debug(log_msg)
-        else:
-            logger.info(log_msg)
-
-    def _log_or_not(self, msg, log_level=VERBOSE, no_log_items=None):
-        """Wrapper over _log() to cater for suppressing logging of SQLs"""
-        if log_level is not None:
-            self._log(msg, detail=log_level, no_log_items=no_log_items)
-
-    def _debug(self, msg):
-        self._messages.debug(msg)
-        logger.debug(msg)
-
-    def _warning(self, msg):
-        self._messages.warning(msg)
-        logger.warning(msg)
-
-    def _apply_decimal_padding_digits(self, column_name, data_precision, data_scale, decimal_padding_digits):
-        """Add decimal_padding_digits to scale if precision has headroom then pad precision if it has headroom for
-        that too.
-        Currently this has no max for scale, i.e. assumes the max is same as max precision. This may not be true
-        for all backends.
-        Returns a tuple of the adjusted precision & scale
-        """
-        if not decimal_padding_digits:
-            return data_precision, data_scale
-
-        if data_precision is None or data_scale is None:
-            self._log(
-                "No padding applied to %s for precision/scale: %s/%s" % (column_name, data_precision, data_scale),
-                detail=VVERBOSE,
-            )
-            return data_precision, data_scale
-
-        self._debug("Aligning precision/scale for %s" % column_name)
-
-        new_precision = data_precision
-        new_scale = data_scale
-
-        if new_precision <= self.max_decimal_precision() - decimal_padding_digits:
-            # Change precision after scale
-            new_scale += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
-            new_precision += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
-
-        if new_precision < self.max_decimal_precision():
-            new_precision += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
-
-        if new_precision != data_precision or new_scale != data_scale:
-            self._log(
-                "Padded precision/scale for %s in line with DECIMAL_PADDING_DIGITS=%s: %s,%s -> %s,%s"
-                % (
-                    column_name,
-                    decimal_padding_digits,
-                    data_precision,
-                    data_scale,
-                    new_precision,
-                    new_scale,
-                ),
-                detail=VVERBOSE,
-            )
-        return new_precision, new_scale
-
-    def _create_table_columns_clause_common(self, column_list, external=False):
-        """Trivial helper for SQL text consistency"""
-        sql_cols = [
-            (
-                self.enclose_identifier(_.name),
-                _.format_data_type(),
-                self._create_table_column_nn_clause_common(_, external=external),
-            )
-            for _ in column_list
-        ]
-        max_name = max(len(_[0]) for _ in sql_cols)
-        col_template = f"%-{max_name}s %s%s"
-        return "    " + "\n,   ".join([col_template % (_[0], _[1], f" {_[2]}" if _[2] else "") for _ in sql_cols])
-
-    def _create_table_column_nn_clause_common(self, column: ColumnMetadataInterface, external: bool = False) -> str:
-        """Return clause for a NOT NULL column if the backend supports it and it is not an external table.
-        We don't want the constraint on external tables because we want to stage the data and then validate correctness.
-        nullable of None is treated as True. i.e. we can't be sure of NOT NULL so go with the safe option.
-        """
-        if not self.not_null_column_supported() or column.nullable or column.nullable is None or external:
-            return ""
-        return "NOT NULL"
-
-    def _cursor_projection(self, cursor) -> list:
-        """Returns a list of strings describing the projection of a cursor.
-        Names are coerced to lower case to give a standard output across different backend systems.
-        This should be called after the query has been executed.
-        """
-        return [_[0].lower() for _ in cursor.description]
-
-    def _cursor_row_to_dict(self, cursor_projection, row) -> dict:
-        """Trivial function combining typical tuple/list row format with results of _cursor_projection() to
-        generate a row dict.
-        """
-        return dict(zip(cursor_projection, row))
-
-    def _decrypt_password(self, password):
-        if self._connection_options.password_key_file:
-            pass_tool = PasswordTools()
-            goe_key = pass_tool.get_password_key_from_key_file(self._connection_options.password_key_file)
-            self._log("Decrypting %s password" % self.backend_db_name(), detail=VVERBOSE)
-            clear_password = pass_tool.b64decrypt(password, goe_key)
-            return clear_password
-        return password
-
-    @staticmethod
-    def _fixed_session_parameters():
-        """Dictionary of session parameters for a given backend. This top level method gives us an empty base"""
-        return {}
-
-    def _format_select_projection(self, select_expr_tuples):
-        """Return string of column-expr AS alias pairs formatted consistently across all usages"""
-        return "\n,      ".join(f"{e} AS {self.enclose_identifier(n)}" for e, n in select_expr_tuples)
-
-    def _gen_max_column_values_sql(
-        self,
-        db_name,
-        table_name,
-        column_name_list,
-        filter_clause=None,
-        columns_to_cast_to_string=None,
-    ):
-        """Produce a SQL statement that selects a MAX row from the underlying table.
-        Returns None if no data selected.
-        The columns_to_cast_to_string parameter is because our HiveServer2 DBAPI does not support nanoseconds
-        therefore we bring certain data types back as strings to avoid truncating to milliseconds.
-        filter_clause: Option WHERE clause
-
-        NOTE: Some backends (e.g. Synapse) may override this if the "common" syntax used here is incompatible.
-        """
-
-        def add_sql_cast(col_name, col_expr=None, add_alias=False):
-            col_expr = col_expr or col_name
-            if col_name in (columns_to_cast_to_string or []):
-                cast_str = "CAST(%s AS %s)" % (
-                    col_expr,
-                    self.generic_string_data_type(),
-                )
-            else:
-                cast_str = col_expr
-            if add_alias:
-                cast_str += " AS %s" % col_name
-            return cast_str
-
-        assert column_name_list and isinstance(column_name_list, list)
-
-        self._debug("Generate max SQL for columns: %s" % column_name_list)
-
-        if len(column_name_list) == 1:
-            # For a single column nothing out performs max()
-            proj_col = add_sql_cast(
-                column_name_list[0],
-                col_expr="MAX(%s)" % self.enclose_identifier(column_name_list[0]),
-            )
-            sql = "SELECT %s FROM %s" % (
-                proj_col,
-                self.enclose_object_reference(db_name, table_name),
-            )
-            if filter_clause:
-                sql += " WHERE " + filter_clause
-        else:
-            # Analytic row_number() function tests very slow in Impala, group by method below much faster.
-            # max() fastest but not multi column on supported backends at time of implementation.
-            cols = ",".join(column_name_list)
-            proj_cols = ",".join([add_sql_cast(_, add_alias=True) for _ in column_name_list])
-            order_by = ",".join([_ + " DESC" for _ in column_name_list])
-            where = (" WHERE " + filter_clause) if filter_clause else ""
-            sql = "SELECT %s FROM %s%s GROUP BY %s ORDER BY %s LIMIT 1" % (
-                proj_cols,
-                self.enclose_object_reference(db_name, table_name),
-                where,
-                cols,
-                order_by,
-            )
-        return sql
-
-    def _gen_global_session_parameters(self, backend_session_parameters, log_clashes=True):
-        """Merge user defined session parameters with our fixed session parameters.
-        We remove any fixed parameters from custom list in a case insensitive way to prevent duplicates.
-        Apply fixed parameters second so they have precedence.
-        """
-        global_session_parameters = {}
-        if backend_session_parameters:
-            global_session_parameters.update(backend_session_parameters)
-        if self._fixed_session_parameters():
-            fixed_keys = [_.lower() for _ in list(self._fixed_session_parameters().keys())]
-            for key_to_delete in [_ for _ in list(global_session_parameters.keys()) if _.lower() in fixed_keys]:
-                if log_clashes:
-                    self._log(
-                        "Removing OFFLOAD_BACKEND_SESSION_PARAMETERS[%s] because of fixed parameter clash"
-                        % key_to_delete,
-                        detail=VVERBOSE,
-                    )
-                del global_session_parameters[key_to_delete]
-            global_session_parameters.update(self._fixed_session_parameters())
-        return global_session_parameters
-
-    def _gen_insert_select_sql_assertions(
-        self,
-        db_name,
-        table_name,
-        from_db_name,
-        from_table_name,
-        select_expr_tuples,
-        partition_expr_tuples,
-        filter_clauses,
-        from_object_override,
-    ):
-        assert db_name and table_name
-        assert (from_db_name and from_table_name) or from_object_override
-        assert select_expr_tuples
-        assert isinstance(select_expr_tuples, list), "%s is not list" % type(select_expr_tuples)
-        assert isinstance(select_expr_tuples[0], tuple), "%s is not tuple" % type(select_expr_tuples[0])
-        if partition_expr_tuples:
-            assert isinstance(partition_expr_tuples, list), "%s is not list" % type(partition_expr_tuples)
-            assert isinstance(partition_expr_tuples[0], tuple), "%s is not tuple" % type(partition_expr_tuples[0])
-        if filter_clauses:
-            assert isinstance(filter_clauses, list)
-
-    def _gen_sql_text_common(
-        self,
-        db_name,
-        table_name,
-        column_names=None,
-        filter_clauses=None,
-        measures=None,
-        agg_fns=None,
-    ):
-        """Generate a SQL statement appropriate for running in the backend.
-        This is common functionality for multiple backends, individual backends may override it.
-        See gen_sql_text() description for parameter descriptions.
-        """
-        assert db_name and table_name
-        if column_names:
-            assert isinstance(column_names, (list, tuple)), "%s is not list/tuple" % type(column_names)
-        if measures:
-            assert isinstance(measures, (list, tuple)), "%s is not list/tuple" % type(measures)
-            assert agg_fns
-            assert isinstance(agg_fns, (list, tuple)), "%s is not list/tuple" % type(agg_fns)
-
-        projection = []
-        if column_names:
-            projection += [self.enclose_identifier(_) for _ in column_names]
-            self._debug("gen_sql_text base projection: %s" % str(projection))
-        if measures and agg_fns:
-            projection += ["%s(%s)" % (fn.upper(), self.enclose_identifier(m)) for m in measures for fn in agg_fns]
-            self._debug("gen_sql_text projection with measures: %s" % str(projection))
-        if not projection:
-            raise BackendApiException("No columns have been specified for projection: %s.%s" % (db_name, table_name))
-
-        projection_clause = "\n,      ".join(projection)
-        where_clause = "\nWHERE  " + "\nAND    ".join(filter_clauses) if filter_clauses else ""
-        group_by_clause = (
-            ("\nGROUP BY " + "\n,        ".join([self.enclose_identifier(_) for _ in column_names]))
-            if measures and column_names
-            else ""
-        )
-        order_by_clause = (
-            ("\nORDER BY " + "\n,        ".join([self.enclose_identifier(_) for _ in column_names]))
-            if agg_fns and column_names
-            else ""
-        )
-        sql = """SELECT %(projection)s
-FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
-            "db": self.enclose_identifier(db_name),
-            "table": self.enclose_identifier(table_name),
-            "projection": projection_clause,
-            "where_clause": where_clause,
-            "group_by": group_by_clause,
-            "order_by": order_by_clause,
-        }
-        return sql
-
-    def _gen_select_count_sql_text_common(self, db_name, table_name, filter_clause=None):
-        """filter_clause does NOT include "WHERE" because that could be backend specific.
-        At the point WHERE is not compatible with a backend we'll need to add an
-        override method for this.
-        """
-        assert db_name and table_name
-        where_clause = f" WHERE {filter_clause}" if filter_clause else ""
-        return "SELECT COUNT(*) FROM %s%s" % (
-            self.enclose_object_reference(db_name, table_name),
-            where_clause,
-        )
-
-    def _get_max_column_values_common(
-        self,
-        db_name,
-        table_name,
-        column_name_list,
-        columns_to_cast_to_string=None,
-        optimistic_prune_clause=None,
-        not_when_dry_running=False,
-        query_options=None,
-    ):
-        """Get max value for a set of columns.
-        optimistic_prune_clause is used to limit the partitions scanned when looking for existing rows.
-        If no data is returned then we fall back to scanning without the clause.
-        optimistic_prune_clause is only applicable for single column partition schemes.
-        """
-        assert db_name and table_name
-        assert column_name_list and isinstance(column_name_list, list)
-
-        sql = self._gen_max_column_values_sql(
-            db_name,
-            table_name,
-            column_name_list,
-            columns_to_cast_to_string=columns_to_cast_to_string,
-        )
-        max_row = None
-        if len(column_name_list) == 1:
-            if optimistic_prune_clause:
-                hwm_sql = self._gen_max_column_values_sql(
-                    db_name,
-                    table_name,
-                    column_name_list,
-                    filter_clause=optimistic_prune_clause,
-                    columns_to_cast_to_string=columns_to_cast_to_string,
-                )
-                max_row = self.execute_query_fetch_one(
-                    hwm_sql,
-                    query_options=query_options,
-                    not_when_dry_running=not_when_dry_running,
-                    log_level=VVERBOSE,
-                )
-
-            if not max_row or max_row[0] is None:
-                max_row = self.execute_query_fetch_one(
-                    sql,
-                    query_options=query_options,
-                    not_when_dry_running=not_when_dry_running,
-                    log_level=VVERBOSE,
-                )
-                if max_row and max_row[0] is None:
-                    # Tuple (None, ) is True, catch that here and use None instead
-                    max_row = None
-        else:
-            max_row = self.execute_query_fetch_one(
-                sql,
-                query_options=query_options,
-                not_when_dry_running=not_when_dry_running,
-                log_level=VVERBOSE,
-            )
-        return max_row
-
-    def _insert_literals_using_insert_values_sql_text(
-        self, db_name, table_name, column_names, literal_csv_list, split_by_cr=True
-    ):
-        """Format a SQL statement for inserting literals using SQL where multiple rows are passed to VALUES."""
-        join_str = "\n," if split_by_cr else ","
-        insert_template = "INSERT INTO %s (%s) VALUES" % (
-            self.enclose_object_reference(db_name, table_name),
-            ",".join(self.enclose_identifier(_) for _ in column_names),
-        )
-        sql = insert_template + "\n " + join_str.join(f"({_})" for _ in literal_csv_list)
-        return sql
-
-    def _run_os_cmd(self, cmd):
-        """Run an os command and:
-          - Throw an exception if the return code is non-zero.
-          - Put a dot on stdout for each line logged to give the impression of progress.
-          - Logs all command output at VVERBOSE level.
-        silent: No stdout unless vverbose is requested.
-        """
-        return run_os_cmd(
-            cmd,
-            self._messages,
-            self._connection_options,
-            dry_run=self._dry_run,
-            silent=True,
-        )
-
-    def _table_partition_info(self, partition_id, data_format=None, num_rows=None, size_in_bytes=None):
-        """We need a standard value to return from get_table_partitions() so we know what data to expect.
-        All inputs, except partition_id, are optional because different backends will have different details.
-        This method is to be used on a per partition basis with the intention that combined we'll have a dict
-        of all partitions with the partition_id as the key as well as an attribute.
-        """
-        return {
-            "data_format": data_format,
-            "num_rows": num_rows,
-            "partition_id": partition_id,
-            "size_in_bytes": size_in_bytes,
-        }
-
-    def _unsupported_decimal_precision_scale(self, data_precision, data_scale):
-        return (
-            (data_scale is not None and (data_scale < 0 or data_scale > self.max_decimal_scale()))
-            or (data_precision and data_precision > self.max_decimal_precision())
-            or (data_precision and data_scale and data_scale > data_precision)
-        )
-
-    def _validate_no_log_items(self, no_log_items):
-        """Validate no_log_items is a valid dict for the purpose of removing sensitive information from logging.
-        no_log_items should be either:
-            {'item': 'something-sensitive-to-replace', 'sub': 'replace-with-what'}
-        or
-            [
-                {'item': 'something-sensitive-to-replace', 'sub': 'replace-with-what'},
-                ... more dicts ...
-            ]
-        'sub' is optional
-        """
-        if no_log_items is None:
-            return no_log_items
-        assert isinstance(no_log_items, (list, dict))
-        if isinstance(no_log_items, dict):
-            no_log_items = [no_log_items]
-        assert all(_ in ["item", "sub"] for _ in list(no_log_items[0].keys()))
-        return no_log_items
-
-    def _validate_connection_options(self, option_list):
-        missing_opts = [_ for _ in option_list if not hasattr(self._connection_options, _)]
-        if missing_opts:
-            raise BackendApiException("Missing connection options: %s" % ", ".join(missing_opts))
-
-    # enforced methods
-
-    @abstractmethod
-    def _backend_capabilities(self):
-        pass
-
-    @abstractmethod
-    def _execute_ddl_or_dml(
-        self,
-        sql,
-        sync=None,
-        query_options=None,
-        log_level=VERBOSE,
-        profile=None,
-        no_log_items=None,
-    ):
-        """Run SQL that has no result set, e.g. DDL, sql can be a str or a list of SQLs.
-        This function returns the SQL statements that were executed.
-        Exception will be raised upon failure.
-        Parameters:
-            sync: None means do nothing. True/False mean act as appropriate.
-            query_options: key/value pairs for session settings.
-            profile: if True we will log a profile (if possible) *after the first* SQL statement.
-        """
-
-    @abstractmethod
-    def _execute_global_session_parameters(self, log_level=VVERBOSE):
-        """Use this to ensure global session parameters requested by the user are honoured in each backend."""
-
-    @abstractmethod
-    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
-        """Return a sample clause to slot in after a FROM table clause.
-        Some backends may have a completely different structure so this may need refactoring in the future.
-        """
-
-    @abstractmethod
-    def _get_query_profile(self, query_identifier=None):
-        """Return a string containing query details of last query executed.
-        Optional query_id parameter for backends that need more information.
-        This is defined as private because backends are inconsistent so we can't have a standard approach.
-        """
-
-    @abstractmethod
-    def _invalid_identifier_character_re(self):
-        pass
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def backend_db_name(self):
         """Some backends have overrides due to stylistic formatting, e.g. BigQuery."""
@@ -953,8 +449,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
                 valid_schemes.append(OFFLOAD_FS_SCHEME_INHERIT)
             self._valid_schemes = valid_schemes
         return self._valid_schemes
-
-    # enforced methods/properties
 
     @abstractmethod
     def add_columns(self, db_name, table_name, column_tuples, sync=None):
@@ -1701,8 +1195,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
     def from_canonical_column(self, column, decimal_padding_digits=0):
         """Translate an internal GOE column to a backend column."""
 
-    # capability config
-
     def is_capability_supported(self, capability_constant):
         assert capability_constant in self._backend_capabilities(), "Unknown capability: %s" % capability_constant
         return self._backend_capabilities()[capability_constant]
@@ -1828,3 +1320,481 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
 
     def table_stats_set_supported(self):
         return self.is_capability_supported(CAPABILITY_TABLE_STATS_SET)
+
+    def _log(self, msg, detail=None, ansi_code=None, no_log_items=None):
+        """Write to offload log file.
+        no_log_items: See self._validate_no_log_items() for description
+        """
+        no_log_items = self._validate_no_log_items(no_log_items)
+        if no_log_items:
+            log_msg = msg
+            for itm in no_log_items:
+                log_msg = log_msg.replace(itm["item"], itm.get("sub", "?"))
+        else:
+            log_msg = msg
+        self._messages.log(log_msg, detail=detail, ansi_code=ansi_code)
+        if detail == VVERBOSE:
+            logger.debug(log_msg)
+        else:
+            logger.info(log_msg)
+
+    def _log_or_not(self, msg, log_level=VERBOSE, no_log_items=None):
+        """Wrapper over _log() to cater for suppressing logging of SQLs"""
+        if log_level is not None:
+            self._log(msg, detail=log_level, no_log_items=no_log_items)
+
+    def _debug(self, msg):
+        self._messages.debug(msg)
+        logger.debug(msg)
+
+    def _warning(self, msg):
+        self._messages.warning(msg)
+        logger.warning(msg)
+
+    def _apply_decimal_padding_digits(self, column_name, data_precision, data_scale, decimal_padding_digits):
+        """Add decimal_padding_digits to scale if precision has headroom then pad precision if it has headroom for
+        that too.
+        Currently this has no max for scale, i.e. assumes the max is same as max precision. This may not be true
+        for all backends.
+        Returns a tuple of the adjusted precision & scale
+
+        Change precision after scale
+        """
+        if not decimal_padding_digits:
+            return data_precision, data_scale
+
+        if data_precision is None or data_scale is None:
+            self._log(
+                "No padding applied to %s for precision/scale: %s/%s" % (column_name, data_precision, data_scale),
+                detail=VVERBOSE,
+            )
+            return data_precision, data_scale
+
+        self._debug("Aligning precision/scale for %s" % column_name)
+
+        new_precision = data_precision
+        new_scale = data_scale
+
+        if new_precision <= self.max_decimal_precision() - decimal_padding_digits:
+            new_scale += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
+            new_precision += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
+
+        if new_precision < self.max_decimal_precision():
+            new_precision += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
+
+        if new_precision != data_precision or new_scale != data_scale:
+            self._log(
+                "Padded precision/scale for %s in line with DECIMAL_PADDING_DIGITS=%s: %s,%s -> %s,%s"
+                % (
+                    column_name,
+                    decimal_padding_digits,
+                    data_precision,
+                    data_scale,
+                    new_precision,
+                    new_scale,
+                ),
+                detail=VVERBOSE,
+            )
+        return new_precision, new_scale
+
+    def _create_table_columns_clause_common(self, column_list, external=False):
+        """Trivial helper for SQL text consistency"""
+        sql_cols = [
+            (
+                self.enclose_identifier(_.name),
+                _.format_data_type(),
+                self._create_table_column_nn_clause_common(_, external=external),
+            )
+            for _ in column_list
+        ]
+        max_name = max(len(_[0]) for _ in sql_cols)
+        col_template = f"%-{max_name}s %s%s"
+        return "    " + "\n,   ".join([col_template % (_[0], _[1], f" {_[2]}" if _[2] else "") for _ in sql_cols])
+
+    def _create_table_column_nn_clause_common(self, column: ColumnMetadataInterface, external: bool = False) -> str:
+        """Return clause for a NOT NULL column if the backend supports it and it is not an external table.
+        We don't want the constraint on external tables because we want to stage the data and then validate correctness.
+        nullable of None is treated as True. i.e. we can't be sure of NOT NULL so go with the safe option.
+        """
+        if not self.not_null_column_supported() or column.nullable or column.nullable is None or external:
+            return ""
+        return "NOT NULL"
+
+    def _cursor_projection(self, cursor: Any) -> list:
+        """Returns a list of strings describing the projection of a cursor.
+        Names are coerced to lower case to give a standard output across different backend systems.
+        This should be called after the query has been executed.
+        """
+        return [_[0].lower() for _ in cursor.description]
+
+    def _cursor_row_to_dict(self, cursor_projection: Any, row: Any) -> dict:
+        """Trivial function combining typical tuple/list row format with results of _cursor_projection() to
+        generate a row dict.
+        """
+        return dict(zip(cursor_projection, row))
+
+    def _decrypt_password(self, password):
+        if self._connection_options.password_key_file:
+            pass_tool = PasswordTools()
+            goe_key = pass_tool.get_password_key_from_key_file(self._connection_options.password_key_file)
+            self._log("Decrypting %s password" % self.backend_db_name(), detail=VVERBOSE)
+            clear_password = pass_tool.b64decrypt(password, goe_key)
+            return clear_password
+        return password
+
+    @staticmethod
+    def _fixed_session_parameters():
+        """Dictionary of session parameters for a given backend. This top level method gives us an empty base"""
+        return {}
+
+    def _format_select_projection(self, select_expr_tuples):
+        """Return string of column-expr AS alias pairs formatted consistently across all usages"""
+        return "\n,      ".join(f"{e} AS {self.enclose_identifier(n)}" for e, n in select_expr_tuples)
+
+    def _gen_max_column_values_sql(
+        self,
+        db_name,
+        table_name,
+        column_name_list,
+        filter_clause=None,
+        columns_to_cast_to_string=None,
+    ):
+        """Produce a SQL statement that selects a MAX row from the underlying table.
+        Returns None if no data selected.
+        The columns_to_cast_to_string parameter is because our HiveServer2 DBAPI does not support nanoseconds
+        therefore we bring certain data types back as strings to avoid truncating to milliseconds.
+        filter_clause: Option WHERE clause
+
+        NOTE: Some backends (e.g. Synapse) may override this if the "common" syntax used here is incompatible.
+
+        For a single column nothing out performs max()
+        Analytic row_number() function tests very slow in Impala, group by method below much faster.
+        max() fastest but not multi column on supported backends at time of implementation.
+        """
+
+        def add_sql_cast(col_name, col_expr=None, add_alias=False):
+            col_expr = col_expr or col_name
+            if col_name in (columns_to_cast_to_string or []):
+                cast_str = "CAST(%s AS %s)" % (
+                    col_expr,
+                    self.generic_string_data_type(),
+                )
+            else:
+                cast_str = col_expr
+            if add_alias:
+                cast_str += " AS %s" % col_name
+            return cast_str
+
+        assert column_name_list and isinstance(column_name_list, list)
+
+        self._debug("Generate max SQL for columns: %s" % column_name_list)
+
+        if len(column_name_list) == 1:
+            proj_col = add_sql_cast(
+                column_name_list[0],
+                col_expr="MAX(%s)" % self.enclose_identifier(column_name_list[0]),
+            )
+            sql = "SELECT %s FROM %s" % (
+                proj_col,
+                self.enclose_object_reference(db_name, table_name),
+            )
+            if filter_clause:
+                sql += " WHERE " + filter_clause
+        else:
+            cols = ",".join(column_name_list)
+            proj_cols = ",".join([add_sql_cast(_, add_alias=True) for _ in column_name_list])
+            order_by = ",".join([_ + " DESC" for _ in column_name_list])
+            where = (" WHERE " + filter_clause) if filter_clause else ""
+            sql = "SELECT %s FROM %s%s GROUP BY %s ORDER BY %s LIMIT 1" % (
+                proj_cols,
+                self.enclose_object_reference(db_name, table_name),
+                where,
+                cols,
+                order_by,
+            )
+        return sql
+
+    def _gen_global_session_parameters(self, backend_session_parameters, log_clashes=True):
+        """Merge user defined session parameters with our fixed session parameters.
+        We remove any fixed parameters from custom list in a case insensitive way to prevent duplicates.
+        Apply fixed parameters second so they have precedence.
+        """
+        global_session_parameters = {}
+        if backend_session_parameters:
+            global_session_parameters.update(backend_session_parameters)
+        if self._fixed_session_parameters():
+            fixed_keys = [_.lower() for _ in list(self._fixed_session_parameters().keys())]
+            for key_to_delete in [_ for _ in list(global_session_parameters.keys()) if _.lower() in fixed_keys]:
+                if log_clashes:
+                    self._log(
+                        "Removing OFFLOAD_BACKEND_SESSION_PARAMETERS[%s] because of fixed parameter clash"
+                        % key_to_delete,
+                        detail=VVERBOSE,
+                    )
+                del global_session_parameters[key_to_delete]
+            global_session_parameters.update(self._fixed_session_parameters())
+        return global_session_parameters
+
+    def _gen_insert_select_sql_assertions(
+        self,
+        db_name,
+        table_name,
+        from_db_name,
+        from_table_name,
+        select_expr_tuples,
+        partition_expr_tuples,
+        filter_clauses,
+        from_object_override,
+    ):
+        assert db_name and table_name
+        assert (from_db_name and from_table_name) or from_object_override
+        assert select_expr_tuples
+        assert isinstance(select_expr_tuples, list), "%s is not list" % type(select_expr_tuples)
+        assert isinstance(select_expr_tuples[0], tuple), "%s is not tuple" % type(select_expr_tuples[0])
+        if partition_expr_tuples:
+            assert isinstance(partition_expr_tuples, list), "%s is not list" % type(partition_expr_tuples)
+            assert isinstance(partition_expr_tuples[0], tuple), "%s is not tuple" % type(partition_expr_tuples[0])
+        if filter_clauses:
+            assert isinstance(filter_clauses, list)
+
+    def _gen_sql_text_common(
+        self,
+        db_name,
+        table_name,
+        column_names=None,
+        filter_clauses=None,
+        measures=None,
+        agg_fns=None,
+    ):
+        """Generate a SQL statement appropriate for running in the backend.
+        This is common functionality for multiple backends, individual backends may override it.
+        See gen_sql_text() description for parameter descriptions.
+        """
+        assert db_name and table_name
+        if column_names:
+            assert isinstance(column_names, (list, tuple)), "%s is not list/tuple" % type(column_names)
+        if measures:
+            assert isinstance(measures, (list, tuple)), "%s is not list/tuple" % type(measures)
+            assert agg_fns
+            assert isinstance(agg_fns, (list, tuple)), "%s is not list/tuple" % type(agg_fns)
+
+        projection = []
+        if column_names:
+            projection += [self.enclose_identifier(_) for _ in column_names]
+            self._debug("gen_sql_text base projection: %s" % str(projection))
+        if measures and agg_fns:
+            projection += ["%s(%s)" % (fn.upper(), self.enclose_identifier(m)) for m in measures for fn in agg_fns]
+            self._debug("gen_sql_text projection with measures: %s" % str(projection))
+        if not projection:
+            raise BackendApiException("No columns have been specified for projection: %s.%s" % (db_name, table_name))
+
+        projection_clause = "\n,      ".join(projection)
+        where_clause = "\nWHERE  " + "\nAND    ".join(filter_clauses) if filter_clauses else ""
+        group_by_clause = (
+            ("\nGROUP BY " + "\n,        ".join([self.enclose_identifier(_) for _ in column_names]))
+            if measures and column_names
+            else ""
+        )
+        order_by_clause = (
+            ("\nORDER BY " + "\n,        ".join([self.enclose_identifier(_) for _ in column_names]))
+            if agg_fns and column_names
+            else ""
+        )
+        sql = """SELECT %(projection)s
+FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
+            "db": self.enclose_identifier(db_name),
+            "table": self.enclose_identifier(table_name),
+            "projection": projection_clause,
+            "where_clause": where_clause,
+            "group_by": group_by_clause,
+            "order_by": order_by_clause,
+        }
+        return sql
+
+    def _gen_select_count_sql_text_common(self, db_name, table_name, filter_clause=None):
+        """filter_clause does NOT include "WHERE" because that could be backend specific.
+        At the point WHERE is not compatible with a backend we'll need to add an
+        override method for this.
+        """
+        assert db_name and table_name
+        where_clause = f" WHERE {filter_clause}" if filter_clause else ""
+        return "SELECT COUNT(*) FROM %s%s" % (
+            self.enclose_object_reference(db_name, table_name),
+            where_clause,
+        )
+
+    def _get_max_column_values_common(
+        self,
+        db_name,
+        table_name,
+        column_name_list,
+        columns_to_cast_to_string=None,
+        optimistic_prune_clause=None,
+        not_when_dry_running=False,
+        query_options=None,
+    ):
+        """Get max value for a set of columns.
+        optimistic_prune_clause is used to limit the partitions scanned when looking for existing rows.
+        If no data is returned then we fall back to scanning without the clause.
+        optimistic_prune_clause is only applicable for single column partition schemes.
+
+        Tuple (None, ) is True, catch that here and use None instead
+        """
+        assert db_name and table_name
+        assert column_name_list and isinstance(column_name_list, list)
+
+        sql = self._gen_max_column_values_sql(
+            db_name,
+            table_name,
+            column_name_list,
+            columns_to_cast_to_string=columns_to_cast_to_string,
+        )
+        max_row = None
+        if len(column_name_list) == 1:
+            if optimistic_prune_clause:
+                hwm_sql = self._gen_max_column_values_sql(
+                    db_name,
+                    table_name,
+                    column_name_list,
+                    filter_clause=optimistic_prune_clause,
+                    columns_to_cast_to_string=columns_to_cast_to_string,
+                )
+                max_row = self.execute_query_fetch_one(
+                    hwm_sql,
+                    query_options=query_options,
+                    not_when_dry_running=not_when_dry_running,
+                    log_level=VVERBOSE,
+                )
+
+            if not max_row or max_row[0] is None:
+                max_row = self.execute_query_fetch_one(
+                    sql,
+                    query_options=query_options,
+                    not_when_dry_running=not_when_dry_running,
+                    log_level=VVERBOSE,
+                )
+                if max_row and max_row[0] is None:
+                    max_row = None
+        else:
+            max_row = self.execute_query_fetch_one(
+                sql,
+                query_options=query_options,
+                not_when_dry_running=not_when_dry_running,
+                log_level=VVERBOSE,
+            )
+        return max_row
+
+    def _insert_literals_using_insert_values_sql_text(
+        self, db_name, table_name, column_names, literal_csv_list, split_by_cr=True
+    ):
+        """Format a SQL statement for inserting literals using SQL where multiple rows are passed to VALUES."""
+        join_str = "\n," if split_by_cr else ","
+        insert_template = "INSERT INTO %s (%s) VALUES" % (
+            self.enclose_object_reference(db_name, table_name),
+            ",".join(self.enclose_identifier(_) for _ in column_names),
+        )
+        sql = insert_template + "\n " + join_str.join(f"({_})" for _ in literal_csv_list)
+        return sql
+
+    def _run_os_cmd(self, cmd):
+        """Run an os command and:
+          - Throw an exception if the return code is non-zero.
+          - Put a dot on stdout for each line logged to give the impression of progress.
+          - Logs all command output at VVERBOSE level.
+        silent: No stdout unless vverbose is requested.
+        """
+        return run_os_cmd(
+            cmd,
+            self._messages,
+            self._connection_options,
+            dry_run=self._dry_run,
+            silent=True,
+        )
+
+    def _table_partition_info(self, partition_id, data_format=None, num_rows=None, size_in_bytes=None):
+        """We need a standard value to return from get_table_partitions() so we know what data to expect.
+        All inputs, except partition_id, are optional because different backends will have different details.
+        This method is to be used on a per partition basis with the intention that combined we'll have a dict
+        of all partitions with the partition_id as the key as well as an attribute.
+        """
+        return {
+            "data_format": data_format,
+            "num_rows": num_rows,
+            "partition_id": partition_id,
+            "size_in_bytes": size_in_bytes,
+        }
+
+    def _unsupported_decimal_precision_scale(self, data_precision, data_scale):
+        return (
+            (data_scale is not None and (data_scale < 0 or data_scale > self.max_decimal_scale()))
+            or (data_precision and data_precision > self.max_decimal_precision())
+            or (data_precision and data_scale and data_scale > data_precision)
+        )
+
+    def _validate_no_log_items(self, no_log_items):
+        """Validate no_log_items is a valid dict for the purpose of removing sensitive information from logging.
+        no_log_items should be either:
+            {'item': 'something-sensitive-to-replace', 'sub': 'replace-with-what'}
+        or
+            [
+                {'item': 'something-sensitive-to-replace', 'sub': 'replace-with-what'},
+                ... more dicts ...
+            ]
+        'sub' is optional
+        """
+        if no_log_items is None:
+            return no_log_items
+        assert isinstance(no_log_items, (list, dict))
+        if isinstance(no_log_items, dict):
+            no_log_items = [no_log_items]
+        assert all(_ in ["item", "sub"] for _ in list(no_log_items[0].keys()))
+        return no_log_items
+
+    def _validate_connection_options(self, option_list):
+        missing_opts = [_ for _ in option_list if not hasattr(self._connection_options, _)]
+        if missing_opts:
+            raise BackendApiException("Missing connection options: %s" % ", ".join(missing_opts))
+
+    @abstractmethod
+    def _backend_capabilities(self):
+        pass
+
+    @abstractmethod
+    def _execute_ddl_or_dml(
+        self,
+        sql,
+        sync=None,
+        query_options=None,
+        log_level=VERBOSE,
+        profile=None,
+        no_log_items=None,
+    ):
+        """Run SQL that has no result set, e.g. DDL, sql can be a str or a list of SQLs.
+        This function returns the SQL statements that were executed.
+        Exception will be raised upon failure.
+        Parameters:
+            sync: None means do nothing. True/False mean act as appropriate.
+            query_options: key/value pairs for session settings.
+            profile: if True we will log a profile (if possible) *after the first* SQL statement.
+        """
+
+    @abstractmethod
+    def _execute_global_session_parameters(self, log_level=VVERBOSE):
+        """Use this to ensure global session parameters requested by the user are honoured in each backend."""
+
+    @abstractmethod
+    def _gen_sample_stats_sql_sample_clause(self, db_name, table_name, sample_perc=None):
+        """Return a sample clause to slot in after a FROM table clause.
+        Some backends may have a completely different structure so this may need refactoring in the future.
+        """
+
+    @abstractmethod
+    def _get_query_profile(self, query_identifier=None):
+        """Return a string containing query details of last query executed.
+        Optional query_id parameter for backends that need more information.
+        This is defined as private because backends are inconsistent so we can't have a standard approach.
+        """
+
+    @abstractmethod
+    def _invalid_identifier_character_re(self):
+        pass

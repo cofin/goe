@@ -19,7 +19,7 @@ class SystemController(SecureController):
     """Controller for /api/system endpoints."""
 
     path = "/api/system"
-    tags: ClassVar[list[str]] = ["System"]
+    tags = ["System"]
     auth: ClassVar[AuthenticationPolicy] = required("console-key")
 
     @get("/status/", auth=public())
@@ -38,7 +38,7 @@ class SystemController(SecureController):
             endpoint_id=str(system_service.generate_listener_endpoint_id()),
             listener_group_id=str(system_service.generate_listener_group_id()),
             db_unique_name=system_service.get_db_unique_name(),
-            active_listeners=active_listeners or [],
+            active_listeners=[str(item) for item in (active_listeners or []) if item is not None],
             version=system_service.get_version(),
             frontend_type=system_service.get_frontend_type(),
             backend_type=system_service.get_backend_type(),

@@ -13,7 +13,7 @@ by Impala and Hive implementations.
 
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from goe.filesystem.goe_dfs import gen_load_uri_from_options
 from goe.offload.backend_table import (
@@ -55,21 +55,10 @@ if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
 
 
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-# Used for test assertions
 COMPUTE_LOAD_TABLE_STATS_LOG_TEXT = "Config requires compute of stats on load table"
 
 logger = logging.getLogger(__name__)
-# Disabling logging by default
 logger.addHandler(logging.NullHandler())
-
-
-###########################################################################
-# BackendHadoopTable
-###########################################################################
 
 
 class BackendHadoopTable(BackendTableInterface):
@@ -85,17 +74,16 @@ class BackendHadoopTable(BackendTableInterface):
         table_name: str,
         backend_type: str,
         orchestration_options: "OrchestrationConfig",
-        messages,
-        orchestration_operation=None,
-        hybrid_metadata=None,
-        dry_run=False,
-        existing_backend_api=None,
-        do_not_connect=False,
-    ):
+        messages: Any,
+        orchestration_operation: Any = None,
+        hybrid_metadata: Any = None,
+        dry_run: bool = False,
+        existing_backend_api: Any = None,
+        do_not_connect: bool = False,
+    ) -> None:
         """CONSTRUCTOR"""
         assert db_name and table_name
 
-        # Some backends are case sensitive, Hadoop is not and we lower case object names
         self.db_name = db_name.lower()
         self.table_name = table_name.lower()
 
@@ -117,15 +105,12 @@ class BackendHadoopTable(BackendTableInterface):
         self._delta_db_name = self._load_db_name
         self._delta_table_name = None
 
-        # Hadoop has HDFS
-        self._data_db_hdfs_dir = None
-        self._load_db_hdfs_dir = None
-        self._load_table_hdfs_dir = None
-        self._result_cache_db_hdfs_dir = None
+        self._data_db_hdfs_dir: str | None = None
+        self._load_db_hdfs_dir: str | None = None
+        self._load_table_hdfs_dir: str | None = None
+        self._result_cache_db_hdfs_dir: str | None = None
 
-        # Pickup some orchestration_operation/offload_options attributes
         if hasattr(orchestration_operation, "hive_column_stats"):
-            # Having to do hasattr checking because SchemaSync doesn't have adequate options (and shouldn't really need them)
             self._hive_column_stats_enabled = orchestration_operation.hive_column_stats
             self._hive_max_dynamic_partitions = self._orchestration_config.hive_max_dynamic_partitions
             self._hive_max_dynamic_partitions_pernode = self._orchestration_config.hive_max_dynamic_partitions_pernode
@@ -146,9 +131,187 @@ class BackendHadoopTable(BackendTableInterface):
         else:
             self._avro_schema_hdfs_path = None
 
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
+    def cleanup_staging_area(self):
+        self._drop_load_table(sync=True)
+
+    def create_backend_table(self, with_terminator: bool = False) -> list:
+        """Create a table in the backend based on object state.
+        Creating a new table may change our world view so the function drops state if in execute mode.
+        If dry_run then we leave state in place to allow other operations to preview.
+        """
+        cmds = self._create_new_backend_table(sort_column_names=self._sort_columns, with_terminator=with_terminator)
+        if not self._dry_run:
+            self._drop_state()
+        return cmds
+
+    def empty_staging_area(self, staging_file):
+        self._recreate_load_table(staging_file)
+
+    def incremental_merge_final_table(self, extraction_key_columns, staging_columns, sync=None):
+        raise NotImplementedError("incremental_merge_final_table() is not implemented for common Hadoop class")
+
+    def load_final_table(self, sync=None):
+        """Copy data from the staged load table into the final backend table
+        If this fails with ERROR_STATE then we offer up some SQL to assist the user
+        """
+        self._debug(
+            "Loading %s.%s from %s.%s"
+            % (
+                self.db_name,
+                self.table_name,
+                self._load_db_name,
+                self._load_table_name,
+            )
+        )
+
+        select_expression_tuples = [
+            (self.get_final_table_cast(col), col.name.upper()) for col in self.get_non_synthetic_columns()
+        ]
+        sort_cols: list[Any] = getattr(self, "_sort_columns", None) or []
+        sort_expressions = [self.get_final_table_cast(col_name) for col_name in sort_cols]
+
+        sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples, sort_expr_list=sort_expressions)
+
+        try:
+            self._execute_dml(
+                sqls,
+                query_options=query_options,
+                sync=sync,
+                profile=self._log_profile_after_final_table_load,
+            )
+        except Exception as exc:
+            if "ERROR_STATE" in str(exc):
+                partition_expressions = ", ".join(
+                    self.get_final_table_cast(_) for _ in get_column_names(self.get_partition_columns())
+                )
+                suggest_sql = """SELECT COUNT(*)
+        FROM (
+            SELECT DISTINCT %(part_expr)s
+            FROM %(db)s.%(table)s
+        ) v""" % {
+                    "part_expr": partition_expressions,
+                    "db": self._load_db_name,
+                    "table": self._load_table_name,
+                }
+                self._log(
+                    "If memory pressure is the cause of INSERT failure then the number of partitions being created may be a factor."
+                )
+                self._log(
+                    "The SQL below will identify the number of partitions the failing INSERT attempted to create:\n%s"
+                    % suggest_sql
+                )
+            raise
+
+    def load_materialized_join(
+        self,
+        threshold_cols=None,
+        gte_threshold_vals=None,
+        lt_threshold_vals=None,
+        insert_predicates=None,
+        sync=None,
+    ):
+        """Copy data from the load view into the final backend table"""
+        if insert_predicates:
+            assert isinstance(insert_predicates, list)
+        self._debug(
+            "Loading %s.%s from %s.%s"
+            % (
+                self.db_name,
+                self.table_name,
+                self._load_db_name,
+                self._load_table_name,
+            )
+        )
+        select_expression_tuples = [
+            (self.get_final_table_cast(col), col.name.upper()) for col in self.get_non_synthetic_columns()
+        ]
+        sqls, query_options = self._gen_mat_join_insert_sqls(
+            select_expression_tuples,
+            threshold_cols,
+            gte_threshold_vals,
+            lt_threshold_vals,
+            insert_predicates=insert_predicates,
+            sort_expr_list=self._sort_columns or [],
+        )
+        self._execute_dml(
+            sqls,
+            query_options=query_options,
+            sync=sync,
+            profile=self._log_profile_after_final_table_load,
+        )
+
+    def post_transport_tasks(self, staging_file):
+        """Tasks required to ensure we are ready to process the staged data.
+        staging_file ignored in Hadoop.
+        """
+        self._refresh_load_table_files()
+        if self.table_stats_compute_supported():
+            self._compute_load_table_statistics()
+
+    def setup_result_cache_area(self):
+        """Prepare result cache area for Hybrid Queries"""
+        self._create_hadoop_load_database()
+
+    def setup_staging_area(self, staging_file):
+        """Prepare any staging area for Hadoop OffloadTransport"""
+        if staging_file:
+            assert isinstance(staging_file, OffloadStagingFileInterface)
+        self._create_hadoop_load_database()
+        if not staging_file:
+            return
+        if staging_file.file_format == FILE_STORAGE_FORMAT_AVRO:
+            self._copy_load_table_avro_schema(staging_file)
+        self._recreate_load_table(staging_file)
+
+    def validate_type_conversions(self, staging_columns: list) -> None:
+        self._validate_final_table_casts(staging_columns)
+
+    def create_db(self, with_terminator: bool = False) -> list:
+        return self._create_final_db(
+            location=self._get_data_db_hdfs_dir(),
+            with_terminator=with_terminator,
+        )
+
+    def create_load_db(self, with_terminator: bool = False) -> list:
+        """Create a load database."""
+        if self._db_api.load_db_transport_supported():
+            return self._create_load_db(
+                location=self._get_load_db_hdfs_dir(),
+                with_terminator=with_terminator,
+            )
+        return []
+
+    def get_default_location(self):
+        if self._default_location is None:
+            self._default_location = self._db_api.get_table_location(self.db_name, self.table_name)
+        return self._default_location
+
+    def get_staging_table_location(self):
+        return self._get_load_table_hdfs_dir()
+
+    def partition_function_requires_granularity(self):
+        return False
+
+    def result_cache_area_exists(self):
+        return self._result_cache_db_exists()
+
+    def staging_area_exists(self):
+        if not self._load_db_exists():
+            self._warning("Staging database %s does not exist" % self._load_db_name)
+        return self._load_db_exists()
+
+    def predicate_has_rows(self, predicate):
+        if not self.exists():
+            return False
+
+        sql = "SELECT 1 FROM %s WHERE (%s) LIMIT 1" % (
+            self._db_api.enclose_object_reference(self.db_name, self.table_name),
+            hadoop_predicate.predicate_to_where_clause(self.get_columns(), predicate),
+        )
+        return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
+
+    def predicate_to_where_clause(self, predicate, columns_override=None):
+        return hadoop_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
 
     def _compute_load_table_statistics(self):
         if not self._user_requested_compute_load_table_stats:
@@ -296,16 +459,16 @@ FROM %s.%s""" % (
         if not self._dry_run:
             self._get_dfs_client().write(self._avro_schema_hdfs_path, data=avro_schema_str, overwrite=True)
 
-    def _create_load_table(self, staging_file, with_terminator=False) -> list:
+    def _create_load_table(self, staging_file: Any, with_terminator: bool = False) -> list:
         """Create the staging/load table and supporting HDFS directory"""
         self._recreate_load_table_dir(include_remove=False)
-        no_partition_cols = []
+        no_partition_cols: list[Any] = []
         location = gen_load_uri_from_options(
             self._orchestration_config,
             hadoop_db=self._load_db_name,
             table_name=self._load_table_name,
         )
-        schema_fs_prefix = "hdfs://" if self._avro_schema_hdfs_path[:1] == "/" else ""
+        schema_fs_prefix = "hdfs://" if (self._avro_schema_hdfs_path or "")[:1] == "/" else ""
         table_properties = {"avro.schema.url": "%s%s" % (schema_fs_prefix, self._avro_schema_hdfs_path)}
         return self._db_api.create_table(
             self._load_db_name,
@@ -322,14 +485,12 @@ FROM %s.%s""" % (
             with_terminator=with_terminator,
         )
 
-    def _create_new_backend_table(self, sort_column_names=None):
+    def _create_new_backend_table(self, sort_column_names=None, with_terminator=False):
         raise NotImplementedError("_create_new_backend_table() is not implemented for common Hadoop class")
 
     def _drop_load_table(self, sync=None):
         """Drop the staging/load table and any supporting filesystem directory"""
         self._db_api.drop_table(self._load_db_name, self._load_table_name, purge=True, sync=sync)
-        # Use the default load table location (from options) and not that of any existing table,
-        # this ensures we clear any problem files before we create a new load table and start offloading
         if self._load_table_hdfs_dir:
             self._recreate_load_table_dir(include_create=False)
 
@@ -440,7 +601,7 @@ FROM %s.%s""" % (
         """
         self._db_api.refresh_table_files(self._load_db_name, self._load_table_name)
 
-    def _staging_to_backend_cast(self, rdbms_column, backend_column, staging_column) -> tuple:
+    def _staging_to_backend_cast(self, rdbms_column: Any, backend_column: Any, staging_column: Any) -> tuple:
         """Returns correctly cast or overridden columns ready for insert/select to final table.
         rdbms_column: Required because we need to know what data is actually inside the staging column.
         Common Hadoop version.
@@ -498,7 +659,6 @@ FROM %s.%s""" % (
             if staging_file_int_match(backend_column, staging_column) or staging_file_float_match(
                 backend_column, staging_column
             ):
-                # Same data type so no need to CAST
                 self._log(
                     "No cast required for matching data types: %s/%s"
                     % (staging_column.data_type, backend_column.data_type),
@@ -511,9 +671,6 @@ FROM %s.%s""" % (
                 )
         elif rdbms_column.is_time_zone_based():
             if not backend_column.is_string_based():
-                # normalise timestamps with time zones to UTC
-                # if the time zone is of format [+-]nn:nn then we extract hours and mins and subtract from the timestamp
-                # if the time zone is anything else then we assume it is a valid timzone (timezone_db.cc) and pass to to_utc_timestamp()
                 timestamp_conversion = self._tzoffset_to_timestamp_sql_expression(
                     staging_column.staging_file_column_name
                 )
@@ -527,10 +684,6 @@ FROM %s.%s""" % (
                 }
         elif rdbms_column.is_date_based():
             if backend_column.is_string_based():
-                # We need a string containing the full timestamp spec including nanoseconds and 4 digit year.
-                # Offload transport (e.g. Sqoop) may leave some values with ".0" time fraction, therefore need to pad.
-                # Offload transport (looking at your Sqoop) qoop doesn't pad years to 4 digits,
-                # e.g. "1-01-01 00:00:00.000" so we # cannot rely on fixed position of fractional part.
                 return_cast = """CASE
                 WHEN %(col)s IS NULL THEN
                     CAST(%(col)s AS STRING)
@@ -548,7 +701,6 @@ FROM %s.%s""" % (
                         return_type,
                     )
 
-        # There is no concept of safe cast on Hadoop so return same cast twice
         if return_cast:
             return return_cast, return_type, return_cast
         return_cast = self._format_staging_column_name(staging_column)
@@ -556,195 +708,3 @@ FROM %s.%s""" % (
 
     def _tzoffset_to_timestamp_sql_expression(self, col_name):
         raise NotImplementedError("_tzoffset_to_timestamp_sql_expression() is not implemented for common Hadoop class")
-
-    ###########################################################################
-    # PUBLIC METHODS - HIGH LEVEL STEP METHODS
-    ###########################################################################
-
-    def cleanup_staging_area(self):
-        self._drop_load_table(sync=True)
-
-    def create_backend_table(self, with_terminator=False) -> list:
-        """Create a table in the backend based on object state.
-        Creating a new table may change our world view so the function drops state if in execute mode.
-        If dry_run then we leave state in place to allow other operations to preview.
-        """
-        cmds = self._create_new_backend_table(sort_column_names=self._sort_columns, with_terminator=with_terminator)
-        if not self._dry_run:
-            # The CREATE TABLE above may have changed our world view so let's reset what we already know
-            self._drop_state()
-        return cmds
-
-    def empty_staging_area(self, staging_file):
-        self._recreate_load_table(staging_file)
-
-    def incremental_merge_final_table(self, extraction_key_columns, staging_columns, sync=None):
-        raise NotImplementedError("incremental_merge_final_table() is not implemented for common Hadoop class")
-
-    def load_final_table(self, sync=None):
-        """Copy data from the staged load table into the final backend table
-        If this fails with ERROR_STATE then we offer up some SQL to assist the user
-        """
-        self._debug(
-            "Loading %s.%s from %s.%s"
-            % (
-                self.db_name,
-                self.table_name,
-                self._load_db_name,
-                self._load_table_name,
-            )
-        )
-
-        select_expression_tuples = [
-            (self.get_final_table_cast(col), col.name.upper()) for col in self.get_non_synthetic_columns()
-        ]
-        # Any SORT BY should be of the correct data type
-        sort_expressions = [self.get_final_table_cast(col_name) for col_name in (self._sort_columns or [])]
-
-        sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples, sort_expr_list=sort_expressions)
-
-        try:
-            self._execute_dml(
-                sqls,
-                query_options=query_options,
-                sync=sync,
-                profile=self._log_profile_after_final_table_load,
-            )
-        except Exception as exc:
-            if "ERROR_STATE" in str(exc):
-                partition_expressions = ", ".join(
-                    self.get_final_table_cast(_) for _ in get_column_names(self.get_partition_columns())
-                )
-                suggest_sql = """SELECT COUNT(*)
-        FROM (
-            SELECT DISTINCT %(part_expr)s
-            FROM %(db)s.%(table)s
-        ) v""" % {
-                    "part_expr": partition_expressions,
-                    "db": self._load_db_name,
-                    "table": self._load_table_name,
-                }
-                self._log(
-                    "If memory pressure is the cause of INSERT failure then the number of partitions being created may be a factor."
-                )
-                self._log(
-                    "The SQL below will identify the number of partitions the failing INSERT attempted to create:\n%s"
-                    % suggest_sql
-                )
-            raise
-
-    def load_materialized_join(
-        self,
-        threshold_cols=None,
-        gte_threshold_vals=None,
-        lt_threshold_vals=None,
-        insert_predicates=None,
-        sync=None,
-    ):
-        """Copy data from the load view into the final backend table"""
-        if insert_predicates:
-            assert isinstance(insert_predicates, list)
-        self._debug(
-            "Loading %s.%s from %s.%s"
-            % (
-                self.db_name,
-                self.table_name,
-                self._load_db_name,
-                self._load_table_name,
-            )
-        )
-        select_expression_tuples = [
-            (self.get_final_table_cast(col), col.name.upper()) for col in self.get_non_synthetic_columns()
-        ]
-        sqls, query_options = self._gen_mat_join_insert_sqls(
-            select_expression_tuples,
-            threshold_cols,
-            gte_threshold_vals,
-            lt_threshold_vals,
-            insert_predicates=insert_predicates,
-            sort_expr_list=self._sort_columns or [],
-        )
-        self._execute_dml(
-            sqls,
-            query_options=query_options,
-            sync=sync,
-            profile=self._log_profile_after_final_table_load,
-        )
-
-    def post_transport_tasks(self, staging_file):
-        """Tasks required to ensure we are ready to process the staged data.
-        staging_file ignored in Hadoop.
-        """
-        self._refresh_load_table_files()
-        if self.table_stats_compute_supported():
-            self._compute_load_table_statistics()
-
-    def setup_result_cache_area(self):
-        """Prepare result cache area for Hybrid Queries"""
-        self._create_hadoop_load_database()
-
-    def setup_staging_area(self, staging_file):
-        """Prepare any staging area for Hadoop OffloadTransport"""
-        if staging_file:
-            assert isinstance(staging_file, OffloadStagingFileInterface)
-        self._create_hadoop_load_database()
-        if not staging_file:
-            # no table specific actions required
-            return
-        if staging_file.file_format == FILE_STORAGE_FORMAT_AVRO:
-            self._copy_load_table_avro_schema(staging_file)
-        self._recreate_load_table(staging_file)
-
-    def validate_type_conversions(self, staging_columns: list):
-        self._validate_final_table_casts(staging_columns)
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
-
-    def create_db(self, with_terminator=False) -> list:
-        return self._create_final_db(
-            location=self._get_data_db_hdfs_dir(),
-            with_terminator=with_terminator,
-        )
-
-    def create_load_db(self, with_terminator=False) -> list:
-        """Create a load database."""
-        if self._db_api.load_db_transport_supported():
-            return self._create_load_db(
-                location=self._get_load_db_hdfs_dir(),
-                with_terminator=with_terminator,
-            )
-        return []
-
-    def get_default_location(self):
-        if self._default_location is None:
-            self._default_location = self._db_api.get_table_location(self.db_name, self.table_name)
-        return self._default_location
-
-    def get_staging_table_location(self):
-        return self._get_load_table_hdfs_dir()
-
-    def partition_function_requires_granularity(self):
-        return False
-
-    def result_cache_area_exists(self):
-        return self._result_cache_db_exists()
-
-    def staging_area_exists(self):
-        if not self._load_db_exists():
-            self._warning("Staging database %s does not exist" % self._load_db_name)
-        return self._load_db_exists()
-
-    def predicate_has_rows(self, predicate):
-        if not self.exists():
-            return False
-
-        sql = "SELECT 1 FROM %s WHERE (%s) LIMIT 1" % (
-            self._db_api.enclose_object_reference(self.db_name, self.table_name),
-            hadoop_predicate.predicate_to_where_clause(self.get_columns(), predicate),
-        )
-        return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
-
-    def predicate_to_where_clause(self, predicate, columns_override=None):
-        return hadoop_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)

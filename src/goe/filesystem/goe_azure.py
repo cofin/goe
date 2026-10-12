@@ -3,11 +3,13 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+
 """GOEAzure: Azure implementation of GOEDfs"""
 
 import logging
 from os.path import basename
 from os.path import exists as file_exists
+from typing import Any
 
 from azure.common import AzureMissingResourceHttpError
 from azure.core.exceptions import HttpResponseError
@@ -29,22 +31,9 @@ from goe.filesystem.goe_dfs import (
     uri_component_split,
 )
 
-###############################################################################
-# EXCEPTIONS
-###############################################################################
-
 
 class GOEAzureTryAgainException(Exception):
     pass
-
-
-###############################################################################
-# CONSTANTS
-###############################################################################
-
-###############################################################################
-# GLOBAL FUNCTIONS
-###############################################################################
 
 
 def azure_fq_container_name(azure_account_name, azure_account_domain, container, account_in_path=False):
@@ -64,17 +53,8 @@ def azure_fq_container_name(azure_account_name, azure_account_domain, container,
     return container
 
 
-###############################################################################
-# LOGGING
-###############################################################################
-
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
-
-
-###############################################################################
-# GOEAzure
-###############################################################################
 
 
 class GOEAzure(GOEDfs):
@@ -109,6 +89,7 @@ class GOEAzure(GOEDfs):
         if azure_account_domain and not azure_account_domain.startswith("."):
             azure_account_domain = "." + azure_account_domain
 
+        self._client: Any
         if do_not_connect:
             self._client = None
         else:
@@ -119,43 +100,6 @@ class GOEAzure(GOEDfs):
         self._db_path_suffix = db_path_suffix
         self.dfs_mechanism = GOE_DFS_AZURE
         self.backend_dfs = "Azure"
-
-    ###########################################################################
-    # PRIVATE METHODS
-    ###########################################################################
-
-    def _blob_exists(self, container, path):
-        blobs = self._list_blob_names(container, path)
-        return bool([_ for _ in blobs if _ == path])
-
-    def _container_exists(self, container):
-        buckets = self._client.list_containers(name_starts_with=container)
-        return bool([_.name for _ in buckets if _.name == container])
-
-    def _list_blobs(self, container, prefix, recursive=False):
-        container_client = self._client.get_container_client(container)
-        if recursive:
-            blobs = [_ for _ in container_client.list_blobs(name_starts_with=prefix)]
-        else:
-            blobs = [_ for _ in container_client.walk_blobs(name_starts_with=prefix, delimiter=URI_SEP)]
-        return blobs
-
-    def _list_blob_names(self, container, prefix, recursive=False):
-        return [_.name for _ in self._list_blobs(container, prefix, recursive=recursive)]
-
-    @staticmethod
-    def _uri_component_split(dfs_path):
-        """Override of interface _uri_component_split() removing any account/domain from container name"""
-        scheme, container, path = uri_component_split(dfs_path)
-        if path and path.startswith(URI_SEP):
-            path = path.lstrip(URI_SEP)
-        if container and "@" in container:
-            container = container.split("@")[0]
-        return scheme, container, path
-
-    ###########################################################################
-    # PUBLIC METHODS
-    ###########################################################################
 
     def chgrp(self, dfs_path, group):
         raise NotImplementedError("chgrp() not implemented for GOEAzure")
@@ -209,7 +153,16 @@ class GOEAzure(GOEDfs):
         deadline=DFS_RETRY_TIMEOUT,
     )
     def delete(self, dfs_path, recursive=False):
-        """Delete a file or directory and contents"""
+        """Delete a file or directory and contents
+
+        Just delete the single blob
+        Reversing the order of the paths so deepest entries are first reduced the number of
+        round trips cleaning up non-empty directories for ABFS.
+        For a recursive delete we need the directory itself in the list
+        On ABFS directories don't disappear when they empty (like prefixes do).
+        We need to explicitly delete them.
+        If we get this far then it worked
+        """
 
         def pragmatic_delete(container, path):
             """Run a delete but accept the fact that the blob may have disappeared in the meantime"""
@@ -230,7 +183,6 @@ class GOEAzure(GOEDfs):
         if self._dry_run:
             return None
         if not recursive or (self.stat(dfs_path) or {}).get("type") == DFS_TYPE_FILE:
-            # Just delete the single blob
             if not self._blob_exists(container, path):
                 return None
             self.debug("delete_blob(%s, %s)" % (container, path))
@@ -253,11 +205,8 @@ class GOEAzure(GOEDfs):
                 raise
 
             if scheme in [OFFLOAD_FS_SCHEME_ABFS, OFFLOAD_FS_SCHEME_ABFSS]:
-                # Reversing the order of the paths so deepest entries are first reduced the number of
-                # round trips cleaning up non-empty directories for ABFS.
                 blobs_pending_delete = list(reversed(blobs_pending_delete))
 
-            # For a recursive delete we need the directory itself in the list
             if path not in blobs_pending_delete:
                 blobs_pending_delete.append(path)
             if path.rstrip(URI_SEP) not in blobs_pending_delete:
@@ -269,8 +218,6 @@ class GOEAzure(GOEDfs):
                     pragmatic_delete(container, blob_name)
                 elif scheme in [OFFLOAD_FS_SCHEME_ABFS, OFFLOAD_FS_SCHEME_ABFSS]:
                     if (self.stat(self.gen_uri(scheme, container, blob_name)) or {}).get("type") == DFS_TYPE_DIRECTORY:
-                        # On ABFS directories don't disappear when they empty (like prefixes do).
-                        # We need to explicitly delete them.
                         found_files = True
                         try:
                             pragmatic_delete(container, blob_name.rstrip("/"))
@@ -283,7 +230,6 @@ class GOEAzure(GOEDfs):
                 if blobs_pending_delete:
                     self.debug("Azure delete incomplete, retrying")
                     raise GOEDfsDeleteNotComplete
-        # If we get this far then it worked
         return True
 
     def gen_uri(
@@ -310,7 +256,11 @@ class GOEAzure(GOEDfs):
         return uri
 
     def list_dir(self, dfs_path):
-        """Return a list of file/directory names within dfs_path"""
+        """Return a list of file/directory names within dfs_path
+
+        Exclude the directory we are checking contents of
+        Tag the scheme & bucket back on the front of listing results
+        """
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("list_dir(%s)" % dfs_path)
@@ -322,9 +272,7 @@ class GOEAzure(GOEDfs):
             if not self._container_exists(container):
                 raise GOEDfsException("Container does not exist: %s" % container)
             blob_names = self._list_blob_names(container, path)
-            # Exclude the directory we are checking contents of
             blob_names = [_ for _ in blob_names if _ != path]
-            # Tag the scheme & bucket back on the front of listing results
             return [self.gen_uri(scheme, container, _) for _ in blob_names]
 
     def mkdir(self, dfs_path):
@@ -358,6 +306,7 @@ class GOEAzure(GOEDfs):
         deadline=DFS_RETRY_TIMEOUT,
     )
     def stat(self, dfs_path):
+        """We don't want a trailing '/' which would send us down a path level"""
         assert dfs_path
         assert isinstance(dfs_path, str)
         logger.info("stat(%s)" % dfs_path)
@@ -372,7 +321,6 @@ class GOEAzure(GOEDfs):
         if not self._container_exists(container):
             raise GOEDfsException("Container does not exist: %s" % container)
 
-        # We don't want a trailing '/' which would send us down a path level
         path = path.rstrip(URI_SEP)
 
         try:
@@ -413,3 +361,32 @@ class GOEAzure(GOEDfs):
             raise GOEDfsException("Cannot write to existing file: %s" % path)
         container_client = self._client.get_container_client(container)
         container_client.upload_blob(name=path, data=data, overwrite=overwrite)
+
+    def _blob_exists(self, container, path):
+        blobs = self._list_blob_names(container, path)
+        return bool([_ for _ in blobs if _ == path])
+
+    def _container_exists(self, container):
+        buckets = self._client.list_containers(name_starts_with=container)
+        return bool([_.name for _ in buckets if _.name == container])
+
+    def _list_blobs(self, container, prefix, recursive=False):
+        container_client = self._client.get_container_client(container)
+        if recursive:
+            blobs = [_ for _ in container_client.list_blobs(name_starts_with=prefix)]
+        else:
+            blobs = [_ for _ in container_client.walk_blobs(name_starts_with=prefix, delimiter=URI_SEP)]
+        return blobs
+
+    def _list_blob_names(self, container, prefix, recursive=False):
+        return [_.name for _ in self._list_blobs(container, prefix, recursive=recursive)]
+
+    @staticmethod
+    def _uri_component_split(dfs_path):
+        """Override of interface _uri_component_split() removing any account/domain from container name"""
+        scheme, container, path = uri_component_split(dfs_path)
+        if path and path.startswith(URI_SEP):
+            path = path.lstrip(URI_SEP)
+        if container and "@" in container:
+            container = container.split("@")[0]
+        return scheme, container, path
