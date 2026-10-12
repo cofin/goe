@@ -80,19 +80,32 @@ eg. (column(EVENT_TIME) >= datetime(2020-01-01)) AND (column(EVENT_CODE) IN (num
 import datetime
 import logging
 import traceback
+from collections.abc import Sequence
+from functools import lru_cache
 from typing import Any, Literal
 
 import lark
 import numpy as np
+import sqlglot
 from lark import Token, Tree
+from sqlglot import exp
+from sqlglot.errors import SqlglotError
 
 from goe.exceptions import OptionValueError
+from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
 from goe.offload.column_metadata import (
     ColumnMetadataInterface,
     get_partition_columns,
     is_synthetic_partition_column,
     match_partition_column_by_source,
 )
+from goe.offload.oracle.oracle_column import (
+    ORACLE_TYPE_DATE,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_TIMESTAMP_TZ,
+)
+from goe.offload.oracle.oracle_dialect import register_oracle_dialect_extensions
+from goe.offload.sql_engine import PredicateDialectEngineProtocol, RenderedSQL
 from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
 
 dev_log = logging.getLogger("goe")
@@ -155,13 +168,13 @@ class handle_parse_errors:
 
     def __exit__(self, exc_type, exc, tb):
         if isinstance(exc, (lark.exceptions.UnexpectedToken, lark.exceptions.UnexpectedCharacters)):
-            considered_rules: Any
-            if hasattr(exc, "considered_tokens"):
-                considered_rules = [t.rule for t in exc.considered_tokens]
+            considered_rules: list[Any]
+            if hasattr(exc, "considered_tokens") and exc.considered_tokens is not None:
+                considered_rules = [t.rule for t in exc.considered_tokens if getattr(t, "rule", None) is not None]
             else:
-                considered_rules = exc.considered_rules
+                considered_rules = list(getattr(exc, "considered_rules", None) or ())
 
-            expected_rule_names = set([r.origin.name for r in considered_rules])
+            expected_rule_names = {r.origin.name for r in considered_rules if getattr(r, "origin", None) is not None}
             if expected_rule_names:
                 expected_hint = "Expected tokens in this position:\n"
                 expected_hint += "\n".join(set("- %s" % RULE_HINT[r] for r in expected_rule_names if r in RULE_HINT))
@@ -628,12 +641,228 @@ SIGNED_DECIMAL: ["+"|"-"] DECIMAL
     )
 
 
-if __name__ == "__main__":
-    with handle_parse_errors():
-        import sys
+class PredicateOffloadException(Exception):
+    """Exception raised when predicate rendering or SQL WHERE validation fails."""
 
-        predicate_expr = " ".join(sys.argv[1:])
-        ast = parse_predicate_dsl(predicate_expr)
-        print("-" * 5, "Internal AST", "-" * 5)
-        print(ast.pretty())
-        print()
+
+_FORBIDDEN_WHERE_AST_NODES = (
+    exp.Select,
+    exp.Subquery,
+    exp.Table,
+    exp.SetOperation,
+    exp.Exists,
+    exp.DDL,
+    exp.DML,
+    exp.Command,
+)
+
+_SAFE_ANONYMOUS_FUNCTIONS: frozenset[str] = frozenset(
+    {
+        "TO_DATE",
+        "TO_TIMESTAMP",
+        "TO_TIMESTAMP_TZ",
+        "TO_CHAR",
+        "TO_NUMBER",
+        "NVL",
+        "DECODE",
+        "TRUNC",
+        "MOD",
+        "ORA_HASH",
+        "PARSE_DATE",
+        "PARSE_DATETIME",
+        "PARSE_TIMESTAMP",
+        "DATE_TRUNC",
+        "DATETIME_TRUNC",
+        "TIMESTAMP_TRUNC",
+        "RANGE_BUCKET",
+        "GENERATE_ARRAY",
+    }
+)
+
+
+def parse_safe_sql_predicate(sql_where: str, dialect: str = "bigquery") -> str:
+    """Validate a raw SQL WHERE condition against an AST allowlist and return the stripped condition."""
+    stripped = sql_where.strip()
+    if not stripped:
+        raise PredicateOffloadException("Empty SQL filter clause is not allowed")
+    if dialect == "oracle":
+        register_oracle_dialect_extensions()
+    try:
+        statements = sqlglot.parse(f"SELECT 1 WHERE {stripped}", read=dialect)
+    except SqlglotError as exc:
+        raise PredicateOffloadException(f"Invalid SQL filter clause: {exc}") from exc
+    if len(statements) != 1 or not isinstance(statements[0], exp.Select):
+        raise PredicateOffloadException("Multiple statements or set operations are not allowed in filter clauses")
+    where_node = statements[0].args.get("where")
+    if where_node is None:
+        raise PredicateOffloadException("Missing WHERE condition in filter clause")
+    for node in where_node.walk():
+        if isinstance(node, _FORBIDDEN_WHERE_AST_NODES):
+            raise PredicateOffloadException(f"Disallowed SQL construct in filter clause: {type(node).__name__}")
+        if isinstance(node, exp.Anonymous) and node.name.upper() not in _SAFE_ANONYMOUS_FUNCTIONS:
+            raise PredicateOffloadException(f"Disallowed function in filter clause: {node.name}")
+    return stripped
+
+
+class _TypedPredicateToAst(lark.Transformer):
+    """Transform a typed Lark predicate tree into a sqlglot expression AST."""
+
+    def __init__(self, dialect: str, *, bind_mode: bool = False) -> None:
+        super().__init__()
+        self._dialect = dialect
+        self._bind_mode = bind_mode
+        self.binds: dict[str, Any] = {}
+
+    def offload_predicate(self, items: list[exp.Expr]) -> exp.Expr:
+        return items[0]
+
+    def column(self, items: list[Token]) -> exp.Column:
+        if len(items) == 2:
+            return exp.Column(
+                this=exp.Identifier(this=str(items[1].value), quoted=True),
+                table=exp.Identifier(this=str(items[0].value), quoted=True),
+            )
+        return exp.Column(this=exp.Identifier(this=str(items[0].value), quoted=True))
+
+    def value_list(self, items: list[exp.Expr]) -> list[exp.Expr]:
+        return list(items)
+
+    def equals(self, items: list[exp.Expr]) -> exp.Expr:
+        return exp.EQ(this=items[0], expression=items[1])
+
+    def not_equals(self, items: list[exp.Expr]) -> exp.Expr:
+        return exp.Var(this=f"{items[0].sql(self._dialect)} != {items[1].sql(self._dialect)}")
+
+    def greater_than(self, items: list[exp.Expr]) -> exp.Expr:
+        return exp.GT(this=items[0], expression=items[1])
+
+    def greater_than_or_equal(self, items: list[exp.Expr]) -> exp.Expr:
+        return exp.GTE(this=items[0], expression=items[1])
+
+    def less_than(self, items: list[exp.Expr]) -> exp.Expr:
+        return exp.LT(this=items[0], expression=items[1])
+
+    def less_than_or_equal(self, items: list[exp.Expr]) -> exp.Expr:
+        return exp.LTE(this=items[0], expression=items[1])
+
+    def in_relation(self, items: list[Any]) -> exp.Expr:
+        return exp.In(this=items[0], expressions=items[1])
+
+    def not_in_relation(self, items: list[Any]) -> exp.Expr:
+        vals_sql = ", ".join(v.sql(self._dialect) for v in items[1])
+        return exp.Var(this=f"{items[0].sql(self._dialect)} NOT IN ({vals_sql})")
+
+    def is_null(self, items: list[exp.Expr]) -> exp.Expr:
+        return exp.Is(this=items[0], expression=exp.Null())
+
+    def is_not_null(self, items: list[exp.Expr]) -> exp.Expr:
+        return exp.Is(this=items[0], expression=exp.Not(this=exp.Null()))
+
+    def and_relation_group(self, items: list[exp.Expr]) -> exp.Expr:
+        combined = items[0]
+        for item in items[1:]:
+            combined = exp.And(this=combined, expression=item)
+        return exp.Paren(this=combined)
+
+    def or_relation_group(self, items: list[exp.Expr]) -> exp.Expr:
+        combined = items[0]
+        for item in items[1:]:
+            combined = exp.Or(this=combined, expression=item)
+        return exp.Paren(this=combined)
+
+    def literal_value(self, items: list[Token]) -> exp.Expr:
+        value, _ = items[0].value
+        return exp.Var(this=str(value))
+
+    def numeric_value(self, items: list[Token]) -> exp.Expr:
+        value, data_type = items[0].value
+        if self._bind_mode:
+            return self._placeholder(self._next_bind(value))
+        if self._dialect == "bigquery":
+            return exp.Var(this=BigQueryLiteral.format_literal(value, data_type))
+        formatted = np.format_float_positional(value, trim="-") if isinstance(value, float) else str(value)
+        return exp.Literal(this=formatted, is_string=False)
+
+    def string_value(self, items: list[Token]) -> exp.Expr:
+        value, _ = items[0].value
+        if self._bind_mode:
+            return self._placeholder(self._next_bind(value))
+        return exp.Literal.string(str(value))
+
+    def datetime_value(self, items: list[Token]) -> exp.Expr:
+        value, data_type = items[0].value
+        if self._dialect == "oracle":
+            if data_type == ORACLE_TYPE_DATE:
+                str_val = np.datetime_as_string(value, unit="s").replace("T", " ")
+                target_expr = (
+                    self._placeholder(self._next_bind(str_val)) if self._bind_mode else exp.Literal.string(str_val)
+                )
+                return exp.Anonymous(
+                    this="TO_DATE",
+                    expressions=[target_expr, exp.Literal.string("YYYY-MM-DD HH24:MI:SS")],
+                )
+            if data_type in (ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ):
+                str_val = np.datetime_as_string(value, unit="ns").replace("T", " ")
+                if self._bind_mode:
+                    bind_expr = self._placeholder(self._next_bind(str_val))
+                    return exp.Anonymous(
+                        this="TO_TIMESTAMP",
+                        expressions=[bind_expr, exp.Literal.string("YYYY-MM-DD HH24:MI:SS.FF9")],
+                    )
+                return exp.Var(this=f"TIMESTAMP '{str_val}'")
+            raise OptionValueError(f"datetime is not compatible with column data type {data_type}")
+        if self._dialect == "bigquery":
+            if self._bind_mode:
+                formatted_val = str(value).replace("T", " ") if isinstance(value, np.datetime64) else value
+                return self._placeholder(self._next_bind(formatted_val))
+            return exp.Var(this=BigQueryLiteral.format_literal(value, data_type))
+        raise PredicateOffloadException(f"Unsupported predicate dialect: {self._dialect}")
+
+    def _next_bind(self, value: Any) -> str:
+        bind_name = f"bind_{len(self.binds)}"
+        self.binds[bind_name] = value
+        return bind_name
+
+    def _placeholder(self, bind_name: str) -> exp.Expr:
+        if self._dialect == "oracle":
+            return exp.Placeholder(this=bind_name)
+        return exp.Parameter(this=exp.Var(this=bind_name))
+
+
+class PredicateSqlEngine(PredicateDialectEngineProtocol):
+    """Dialect-specific predicate AST renderer satisfying PredicateDialectEngineProtocol."""
+
+    def __init__(self, dialect: str) -> None:
+        self._dialect = dialect
+        if dialect == "oracle":
+            register_oracle_dialect_extensions()
+
+    def render_literal_sql(
+        self,
+        typed_tree: Any,
+        columns: Sequence["ColumnMetadataInterface"],
+    ) -> str:
+        """Render a typed predicate tree into a SQL WHERE clause with inline literals."""
+        transformer = _TypedPredicateToAst(self._dialect, bind_mode=False)
+        expr_node: exp.Expr = transformer.transform(typed_tree)
+        return expr_node.sql(self._dialect)
+
+    def render_bind_sql(
+        self,
+        typed_tree: Any,
+        columns: Sequence["ColumnMetadataInterface"],
+    ) -> RenderedSQL:
+        """Render a typed predicate tree into a SQL WHERE clause with named bind parameters."""
+        transformer = _TypedPredicateToAst(self._dialect, bind_mode=True)
+        expr_node: exp.Expr = transformer.transform(typed_tree)
+        return RenderedSQL(sql=expr_node.sql(self._dialect), params=dict(transformer.binds))
+
+    def validate_where_clause(self, raw_sql: str, dialect: str) -> str:
+        """Validate a raw SQL WHERE condition against an AST allowlist and return normalized SQL."""
+        return parse_safe_sql_predicate(raw_sql, dialect=dialect)
+
+
+@lru_cache(maxsize=8)
+def get_predicate_dialect_engine(dialect: str) -> PredicateDialectEngineProtocol:
+    """Return a cached PredicateDialectEngineProtocol instance for the given dialect."""
+    return PredicateSqlEngine(dialect)

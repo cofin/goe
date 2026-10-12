@@ -5,6 +5,8 @@
 
 """Offload predicate test code."""
 
+import ast
+from pathlib import Path
 from unittest import TestCase, main
 
 import numpy as np
@@ -15,8 +17,14 @@ from goe.offload.bigquery import bigquery_column, bigquery_predicate
 from goe.offload.hadoop import hadoop_column, hadoop_predicate
 from goe.offload.microsoft import synapse_column, synapse_predicate
 from goe.offload.oracle import oracle_column, oracle_predicate
-from goe.offload.predicate_offload import GenericPredicate, parse_predicate_dsl
+from goe.offload.predicate_offload import (
+    GenericPredicate,
+    PredicateOffloadException,
+    get_predicate_dialect_engine,
+    parse_predicate_dsl,
+)
 from goe.offload.snowflake import snowflake_column, snowflake_predicate
+from goe.offload.sql_engine import PredicateDialectEngineProtocol
 from goe.offload.teradata import teradata_column, teradata_predicate
 
 BIGQUERY_COLUMNS = [
@@ -110,10 +118,6 @@ class TestIdaPredicateParse(TestCase):
         self.assertRaises(OptionValueError, self._test_parse_single_datetime, "2012-0101", None)
         self.assertRaises(OptionValueError, self._test_parse_single_datetime, "", None)
 
-        # below literal value correctness testing is out of scope
-        # self.assertRaises(OptionValueError, self._test_parse_single_datetime, '2012-01-00', None)
-        # self.assertRaises(OptionValueError, self._test_parse_single_datetime, '2012-00-01', None)
-
         self._test_parse_single_datetime("2001-01-01 12:00:01", ("TIMESTAMP", np.datetime64("2001-01-01 12:00:01")))
         self._test_parse_single_datetime("2001-01-01 06:00:01", ("TIMESTAMP", np.datetime64("2001-01-01 06:00:01")))
         self.assertRaises(
@@ -147,9 +151,6 @@ class TestIdaPredicateParse(TestCase):
             "2012-01-01 06:00:01.0000000000",
             ("TIMESTAMP_FRACTIONAL", np.datetime64("2012-01-01 06:00:01.000")),
         )
-
-        # below literal value correctness testing is out of scope
-        # self.assertRaises(OptionValueError, self._test_parse_single_datetime, '2012-01-01 25:00:01', None)
 
     def test_parse_string(self):
         self._test_parse_single_string("test string")
@@ -364,6 +365,109 @@ class TestIdaPredicateDataTypes(TestCase):
                 TERADATA_COLUMNS,
                 GenericPredicate(predicate_dsl),
             )
+
+
+def test_oracle_and_bigquery_predicate_modules_have_zero_sqlglot_imports() -> None:
+    """Verify oracle_predicate.py and bigquery_predicate.py do not import sqlglot."""
+    for mod in (oracle_predicate, bigquery_predicate):
+        assert mod.__file__ is not None
+        source = Path(mod.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        imported_names: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported_names.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported_names.append(node.module)
+        assert not any("sqlglot" in name for name in imported_names)
+
+
+def test_oracle_predicate_sql_and_bind_rendering_with_nanoseconds() -> None:
+    """Verify Oracle and BigQuery predicate rendering preserves FF9 nanoseconds, positional decimals, and operators."""
+    engine = get_predicate_dialect_engine("oracle")
+    bq_engine = get_predicate_dialect_engine("bigquery")
+    assert isinstance(engine, PredicateDialectEngineProtocol)
+    assert isinstance(bq_engine, PredicateDialectEngineProtocol)
+
+    cols = ORACLE_COLUMNS + [
+        oracle_column.OracleColumn("COL_TS", oracle_column.ORACLE_TYPE_TIMESTAMP, data_scale=9),
+    ]
+    pred_ts = GenericPredicate("column(COL_TS) = datetime(2011-01-01 05:06:07.123456789)")
+    assert (
+        oracle_predicate.predicate_to_where_clause(cols, pred_ts)
+        == "\"COL_TS\" = TIMESTAMP '2011-01-01 05:06:07.123456789'"
+    )
+    bind_sql, binds = oracle_predicate.predicate_to_where_clause_with_binds(cols, pred_ts)
+    assert bind_sql == "\"COL_TS\" = TO_TIMESTAMP(:bind_0, 'YYYY-MM-DD HH24:MI:SS.FF9')"
+    assert binds == {"bind_0": "2011-01-01 05:06:07.123456789"}
+
+    pred_date = GenericPredicate("column(COL_DATE) = datetime(2011-01-01)")
+    assert (
+        oracle_predicate.predicate_to_where_clause(cols, pred_date)
+        == "\"COL_DATE\" = TO_DATE('2011-01-01 00:00:00', 'YYYY-MM-DD HH24:MI:SS')"
+    )
+    date_bind_sql, date_binds = oracle_predicate.predicate_to_where_clause_with_binds(cols, pred_date)
+    assert date_bind_sql == "\"COL_DATE\" = TO_DATE(:bind_0, 'YYYY-MM-DD HH24:MI:SS')"
+    assert date_binds == {"bind_0": "2011-01-01 00:00:00"}
+
+    pred_dec = GenericPredicate("column(COL_DECIMAL) = numeric(-0.00000000000000000001)")
+    assert oracle_predicate.predicate_to_where_clause(cols, pred_dec) == '"COL_DECIMAL" = -0.00000000000000000001'
+
+    pred_big_int = GenericPredicate("column(COL_INT) = numeric(1234567890123456789012345)")
+    assert oracle_predicate.predicate_to_where_clause(cols, pred_big_int) == '"COL_INT" = 1234567890123456789012345'
+
+    pred_not_in = GenericPredicate('column(COL_STRING) NOT IN (string("A"), string("B"))')
+    assert oracle_predicate.predicate_to_where_clause(cols, pred_not_in) == "\"COL_STRING\" NOT IN ('A', 'B')"
+
+    pred_neq = GenericPredicate('column(COL_STRING) != string("A")')
+    assert oracle_predicate.predicate_to_where_clause(cols, pred_neq) == "\"COL_STRING\" != 'A'"
+
+    pred_nulls = GenericPredicate("(column(COL_INT) IS NULL) AND (column(COL_INT) IS NOT NULL)")
+    assert (
+        oracle_predicate.predicate_to_where_clause(cols, pred_nulls) == '("COL_INT" IS NULL AND "COL_INT" IS NOT NULL)'
+    )
+
+    pred_lit = GenericPredicate(
+        "column(COL_DATE) < literal(\"TO_DATE(' 2012-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')\")"
+    )
+    assert (
+        oracle_predicate.predicate_to_where_clause(cols, pred_lit)
+        == "\"COL_DATE\" < TO_DATE(' 2012-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')"
+    )
+
+    bq_dt = GenericPredicate("column(COL_DATE) = datetime(1970-01-01 12:13:14)")
+    assert (
+        bigquery_predicate.predicate_to_where_clause(BIGQUERY_COLUMNS, bq_dt)
+        == "`COL_DATE` = DATETIME '1970-01-01 12:13:14'"
+    )
+    bq_not_in = GenericPredicate('column(COL_STRING) NOT IN (string("A"), string("B"))')
+    assert bigquery_predicate.predicate_to_where_clause(BIGQUERY_COLUMNS, bq_not_in) == "`COL_STRING` NOT IN ('A', 'B')"
+    bq_neq = GenericPredicate("column(COL_INT) != numeric(4)")
+    assert bigquery_predicate.predicate_to_where_clause(BIGQUERY_COLUMNS, bq_neq) == "`COL_INT` != 4"
+    bq_bind_sql, bq_binds = bigquery_predicate.predicate_to_where_clause_with_binds(BIGQUERY_COLUMNS, bq_neq)
+    assert bq_bind_sql == "`COL_INT` != @bind_0"
+    assert bq_binds == {"bind_0": 4}
+
+    assert (
+        engine.validate_where_clause(
+            "\"COL_TS\" = TIMESTAMP '2011-01-01 05:06:07.123456789' AND \"COL_DATE\" < TO_DATE(' 2012-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')",
+            "oracle",
+        )
+        != ""
+    )
+    assert bq_engine.validate_where_clause("`COL_DATE` = DATETIME '1970-01-01 12:13:14'", "bigquery") != ""
+
+    for bad_sql in (
+        "ID = 1 OR (SELECT COUNT(*) FROM user_tables) > 0",
+        "EXISTS (SELECT 1 FROM dual)",
+        "ID = 1; DROP TABLE sales",
+        "DBMS_LOCK.SLEEP(5) = 0",
+    ):
+        try:
+            engine.validate_where_clause(bad_sql, "oracle")
+            raise AssertionError(f"Expected PredicateOffloadException for {bad_sql}")
+        except PredicateOffloadException:
+            pass
 
 
 if __name__ == "__main__":
