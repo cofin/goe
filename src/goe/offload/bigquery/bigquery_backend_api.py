@@ -49,6 +49,7 @@ from goe.offload.bigquery.bigquery_column import (
     BigQueryColumn,
 )
 from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
+from goe.offload.bigquery.bigquery_sql import get_bigquery_dialect_engine
 from goe.offload.column_metadata import (
     ALL_CANONICAL_TYPES,
     CANONICAL_CHAR_SEMANTICS_CHAR,
@@ -168,7 +169,7 @@ class BackendBigQueryApi(BackendApiInterface):
         return "BigQuery"
 
     def add_columns(self, db_name, table_name, column_tuples, sync=None):
-        """See interface spec for description"""
+        """Add columns to an existing BigQuery table via BigQueryDialectEngineProtocol."""
         assert db_name and table_name
         assert column_tuples
         assert isinstance(column_tuples, list), "%s is not list" % type(column_tuples)
@@ -176,12 +177,11 @@ class BackendBigQueryApi(BackendApiInterface):
         table = self._get_bq_table(db_name, table_name)
         original_schema = table.schema
         self._debug("add_columns original schema: %s" % original_schema)
-        submittable_lines = ", ".join(
-            ["ADD COLUMN IF NOT EXISTS " + " ".join([val for val in column]) for column in column_tuples]
-        )
-        sql = "ALTER TABLE %s %s" % (
-            self.enclose_object_reference(db_name, table_name),
-            submittable_lines,
+        sql = get_bigquery_dialect_engine().alter_add_columns(
+            project=self._effective_project_name(),
+            db_name=db_name,
+            table_name=table_name,
+            column_name_type_pairs=[(str(col[0]), str(col[1])) for col in column_tuples],
         )
         if not self._dry_run:
             self.execute_ddl(sql, sync=sync)
@@ -422,19 +422,16 @@ class BackendBigQueryApi(BackendApiInterface):
         filter_clauses=None,
         sync=None,
     ):
-        """Create a BigQuery view
-        See create_view() description for parameter descriptions.
-        """
-        projection = self._format_select_projection(column_tuples)
-        where_clause = "\nWHERE  " + "\nAND    ".join(filter_clauses) if filter_clauses else ""
-        sql = """CREATE VIEW %(db_view)s AS
-SELECT %(projection)s
-FROM   %(from_tables)s%(where_clause)s""" % {
-            "db_view": self.enclose_object_reference(db_name, view_name),
-            "projection": projection,
-            "from_tables": ansi_joined_tables,
-            "where_clause": where_clause,
-        }
+        """Create a BigQuery view via BigQueryDialectEngineProtocol."""
+        sql = get_bigquery_dialect_engine().create_view(
+            project=self._effective_project_name(),
+            db_name=db_name,
+            view_name=view_name,
+            select_expr_tuples=column_tuples,
+            from_tables=ansi_joined_tables,
+            where_clauses=filter_clauses,
+            replace=False,
+        )
         return self.execute_ddl(sql, sync=sync)
 
     def create_udf(
@@ -751,37 +748,24 @@ LIMIT 1""" % {
         external=False,
         table_properties=None,
     ):
-        """See interface description for parameter descriptions
-        Ignoring storage_format on BigQuery
-        """
+        """Render a BigQuery CREATE TABLE AS SELECT SQL string via BigQueryDialectEngineProtocol."""
         assert db_name and table_name
         assert column_tuples
         assert isinstance(column_tuples, list), "%s is not list" % type(column_tuples)
         assert isinstance(column_tuples[0], (tuple, list))
 
-        projection = self._format_select_projection(column_tuples)
-        from_clause = (
-            f"\nFROM   {self.enclose_object_reference(from_db_name, from_table_name)}"
-            if from_db_name and from_table_name
-            else ""
+        return get_bigquery_dialect_engine().ctas(
+            project=self._effective_project_name(),
+            db_name=db_name,
+            table_name=table_name,
+            from_project=self._effective_project_name(),
+            from_db_name=from_db_name,
+            from_table_name=from_table_name,
+            select_expr_tuples=column_tuples,
+            options=self._merged_table_options(table_properties),
+            row_limit=row_limit,
+            replace=False,
         )
-        limit_clause = f"\nLIMIT  {row_limit}" if row_limit is not None else ""
-
-        table_prop_clause = self._create_table_properties_clause(table_properties)
-
-        sql = dedent(
-            """\
-            CREATE TABLE %(db_table)s%(table_prop_clause)s
-            AS
-            SELECT %(projection)s%(from_clause)s%(limit_clause)s"""
-        ) % {
-            "db_table": self.enclose_object_reference(db_name, table_name),
-            "table_prop_clause": table_prop_clause,
-            "projection": projection,
-            "from_clause": from_clause,
-            "limit_clause": limit_clause,
-        }
-        return sql
 
     def gen_insert_select_sql_text(
         self,
@@ -797,10 +781,7 @@ LIMIT 1""" % {
         insert_hint=None,
         from_object_override=None,
     ):
-        """Format INSERT from SELECT statement for BigQuery
-        Ignores insert_hint, sort_expr_list and distribute_columns
-        See abstractmethod spec for parameter descriptions
-        """
+        """Format INSERT from SELECT statement for BigQuery via BigQueryDialectEngineProtocol."""
         self._gen_insert_select_sql_assertions(
             db_name,
             table_name,
@@ -811,72 +792,25 @@ LIMIT 1""" % {
             filter_clauses,
             from_object_override,
         )
-
-        projected_expressions = select_expr_tuples + (partition_expr_tuples or [])
-        projection = self._format_select_projection(projected_expressions)
-        from_db_table = from_object_override or self.enclose_object_reference(from_db_name, from_table_name)
-
-        where_clause = ""
-        if filter_clauses:
-            where_clause = "\nWHERE  " + "\nAND    ".join(filter_clauses)
-
-        insert_sql = """INSERT INTO %(db_table)s
-SELECT %(proj)s
-FROM   %(from_db_table)s%(where)s""" % {
-            "db_table": self.enclose_object_reference(db_name, table_name),
-            "proj": projection,
-            "from_db_table": from_db_table,
-            "where": where_clause,
-        }
-        return insert_sql
+        projected_expressions = list(select_expr_tuples) + list(partition_expr_tuples or [])
+        return get_bigquery_dialect_engine().insert_select(
+            project=self._effective_project_name(),
+            db_name=db_name,
+            table_name=table_name,
+            select_expr_tuples=projected_expressions,
+            insert_col_names=None,
+            from_project=self._effective_project_name(),
+            from_db_name=from_db_name,
+            from_table_name=from_table_name,
+            from_object_override=from_object_override,
+            where_clauses=filter_clauses,
+        )
 
     def gen_native_range_partition_key_cast(self, partition_column):
-        """Generates the CAST to be used to appropriately range partition a table"""
-        if partition_column.data_type in [
-            BIGQUERY_TYPE_DATE,
-            BIGQUERY_TYPE_DATETIME,
-            BIGQUERY_TYPE_TIMESTAMP,
-        ]:
-            if partition_column.partition_info.granularity == PART_COL_GRANULARITY_YEAR:
-                part_col_expr = "%s_TRUNC(%s,YEAR)" % (
-                    partition_column.data_type.upper(),
-                    self.enclose_identifier(partition_column.name),
-                )
-            elif partition_column.partition_info.granularity == PART_COL_GRANULARITY_MONTH:
-                part_col_expr = "%s_TRUNC(%s,MONTH)" % (
-                    partition_column.data_type.upper(),
-                    self.enclose_identifier(partition_column.name),
-                )
-            elif partition_column.partition_info.granularity == PART_COL_GRANULARITY_DAY:
-                if partition_column.data_type == BIGQUERY_TYPE_DATE:
-                    part_col_expr = self.enclose_identifier(partition_column.name)
-                else:
-                    part_col_expr = "%s_TRUNC(%s,DAY)" % (
-                        partition_column.data_type.upper(),
-                        self.enclose_identifier(partition_column.name),
-                    )
-            else:
-                raise NotImplementedError(
-                    "BigQuery table partitioning not implemented for data type/granularity: %s/%s"
-                    % (
-                        partition_column.data_type,
-                        partition_column.partition_info.granularity,
-                    )
-                )
-        elif partition_column.data_type == BIGQUERY_TYPE_INT64:
-            if not partition_column.partition_info:
-                raise BackendApiException("Partition information not provided for column: %s" % partition_column.name)
-            part_col_expr = "RANGE_BUCKET(%s, GENERATE_ARRAY(%s, %s, %s))" % (
-                self.enclose_identifier(partition_column.name),
-                partition_column.partition_info.range_start,
-                partition_column.partition_info.range_end,
-                partition_column.partition_info.granularity,
-            )
-        else:
-            raise NotImplementedError(
-                "BigQuery table partitioning not implemented for data type:%s" % partition_column.data_type
-            )
-        return part_col_expr
+        """Generate the BigQuery PARTITION BY expression for a partition column."""
+        if partition_column.data_type == BIGQUERY_TYPE_INT64 and not partition_column.partition_info:
+            raise BackendApiException("Partition information not provided for column: %s" % partition_column.name)
+        return get_bigquery_dialect_engine().partition_by_clause(partition_column)
 
     def gen_sql_text(
         self,
@@ -996,9 +930,10 @@ FROM   %(from_db_table)s%(where)s""" % {
         return
 
     def get_table_ddl(self, db_name, table_name, as_list=False, terminate_sql=False, for_replace=False):
+        """Return DDL for a BigQuery table, optionally rewritten to CREATE OR REPLACE TABLE."""
         ddl_str = self._get_table_ddl(db_name, table_name, terminate_sql=terminate_sql)
         if for_replace:
-            ddl_str = re.sub(r"^CREATE TABLE", "CREATE OR REPLACE TABLE", ddl_str, re.IGNORECASE)
+            ddl_str = get_bigquery_dialect_engine().create_or_replace_ddl(ddl_str)
         self._debug("Table DDL: %s" % ddl_str)
         if as_list:
             return ddl_str.split("\n")
@@ -1809,6 +1744,10 @@ FROM   %(from_db_table)s%(where)s""" % {
                 "BigQuery %s KMS key: %s\n != expected KMS key: %s" % (key_type, kms_key_name, self._kms_key_name)
             )
 
+    def _effective_project_name(self) -> str:
+        """Return the configured/client BigQuery project name or the unit-test fallback."""
+        return self._backend_project_name() or "a-test-project"
+
     def _create_external_table(
         self,
         db_name: Any,
@@ -1817,7 +1756,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         location: Any = None,
         with_terminator: bool = False,
     ) -> list:
-        """Create a BigQuery external table using SQL"""
+        """Create a BigQuery external table using BigQueryDialectEngineProtocol."""
         assert db_name
         assert table_name
         assert storage_format in (
@@ -1826,34 +1765,37 @@ FROM   %(from_db_table)s%(where)s""" % {
         ), f"Unsupported staging format: {storage_format}"
         assert location
 
-        sql = f"""CREATE EXTERNAL TABLE {self.enclose_object_reference(db_name, table_name)}
-OPTIONS (format ='{storage_format}',
-         uris = ['{location}'],
-         description = 'GOE staging table');
-"""
+        sql = get_bigquery_dialect_engine().create_external_table(
+            project=self._effective_project_name(),
+            db_name=db_name,
+            table_name=table_name,
+            columns=None,
+            storage_format=storage_format,
+            uris=[location],
+            extra_options={"description": "GOE staging table"},
+            replace=False,
+        )
         if with_terminator:
             sql += ";"
         return self.execute_ddl(sql)
 
-    def _create_table_properties_clause(self, table_properties):
-        """Build OPTIONS clause for CREATE TABLE statements from table_properties dict. Add kms key details (if set)
-
-        We don't enforce literals for values as they can be of different forms, see the following for examples:
-        https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#table_option_list
-        """
+    def _merged_table_options(self, table_properties: dict | None) -> dict:
+        """Return a copy of table_properties enriched with kms_key_name when configured."""
         if table_properties:
             assert isinstance(table_properties, dict)
+            merged = dict(table_properties)
         else:
-            table_properties = {}
-
+            merged = {}
         if self._kms_key_name:
-            table_properties["kms_key_name"] = self.to_backend_literal(self._kms_key_name)
+            merged["kms_key_name"] = self._kms_key_name
+        return merged
 
-        if table_properties:
-            table_prop_clause = "\nOPTIONS (%s)" % ", ".join("%s=%s" % (k, v) for k, v in table_properties.items())
-        else:
-            table_prop_clause = ""
-        return table_prop_clause
+    def _create_table_properties_clause(self, table_properties):
+        """Build OPTIONS clause for CREATE TABLE statements via BigQueryDialectEngineProtocol."""
+        merged = self._merged_table_options(table_properties)
+        if not merged:
+            return ""
+        return "\n" + get_bigquery_dialect_engine().properties_clause(options=merged)
 
     def _default_job_config(self, query_options: dict | None = None) -> bigquery.QueryJobConfig:
         """All connections are normalized to UTC to match data extractions.
@@ -2051,7 +1993,7 @@ OPTIONS (format ='{storage_format}',
         sort_column_names=None,
         for_replace=False,
     ):
-        """Build a CREATE TABLE SQL statement."""
+        """Build a CREATE TABLE SQL statement via BigQueryDialectEngineProtocol."""
         assert db_name
         assert table_name
         assert column_list
@@ -2062,8 +2004,7 @@ OPTIONS (format ='{storage_format}',
         if table_properties:
             assert isinstance(table_properties, dict)
 
-        col_projection = self._create_table_columns_clause_common(column_list, external=False)
-
+        part_expr_sql = None
         if partition_column_names:
             real_col = match_table_column(partition_column_names[0], column_list)
             if not real_col:
@@ -2073,29 +2014,18 @@ OPTIONS (format ='{storage_format}',
                 )
                 raise BackendApiException("Partition column is not in table columns: %s" % partition_column_names[0])
             self._debug("Partitioning by: %s %s" % (real_col.name, real_col.data_type))
-            part_clause = "\nPARTITION BY %s" % self.gen_native_range_partition_key_cast(real_col)
-        else:
-            part_clause = ""
+            part_expr_sql = self.gen_native_range_partition_key_cast(real_col)
 
-        if sort_column_names:
-            sort_csv = ",".join([self.enclose_identifier(_) for _ in sort_column_names])
-            cluster_by_clause = ("\nCLUSTER BY %s" % sort_csv) if sort_csv else ""
-        else:
-            cluster_by_clause = ""
-
-        table_prop_clause = self._create_table_properties_clause(table_properties)
-
-        sql = """CREATE%(or_replace)s TABLE %(db_table)s (
-%(col_projection)s
-)%(part_clause)s%(cluster_by_clause)s%(table_prop_clause)s""" % {
-            "or_replace": " OR REPLACE" if for_replace else "",
-            "db_table": self.enclose_object_reference(db_name, table_name),
-            "col_projection": col_projection,
-            "part_clause": part_clause,
-            "cluster_by_clause": cluster_by_clause,
-            "table_prop_clause": table_prop_clause,
-        }
-        return sql
+        return get_bigquery_dialect_engine().create_table(
+            project=self._effective_project_name(),
+            db_name=db_name,
+            table_name=table_name,
+            columns=column_list,
+            partition_expr_sql=part_expr_sql,
+            cluster_cols=sort_column_names,
+            options=self._merged_table_options(table_properties),
+            replace=bool(for_replace),
+        )
 
     def _get_bq_job(self, job_id):
         """Retrieve BigQuery job"""
