@@ -32,6 +32,10 @@ COMMON_OPTION_KEYS: tuple[str, ...] = (
     "error_after_step",
     "error_on_token",
     "suppress_stdout",
+    "otel_enabled",
+    "otel_exporter",
+    "otel_endpoint",
+    "log_format",
 )
 
 
@@ -129,6 +133,32 @@ def common_options(func: Callable[..., Any]) -> Callable[..., Any]:
             hidden=True,
             help="Suppress standard output stream in OffloadMessages.",
         ),
+        click.option(
+            "--otel-enabled/--no-otel-enabled",
+            "otel_enabled",
+            default=None,
+            help="Enable OpenTelemetry tracing and metrics (overrides GOE_OTEL_ENABLED).",
+        ),
+        click.option(
+            "--otel-exporter",
+            "otel_exporter",
+            type=click.Choice(["none", "console", "jsonl", "otlp", "gcp", "memory"], case_sensitive=False),
+            default=None,
+            help="OpenTelemetry exporter (overrides GOE_OTEL_EXPORTER).",
+        ),
+        click.option(
+            "--otel-endpoint",
+            "otel_endpoint",
+            default=None,
+            help="OTLP collector endpoint (overrides GOE_OTEL_ENDPOINT).",
+        ),
+        click.option(
+            "--log-format",
+            "log_format",
+            type=click.Choice(["text", "json"], case_sensitive=False),
+            default=None,
+            help="Command log file format (overrides GOE_LOG_FORMAT).",
+        ),
     ]
     for option in reversed(options):
         func = option(func)
@@ -177,6 +207,11 @@ def extract_common_options(ctx: click.Context | None, kwargs: dict[str, Any]) ->
     error_on_token = (
         popped["error_on_token"] if popped["error_on_token"] is not None else parent_obj.get("error_on_token")
     )
+    telemetry_overrides = {
+        key: popped[key] if popped[key] is not None else parent_obj.get(key)
+        for key in ("otel_enabled", "otel_exporter", "otel_endpoint", "log_format")
+    }
+    telemetry_overrides = {key: value for key, value in telemetry_overrides.items() if value is not None}
 
     console.no_color = no_ansi
     heading_console.no_color = no_ansi
@@ -194,6 +229,7 @@ def extract_common_options(ctx: click.Context | None, kwargs: dict[str, Any]) ->
         "error_after_step": error_after_step,
         "error_on_token": error_on_token,
         "suppress_stdout": suppress_stdout,
+        **telemetry_overrides,
     }
     if ctx is not None and isinstance(ctx.obj, dict):
         ctx.obj.update(resolved_ctx)
@@ -210,6 +246,7 @@ def extract_common_options(ctx: click.Context | None, kwargs: dict[str, Any]) ->
         "error_after_step": error_after_step,
         "error_on_token": error_on_token,
         "suppress_stdout": suppress_stdout,
+        **telemetry_overrides,
     }
 
 

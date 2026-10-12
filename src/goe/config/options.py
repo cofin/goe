@@ -172,6 +172,15 @@ class CommonOptions(BaseOptionStruct, kw_only=True):
     error_on_token: str | None = None
     ansi: bool = msgspec.field(default_factory=orchestration_defaults.ansi_default)
     suppress_stdout: bool = msgspec.field(default_factory=orchestration_defaults.suppress_stdout_default)
+    otel_enabled: bool | None = None
+    otel_service_name: str | None = None
+    otel_exporter: str | None = None
+    otel_endpoint: str | None = None
+    otel_protocol: str | None = None
+    otel_sample_rate: float | None = None
+    otel_sqlcommenter: bool | None = None
+    log_format: str | None = None
+    log_json_sidecar: bool | None = None
 
 
 class TableOperationOptions(CommonOptions, kw_only=True):

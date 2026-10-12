@@ -20,6 +20,7 @@ from goe.goe import (
     verbose,
     version,
 )
+from goe.observability.runtime import ensure_observability
 from goe.orchestration.orchestration_runner import OrchestrationRunner
 from goe.util.goe_log import log_exception
 
@@ -29,6 +30,7 @@ def offload_by_cli(options, messages_override=None):
 
     messages_override: Only used during testing to access messages object.
     """
+    ensure_observability(options)
     init(options)
     init_log("offload_%s" % options.owner_table)
 
