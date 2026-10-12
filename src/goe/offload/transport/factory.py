@@ -6,6 +6,7 @@
 from typing import TYPE_CHECKING, Any
 
 from goe.offload.offload_constants import (
+    BACKEND_DISTRO_GCP,
     DBTYPE_MSSQL,
     DBTYPE_ORACLE,
     DBTYPE_TERADATA,
@@ -56,6 +57,15 @@ if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.offload.offload_messages import OffloadMessages
     from goe.offload.offload_source_table import OffloadSourceTableInterface
+
+GCP_AUTO_TRANSPORT_METHODS = [
+    OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
+]
 
 
 def get_offload_transport_method_validation_fns(
@@ -127,8 +137,7 @@ def choose_offload_transport_method(
     messages: "OffloadMessages",
 ) -> str:
     """Select the data transport method based on a series of rules:
-    AUTO:
-        Work through GOE rules and then fall back to SQOOP rules
+    AUTO: On GCP backends pick QUERY_IMPORT, SPARK_DATAPROC_GCLOUD, SPARK_BATCHES_GCLOUD, SPARK_SUBMIT, SPARK_THRIFT, SPARK_LIVY (Sqoop is never valid there); otherwise work through GOE rules, then SQOOP rules, then GCP rules.
     GOE:
         Pick a method using the following priorities: SPARK_THRIFT, QUERY_IMPORT, SPARK_LIVY, SPARK_SUBMIT
     GCP:
@@ -147,6 +156,8 @@ def choose_offload_transport_method(
     if config.db_type in [DBTYPE_ORACLE, DBTYPE_TERADATA]:
         if offload_operation.offload_transport_method:
             rules = [offload_operation.offload_transport_method]
+        elif config.offload_transport == OFFLOAD_TRANSPORT_AUTO and config.backend_distribution == BACKEND_DISTRO_GCP:
+            rules = GCP_AUTO_TRANSPORT_METHODS
         elif config.offload_transport == OFFLOAD_TRANSPORT_AUTO:
             rules = OFFLOAD_TRANSPORT_GOE_METHODS + OFFLOAD_TRANSPORT_SQOOP_METHODS + OFFLOAD_TRANSPORT_GCP_METHODS
         elif config.offload_transport == OFFLOAD_TRANSPORT_GOE:
