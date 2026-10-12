@@ -23,7 +23,6 @@ from goe.filesystem.goe_dfs import (
     GOE_DFS_GCS,
     URI_SEP,
     GOEDfs,
-    GOEDfsDeleteNotComplete,
     GOEDfsException,
     gen_fs_uri,
 )
@@ -92,9 +91,10 @@ class GOEGcs(GOEDfs):
         if not self._dry_run:
             bucket = self._client.get_bucket(container)
             blob = bucket.blob(target_path)
-            if blob.exists() and not overwrite:
-                raise GOEDfsException("Cannot copy file over existing file: %s" % target_path)
-            blob.upload_from_filename(local_path)
+            try:
+                blob.upload_from_filename(local_path, if_generation_match=None if overwrite else 0)
+            except google_exceptions.PreconditionFailed as exc:
+                raise GOEDfsException("Cannot copy file over existing file: %s" % target_path) from exc
 
     def copy_to_local(self, dfs_path, local_path, overwrite=False):
         assert dfs_path
@@ -113,27 +113,18 @@ class GOEGcs(GOEDfs):
                 blob.download_to_file(file_handle)
 
     @retry.Retry(
-        predicate=retry.if_exception_type(
-            GOEDfsDeleteNotComplete,
-            ConnectionError,
-            google_exceptions.ServiceUnavailable,
-        ),
+        predicate=retry.if_exception_type(ConnectionError, google_exceptions.ServiceUnavailable),
         deadline=DFS_RETRY_TIMEOUT,
     )
     def delete(self, dfs_path, recursive=False):
-        """Delete a file or directory and contents
+        """Delete a file, or a directory prefix and its contents, in a single pass.
 
-        Just delete the single blob
-        No batching (self._client.batch()) here because that circumvents the NotFound catch in pragmatic_delete()
-        If we get this far then it worked
+        GCS listing is strongly consistent, so no post-delete wait or re-list is needed. Objects that vanish
+        concurrently (404 NotFound) are accepted as deleted.
         """
 
-        def pragmatic_delete(blob):
-            """Run a delete but accept the fact that the blob may have disappeared in the meantime"""
-            try:
-                blob.delete()
-            except google_exceptions.NotFound:
-                self.debug("delete(%s) returned 404 (NotFound), accepting as deleted" % blob.name)
+        def accept_not_found(blob):
+            self.debug("delete(%s) returned 404 (NotFound), accepting as deleted" % blob.name)
 
         assert dfs_path
         assert isinstance(dfs_path, str)
@@ -144,31 +135,16 @@ class GOEGcs(GOEDfs):
             return None
         bucket = self._client.get_bucket(container)
         if not recursive or (self.stat(dfs_path) or {}).get("type") == DFS_TYPE_FILE:
-            blob = bucket.blob(path)
-            if not blob.exists():
+            self.debug("delete(%s)" % path)
+            try:
+                bucket.delete_blob(path)
+            except google_exceptions.NotFound:
                 return None
-            self.debug("delete(%s)" % blob.name)
-            pragmatic_delete(blob)
-            self._post_cloud_delete_wait(scheme)
-            if blob.exists():
-                self.debug("GCS delete incomplete, retrying")
-                raise GOEDfsDeleteNotComplete
-        else:
-            self.debug("Recursive delete using directory prefix: %s" % path)
-            if not path.endswith(URI_SEP):
-                path += URI_SEP
-            found_files = False
-            for blob in self._client.list_blobs(bucket, prefix=path):
-                found_files = True
-                if blob.exists():
-                    self.debug("delete(%s)" % blob.name)
-                    pragmatic_delete(blob)
-            if found_files:
-                self._post_cloud_delete_wait(scheme)
-                blobs_pending_delete = [_ for _ in self._client.list_blobs(bucket, prefix=path)]
-                if blobs_pending_delete:
-                    self.debug("GCS delete incomplete, retrying")
-                    raise GOEDfsDeleteNotComplete
+            return True
+        self.debug("Recursive delete using directory prefix: %s" % path)
+        if not path.endswith(URI_SEP):
+            path += URI_SEP
+        bucket.delete_blobs(list(self._client.list_blobs(bucket, prefix=path)), on_error=accept_not_found)
         return True
 
     def gen_uri(
@@ -294,6 +270,7 @@ class GOEGcs(GOEDfs):
             return
         bucket = self._client.get_bucket(container)
         blob = bucket.blob(path)
-        if blob.exists() and not overwrite:
-            raise GOEDfsException("Cannot write to existing file: %s" % path)
-        blob.upload_from_string(data)
+        try:
+            blob.upload_from_string(data, if_generation_match=None if overwrite else 0)
+        except google_exceptions.PreconditionFailed as exc:
+            raise GOEDfsException("Cannot write to existing file: %s" % path) from exc
