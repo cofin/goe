@@ -14,22 +14,23 @@ This directory contains specifications and task worksheets for active and planne
 
 ## Active & Planned Flows
 
-### Phase 2 Next-Gen Modernization & Rebuild Roadmaps (Ordered by Implementation Dependency)
-
-1. **[Master PRD 3: SQLSpec Oracle Data Layer, Pluggable SQL AST Engine, BigQuery-First Backend & DuckDB Offload Transport](prd_03_sqlspec_bigquery_and_duckdb_engine_20261010/spec.md)** (`prd_03_sqlspec_bigquery_and_duckdb_engine_20261010`, 17 tasks):
-   - **Chapter 3.1**: [SQLSpec Oracle Data Layer & Named SQL Migration](sqlspec_oracle_data_layer_migration_20261010/spec.md) (`sqlspec_oracle_data_layer_migration_20261010`, 3 tasks)
-   - **Chapter 3.2**: [Pluggable SQL Dialect Engine (`sql_engine.py`), Custom Oracle Dialect Adapter & `sqlglot` AST Builders](sqlglot_ast_and_predicate_engine_20261010/spec.md) (`sqlglot_ast_and_predicate_engine_20261010`, 5 tasks)
-   - **Chapter 3.3**: [BigQuery-First Backend & GCS Transfer Modernization](bigquery_first_backend_modernization_20261010/spec.md) (`bigquery_first_backend_modernization_20261010`, 5 tasks)
-   - **Chapter 3.4**: [DuckDB & `cofin/duckdb-oracle` + Community `gcs` Extension Offload Transport](duckdb_oracle_offload_transport_20261010/spec.md) (`duckdb_oracle_offload_transport_20261010`, 4 tasks)
-2. **[Master PRD 4: End-to-End OpenTelemetry Observability, Step Spans, Metrics & Log Correlation](prd_04_end_to_end_opentelemetry_observability_20261010/spec.md)** (`prd_04_end_to_end_opentelemetry_observability_20261010`, 15 tasks):
-   - **Chapter 4.1**: [OpenTelemetry Foundation, Config & `ExecutionId` Context Bridge](opentelemetry_foundation_and_context_propagation_20261010/spec.md) (`opentelemetry_foundation_and_context_propagation_20261010`, 6 tasks)
-   - **Chapter 4.2**: [Orchestration Step Spans, Structured Log Correlation & Listener/Worker Telemetry](orchestration_step_and_listener_telemetry_20261010/spec.md) (`orchestration_step_and_listener_telemetry_20261010`, 4 tasks)
-   - **Chapter 4.3**: [Database (`OracleGateway`), Offload Transport, GCS & BigQuery Spans](database_transport_and_cloud_storage_spans_20261010/spec.md) (`database_transport_and_cloud_storage_spans_20261010`, 5 tasks)
+None.
 
 ## Archived Flows & Roadmaps
 
 All previous flows have completed full verification and code review gates and have been synthesized into `.agents/bundles/knowledge/`:
 
+- **Master PRD 4: End-to-End OpenTelemetry Observability, Step Spans, Metrics & Log Correlation (`prd_04_end_to_end_opentelemetry_observability_20261010`, 15 tasks)**:
+  - Chapter 4.1: OpenTelemetry Foundation, Config & `ExecutionId` Context Bridge (`opentelemetry_foundation_and_context_propagation_20261010`, 6 tasks)
+  - Chapter 4.2: Orchestration Step Spans, Structured Log Correlation & Listener/Worker Telemetry (`orchestration_step_and_listener_telemetry_20261010`, 4 tasks)
+  - Chapter 4.3: Database (`OracleGateway`), Offload Transport, GCS & BigQuery Spans (`database_transport_and_cloud_storage_spans_20261010`, 5 tasks)
+  - *Synthesized into*: [OpenTelemetry Observability](../knowledge/operations/observability.md), [Oracle Adapter](../knowledge/frontends/oracle.md), [Google BigQuery](../knowledge/backends/bigquery.md), [Google Cloud Storage](../knowledge/storage/gcs.md), [Dataproc & Spark Engines](../knowledge/transport/spark-dataproc.md), [DuckDB Offload Transport](../knowledge/transport/duckdb.md), [Listener REST API](../knowledge/listener/rest-api.md), [Orchestration Core](../knowledge/architecture/orchestration.md).
+- **Master PRD 3: SQLSpec Oracle Data Layer, Pluggable SQL AST Engine, BigQuery-First Backend & DuckDB Offload Transport (`prd_03_sqlspec_bigquery_and_duckdb_engine_20261010`, 17 tasks)**:
+  - Chapter 3.1: SQLSpec Oracle Data Layer & Named SQL Migration (`sqlspec_oracle_data_layer_migration_20261010`, 3 tasks)
+  - Chapter 3.2: Pluggable SQL Dialect Engine (`sql_engine.py`), Custom Oracle Dialect Adapter & `sqlglot` AST Builders (`sqlglot_ast_and_predicate_engine_20261010`, 5 tasks)
+  - Chapter 3.3: BigQuery-First Backend & GCS Transfer Modernization (`bigquery_first_backend_modernization_20261010`, 5 tasks)
+  - Chapter 3.4: DuckDB & `cofin/duckdb-oracle` + Community `gcs` Extension Offload Transport (`duckdb_oracle_offload_transport_20261010`, 4 tasks)
+  - *Synthesized into*: [Oracle Adapter](../knowledge/frontends/oracle.md), [Database & SQL Standards](../knowledge/standards/database-and-sql.md), [Google BigQuery](../knowledge/backends/bigquery.md), [Google Cloud Storage](../knowledge/storage/gcs.md), [DuckDB Offload Transport](../knowledge/transport/duckdb.md), [Dataproc & Spark Engines](../knowledge/transport/spark-dataproc.md).
 - **Master PRD 2: Typed `msgspec` Option Model, Core God-Module Decomposition & Strict Type Safety Ratchet (`prd_02_core_typing_options_and_decomposition_20261010`, 13 tasks, PR #9)**:
   - Chapter 2.1: Typed `msgspec` Option Model & Complete `optparse` Retirement (`typed_msgspec_option_model_20261010`, 3 tasks)
   - Chapter 2.2: Core God-Module Decomposition (`core_god_module_decomposition_20261010`, 4 tasks)
@@ -59,4 +60,3 @@ All previous flows have completed full verification and code review gates and ha
   - *Synthesized into*: [Patterns](../knowledge/patterns/index.md), [Workflow](../knowledge/workflow.md), [Listener](../knowledge/listener/index.md).
 - **SPDX Copyright & License Header Migration (`spdx_copyright_migration_20260826`)**:
   - Chapters 1–4: Standardized all codebase copyright/license headers to 2-line SPDX headers with Ruff `CPY001` continuous lint enforcement.
-

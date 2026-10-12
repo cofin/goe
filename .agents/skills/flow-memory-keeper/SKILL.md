@@ -124,5 +124,9 @@ Before claiming a task, phase, or flow is complete, verify:
 - Structure utility modules in `src/goe/util/` to cleanly re-export `sqlspec.utils`.
 - Define serialization schemas as pure `msgspec.Struct` models without redundant client wrapper classes.
 - Maintain a single authoritative entrypoint in `pyproject.toml` (`[project.scripts] goe = "goe.cli.main:cli"`); legacy `bin/` wrappers were removed in PRD 1 Chapter 1.1 — do not reintroduce wrapper scripts.
+- Route Oracle data dictionary and repository SQL through `OracleGateway` (`src/goe/persistence/oracle_gateway.py`) and named `.sql` files (`SQLFileLoader` with `NAMED_COLON` `:param` binds), borrowing `OracleFrontendApi.get_validated_oracle_connection()` per call without opening a competing connection pool.
+- Route all BigQuery DDL/DML, Oracle extraction row-source SQL (`AS OF SCN` / `PARTITION` / `SUBPARTITION`), predicate rendering, and cross-DB validation queries through the library-agnostic protocols in `src/goe/offload/sql_engine.py`; callers must never import `sqlglot` directly.
+- Keep `OffloadTransportDuckDB` (`--offload-transport-method=DUCKDB`) strictly opt-in (excluded from `AUTO`) and enforce `verify_batch_scn_invariant(query, transport_scn)` before opening any DuckDB connection.
+- Keep OpenTelemetry (`src/goe/observability/`) zero-cost when `GOE_OTEL_ENABLED=false` (never importing `opentelemetry.sdk` on the disabled path) and preserve Oracle `MODULE`/`ACTION` attributes by writing W3C `traceparent` only to `V$SESSION.CLIENT_INFO` (55 bytes) and SQLCommenter comments.
 <!-- project-customization: end -->
 
