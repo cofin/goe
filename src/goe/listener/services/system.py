@@ -90,7 +90,7 @@ class SystemService:
     def get_command_executions(self) -> list[dict[str, str | Any]]:
         return self.get_repo(self.config, self.messages).get_command_executions()
 
-    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, str | Any]:
+    def get_command_execution(self, execution_id: ExecutionId) -> dict[str, Any] | None:
         return self.get_repo(self.config, self.messages).get_command_execution(execution_id)
 
     def get_command_execution_steps(self, execution_id: ExecutionId | None) -> list[dict[str, str | Any]]:
