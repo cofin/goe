@@ -14,6 +14,8 @@ from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Optional
 
 from goe.filesystem.goe_dfs import DFS_TYPE_FILE
+from goe.observability.db import build_transport_sql_comment
+from goe.observability.transport import inject_spark_trace_properties
 from goe.offload.column_metadata import match_table_column
 from goe.offload.factory.offload_transport_rdbms_api_factory import (
     offload_transport_rdbms_api_factory,
@@ -235,6 +237,28 @@ class OffloadTransport(metaclass=ABCMeta):
         """Return a dict used to pass contextual information back from transport()"""
         return self._transport_context.get(TRANSPORT_CXT_BYTES)
 
+    def get_transport_method(self) -> str:
+        """Return the transport method constant (class name when a subclass does not set one)."""
+        return getattr(self, "_offload_transport_method", None) or type(self).__name__
+
+    def get_telemetry_attributes(self) -> dict[str, str | int]:
+        """Return span attributes describing this transport for ``goe.transport.*`` spans."""
+        attributes: dict[str, str | int] = {"goe.transport.method": self.get_transport_method()}
+        parallelism = getattr(self, "_offload_transport_parallelism", None)
+        if parallelism is not None:
+            attributes["goe.transport.parallelism"] = int(parallelism)
+        options = getattr(self, "_offload_options", None)
+        staging_format = getattr(options, "offload_staging_format", None)
+        if staging_format:
+            attributes["goe.transport.staging_format"] = str(staging_format)
+        staging_location = getattr(self, "_staging_table_location", None)
+        if staging_location:
+            attributes["goe.transport.staging_location"] = str(staging_location)
+        snapshot = getattr(self, "_offload_transport_snapshot", None)
+        if snapshot is not None:
+            attributes["goe.transport.scn"] = str(snapshot)
+        return attributes
+
     def get_transport_snapshot(self) -> int | None:
         """Return RDBMS SCN applied to this operation."""
         return self._offload_transport_snapshot
@@ -327,7 +351,7 @@ class OffloadTransport(metaclass=ABCMeta):
             spark_config_properties = json.loads(offload_transport_spark_properties)
         if not self._offload_transport_password_alias:
             spark_config_properties.update({"spark.jdbc.password": self._offload_options.rdbms_app_pass})
-        return spark_config_properties
+        return inject_spark_trace_properties(spark_config_properties)
 
     def _reset_transport_context(self):
         self._transport_context = {
@@ -552,6 +576,7 @@ class OffloadTransport(metaclass=ABCMeta):
     ) -> str:
         """Adds an outer query around the row source query produced by get_transport_row_source_query."""
         assert self._rdbms_table is not None
+        sql_comment = build_transport_sql_comment(sql_comment)
         self.debug(
             "_get_spark_jdbc_query_text(%s, %s, %s)"
             % (TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN, split_type, sql_comment)
