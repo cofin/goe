@@ -5,12 +5,19 @@ tags:
   - changelog
   - okf
   - flow
-updated_at: "2026-10-12T19:55:00Z"
+updated_at: "2026-10-24T17:52:00Z"
 ---
 
 # Change Log
 
 This file records significant lifecycle operations, structural additions, and major evolutions to the GOE knowledge bundle.
+
+## 2026-10-24
+
+- **GOE Architecture Redesign Research and Master PRDs 5–10 (`goe-architecture-redesign`)**:
+  - Executed parallel primary-source `/flow research` across `src/goe/` (`74,758` LOC across `~200` files), `sql/`, `templates/conf/`, `tools/`, `pyproject.toml`, `duckdb==2.0.0`, signed community `cofin/duckdb-oracle` `v0.3.1`, `sqlspec==0.68.0`, `sqlglot==30.24.0`, and `cofin/vertebra` (`df36a30`).
+  - Resolved the redesign decisions: replace the `QUERY_IMPORT` engine behind a differential parity suite, replace `litestar-queues` with a GOE-owned durable job queue (Oracle repository tables with a SQLite fallback), run the Listener on Vertebra behind a release gate, and remove the Sqoop transport, MapRFS scheme, and Teradata frontend.
+  - Created Master PRDs 5–10 under `specs/` with 26 child chapter `spec.md` plans and 88 executable task worksheets (`tasks/*.md`), and promoted the research into them: [redesign dossier](specs/prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/goe-architecture-redesign.md), [module blueprint](specs/prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/module-by-module-redesign.md), [SQLSpec, SQLGlot, and caching](specs/prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/sqlspec-sqlglot-and-caching-architecture.md), [DuckDB 2.0 data plane](specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/duckdb2-arrow-and-storage-dataplane.md), and [Vertebra runtime evaluation](specs/prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024/research/vertebra-and-runtime-evaluation.md); registered them in [Specifications Registry](specs/index.md) and [Research Registry](research/index.md).
 
 ## 2026-10-12
 

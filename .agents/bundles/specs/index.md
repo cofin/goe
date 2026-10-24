@@ -14,7 +14,40 @@ This directory contains specifications and task worksheets for active and planne
 
 ## Active & Planned Flows
 
-None.
+The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/goe-architecture-redesign.md)):
+
+- **[Master PRD 5: Adapter Reduction, Core Typing, Declarative Settings, Utility Dissolution, and Connect Runner](prd_05_foundation_typing_settings_and_adapter_reduction_20261024/spec.md)** (`planned`):
+  - Chapter 5.1: Adapter Reduction and `AdapterRegistry` ([`adapter_reduction_and_adapter_registry_20261024`](adapter_reduction_and_adapter_registry_20261024/spec.md))
+  - Chapter 5.2: Core Typing, Serializers, Platform Utilities, and Architecture Gate ([`core_typing_serializers_platform_and_architecture_gate_20261024`](core_typing_serializers_platform_and_architecture_gate_20261024/spec.md))
+  - Chapter 5.3: Declarative Settings, Option Registry, and Error Model ([`declarative_settings_options_and_error_model_20261024`](declarative_settings_options_and_error_model_20261024/spec.md))
+  - Chapter 5.4: Utility Dissolution, Dependency Slimming, and Lint Hygiene ([`util_dissolution_dependency_and_lint_hygiene_20261024`](util_dissolution_dependency_and_lint_hygiene_20261024/spec.md))
+  - Chapter 5.5: Connect Runner and Connectivity Report ([`connect_runner_and_connectivity_report_20261024`](connect_runner_and_connectivity_report_20261024/spec.md))
+- **[Master PRD 6: Pooled SQLSpec Oracle Data Layer, Repository Service, Catalog Cache, and MSSQL Frontend](prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/spec.md)** (`planned`):
+  - Chapter 6.1: `OracleDatabaseRegistry` and Session Tracing ([`oracle_database_registry_and_session_tracing_20261024`](oracle_database_registry_and_session_tracing_20261024/spec.md))
+  - Chapter 6.2: `OffloadMetadata` and Repository Service ([`offload_metadata_and_repository_service_20261024`](offload_metadata_and_repository_service_20261024/spec.md))
+  - Chapter 6.3: Oracle Catalog Snapshot and Frontend Cache ([`oracle_catalog_snapshot_and_frontend_cache_20261024`](oracle_catalog_snapshot_and_frontend_cache_20261024/spec.md))
+  - Chapter 6.4: MSSQL Frontend on `MssqlPythonConfig` ([`mssql_frontend_on_mssql_python_20261024`](mssql_frontend_on_mssql_python_20261024/spec.md))
+- **[Master PRD 7: Native SQLGlot Dialect Engine, PredicateIR, Concurrent Validation, Schema Sync, and Status Report](prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/spec.md)** (`planned`):
+  - Chapter 7.1: Native SQLGlot Dialect Engine ([`native_sqlglot_dialect_engine_20261024`](native_sqlglot_dialect_engine_20261024/spec.md))
+  - Chapter 7.2: `PredicateIR` Compiler ([`predicate_ir_compiler_20261024`](predicate_ir_compiler_20261024/spec.md))
+  - Chapter 7.3: Concurrent Cross-Database Validation ([`concurrent_cross_db_validation_20261024`](concurrent_cross_db_validation_20261024/spec.md))
+  - Chapter 7.4: Schema Sync and Status Report Redesign ([`schema_sync_and_status_report_redesign_20261024`](schema_sync_and_status_report_redesign_20261024/spec.md))
+- **[Master PRD 8: DuckDB 2.0 Data Plane, QUERY_IMPORT Parity Replacement, Transport Decomposition, and SQLSpec Storage](prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/spec.md)** (`planned`):
+  - Chapter 8.1: DuckDB 2.0 Engine Hardening ([`duckdb2_engine_hardening_20261024`](duckdb2_engine_hardening_20261024/spec.md))
+  - Chapter 8.2: Arrow Extraction and `QUERY_IMPORT` Parity ([`arrow_extraction_and_query_import_parity_20261024`](arrow_extraction_and_query_import_parity_20261024/spec.md))
+  - Chapter 8.3: Transport Decomposition and Automatic Selection ([`transport_decomposition_and_auto_selection_20261024`](transport_decomposition_and_auto_selection_20261024/spec.md))
+  - Chapter 8.4: `sqlspec.storage` Filesystem Backends ([`sqlspec_storage_filesystem_backends_20261024`](sqlspec_storage_filesystem_backends_20261024/spec.md))
+- **[Master PRD 9: Canonical Column Model, Composable Backends, Cached Backend Catalog, and Direct BigQuery Ingestion](prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/spec.md)** (`planned`):
+  - Chapter 9.1: Canonical Column Model and Type Registry ([`canonical_column_model_and_type_registry_20261024`](canonical_column_model_and_type_registry_20261024/spec.md))
+  - Chapter 9.2: Backend Capabilities and Cached Catalog ([`backend_capabilities_and_cached_catalog_20261024`](backend_capabilities_and_cached_catalog_20261024/spec.md))
+  - Chapter 9.3: BigQuery Ingest Strategies ([`bigquery_ingest_strategies_20261024`](bigquery_ingest_strategies_20261024/spec.md))
+  - Chapter 9.4: Snowflake, Synapse, and Hadoop Backend Alignment ([`snowflake_synapse_hadoop_backend_alignment_20261024`](snowflake_synapse_hadoop_backend_alignment_20261024/spec.md))
+- **[Master PRD 10: Execution Context, Staged OffloadPlan, Durable Job Queue, and the Listener on Vertebra](prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024/spec.md)** (`planned`):
+  - Chapter 10.1: Execution Context and Concurrency Safety ([`execution_context_and_concurrency_safety_20261024`](execution_context_and_concurrency_safety_20261024/spec.md))
+  - Chapter 10.2: `OffloadPlan` Discovery and Boundary Stages ([`offload_plan_discovery_and_boundary_stages_20261024`](offload_plan_discovery_and_boundary_stages_20261024/spec.md))
+  - Chapter 10.3: `OffloadPlan` Resolution and Stateless Executor ([`offload_plan_resolution_and_stateless_executor_20261024`](offload_plan_resolution_and_stateless_executor_20261024/spec.md))
+  - Chapter 10.4: Durable Job Queue, Listener Cache, and MCP ([`durable_job_queue_listener_cache_and_mcp_20261024`](durable_job_queue_listener_cache_and_mcp_20261024/spec.md))
+  - Chapter 10.5: Listener on Vertebra Runtime ([`listener_on_vertebra_runtime_20261024`](listener_on_vertebra_runtime_20261024/spec.md))
 
 ## Archived Flows & Roadmaps
 
