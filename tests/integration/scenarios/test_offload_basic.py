@@ -23,11 +23,9 @@ from goe.offload.offload_metadata_functions import (
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )
 from goe.offload.offload_source_data import MAX_QUERY_OPTIMISTIC_PRUNE_CLAUSE
+from goe.offload.registry import create_repository_client
 from goe.orchestration import command_steps
 from goe.orchestration.command_steps import step_title
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
     backend_table_count,
@@ -249,7 +247,7 @@ def test_offload_basic_dim(config, schema, data_db):
     ):
         load_db = load_db_name(schema, config)
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         test_table = OFFLOAD_DIM
         backend_name = convert_backend_identifier_case(config, test_table)
@@ -376,7 +374,7 @@ def test_offload_basic_fact(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         test_table = OFFLOAD_FACT
         backend_name = convert_backend_identifier_case(config, test_table)
@@ -431,23 +429,20 @@ def test_offload_basic_fact(config, schema, data_db):
             "The backend table should NOT exist"
         )
 
-        if config.db_type != offload_constants.DBTYPE_TERADATA:
-            # Offloads only empty partitions. Ensure 0 rows in backend.
-            options = {
-                "owner_table": schema + "." + test_table,
-                "older_than_date": test_constants.SALES_BASED_FACT_PRE_HV,
-                "reset_backend_table": True,
-                "create_backend_db": True,
-                "execute": True,
-            }
-            run_offload(options, config, messages)
+        # Offloads only empty partitions. Ensure 0 rows in backend.
+        options = {
+            "owner_table": schema + "." + test_table,
+            "older_than_date": test_constants.SALES_BASED_FACT_PRE_HV,
+            "reset_backend_table": True,
+            "create_backend_db": True,
+            "execute": True,
+        }
+        run_offload(options, config, messages)
 
-            assert backend_table_exists(config, backend_api, messages, data_db, test_table), (
-                "Backend table should exist"
-            )
-            assert backend_table_count(config, backend_api, messages, data_db, test_table) == 0, (
-                "Backend table should be empty"
-            )
+        assert backend_table_exists(config, backend_api, messages, data_db, test_table), "Backend table should exist"
+        assert backend_table_count(config, backend_api, messages, data_db, test_table) == 0, (
+            "Backend table should be empty"
+        )
 
         # Non-Execute offload of first partition with advanced options.
         offload_stats_method = (
@@ -617,7 +612,7 @@ def test_offload_dim_to_existing_table_no_metadata(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         test_table = OFFLOAD_DIM2
 
@@ -679,7 +674,7 @@ def test_offload_dim_to_existing_table_with_metadata(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         test_table = OFFLOAD_DIM3
 
@@ -769,7 +764,7 @@ def test_offload_fact_to_existing_table_no_metadata(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         test_table = OFFLOAD_FACT2
 
@@ -837,7 +832,7 @@ def test_offload_log_path_gcs(config, schema, data_db):
             pytest.skip(f"Skipping {id} because it is unnecessary for current config")
 
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
         table_name = GCS_LOG_DIM
 
         # Setup

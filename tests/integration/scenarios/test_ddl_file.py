@@ -12,7 +12,7 @@ from goe.offload.offload_functions import (
     data_db_name,
 )
 from goe.orchestration import command_steps
-from goe.util.misc_functions import get_temp_path
+from goe.util.string_utils import get_temp_path
 from tests.integration.scenarios.assertion_functions import (
     backend_table_exists,
     text_in_messages,

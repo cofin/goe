@@ -1,14 +1,16 @@
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """Listener Configuration Settings."""
 
-from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
+import msgspec
+
 from goe.config.config_file import load_env
 from goe.config.orchestration_config import OrchestrationConfig
+from goe.typing import BaseStruct
 
 BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
 APP_DIR: Path = Path(BASE_DIR / "listener")
@@ -16,14 +18,13 @@ CONFIG_DIR: Path = Path(APP_DIR / "config")
 FRONTEND_DIR: Path = Path(APP_DIR / "web")
 
 
-@dataclass
-class ListenerSettings:
+class ListenerSettings(BaseStruct):
     """Listener Configuration Object."""
 
-    global_config: OrchestrationConfig | None = field(default_factory=lambda: _get_default_global_config())
+    global_config: OrchestrationConfig | None = msgspec.field(default_factory=lambda: _get_default_global_config())
 
     host: str = "0.0.0.0"
-    port: int = 8085
+    port: int = 8000
     http_workers: int = 2
     reload: bool = False
     static_url: str = "/"
@@ -33,18 +34,18 @@ class ListenerSettings:
     certfile: str | None = None
     keyfile: str | None = None
     ssl_enabled: bool = False
-    heartbeat_interval: int = 30
+    heartbeat_interval: int = 60
 
     def __post_init__(self) -> None:
         if self.global_config:
             if self.global_config.listener_host:
                 self.host = self.global_config.listener_host
             if self.global_config.listener_port is not None:
-                self.port = self.global_config.listener_port
+                self.port = int(self.global_config.listener_port)
             if self.global_config.listener_shared_token:
                 self.shared_token = str(self.global_config.listener_shared_token)
             if self.global_config.listener_heartbeat_interval:
-                self.heartbeat_interval = self.global_config.listener_heartbeat_interval
+                self.heartbeat_interval = int(self.global_config.listener_heartbeat_interval)
 
         if self.static_path is None:
             self.static_path = str(Path(FRONTEND_DIR / "public"))

@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 import msgspec
 import oracledb
 
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_constants import (
     BACKEND_DISTRO_CDH,
     BACKEND_DISTRO_GCP,
@@ -21,6 +20,7 @@ from goe.offload.offload_constants import (
     BACKEND_DISTRO_SNOWFLAKE,
 )
 from goe.offload.offload_messages import QUIET, VERBOSE, VVERBOSE, OffloadMessages
+from goe.offload.registry import create_source_table
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.oracle_gateway import OracleGateway, load_sql_file
 from goe.persistence.orchestration_metadata import (
@@ -53,7 +53,7 @@ from goe.persistence.schemas import (
     SchemaTableRow,
     SubPartitionDetail,
 )
-from goe.util.json_tools import deserialize_object, serialize_object
+from goe.serializers import decode_json, encode_json
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -170,7 +170,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             detail=VVERBOSE,
         )
         self._assert_valid_end_step_inputs(command_step_id, status, step_details)
-        step_details_str = serialize_object(step_details) if step_details is not None else None
+        step_details_str = encode_json(step_details) if step_details is not None else None
         self._frontend_api.execute_function(
             "offload_repo.end_command_execution_step",
             arg_list=[command_step_id, step_details_str, status],
@@ -331,7 +331,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         return return_columns
 
     def get_table_partitions(self, schema_name, table_name):
-        frontend_table = OffloadSourceTable.create(
+        frontend_table = create_source_table(
             schema_name.upper(),
             table_name.upper(),
             self._connection_options,
@@ -349,7 +349,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         return []
 
     def get_table_subpartitions(self, schema_name, table_name):
-        frontend_table = OffloadSourceTable.create(
+        frontend_table = create_source_table(
             schema_name.upper(),
             table_name.upper(),
             self._connection_options,
@@ -483,7 +483,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             INCREMENTAL_RANGE: metadata_obj.OFFLOAD_RANGE_TYPE or None,
             INCREMENTAL_PREDICATE_TYPE: metadata_obj.OFFLOAD_PREDICATE_TYPE or None,
             INCREMENTAL_PREDICATE_VALUE: (
-                deserialize_object(metadata_obj.OFFLOAD_PREDICATE_VALUE.read())
+                decode_json(metadata_obj.OFFLOAD_PREDICATE_VALUE.read())
                 if metadata_obj.OFFLOAD_PREDICATE_VALUE
                 else None
             ),

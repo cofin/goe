@@ -4,7 +4,7 @@
 import pytest
 
 import goe.offload.offload_transport_functions as module_under_test
-from goe.util.misc_functions import LINUX_FILE_NAME_LENGTH_LIMIT, get_os_username
+from goe.util.string_utils import LINUX_FILE_NAME_LENGTH_LIMIT, get_os_username
 from tests.unit.test_functions import (
     FAKE_ORACLE_BQ_ENV,
     build_mock_options,

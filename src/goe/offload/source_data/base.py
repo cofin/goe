@@ -385,8 +385,6 @@ class OffloadSourcePartitions:
     def has_maxvalue_partition(self):
         """Partitions are sorted new to old therefore, if there's an OUT-OF-RANGE partition it will be first
         For convenience return the partition name/None rather than True/False
-
-        TODO need to review this for Teradata when there could be 2 open (MAXVALUE) partitions
         """
         if (not self._partitions) or (self._partitions[0].partition_literal is None):
             return None
@@ -397,8 +395,6 @@ class OffloadSourcePartitions:
     def remove_maxvalue_partition(self):
         """Partitions are sorted new to old therefore, if there's a MAXVALUE partition it will be first
         Returns the removed partition for convenience
-
-        TODO need to review this for Teradata when there could be 2 open (MAXVALUE) partitions
         """
         if self.has_maxvalue_partition():
             return self._partitions.pop(0)

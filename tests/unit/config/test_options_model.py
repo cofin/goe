@@ -31,9 +31,9 @@ def test_option_value_error_is_offload_option_error() -> None:
 
 
 def test_expected_offload_args_match_orchestration_contract() -> None:
-    """EXPECTED_OFFLOAD_ARGS holds the 85 ordered keys accepted by OffloadOperation."""
-    assert len(EXPECTED_OFFLOAD_ARGS) == 85
-    assert len(set(EXPECTED_OFFLOAD_ARGS)) == 85
+    """EXPECTED_OFFLOAD_ARGS holds the 82 ordered keys accepted by OffloadOperation."""
+    assert len(EXPECTED_OFFLOAD_ARGS) == 82
+    assert len(set(EXPECTED_OFFLOAD_ARGS)) == 82
     assert EXPECTED_OFFLOAD_ARGS == tuple(GOE_EXPECTED_OFFLOAD_ARGS)
 
 

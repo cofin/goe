@@ -16,6 +16,7 @@ from google.api_core import exceptions as google_exceptions
 from google.api_core import retry
 from requests import ConnectionError
 
+from goe.config.gcp_credentials import resolve_gcp_credentials
 from goe.filesystem.goe_dfs import (
     DFS_RETRY_TIMEOUT,
     DFS_TYPE_DIRECTORY,
@@ -27,7 +28,6 @@ from goe.filesystem.goe_dfs import (
     gen_fs_uri,
 )
 from goe.observability.storage import traced_storage_call
-from goe.util.gcp_credentials import resolve_gcp_credentials
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

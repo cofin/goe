@@ -11,7 +11,7 @@ from litestar_queues import task
 from goe.listener.services import periodic_tasks
 from goe.listener.services.orchestrate import orchestration_runner
 from goe.orchestration.execution_id import ExecutionId
-from goe.util.sync_tools import async_
+from goe.util.concurrency import async_
 
 
 @task("orchestration.offload", queue="orchestration", timeout=86400)

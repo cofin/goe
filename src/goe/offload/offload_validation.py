@@ -17,12 +17,6 @@ from functools import lru_cache
 from sqlglot import exp
 
 from goe.offload.column_metadata import match_table_column
-from goe.offload.factory.backend_api_factory import backend_api_factory
-from goe.offload.factory.backend_table_factory import backend_table_factory
-from goe.offload.factory.frontend_api_factory import (
-    frontend_api_factory,
-)
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.frontend_api import QueryParameter
 from goe.offload.offload_constants import DBTYPE_ORACLE
 from goe.offload.offload_functions import (
@@ -41,6 +35,12 @@ from goe.offload.predicate_offload import (
     PredicateOffloadException,
     get_predicate_dialect_engine,
 )
+from goe.offload.registry import (
+    create_backend_api,
+    create_backend_table,
+    create_frontend_api,
+    create_source_table,
+)
 from goe.offload.sql_engine import ValidationQueryEngineProtocol, ValidationQuerySpec
 from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
@@ -48,8 +48,8 @@ from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_RANGE,
     OrchestrationMetadata,
 )
-from goe.util.misc_functions import is_number, isclose, str_floatlike
-from goe.util.parallel_exec import ParallelExecutor
+from goe.util.concurrency import ParallelExecutor
+from goe.util.string_utils import is_number, isclose, str_floatlike
 
 
 class CrossDbValidatorException(Exception):
@@ -315,7 +315,7 @@ class CrossDbValidator(OffloadMessagesMixin):
         self._db_name = db_name
         self._table_name = table_name
         self._db_table = "%s.%s" % (db_name, table_name)
-        self._frontend = frontend_api_factory(
+        self._frontend = create_frontend_api(
             connection_options.db_type,
             connection_options,
             messages,
@@ -326,7 +326,7 @@ class CrossDbValidator(OffloadMessagesMixin):
         if backend_obj:
             self._backend = backend_obj
         else:
-            self._backend = backend_api_factory(
+            self._backend = create_backend_api(
                 connection_options.target,
                 connection_options,
                 messages,
@@ -469,14 +469,14 @@ class CrossDbValidator(OffloadMessagesMixin):
         """
         if not self._frontend_table:
             if self._offload_metadata:
-                self._frontend_table = OffloadSourceTable.create(
+                self._frontend_table = create_source_table(
                     self._offload_metadata.offloaded_owner,
                     self._offload_metadata.offloaded_table,
                     self._connection_options,
                     self._messages,
                 )
             else:
-                self._frontend_table = OffloadSourceTable.create(
+                self._frontend_table = create_source_table(
                     self._db_name,
                     self._table_name,
                     self._connection_options,
@@ -827,7 +827,7 @@ class CrossDbValidator(OffloadMessagesMixin):
         if frontend:
             backend_table = None
         else:
-            backend_table = backend_table_factory(
+            backend_table = create_backend_table(
                 self._offload_metadata.backend_owner,
                 self._offload_metadata.backend_table,
                 self._backend.backend_type(),

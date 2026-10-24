@@ -32,7 +32,7 @@ from goe.offload.offload_constants import (
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.orchestration import orchestration_constants
 from goe.util.goe_log_fh import is_gcs_path
-from goe.util.misc_functions import (
+from goe.util.string_utils import (
     MAX_SUPPORTED_PRECISION,
     get_os_username,
     obscure_list_items,

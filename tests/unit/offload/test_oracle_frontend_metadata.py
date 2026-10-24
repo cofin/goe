@@ -10,9 +10,9 @@ import oracledb as cxo
 import pytest
 
 import goe.offload.oracle
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
 from goe.offload.offload_constants import DBTYPE_ORACLE
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.registry import create_frontend_api
 from goe.persistence.oracle_gateway import OracleGateway, load_sql_file
 from tests.unit.test_functions import FAKE_ORACLE_ENV, build_mock_options
 
@@ -106,7 +106,7 @@ CASES = [
 
 @pytest.fixture
 def api():
-    return frontend_api_factory(
+    return create_frontend_api(
         DBTYPE_ORACLE,
         build_mock_options(FAKE_ORACLE_ENV),
         OffloadMessages(),

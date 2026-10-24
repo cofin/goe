@@ -28,9 +28,7 @@ from goe.offload.operation.partition_controls import (
     PARTITION_FUNCTIONS_ELEMENT_EXCEPTION_TEXT,
     PARTITION_FUNCTIONS_NOT_SUPPORTED_EXCEPTION_TEXT,
 )
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
     standard_dimension_assertion,
@@ -296,7 +294,7 @@ def test_offload_part_fn_num(config, schema, data_db):
         if not backend_api.goe_partition_functions_supported():
             pytest.skip(f"Skipping most of {id} due to goe_partition_functions_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -376,7 +374,7 @@ def test_offload_part_fn_dec(config, schema, data_db):
         if not backend_api.goe_partition_functions_supported():
             pytest.skip(f"Skipping most of {id} due to goe_partition_functions_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -457,7 +455,7 @@ def test_offload_part_fn_str(config, schema, data_db):
         if not backend_api.goe_partition_functions_supported():
             pytest.skip(f"Skipping most of {id} due to goe_partition_functions_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(

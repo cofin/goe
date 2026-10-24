@@ -32,7 +32,6 @@ from goe.offload.column_metadata import (
     GOE_TYPE_VARIABLE_STRING,
     match_table_column,
 )
-from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.offload.offload import (
     active_data_append_options,
     normalise_less_than_options,
@@ -73,6 +72,8 @@ from goe.offload.option_validation import (
     normalise_stats_options,
     normalise_verify_options,
 )
+from goe.offload.oracle.ora_query import get_oracle_connection
+from goe.offload.registry import create_backend_api, create_repository_client
 from goe.orchestration.constants import (
     NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE,
     OFFLOAD_OP_NAME,
@@ -80,9 +81,6 @@ from goe.orchestration.constants import (
     vverbose,
 )
 from goe.orchestration.logging_init import log, strict_version_ready, version
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
 from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
@@ -92,11 +90,10 @@ from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE,
     OrchestrationMetadata,
 )
-from goe.util.misc_functions import (
+from goe.util.string_utils import (
     all_int_chars,
     csv_split,
 )
-from goe.util.ora_query import get_oracle_connection
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -338,13 +335,10 @@ def normalise_offload_transport_user_options(options):
         "OFFLOAD_TRANSPORT_CONSISTENT_READ/--offload-transport-consistent-read",
         options.offload_transport_consistent_read,
     )
-    if orchestration_defaults.sqoop_disable_direct_default():
-        options.offload_transport_parallelism = 1
-    else:
-        options.offload_transport_parallelism = check_opt_is_posint(
-            "OFFLOAD_TRANSPORT_PARALLELISM/--offload-transport-parallelism",
-            options.offload_transport_parallelism,
-        )
+    options.offload_transport_parallelism = check_opt_is_posint(
+        "OFFLOAD_TRANSPORT_PARALLELISM/--offload-transport-parallelism",
+        options.offload_transport_parallelism,
+    )
     options.offload_transport_fetch_size = check_opt_is_posint(
         "OFFLOAD_TRANSPORT_FETCH_SIZE/--offload-transport-fetch-size",
         options.offload_transport_fetch_size,
@@ -629,9 +623,6 @@ class BaseOperation:
     skip: Any
     sort_columns: Any
     sort_columns_csv: Any
-    sqoop_additional_options: Any
-    sqoop_mapreduce_map_java_opts: Any
-    sqoop_mapreduce_map_memory_mb: Any
     storage_compression: Any
     storage_format: Any
     suppress_stdout: Any
@@ -676,7 +667,7 @@ class BaseOperation:
         if self.offload_stats_method:
             self.offload_stats_method = self.offload_stats_method.upper()
 
-        backend_api = backend_api_factory(
+        backend_api = create_backend_api(
             config.target,
             config,
             messages,
@@ -733,7 +724,7 @@ class BaseOperation:
     @property
     def repo_client(self):
         if self._repo_client is None:
-            self._repo_client = orchestration_repo_client_factory(
+            self._repo_client = create_repository_client(
                 self._orchestration_config,
                 self._messages,
                 dry_run=bool(not self.execute),
@@ -1172,7 +1163,7 @@ class BaseOperation:
 
         created_api = False
         if backend_api is None:
-            backend_api = backend_api_factory(
+            backend_api = create_backend_api(
                 offload_options.target,
                 offload_options,
                 messages,
@@ -1536,9 +1527,6 @@ class OffloadOperation(BaseOperation):
             reuse_backend_table=options.reuse_backend_table,
             skip=options.skip,
             sort_columns_csv=options.sort_columns_csv,
-            sqoop_additional_options=options.sqoop_additional_options,
-            sqoop_mapreduce_map_memory_mb=options.sqoop_mapreduce_map_memory_mb,
-            sqoop_mapreduce_map_java_opts=options.sqoop_mapreduce_map_java_opts,
             storage_format=options.storage_format,
             storage_compression=options.storage_compression,
             suppress_stdout=options.suppress_stdout,
@@ -1706,12 +1694,6 @@ class OffloadOperation(BaseOperation):
             reuse_backend_table=operation_dict.get("reuse_backend_table", False),
             skip=operation_dict.get("skip", orchestration_defaults.skip_default()),
             sort_columns_csv=operation_dict.get("sort_columns_csv", orchestration_defaults.sort_columns_default()),
-            sqoop_additional_options=operation_dict.get(
-                "sqoop_additional_options",
-                orchestration_defaults.sqoop_additional_options_default(),
-            ),
-            sqoop_mapreduce_map_memory_mb=operation_dict.get("sqoop_mapreduce_map_memory_mb"),
-            sqoop_mapreduce_map_java_opts=operation_dict.get("sqoop_mapreduce_map_java_opts"),
             storage_format=operation_dict.get("storage_format", orchestration_defaults.storage_format_default()),
             storage_compression=operation_dict.get(
                 "storage_compression",

@@ -3,8 +3,8 @@
 
 from typing import TYPE_CHECKING, Any
 
-from goe.offload.factory.backend_api_factory import backend_api_factory
-from goe.util.ora_query import get_oracle_connection
+from goe.offload.oracle.ora_query import get_oracle_connection
+from goe.offload.registry import create_backend_api
 
 if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages
@@ -41,7 +41,7 @@ class SchemaSyncStep:
             self._orchestration_options.rdbms_dsn,
             self._orchestration_options.use_oracle_wallet,
         )
-        self._backend_api = backend_api_factory(
+        self._backend_api = create_backend_api(
             self._orchestration_options.target,
             self._orchestration_options,
             self._messages,

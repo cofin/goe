@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 import duckdb
 from google.auth.transport.requests import Request
 
+from goe.config.gcp_credentials import resolve_gcp_credentials
 from goe.observability.transport import submit_with_context, traced_transport_batch
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_rdbms_api import (
@@ -37,7 +38,6 @@ from goe.offload.transport.duckdb_engine import (
     verify_batch_scn_invariant,
 )
 from goe.orchestration import command_steps
-from goe.util.gcp_credentials import resolve_gcp_credentials
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig

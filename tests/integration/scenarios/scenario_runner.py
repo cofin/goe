@@ -10,7 +10,7 @@ from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessages
 from goe.orchestration import orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
 from goe.orchestration.orchestration_runner import OrchestrationRunner
-from goe.util.misc_functions import get_temp_path
+from goe.util.string_utils import get_temp_path
 from tests.integration.test_functions import (
     run_setup_ddl,
 )

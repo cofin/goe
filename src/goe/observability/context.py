@@ -14,10 +14,11 @@ from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from typing import Any
 
-import msgspec
 from opentelemetry import baggage, context, propagate, trace
 from opentelemetry.context import Context
 from sqlspec.utils.correlation import CorrelationContext
+
+from goe.typing import FrozenBaseStruct
 
 __all__ = (
     "ATTR_COMMAND_TYPE",
@@ -52,7 +53,7 @@ _SOURCE_TABLE: ContextVar[str | None] = ContextVar("goe_source_table", default=N
 _ENV_TO_HEADER: dict[str, str] = {"TRACEPARENT": "traceparent", "TRACESTATE": "tracestate", "BAGGAGE": "baggage"}
 
 
-class ExecutionTraceContext(msgspec.Struct, frozen=True, kw_only=True):
+class ExecutionTraceContext(FrozenBaseStruct, frozen=True, kw_only=True):
     """Snapshot of the bound GOE execution metadata and the current W3C span identity."""
 
     execution_id: str | None = None

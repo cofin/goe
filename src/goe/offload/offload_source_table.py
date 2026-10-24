@@ -28,10 +28,10 @@ from goe.offload.column_metadata import (
     match_table_column,
     valid_column_list,
 )
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
 from goe.offload.offload_constants import INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.util.misc_functions import get_integral_part_magnitude
+from goe.offload.registry import create_frontend_api
+from goe.util.string_utils import get_integral_part_magnitude
 
 
 class OffloadSourceTableException(Exception):
@@ -170,7 +170,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         self.table_name = table_name
         self._dry_run = dry_run
         self._db_type = connection_options.db_type
-        self._db_api = frontend_api_factory(
+        self._db_api = create_frontend_api(
             connection_options.db_type,
             connection_options,
             messages,
@@ -509,8 +509,6 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
             """Format and run an RDBMS data type sampling query.
             Also attempts to get representative values from RDBMS optimizer statistics to avoid sampling.
             columns_affected_by_sampling: This list is appended to during the method call.
-            Fortunately for GOE so far a very similar SQL format works on both Oracle and Teradata. We will need
-            to tease this apart when we choose to implement a 3rd frontend (AKA kicking the can down the road).
 
             For min value detection RDBMS optimizer stats will be more accurate than our sampling
             We have max() on scale above because scales can be negative which effectively means 0

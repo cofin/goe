@@ -9,9 +9,9 @@ import pytest
 
 from goe.offload.backend_api import BackendApiException
 from goe.offload.bigquery.bigquery_backend_api import BackendBigQueryApi, sanitize_bigquery_label_value
-from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.offload.offload_constants import DBTYPE_BIGQUERY
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.registry import create_backend_api
 from goe.orchestration.execution_id import ExecutionId
 from goe.orchestration.orchestration_constants import COMMAND_OFFLOAD
 from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, build_mock_options
@@ -129,7 +129,7 @@ def _row_iterator(rows: list[tuple]) -> MagicMock:
 
 def _api(messages: OffloadMessages | None = None) -> BackendBigQueryApi:
     """Build a non-connecting BigQuery API with a mocked client."""
-    api = backend_api_factory(
+    api = create_backend_api(
         DBTYPE_BIGQUERY,
         build_mock_options(FAKE_ORACLE_BQ_ENV),
         messages or OffloadMessages(),

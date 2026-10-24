@@ -13,7 +13,7 @@ from tests.unit.test_functions import (
 )
 
 try:
-    from goe.util.hs2_connection import hs2_connect_using_options, hs2_cursor_user
+    from goe.offload.hadoop.hs2_connection import hs2_connect_using_options, hs2_cursor_user
 except ModuleNotFoundError as e:
     if optional_hadoop_dependency_exception(e):
         hs2_connect_using_options = None

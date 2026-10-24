@@ -24,7 +24,6 @@ from goe.offload.offload_constants import (
     DBTYPE_IMPALA,
     DBTYPE_MSSQL,
     DBTYPE_ORACLE,
-    DBTYPE_TERADATA,
     FILE_STORAGE_FORMAT_AVRO,
     FILE_STORAGE_FORMAT_PARQUET,
     HADOOP_BASED_BACKEND_DISTRIBUTIONS,
@@ -37,7 +36,7 @@ from goe.offload.offload_constants import (
     PRESENT_OP_NAME,
     SORT_COLUMNS_NO_CHANGE,
 )
-from goe.util.misc_functions import is_pos_int
+from goe.util.string_utils import is_pos_int
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -165,7 +164,6 @@ def frontend_db_type_default():
     if frontend_distro in [
         DBTYPE_MSSQL,
         DBTYPE_ORACLE,
-        DBTYPE_TERADATA,
     ]:
         return frontend_distro
     return DBTYPE_ORACLE
@@ -593,30 +591,6 @@ def mssql_dsn_default():
     return os.environ.get("MSSQL_CONN")
 
 
-def teradata_adm_pass_default():
-    return os.environ.get("TERADATA_ADM_PASS")
-
-
-def teradata_adm_user_default():
-    return os.environ.get("TERADATA_ADM_USER")
-
-
-def teradata_app_pass_default():
-    return os.environ.get("TERADATA_APP_PASS")
-
-
-def teradata_app_user_default():
-    return os.environ.get("TERADATA_APP_USER")
-
-
-def teradata_server_default():
-    return os.environ.get("TERADATA_SERVER")
-
-
-def teradata_repo_user_default():
-    return os.environ.get("TERADATA_REPO_USER")
-
-
 def offload_fs_scheme_default() -> str:
     return os.environ.get("OFFLOAD_FS_SCHEME", "inherit")
 
@@ -681,8 +655,7 @@ def offload_transport_auth_using_oracle_wallet_default() -> bool:
 
 
 def offload_transport_cmd_host_default():
-    """for backward compatibility we still use SQOOP_CMD_HOST as a fallback"""
-    return os.environ.get("OFFLOAD_TRANSPORT_CMD_HOST") or os.environ.get("SQOOP_CMD_HOST")
+    return os.environ.get("OFFLOAD_TRANSPORT_CMD_HOST")
 
 
 def offload_transport_consistent_read_default():
@@ -715,13 +688,11 @@ def offload_transport_livy_api_verify_ssl_default():
 
 
 def offload_transport_parallelism_default() -> str:
-    """still including SQOOP_PARALLELISM as a fallback for backwards compatibility"""
-    return os.environ.get("OFFLOAD_TRANSPORT_PARALLELISM") or os.environ.get("SQOOP_PARALLELISM") or "2"
+    return os.environ.get("OFFLOAD_TRANSPORT_PARALLELISM") or "2"
 
 
 def offload_transport_password_alias_default() -> str | None:
-    """still including SQOOP_PASSWORD_ALIAS as a fallback for backwards compatibility"""
-    return os.environ.get("OFFLOAD_TRANSPORT_PASSWORD_ALIAS") or os.environ.get("SQOOP_PASSWORD_ALIAS")
+    return os.environ.get("OFFLOAD_TRANSPORT_PASSWORD_ALIAS")
 
 
 def offload_transport_credential_provider_path_default() -> str | None:
@@ -733,7 +704,7 @@ def offload_transport_rdbms_session_parameters_default() -> str:
 
 
 def offload_transport_small_table_threshold_default() -> str:
-    """20M default is based on approximate crossover between startup overhead of Sqoop vs QueryImport elapsed time"""
+    """Default small-table threshold for QueryImport transport selection."""
     return os.environ.get("OFFLOAD_TRANSPORT_SMALL_TABLE_THRESHOLD") or "20M"
 
 
@@ -838,40 +809,16 @@ def preserve_load_table_default() -> bool:
     return False
 
 
-def sqoop_additional_options_default() -> str | None:
-    return os.environ.get("SQOOP_ADDITIONAL_OPTIONS")
-
-
-def sqoop_disable_direct_default() -> bool:
-    return bool(os.environ.get("SQOOP_DISABLE_DIRECT", "FALSE").upper() in ["YES", "TRUE"])
-
-
-def sqoop_outdir_default() -> str | None:
-    return os.environ.get("SQOOP_OUTDIR") or ".goesqoop"
-
-
-def sqoop_overrides_default() -> str | None:
-    return os.environ.get("SQOOP_OVERRIDES")
-
-
-def sqoop_password_file_default() -> str | None:
-    return os.environ.get("SQOOP_PASSWORD_FILE")
-
-
-def sqoop_queue_name_default() -> str | None:
-    return os.environ.get("SQOOP_QUEUE_NAME")
-
-
 def listener_host_default() -> str | None:
     return os.environ.get("OFFLOAD_LISTENER_HOST")
 
 
-def listener_port_default() -> str | None:
-    return os.environ.get("OFFLOAD_LISTENER_PORT")
+def listener_port_default() -> int:
+    return int(os.environ.get("OFFLOAD_LISTENER_PORT") or 8000)
 
 
 def listener_heartbeat_interval_default() -> int:
-    return int(os.environ.get("OFFLOAD_LISTENER_HEARTBEAT_INTERVAL") or 30)
+    return int(os.environ.get("OFFLOAD_LISTENER_HEARTBEAT_INTERVAL") or 60)
 
 
 def listener_shared_token_default() -> str | None:

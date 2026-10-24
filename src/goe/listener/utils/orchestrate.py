@@ -4,7 +4,7 @@
 """Simple Orchestration utilities."""
 
 from goe.listener import exceptions
-from goe.orchestration.orchestration_lock import (
+from goe.platform.locking import (
     OrchestrationLockTimeout,
     orchestration_lock_for_table,
 )

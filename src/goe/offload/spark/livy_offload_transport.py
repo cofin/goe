@@ -8,9 +8,6 @@ import time
 
 from goe.config import orchestration_defaults
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
-from goe.offload.factory.offload_transport_rdbms_api_factory import (
-    offload_transport_rdbms_api_factory,
-)
 from goe.offload.offload_constants import LIVY_MAX_SESSIONS
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport import (
@@ -27,6 +24,7 @@ from goe.offload.offload_transport_functions import (
     finish_progress_on_stdout,
     write_progress_to_stdout,
 )
+from goe.offload.registry import create_transport_rdbms_api
 from goe.offload.spark.offload_transport_livy_requests import (
     OffloadTransportLivyRequests,
 )
@@ -427,7 +425,7 @@ class OffloadTransportSparkLivyCanary(OffloadTransportSparkLivy):
             orchestration_defaults.offload_transport_spark_properties_default()
         )
 
-        self._rdbms_api = offload_transport_rdbms_api_factory(
+        self._rdbms_api = create_transport_rdbms_api(
             "dummy_owner",
             "dummy_table",
             self._offload_options,

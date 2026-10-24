@@ -3,8 +3,8 @@
 
 from unittest import main
 
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.registry import create_frontend_api
 from tests.integration.test_functions import (
     build_current_options,
     get_default_test_user,
@@ -25,7 +25,7 @@ class TestCurrentFrontendApi(TestFrontendApi):
         self.connect_to_frontend = True
         self.config = self._build_current_options()
         messages = OffloadMessages()
-        self.api = frontend_api_factory(
+        self.api = create_frontend_api(
             self.db_type,
             self.config,
             messages,

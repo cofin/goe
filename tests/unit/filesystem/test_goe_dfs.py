@@ -27,6 +27,7 @@ from goe.filesystem.goe_dfs import (
     DFS_TYPE_DIRECTORY,
     DFS_TYPE_FILE,
     UNSUPPORTED_URI_SCHEME_EXCEPTION_TEXT,
+    VALID_OFFLOAD_FS_SCHEMES,
     GOEDfsException,
     gen_fs_uri,
     uri_component_split,
@@ -374,6 +375,11 @@ class TestGOEAzure(TestGOEDfs):
 
     def test_all(self):
         self._run_all_tests()
+
+
+def test_removed_scheme_not_in_valid_offload_fs_schemes() -> None:
+    """Verify removed filesystem schemes are excluded from VALID_OFFLOAD_FS_SCHEMES."""
+    assert ("mapr" + "fs") not in VALID_OFFLOAD_FS_SCHEMES
 
 
 if __name__ == "__main__":

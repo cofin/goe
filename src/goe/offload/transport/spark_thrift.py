@@ -6,10 +6,6 @@
 from typing import TYPE_CHECKING, Optional
 
 from goe.config import orchestration_defaults
-from goe.offload.factory.backend_api_factory import backend_api_factory
-from goe.offload.factory.offload_transport_rdbms_api_factory import (
-    offload_transport_rdbms_api_factory,
-)
 from goe.offload.frontend_api import FRONTEND_TRACE_MODULE
 from goe.offload.offload_constants import (
     DBTYPE_SPARK,
@@ -21,6 +17,7 @@ from goe.offload.offload_transport_functions import (
 from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
 )
+from goe.offload.registry import create_backend_api, create_transport_rdbms_api
 from goe.offload.transport.base import (
     OffloadTransportSpark,
 )
@@ -31,7 +28,7 @@ from goe.offload.transport.constants import (
     TRANSPORT_CXT_ROWS,
 )
 from goe.orchestration import command_steps
-from goe.util.misc_functions import (
+from goe.util.string_utils import (
     id_generator,
 )
 
@@ -219,7 +216,7 @@ class OffloadTransportSparkThrift(OffloadTransportSpark):
         )
         custom_schema_clause = self._column_type_read_remappings()
 
-        spark_api = backend_api_factory(DBTYPE_SPARK, self._offload_options, self._messages, dry_run=self._dry_run)
+        spark_api = create_backend_api(DBTYPE_SPARK, self._offload_options, self._messages, dry_run=self._dry_run)
 
         temp_vw_sql = self._get_create_temp_view_sql(
             temp_vw_name,
@@ -308,7 +305,7 @@ FROM   %(temp_vw_name)s""" % {
         """
         rdbms_source_query = "(%s) v" % self._rdbms_api.get_rdbms_canary_query()
         temp_vw_name = "goe_canary_jdbc_vw"
-        spark_api = backend_api_factory(DBTYPE_SPARK, self._offload_options, self._messages, dry_run=self._dry_run)
+        spark_api = create_backend_api(DBTYPE_SPARK, self._offload_options, self._messages, dry_run=self._dry_run)
         temp_vw_sql = self._get_create_temp_view_sql(
             temp_vw_name, rdbms_source_query, spark_api, connectivity_test_only=True
         )
@@ -359,7 +356,7 @@ class OffloadTransportSparkThriftCanary(OffloadTransportSparkThrift):
             orchestration_defaults.offload_transport_spark_properties_default()
         )
 
-        self._rdbms_api = offload_transport_rdbms_api_factory(
+        self._rdbms_api = create_transport_rdbms_api(
             "dummy_owner",
             "dummy_table",
             self._offload_options,

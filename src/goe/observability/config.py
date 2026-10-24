@@ -13,7 +13,7 @@ import logging
 import os
 from typing import Any, Literal, cast
 
-import msgspec
+from goe.typing import FrozenBaseStruct
 
 __all__ = (
     "VALID_EXPORTERS",
@@ -37,7 +37,7 @@ VALID_LOG_FORMATS: frozenset[str] = frozenset({"text", "json"})
 _TRUE_VALUES: frozenset[str] = frozenset({"1", "true", "yes", "on", "y"})
 
 
-class ObservabilitySettings(msgspec.Struct, frozen=True, kw_only=True):
+class ObservabilitySettings(FrozenBaseStruct, frozen=True, kw_only=True):
     """Immutable GOE telemetry settings.
 
     ``exporter`` selects the span/metric sink: ``none`` (no SDK), ``console``, ``jsonl`` (local file),

@@ -2,16 +2,16 @@
 type: Spec
 flow_id: adapter_reduction_and_adapter_registry_20261024
 title: "Chapter 5.1: Adapter Reduction and AdapterRegistry"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 1
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: finish
+operation_targets: ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7"]
+last_verified_checkpoint: "1.7"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-24T19:21:00Z
 description: "Removes the Sqoop transport, the MapRFS filesystem scheme, and the Teradata frontend and repository client, and replaces the adapter factory modules with one declarative AdapterRegistry."
 tags: [refactor, adapters, transport, configuration]
 parent_prd: prd_05_foundation_typing_settings_and_adapter_reduction_20261024
@@ -89,26 +89,26 @@ Expected: format, lint, mypy, collection, and unit tests pass; both `git grep` c
 ## Implementation Plan
 
 ### Phase 1: Registry and Test Harness
-- [ ] 1.1 Add AdapterRegistry with lazy targets for retained adapters ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Remove Sqoop, MapRFS, and Teradata cases from integration scenarios and the test framework ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.1 Add AdapterRegistry with lazy targets for retained adapters ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Remove Sqoop, MapRFS, and Teradata cases from integration scenarios and the test framework ([tasks/1.2.md](tasks/1.2.md))
 
 ### Phase 2: Adapter Removal and Factory Retirement
-- [ ] 1.3 Delete the Sqoop transport and construct transports through the registry ([tasks/1.3.md](tasks/1.3.md))
-- [ ] 1.4 Construct transport RDBMS APIs, staging files, and Query Import encoders through the registry ([tasks/1.4.md](tasks/1.4.md))
-- [ ] 1.5 Construct backend APIs and backend tables through the registry ([tasks/1.5.md](tasks/1.5.md))
-- [ ] 1.6 Construct frontend APIs, source tables, and repository clients through the registry and delete the Teradata frontend ([tasks/1.6.md](tasks/1.6.md))
+- [x] 1.3 Delete the Sqoop transport and construct transports through the registry ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.4 Construct transport RDBMS APIs, staging files, and Query Import encoders through the registry ([tasks/1.4.md](tasks/1.4.md))
+- [x] 1.5 Construct backend APIs and backend tables through the registry ([tasks/1.5.md](tasks/1.5.md))
+- [x] 1.6 Construct frontend APIs, source tables, and repository clients through the registry and delete the Teradata frontend ([tasks/1.6.md](tasks/1.6.md))
 
 ### Phase 3: Configuration Surface
-- [ ] 1.7 Remove the Sqoop, MapRFS, and Teradata configuration surface ([tasks/1.7.md](tasks/1.7.md))
+- [x] 1.7 Remove the Sqoop, MapRFS, and Teradata configuration surface ([tasks/1.7.md](tasks/1.7.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `adapter_reduction_and_adapter_registry_20261024`, `planned`.
+- **Flow / lifecycle**: `adapter_reduction_and_adapter_registry_20261024`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
-- **Decisions**: registry first so factories are deleted with their Teradata and Sqoop branches; `AdapterNotRegisteredError` subclasses `OffloadException`; `LazyTarget.load()` uses `importlib` until Chapter 5.2 task 1.2 switches it to `goe.util.module_loader.ensure_module`; canary connectivity checkers stay in `goe.offload.transport.factory` (Chapter 8.3 replaces them with `TransportCanaryProbe`); MSSQL offloads are refused after Sqoop removal; Teradata knowledge mentions outside `frontends/teradata.md` and its index lines (`knowledge/architecture/type-mapping.md`, `knowledge/operations/configuration-and-env.md`, `knowledge/operations/offload-home.md`, `knowledge/standards/database-and-sql.md`, `knowledge/standards/python.md`, `product/product.md`, `product/tech-stack.md`, `AGENTS.md`) are reconciled at chapter archive.
-- **Discoveries**: none yet.
-- **Blockers**: none; Master PRDs 1–4 are complete.
-- **Next exact step**: execute task `1.1` (`adapter_reduction_and_adapter_registry_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Last verified checkpoint**: `1.7` (`2026-10-24T19:21:00Z`).
+- **Decisions**: registry first so factories are deleted with their Teradata and Sqoop branches; `AdapterNotRegisteredError` subclasses `OffloadException`; `LazyTarget.load()` delegates to `goe.util.module_loader.ensure_module`; canary connectivity checkers stay in `goe.offload.transport.factory` (Chapter 8.3 replaces them with `TransportCanaryProbe`); MSSQL offloads are refused after Sqoop removal; Teradata knowledge mentions outside `frontends/teradata.md` and its index lines are reconciled at chapter archive.
+- **Discoveries**: `EXPECTED_OFFLOAD_ARGS` decreased from 85 to 82 keys after removing the 3 Sqoop option fields in task 1.7; `create_transport` falls back to `resolve_dry_run(...).attribute` when a patched `MagicMock` class has no `__name__`.
+- **Blockers**: none.
+- **Next exact step**: proceed to Chapter 5.2 (`core_typing_serializers_platform_and_architecture_gate_20261024`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 1`.
 - **Relevant knowledge**: `AGENTS.md`, `.agents/bundles/knowledge/workflow.md`, `.agents/bundles/knowledge/transport/index.md`, `.agents/bundles/knowledge/frontends/index.md`, `.agents/bundles/knowledge/standards/python.md`, `.agents/bundles/knowledge/standards/testing.md`.

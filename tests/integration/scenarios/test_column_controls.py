@@ -160,25 +160,6 @@ def nums_setup_frontend_ddl(frontend_api, backend_api, config, schema, table_nam
             STORY_TEST_OFFLOAD_NUMS_DEC_38_3: "CAST(%s.123 AS NUMBER)" % num_of_size(20),
         }
         select_template = "SELECT {} FROM dual"
-    elif config.db_type == offload_constants.DBTYPE_TERADATA:
-        setup_casts = {
-            STORY_TEST_OFFLOAD_NUMS_BARE_NUM: "CAST(1.101 AS NUMBER)",
-            STORY_TEST_OFFLOAD_NUMS_NUM_4: "CAST(1234 AS NUMBER(4))",
-            STORY_TEST_OFFLOAD_NUMS_NUM_18: "CAST(1 AS NUMBER(18))",
-            STORY_TEST_OFFLOAD_NUMS_NUM_19: "CAST(1 AS NUMBER(19))",
-            STORY_TEST_OFFLOAD_NUMS_NUM_3_2: "CAST(1.12 AS NUMBER(3,2))",
-            STORY_TEST_OFFLOAD_NUMS_NUM_13_3: "CAST(1.123 AS NUMBER(13,3))",
-            STORY_TEST_OFFLOAD_NUMS_NUM_16_1: "CAST(1.1 AS NUMBER(16,1))",
-            STORY_TEST_OFFLOAD_NUMS_NUM_20_5: "CAST(1.12345 AS NUMBER(20,5))",
-            STORY_TEST_OFFLOAD_NUMS_NUM_STAR_4: "CAST(1.1234 AS NUMBER(*,4))",
-            STORY_TEST_OFFLOAD_NUMS_DEC_10_0: "CAST(1234567890 AS NUMBER)",
-            STORY_TEST_OFFLOAD_NUMS_DEC_13_9: "CAST(1234.123456789 AS NUMBER)",
-            STORY_TEST_OFFLOAD_NUMS_DEC_15_9: "CAST(123456.123456789 AS NUMBER)",
-            STORY_TEST_OFFLOAD_NUMS_DEC_36_3: "CAST(%s.123 AS NUMBER)" % num_of_size(20),
-            STORY_TEST_OFFLOAD_NUMS_DEC_37_3: "CAST(%s.123 AS NUMBER)" % num_of_size(20),
-            STORY_TEST_OFFLOAD_NUMS_DEC_38_3: "CAST(%s.123 AS NUMBER)" % num_of_size(20),
-        }
-        select_template = "SELECT {}"
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     subquery = select_template.format(
@@ -202,15 +183,6 @@ def dates_setup_frontend_ddl(frontend_api, config, schema, table_name) -> list:
         ,      CAST(TIMESTAMP'2001-10-31 01:00:00 -5:00' AS TIMESTAMP(6) WITH TIME ZONE) AS ts6tz
         FROM   dual"""
         )
-    elif config.db_type == offload_constants.DBTYPE_TERADATA:
-        subquery = dedent(
-            """\
-        SELECT CURRENT_DATE AS dt
-        ,      CAST(CURRENT_DATE AS TIMESTAMP(0)) AS ts0
-        ,      CAST(CURRENT_DATE AS TIMESTAMP(6)) AS ts6
-        ,      CAST(TRUNC(TO_TIMESTAMP_TZ('2001-10-31 01:00:00 -5:00','YYYY-MM-DD HH24:MI:SS TZH:TZM')) AS TIMESTAMP(0) WITH TIME ZONE) AS ts0tz
-        ,      CAST(TO_TIMESTAMP_TZ('2001-10-31 01:00:00 -5:00','YYYY-MM-DD HH24:MI:SS TZH:TZM') AS TIMESTAMP(6) WITH TIME ZONE) AS ts6tz"""
-        )
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=True)
@@ -228,16 +200,6 @@ def samp_dates_setup_frontend_ddl(frontend_api, config, schema, table_name) -> l
         ,      TIMESTAMP'1400-01-01 01:00:00 -5:00'          AS good_tstz
         FROM   dual"""
         ) % {"bad_dt": BAD_DT}
-    elif config.db_type == offload_constants.DBTYPE_TERADATA:
-        subquery = dedent(
-            """\
-        SELECT DATE '%(bad_dt)s'                             AS bad_date
-        ,      TIMESTAMP '%(bad_dt)s 00:00:00.000000'         AS bad_ts
-        --,      TIMESTAMP'1400-01-01 01:00:00 +5:00'           AS bad_tstz
-        ,      CURRENT_DATE                                  AS good_date
-        ,      CAST(CURRENT_DATE AS TIMESTAMP(6))            AS good_ts
-        ,      TO_TIMESTAMP_TZ('1400-01-01 01:00:00 -5:00','YYYY-MM-DD HH24:MI:SS TZH:TZM') AS good_tstz"""
-        ) % {"bad_dt": BAD_DT}
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=True)
@@ -246,8 +208,6 @@ def samp_dates_setup_frontend_ddl(frontend_api, config, schema, table_name) -> l
 def num_overflow_setup_frontend_ddl(frontend_api, config, schema, table_name, with_stats=True) -> list:
     if config.db_type in offload_constants.DBTYPE_ORACLE:
         subquery = "SELECT 1 AS id, CAST(%s AS NUMBER(38)) AS num FROM dual" % ("123".ljust(38, "0"))
-    elif config.db_type == offload_constants.DBTYPE_TERADATA:
-        subquery = "SELECT 1 AS id, CAST(%s AS NUMBER(38)) AS num" % ("123".ljust(38, "0"),)
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=with_stats)
@@ -256,8 +216,6 @@ def num_overflow_setup_frontend_ddl(frontend_api, config, schema, table_name, wi
 def num_scale_overflow_setup_frontend_ddl(frontend_api, config, schema, table_name) -> list:
     if config.db_type == offload_constants.DBTYPE_ORACLE:
         subquery = "SELECT CAST(1 AS NUMBER(4)) AS id, CAST(12.0123456789 AS NUMBER(20,10)) AS num FROM dual"
-    elif config.db_type == offload_constants.DBTYPE_TERADATA:
-        subquery = "SELECT CAST(1 AS NUMBER(4)) AS id, CAST(12.0123456789 AS NUMBER(20,10)) AS num"
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=True)
@@ -311,27 +269,6 @@ def gen_not_null_table_ddl(config, schema, table_name):
             ,      'NOT NULL','NOT NULL'
             ,      DECODE(MOD(ROWNUM,2),0,'NOT NULL',NULL)
             FROM dual CONNECT BY ROWNUM <= 3""",
-            ]
-        )
-    elif config.db_type == offload_constants.DBTYPE_TERADATA:
-        ddls.extend(
-            [
-                f"""CREATE TABLE {schema}.{table_name}
-            ( id INTEGER, join_id INTEGER
-            , dt DATE, dt_nn DATE NOT NULL
-            , ts TIMESTAMP(0), ts_nn TIMESTAMP(0) NOT NULL
-            , num NUMBER(5), num_nn NUMBER(5) NOT NULL
-            , vc VARCHAR(10), vc_nn VARCHAR(10) NOT NULL
-            , with_nulls VARCHAR(10)
-            )""",
-                f"""INSERT INTO {schema}.{table_name}
-            SELECT id,1
-            ,      CURRENT_DATE,CURRENT_DATE
-            ,      TRUNC(CURRENT_TIMESTAMP),TRUNC(CURRENT_TIMESTAMP)
-            ,      id*2,id*2
-            ,      'NOT NULL','NOT NULL'
-            ,      DECODE(MOD(id,2),0,'NOT NULL',NULL)
-            FROM {schema}.generated_ids WHERE id <= 100""",
             ]
         )
     else:

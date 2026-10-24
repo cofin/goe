@@ -523,9 +523,10 @@ class OffloadSourceDataIpaRange(OffloadSourceDataInterface):
         return NO_MAXVALUE_PARTITION_NOTICE_TEXT
 
     def _discard_partitions_using_filters(self):
-        """Apply RPA filters to the list of partitions to be offloaded
+        """Apply RPA filters to the list of partitions to be offloaded.
 
-        ignore filtering and offload all partitions, however we still use filter to define view HWM (100/10 pattern) Add the MAXVALUE/DEFAULT partition to the retained list TODO need to review this for Teradata when there could be 2 open (MAXVALUE) partitions This call stores the HWM partition in state
+        Ignore filtering and offload all partitions, however we still use filter to define view HWM (100/10 pattern).
+        Add the MAXVALUE/DEFAULT partition to the retained list. This call stores the HWM partition in state.
         """
         logger.debug("_discard_partitions_using_filters")
 

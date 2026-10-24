@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from goe.offload.offload_constants import NOT_NULL_PROPAGATION_NONE
 from goe.offload.offload_functions import expand_columns_csv
 from goe.offload.offload_messages import VVERBOSE
-from goe.util.misc_functions import case_insensitive_in
+from goe.util.string_utils import case_insensitive_in
 
 if TYPE_CHECKING:
     from goe.offload.column_metadata import ColumnMetadataInterface

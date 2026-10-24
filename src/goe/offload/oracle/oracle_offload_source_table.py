@@ -81,7 +81,7 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_XMLTYPE,
     OracleColumn,
 )
-from goe.util.goe_version import GOEVersion
+from goe.util import GOEVersion
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

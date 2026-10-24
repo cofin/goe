@@ -9,7 +9,6 @@ import numpy
 
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.offload.column_metadata import ColumnPartitionInfo
-from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.offload_source_table import RdbmsPartition
 from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_DATE,
@@ -17,6 +16,7 @@ from goe.offload.oracle.oracle_column import (
     OracleColumn,
 )
 from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
+from goe.offload.registry import create_backend_table
 
 if TYPE_CHECKING:
     from goe.offload.backend_table import BackendTableInterface
@@ -54,18 +54,6 @@ FAKE_ORACLE_ENV = {
     "ORA_REPO_USER": "a",
 }
 FAKE_ORACLE_ENV.update(FAKE_COMMON_ENV)
-
-FAKE_TERADATA_ENV = {
-    "FRONTEND_DISTRIBUTION": "TERADATA",
-    "TERADATA_SERVER": "s",
-    "TERADATA_ADM_USER": "a",
-    "TERADATA_ADM_PASS": "b",
-    "TERADATA_APP_USER": "a",
-    "TERADATA_APP_PASS": "b",
-    "TERADATA_REPO_USER": "a",
-    "FRONTEND_ODBC_DRIVER_NAME": "o",
-}
-FAKE_TERADATA_ENV.update(FAKE_COMMON_ENV)
 
 #
 # Full mock environment variable combinations.
@@ -283,10 +271,6 @@ def optional_synapse_dependency_exception(e: Exception) -> bool:
     return "pyodbc" in str(e)
 
 
-def optional_teradata_dependency_exception(e: Exception) -> bool:
-    return "pyodbc" in str(e)
-
-
 def build_mock_options(mock_env: dict):
     assert mock_env
     k = mock.patch.dict(os.environ, mock_env)
@@ -313,7 +297,7 @@ def build_mock_offload_operation():
 
 def build_fake_backend_table(config, messages) -> "BackendTableInterface":
     """Return a fake BackendTable."""
-    test_table_object = backend_table_factory(
+    test_table_object = create_backend_table(
         "no_user",
         "no_table",
         config.target,

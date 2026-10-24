@@ -9,7 +9,7 @@ from goe.offload.column_metadata import (
     match_table_column,
 )
 from goe.offload.offload_messages import OffloadMessages
-from goe.util.misc_functions import format_list_for_logging
+from goe.util.string_utils import format_list_for_logging
 
 if TYPE_CHECKING:
     from goe.offload.backend_table import BackendTableInterface

@@ -36,7 +36,7 @@ from goe.offload.snowflake.snowflake_column import (
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
     SnowflakeColumn,
 )
-from goe.util.misc_functions import add_suffix_in_same_case
+from goe.util.string_utils import add_suffix_in_same_case
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -135,7 +135,7 @@ class BackendSnowflakeTable(BackendTableInterface):
 
         for staging_format in self._db_api.valid_staging_formats():
             file_format = add_suffix_in_same_case(
-                self._orchestration_config.snowflake_file_format_prefix,
+                self._orchestration_config.snowflake_file_format_prefix or "",
                 "_" + staging_format,
             )
             if self._db_api.snowflake_file_format_exists(self.db_name, file_format):

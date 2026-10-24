@@ -7,7 +7,7 @@ import decimal
 from textwrap import dedent
 from unittest import TestCase, main
 
-from goe.util.misc_functions import (
+from goe.util.string_utils import (
     add_prefix_in_same_case,
     add_suffix_in_same_case,
     backtick_sandwich,

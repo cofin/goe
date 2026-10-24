@@ -2,16 +2,16 @@
 type: Spec
 flow_id: prd_05_foundation_typing_settings_and_adapter_reduction_20261024
 title: "Master PRD 5: Adapter Reduction, Core Typing, Declarative Settings, Utility Dissolution, and Connect Runner"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 1
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: finish
+operation_targets: ["5.1", "5.2", "5.3", "5.4", "5.5"]
+last_verified_checkpoint: "5.5"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-24T20:15:00Z
 description: "Master roadmap that removes the Sqoop, MapRFS, and Teradata adapters, collapses adapter factories into one registry, adds GC-exempt typing, serializers, platform utilities, and an AST architecture gate, unifies settings and options into one declarative registry, dissolves src/goe/util, slims dependencies, and rebuilds goe connect."
 tags:
   - refactor
@@ -100,11 +100,11 @@ uv run pytest tests/unit -q
 
 ## Implementation Plan
 
-- [ ] 5.1 `adapter_reduction_and_adapter_registry_20261024` — remove Sqoop, MapRFS, and Teradata; collapse factories into `AdapterRegistry` ([spec](../adapter_reduction_and_adapter_registry_20261024/spec.md)).
-- [ ] 5.2 `core_typing_serializers_platform_and_architecture_gate_20261024` — `goe.typing`, `module_loader`, serializers, platform utilities, architecture gate ([spec](../core_typing_serializers_platform_and_architecture_gate_20261024/spec.md)).
-- [ ] 5.3 `declarative_settings_options_and_error_model_20261024` — side-effect-free settings, `OptionSpec` registry, `GOEError`, OTel flags, Listener defaults, templates ([spec](../declarative_settings_options_and_error_model_20261024/spec.md)).
-- [ ] 5.4 `util_dissolution_dependency_and_lint_hygiene_20261024` — dissolve `src/goe/util/`, slim dependencies, fix bug-masking Ruff rules ([spec](../util_dissolution_dependency_and_lint_hygiene_20261024/spec.md)).
-- [ ] 5.5 `connect_runner_and_connectivity_report_20261024` — concurrent `ConnectRunner` and `ConnectReport` ([spec](../connect_runner_and_connectivity_report_20261024/spec.md)).
+- [x] 5.1 `adapter_reduction_and_adapter_registry_20261024` — remove Sqoop, MapRFS, and Teradata; collapse factories into `AdapterRegistry` ([spec](../adapter_reduction_and_adapter_registry_20261024/spec.md)).
+- [x] 5.2 `core_typing_serializers_platform_and_architecture_gate_20261024` — `goe.typing`, `module_loader`, serializers, platform utilities, architecture gate ([spec](../core_typing_serializers_platform_and_architecture_gate_20261024/spec.md)).
+- [x] 5.3 `declarative_settings_options_and_error_model_20261024` — side-effect-free settings, `OptionSpec` registry, `GOEError`, OTel flags, Listener defaults, templates ([spec](../declarative_settings_options_and_error_model_20261024/spec.md)).
+- [x] 5.4 `util_dissolution_dependency_and_lint_hygiene_20261024` — dissolve `src/goe/util/`, slim dependencies, fix bug-masking Ruff rules ([spec](../util_dissolution_dependency_and_lint_hygiene_20261024/spec.md)).
+- [x] 5.5 `connect_runner_and_connectivity_report_20261024` — concurrent `ConnectRunner` and `ConnectReport` ([spec](../connect_runner_and_connectivity_report_20261024/spec.md)).
 
 ## Continuity Snapshot
 

@@ -5,7 +5,6 @@ import pytest
 
 from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
-    DBTYPE_TERADATA,
     IPA_PREDICATE_TYPE_CHANGE_EXCEPTION_TEXT,
     IPA_PREDICATE_TYPE_EXCEPTION_TEXT,
 )
@@ -23,9 +22,7 @@ from goe.offload.offload_source_data import (
     PREDICATE_TYPE_NO_MODIFY_RESET_EXCEPTION_TEXT,
 )
 from goe.offload.predicate_offload import GenericPredicate
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
@@ -133,9 +130,6 @@ def offload_pbo_late_100_x_tests(
             test_id = "range_100_10"
             hv_1 = chk_hv_1 = test_constants.SALES_BASED_FACT_HV_2
     elif table_name == LAR_TABLE_LATE_100_0:
-        if config.db_type == DBTYPE_TERADATA:
-            messages.log("Skipping LAR tests on Teradata because CASE_N is not yet supported")
-            return []
         inc_key = "YRMON"
         ipa_predicate_type = INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE
 
@@ -494,7 +488,7 @@ def test_offload_pbo_late_range_90_10(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -535,7 +529,7 @@ def test_offload_pbo_late_range_100_0(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -568,15 +562,13 @@ def test_offload_pbo_late_range_100_0(config, schema, data_db):
 def test_offload_pbo_late_list_as_range(config, schema, data_db):
     """Tests for Late Arriving Predicate Based Offload on a LIST_AS_RANGE."""
     id = "test_offload_pbo_late_list_as_range"
-    if config.db_type == DBTYPE_TERADATA:
-        pytest.skip(f"Skipping {id} on Teradata because CASE_N is not yet supported")
 
     with (
         get_test_messages_ctx(config, id) as messages,
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -615,15 +607,13 @@ def test_offload_pbo_late_list_as_range(config, schema, data_db):
 def test_offload_pbo_late_list_as_range_100_0(config, schema, data_db):
     """Tests for Late Arriving Predicate Based Offload on a LIST_AS_RANGE 100/0."""
     id = "test_offload_pbo_late_list_as_range_100_0"
-    if config.db_type == DBTYPE_TERADATA:
-        pytest.skip(f"Skipping {id} on Teradata because CASE_N is not yet supported")
 
     with (
         get_test_messages_ctx(config, id) as messages,
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -659,17 +649,13 @@ def test_offload_pbo_late_list_as_range_100_0(config, schema, data_db):
 def test_offload_pbo_late_mcol_range(config, schema, data_db):
     """Tests for Late Arriving Predicate Based Offload on a multi-partition column table."""
     id = "test_offload_pbo_late_mcol_range"
-    if config.db_type == DBTYPE_TERADATA:
-        pytest.skip(
-            "Skipping multi-column tests on Teradata because we currently only support RANGE with a single column"
-        )
 
     with (
         get_test_messages_ctx(config, id) as messages,
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -703,15 +689,12 @@ def test_offload_pbo_late_range_sub(config, schema, data_db):
     """Tests for Late Arriving Predicate Based Offload on a RANGE/RANGE table."""
     id = "test_offload_pbo_late_range_sub"
 
-    if config.db_type == DBTYPE_TERADATA:
-        pytest.skip("Skipping subpartition tests on Teradata because we currently only support RANGE at top level")
-
     with (
         get_test_messages_ctx(config, id) as messages,
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(

@@ -28,20 +28,17 @@ dependencies = [
     "avro",
     "cryptography",
     "filelock",
+    "jinja2>=3.1.4",
     "lark>=1.1.9",
     "numpy",
     "msgspec>=0.19.0",
     "opentelemetry-api>=1.40.0",
     "sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0",
-    "python-dateutil",
-    "PyYAML",
     "requests",
     "urllib3",
     # For Cloud storage
-    "fsspec[gcs]",
     "google-cloud-storage",
     "boto3",
-    "azure-common",
     "azure-storage-blob",
     # For Oracle frontend
     "oracledb",
@@ -54,8 +51,6 @@ dependencies = [
     "rich>=13.7.1",
     "rich-click>=1.8.0",
     # GOE Listener packages
-    "brotli>=1.0.9",
-    "tenacity>=8.0.1",
     "uvloop",
     "httptools",
     "litestar>=2.8.0",
@@ -88,9 +83,6 @@ sql_server = [
     "pymssql",
 ]
 synapse = [
-    "pyodbc",
-]
-teradata = [
     "pyodbc",
 ]
 sqlspec = [
@@ -136,9 +128,7 @@ lint = [
     "mypy>=1.13.0",
     "ruff>=0.14.0",
     "pre-commit>=3.5.0",
-    "types-pyyaml",
     "types-requests",
-    "types-python-dateutil",
 ]
 docs = [
     "sphinx>=8.0.0",
@@ -309,10 +299,23 @@ disable_error_code = []
 
 [[tool.mypy.overrides]]
 module = [
-    "tests.*",
+    "goe.typing",
+    "goe.serializers",
+    "goe.exceptions",
+    "goe.offload.registry",
+    "goe.util.*",
+    "goe.platform.*",
+    "goe.config.settings",
+    "goe.config.option_registry",
+    "goe.config.password_tools",
+    "goe.config.gcp_credentials",
+    "goe.connect.*",
+    "goe.observability.*",
 ]
-ignore_errors = true
-warn_unused_ignores = false
+disallow_any_generics = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+warn_return_any = true
 
 [tool.pyright]
 exclude = ["scripts", "docs", "build", "dist", ".venv"]
@@ -320,6 +323,7 @@ include = ["src/goe", "tests", "tools"]
 
 [tool.pytest.ini_options]
 addopts = "-ra -q"
+pythonpath = [".", "src"]
 filterwarnings = [
     "ignore::DeprecationWarning:google.*",
     "ignore::DeprecationWarning:pkg_resources",

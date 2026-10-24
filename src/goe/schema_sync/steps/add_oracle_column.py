@@ -4,8 +4,8 @@
 import traceback
 
 from goe.goe import log
-from goe.util.misc_functions import double_quote_sandwich
-from goe.util.ora_query import get_oracle_connection
+from goe.offload.oracle.ora_query import get_oracle_connection
+from goe.util.string_utils import double_quote_sandwich
 
 from .. import schema_sync_constants
 from ..schema_sync_step import SchemaSyncStep

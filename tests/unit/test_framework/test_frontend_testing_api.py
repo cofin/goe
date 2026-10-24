@@ -13,7 +13,7 @@ This is split into two categories
 from unittest import TestCase, main
 
 from goe.offload.column_metadata import ALL_CANONICAL_TYPES
-from goe.offload.offload_constants import DBTYPE_MSSQL, DBTYPE_ORACLE, DBTYPE_TERADATA
+from goe.offload.offload_constants import DBTYPE_MSSQL, DBTYPE_ORACLE
 from goe.offload.offload_messages import OffloadMessages
 from tests.testlib.test_framework.factory.frontend_testing_api_factory import (
     frontend_testing_api_factory,
@@ -21,10 +21,8 @@ from tests.testlib.test_framework.factory.frontend_testing_api_factory import (
 from tests.unit.test_functions import (
     FAKE_MSSQL_ENV,
     FAKE_ORACLE_ENV,
-    FAKE_TERADATA_ENV,
     build_mock_options,
     optional_sql_server_dependency_exception,
-    optional_teradata_dependency_exception,
 )
 
 transient_error_global_counter = 0
@@ -123,20 +121,6 @@ class TestOracleFrontendTestingApi(TestFrontendTestingApi):
         super().setUp()
 
     def test_all_non_connecting_oracle_tests(self):
-        self._run_all_tests()
-
-
-class TestTeradataFrontendTestingApi(TestFrontendTestingApi):
-    def setUp(self):
-        self.db_type = DBTYPE_TERADATA
-        self.config = build_mock_options(FAKE_TERADATA_ENV)
-        try:
-            super().setUp()
-        except ModuleNotFoundError as e:
-            if not optional_teradata_dependency_exception(e):
-                raise
-
-    def test_all_non_connecting_teradata_tests(self):
         self._run_all_tests()
 
 

@@ -47,7 +47,25 @@ def test_builders_enabled(memory_runtime: runtime.ObservabilityRuntime) -> None:
 
 def test_http_request_emits_server_span(memory_runtime: runtime.ObservabilityRuntime) -> None:
     with TestClient(app=create_app()) as client:
-        assert client.get("/.well-known/agent-card.json").status_code == 200
+        response = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/list",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+                "params": {
+                    "_meta": {
+                        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                        "io.modelcontextprotocol/clientCapabilities": {},
+                    }
+                },
+            },
+        )
+        assert response.status_code == 200
     assert any(span.kind == SpanKind.SERVER for span in memory_runtime.get_finished_spans())
 
 

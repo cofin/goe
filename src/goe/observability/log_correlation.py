@@ -8,9 +8,9 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-import msgspec
-
 from goe.observability.context import get_current_trace_context
+from goe.serializers import encode_json
+from goe.typing import FrozenBaseStruct
 
 __all__ = (
     "StructuredLogEntry",
@@ -22,7 +22,7 @@ __all__ = (
 _state: dict[str, Callable[..., logging.LogRecord] | None] = {"original_factory": None}
 
 
-class StructuredLogEntry(msgspec.Struct, frozen=True, kw_only=True):
+class StructuredLogEntry(FrozenBaseStruct, frozen=True, kw_only=True):
     """One JSON log line correlated with the active GOE execution and W3C span."""
 
     timestamp: str
@@ -49,7 +49,7 @@ def encode_structured_log_line(data: str) -> str:
         trace_id=snapshot.trace_id,
         span_id=snapshot.span_id,
     )
-    return msgspec.json.encode(entry).decode() + "\n"
+    return encode_json(entry) + "\n"
 
 
 def install_log_record_correlation() -> None:

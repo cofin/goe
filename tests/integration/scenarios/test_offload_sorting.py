@@ -13,9 +13,7 @@ from goe.offload.operation.sort_columns import (
     SORT_COLUMN_NO_MODIFY_EXCEPTION_TEXT,
     UNKNOWN_SORT_COLUMN_EXCEPTION_TEXT,
 )
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios.assertion_functions import check_metadata
 from tests.integration.scenarios.scenario_runner import (
     run_offload,
@@ -124,7 +122,7 @@ def test_offload_sorting_dim(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
         backend_name = convert_backend_identifier_case(config, OFFLOAD_DIM)
 
         # Setup
@@ -262,7 +260,7 @@ def test_offload_sorting_fact(config, schema, data_db):
         if not sorted_table_supported(backend_api):
             pytest.skip(f"Skipping {id} due to sorted_table_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
         backend_name = convert_backend_identifier_case(config, OFFLOAD_FACT)
 
         # Setup
@@ -431,7 +429,7 @@ def test_offload_sorting_many_pk_cols(config, schema, data_db):
         if backend_api.max_sort_columns() > 4:
             pytest.skip(f"Skipping {id} due to backend_api.max_sort_columns() > 4")
 
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
         backend_name = convert_backend_identifier_case(config, MANY_PK_DIM)
         sort_cols = [
             "ID",

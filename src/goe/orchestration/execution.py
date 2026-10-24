@@ -11,11 +11,6 @@ from goe.filesystem.goe_dfs import (
 )
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.offload import offload_constants
-from goe.offload.factory.backend_table_factory import (
-    backend_table_factory,
-    get_backend_table_from_metadata,
-)
-from goe.offload.factory.offload_transport_factory import offload_transport_factory
 from goe.offload.offload import (
     create_ddl_file_step,
     create_final_backend_table_step,
@@ -58,6 +53,7 @@ from goe.offload.operation.table_structure_checks import check_table_structure
 from goe.offload.operation.transport import (
     offload_data_to_target,
 )
+from goe.offload.registry import create_backend_table, create_transport
 from goe.orchestration import command_steps, logging_init
 from goe.orchestration.constants import (
     RETAINING_PARTITITON_FUNCTIONS_MESSAGE_TEXT,
@@ -568,7 +564,7 @@ def offload_table(
 
     create_final_backend_table_step(offload_target_table, offload_operation)
 
-    data_transport_client = offload_transport_factory(
+    data_transport_client = create_transport(
         offload_operation.offload_transport_method,
         offload_source_table,
         offload_target_table,
@@ -640,11 +636,14 @@ def get_offload_target_table(offload_operation, offload_options, messages, metad
     check_and_set_nls_lang(offload_options, messages)
     existing_metadata = metadata_override or offload_operation.get_hybrid_metadata()
     if existing_metadata:
-        backend_table = get_backend_table_from_metadata(
-            existing_metadata,
+        backend_table = create_backend_table(
+            existing_metadata.backend_owner,
+            existing_metadata.backend_table,
+            offload_options.target,
             offload_options,
             messages,
-            offload_operation=offload_operation,
+            orchestration_operation=offload_operation,
+            hybrid_metadata=existing_metadata,
         )
         if (backend_table.db_name, backend_table.table_name) != (
             offload_operation.target_owner,
@@ -666,7 +665,7 @@ def get_offload_target_table(offload_operation, offload_options, messages, metad
                 f"{offload_constants.ADJUSTED_BACKEND_IDENTIFIER_MESSAGE_TEXT}: {db_name}.{table_name}",
                 detail=VVERBOSE,
             )
-        backend_table = backend_table_factory(
+        backend_table = create_backend_table(
             db_name,
             table_name,
             offload_options.target,

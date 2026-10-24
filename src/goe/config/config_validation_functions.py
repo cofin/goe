@@ -1,20 +1,15 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """config_validation_functions: Library of functions used in goe.py and OrchestrationConfig"""
 
-import json
-import random
 import re
 
-import oracledb
-
 from goe.config import orchestration_defaults
+from goe.config.password_tools import PasswordTools
+from goe.exceptions import ConfigurationError
 from goe.filesystem.goe_dfs import (
     AZURE_OFFLOAD_FS_SCHEMES,
-    OFFLOAD_FS_SCHEME_MAPRFS,
     OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER,
     VALID_OFFLOAD_FS_SCHEMES,
 )
@@ -25,14 +20,12 @@ from goe.offload.microsoft.synapse_constants import (
 )
 from goe.offload.offload_constants import (
     BACKEND_DISTRO_GCP,
-    BACKEND_DISTRO_MAPR,
     BACKEND_DISTRO_MSAZURE,
     BACKEND_DISTRO_SNOWFLAKE,
     DBTYPE_HIVE,
     DBTYPE_IMPALA,
     DBTYPE_MSSQL,
     DBTYPE_ORACLE,
-    DBTYPE_TERADATA,
     HADOOP_BASED_BACKEND_DISTRIBUTIONS,
     VALID_BIGQUERY_LOAD_TABLE_MODES,
 )
@@ -42,12 +35,12 @@ from goe.offload.offload_transport import (
     VALID_SPARK_SUBMIT_EXECUTABLES,
     derive_rest_api_verify_value_from_url,
 )
+from goe.serializers import decode_json
 from goe.util.goe_log_fh import is_valid_path_for_logs
-from goe.util.misc_functions import human_size_to_bytes, is_pos_int
-from goe.util.password_tools import PasswordTools
+from goe.util.string_utils import human_size_to_bytes, is_pos_int
 
 
-class OrchestrationConfigException(Exception):
+class OrchestrationConfigException(ConfigurationError):
     pass
 
 
@@ -55,7 +48,9 @@ def verify_json_option(option_name, option_value):
     """Validate that a JSON option string parses to a flat primitive key/value mapping."""
     if option_value:
         try:
-            properties = json.loads(option_value)
+            properties = decode_json(option_value)
+            if not isinstance(properties, dict):
+                raise ValueError("Expected a JSON object")
 
             invalid_props = [k for k, v in properties.items() if type(v) not in (str, int, float)]
             if invalid_props:
@@ -65,7 +60,9 @@ def verify_json_option(option_name, option_value):
                 raise OrchestrationConfigException(
                     f"Invalid property value in {option_name} for keys: {invalid_props!s}\n{prop_details}"
                 )
-        except ValueError as ve:
+        except Exception as ve:
+            if isinstance(ve, OrchestrationConfigException):
+                raise
             raise OrchestrationConfigException("Invalid JSON value for %s: %s" % (option_name, str(ve))) from ve
 
 
@@ -88,8 +85,7 @@ def normalise_backend_options(options):
 
 def normalise_db_prefix_and_paths(options, frontend_api=None):
     if options.db_name_prefix is None:
-        assert frontend_api
-        options.db_name_prefix = frontend_api.get_db_unique_name()
+        options.db_name_prefix = frontend_api.get_db_unique_name() if frontend_api else ""
 
     if options.db_name_prefix and options.db_name_prefix != "":
         options.db_name_pattern = options.db_name_prefix.lower() + "_" + options.db_name_pattern
@@ -130,7 +126,7 @@ def normalise_hadoop_options(options, exc_cls=OrchestrationConfigException):
         if not options.hiveserver2_auth_mechanism:
             options.hiveserver2_auth_mechanism = "NOSASL"
 
-    options.hadoop_host = random.choice(options.hadoop_host.split(","))
+    options.hadoop_host = options.hadoop_host.split(",")[0].strip()
     options.hdfs_host = options.hdfs_host or options.hadoop_host
 
     normalise_webhdfs(options)
@@ -141,7 +137,7 @@ def normalise_backend_session_parameters(opts):
         opts.backend_session_parameters = {}
     elif isinstance(opts.backend_session_parameters, str):
         verify_json_option("OFFLOAD_BACKEND_SESSION_PARAMETERS", opts.backend_session_parameters)
-        opts.backend_session_parameters = json.loads(opts.backend_session_parameters)
+        opts.backend_session_parameters = decode_json(opts.backend_session_parameters)
 
 
 def normalise_filesystem_options(options, exc_cls=OrchestrationConfigException):
@@ -153,10 +149,6 @@ def normalise_filesystem_options(options, exc_cls=OrchestrationConfigException):
         raise exc_cls("OFFLOAD_FS_SCHEME/--offload-fs-scheme must be one of: %s" % VALID_OFFLOAD_FS_SCHEMES)
     if options.offload_fs_scheme in OFFLOAD_FS_SCHEMES_REQUIRING_CONTAINER and not options.offload_fs_container:
         raise exc_cls("OFFLOAD_FS_CONTAINER/--offload-fs-container required for scheme: %s" % options.offload_fs_scheme)
-    if options.offload_fs_scheme == OFFLOAD_FS_SCHEME_MAPRFS and options.backend_distribution != BACKEND_DISTRO_MAPR:
-        raise exc_cls(
-            "OFFLOAD_FS_SCHEME/--offload-fs-scheme %s not valid for this backend system" % options.offload_fs_scheme
-        )
 
     if options.backend_distribution in HADOOP_BASED_BACKEND_DISTRIBUTIONS:
         if not options.hdfs_data:
@@ -234,9 +226,7 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
         simple_file_csv(options.offload_transport_spark_jars, "OFFLOAD_TRANSPORT_SPARK_JARS")
 
     if options.offload_transport_spark_thrift_host:
-        options.offload_transport_spark_thrift_host = random.choice(
-            options.offload_transport_spark_thrift_host.split(",")
-        )
+        options.offload_transport_spark_thrift_host = options.offload_transport_spark_thrift_host.split(",")[0].strip()
     if options.offload_transport_spark_thrift_port:
         options.offload_transport_spark_thrift_port = orchestration_defaults.posint_option_from_string(
             "OFFLOAD_TRANSPORT_SPARK_THRIFT_PORT",
@@ -278,8 +268,6 @@ def normalise_offload_transport_config(options, exc_cls=OrchestrationConfigExcep
             options.offload_transport_dsn = options.mssql_dsn
         elif options.db_type == DBTYPE_ORACLE:
             options.offload_transport_dsn = options.oracle_dsn
-        elif options.db_type == DBTYPE_TERADATA:
-            options.offload_transport_dsn = options.teradata_server
 
     if options.offload_staging_format:
         options.offload_staging_format = options.offload_staging_format.upper()
@@ -309,22 +297,10 @@ def normalise_rdbms_options(options, exc_cls=OrchestrationConfigException):
         normalise_mssql_options(options, exc_cls=exc_cls)
     elif options.db_type == DBTYPE_ORACLE:
         normalise_rdbms_oracle_options(options, exc_cls=exc_cls)
-    elif options.db_type == DBTYPE_TERADATA:
-        normalise_teradata_options(options, exc_cls=exc_cls)
 
 
 def normalise_rdbms_oracle_options(options, exc_cls=OrchestrationConfigException):
-    """Process Oracle connection options
-    silent is required when this is called before options has been defined, we don't want to try logging anything
-    before logging is ready.
-    """
-    if options.oracledb_thick_mode:
-        if oracledb.is_thin_mode():
-            try:
-                oracledb.init_oracle_client()
-            except Exception as exc:
-                raise exc_cls(f"Failed to initialize oracledb thick mode: {exc}") from exc
-
+    """Process Oracle connection options without side-effect client initialization."""
     if not options.oracle_dsn:
         raise exc_cls("Oracle connection options required")
     if not options.use_oracle_wallet and (
@@ -369,30 +345,6 @@ def normalise_mssql_options(options, exc_cls=OrchestrationConfigException):
     options.ora_adm_user = None
     options.ora_adm_pass = None
     options.ora_repo_user = None
-    options.sqoop_password_file = None
-
-
-def normalise_teradata_options(options, exc_cls=OrchestrationConfigException):
-    if not options.teradata_adm_user or not options.teradata_adm_pass or not options.teradata_server:
-        raise exc_cls("Teradata connection options required")
-    if not options.teradata_app_user or not options.teradata_app_pass:
-        raise exc_cls("Teradata connection options required")
-    if not options.teradata_repo_user:
-        raise exc_cls("Teradata repository username required")
-
-    options.rdbms_app_user = options.teradata_app_user
-    options.rdbms_app_pass = options.teradata_app_pass
-    options.rdbms_dsn = options.teradata_server
-
-    if not options.frontend_odbc_driver_name:
-        raise exc_cls("FRONTEND_ODBC_DRIVER_NAME is required for Teradata connections")
-
-    if not options.password_key_file:
-        return
-    pass_tool = PasswordTools()
-    goe_key = pass_tool.get_password_key_from_key_file(options.password_key_file)
-    options.rdbms_app_pass = options.teradata_app_pass = pass_tool.b64decrypt(options.teradata_app_pass, goe_key)
-    options.teradata_adm_pass = pass_tool.b64decrypt(options.teradata_adm_pass, goe_key)
 
 
 def normalise_size_option(opt_val, binary_sizes=False, strict_name=None, exc_cls=OrchestrationConfigException):
@@ -404,10 +356,10 @@ def normalise_size_option(opt_val, binary_sizes=False, strict_name=None, exc_cls
         new_val = opt_val.upper() if opt_val else None
     else:
         new_val = opt_val
-    new_val = human_size_to_bytes(new_val, binary_sizes=binary_sizes)
-    if strict_name and new_val is None:
+    parsed_val = human_size_to_bytes(new_val, binary_sizes=binary_sizes)
+    if strict_name and parsed_val is None:
         raise exc_cls("Invalid %s: %s" % (strict_name, opt_val))
-    return new_val or 0
+    return parsed_val or 0
 
 
 def normalise_snowflake_options(options, exc_cls=OrchestrationConfigException):

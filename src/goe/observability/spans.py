@@ -6,7 +6,6 @@
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 from typing import Any
 
 from opentelemetry import trace
@@ -14,6 +13,7 @@ from opentelemetry.trace import Span, SpanKind, Status, StatusCode
 
 from goe.observability.context import bind_execution_context, bind_step_context, get_current_trace_context
 from goe.observability.runtime import get_observability_runtime, get_tracer
+from goe.typing import BaseStruct
 
 __all__ = (
     "TracedOperation",
@@ -25,8 +25,7 @@ __all__ = (
 )
 
 
-@dataclass
-class TracedOperation:
+class TracedOperation(BaseStruct):
     """Outcome holder for a traced command or step."""
 
     span: Span

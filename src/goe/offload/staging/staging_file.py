@@ -88,7 +88,7 @@ class OffloadStagingFileInterface(metaclass=ABCMeta):
 
     @abstractmethod
     def get_java_primitive(self, staging_column):
-        """Return a java primitive for a staging column which will be used by Sqoop/Spark
+        """Return a java primitive for a staging column which will be used by Spark
         when unloading data.
         """
 

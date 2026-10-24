@@ -2,16 +2,16 @@
 type: Spec
 flow_id: core_typing_serializers_platform_and_architecture_gate_20261024
 title: "Chapter 5.2: Core Typing, Serializers, Platform Utilities, and Architecture Gate"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 1
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: finish
+operation_targets: ["1.1", "1.2", "1.3", "1.4"]
+last_verified_checkpoint: "1.4"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-24T20:15:00Z
 description: "Introduces GC-exempt msgspec base structs, centralized JSON serializers, cached optional module loading, bounded concurrency and subprocess helpers, platform worker and table locking primitives, and the AST architecture verifier."
 tags: [refactor, typing, serializers, platform, tooling]
 parent_prd: prd_05_foundation_typing_settings_and_adapter_reduction_20261024
@@ -75,21 +75,21 @@ uv run pytest tests/unit -q
 ## Implementation Plan
 
 ### Phase 1: Core Typing, Serializers, and Foundational Utilities
-- [ ] 1.1 Add GC-exempt msgspec base structs and centralized JSON serializers ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Add module loader, string, bounded concurrency, and subprocess utilities ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.1 Add GC-exempt msgspec base structs and centralized JSON serializers ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Add module loader, string, bounded concurrency, and subprocess utilities ([tasks/1.2.md](tasks/1.2.md))
 
 ### Phase 2: Platform Primitives and Architecture Verifier
-- [ ] 1.3 Add platform process worker and file orchestration locking ([tasks/1.3.md](tasks/1.3.md))
-- [ ] 1.4 Add the AST architecture boundary verifier and wire it into make lint ([tasks/1.4.md](tasks/1.4.md))
+- [x] 1.3 Add platform process worker and file orchestration locking ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.4 Add the AST architecture boundary verifier and wire it into make lint ([tasks/1.4.md](tasks/1.4.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `core_typing_serializers_platform_and_architecture_gate_20261024`, `planned`.
-- **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Flow / lifecycle**: `core_typing_serializers_platform_and_architecture_gate_20261024`, `in_progress`.
+- **Current task / claimant**: `1.4`.
+- **Last verified checkpoint**: `1.3` (`2026-10-24T19:21:00Z`).
 - **Decisions**: `goe.typing` and `goe.serializers` live at the package root (`src/goe/typing.py`, `src/goe/serializers.py`); `src/goe/platform/{worker,locking}.py` houses process worker, cgroup/drain helpers, and file-based table locks; `tools/verify_architecture.py` enforces the six AST and token rules against `tools/architecture_baseline.toml`.
-- **Discoveries**: none yet.
-- **Blockers**: `adapter_reduction_and_adapter_registry_20261024` must complete first.
-- **Next exact step**: execute task `1.1` (`core_typing_serializers_platform_and_architecture_gate_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: PEP 681 `@dataclass_transform` requires subclasses of `FrozenBaseStruct`, `WireFrameStruct`, and `FrozenCamelStruct` to declare `frozen=True` in the subclass header for mypy while automatically inheriting `gc=False`.
+- **Blockers**: none.
+- **Next exact step**: execute task `1.4` (`core_typing_serializers_platform_and_architecture_gate_20261024:1.4`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 1`.
 - **Relevant knowledge**: `AGENTS.md`, `.agents/bundles/knowledge/workflow.md`, `.agents/bundles/knowledge/standards/python.md`, `.agents/bundles/knowledge/standards/testing.md`.

@@ -8,6 +8,7 @@ processing and verification of integration tests.
 """
 
 import logging
+import time
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 
@@ -18,10 +19,8 @@ from goe.offload.column_metadata import (
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
 )
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.util.simple_timer import SimpleTimer
+from goe.offload.registry import create_frontend_api, create_source_table
 from tests.testlib.test_framework import test_constants
 
 
@@ -66,7 +65,7 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         self._frontend_type = frontend_type
         self._messages = messages
         self._dry_run = dry_run
-        self._db_api = frontend_api_factory(
+        self._db_api = create_frontend_api(
             frontend_type,
             self._connection_options,
             self._messages,
@@ -250,9 +249,9 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         self._log(f"Populating {schema}.{table_name}")
         rows = 100
         self._log(f"Rows: {rows}", detail=VERBOSE)
-        t = SimpleTimer(f"Populate: {schema}.{table_name}")
+        t0 = time.perf_counter()
         self._populate_generated_test_table(schema, table_name, column_specs, rows, fastexecute=False)
-        self._debug(t.show())
+        self._debug(f"Populate: {schema}.{table_name}: {time.perf_counter() - t0:.2f}s")
         self.collect_table_stats(schema, table_name)
 
     def create_new_connection(
@@ -324,7 +323,7 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         )
 
     def frontend_table_partition_list(self, schema: str, table_name: str, hv_string_list: list | None = None) -> list:
-        frontend_table = OffloadSourceTable.create(schema, table_name, self._connection_options, self._messages)
+        frontend_table = create_source_table(schema, table_name, self._connection_options, self._messages)
         partitions = frontend_table.get_partitions()
         if hv_string_list:
             partitions = [p for p in partitions if any(_ in p.high_values_csv for _ in hv_string_list)]

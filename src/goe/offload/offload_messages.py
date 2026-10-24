@@ -21,7 +21,7 @@ from goe.observability.spans import (
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.command_steps import STEP_TITLES, step_title
 from goe.util.goe_log_fh import GOELogFileHandle
-from goe.util.misc_functions import standard_log_name
+from goe.util.string_utils import standard_log_name
 
 if TYPE_CHECKING:
     from goe.persistence.orchestration_repo_client import (

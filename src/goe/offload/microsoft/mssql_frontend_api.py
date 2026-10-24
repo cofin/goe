@@ -285,12 +285,11 @@ class MSSQLFrontendApi(FrontendApiInterface):
         raise NotImplementedError("MSSQL get_table_row_count not implemented.")
 
     def get_table_size(self, schema, table_name):
-        """Not actually used since we always choose Sqoop in OffloadOperation.set_offload_method
-        The appropriateness of the SP_SPACEUSED procedure for calculating table size must be validated properly
-        If it is appropriate then we currently use the "data" size column as this is what Sqoop would extract
-        Other columns are reserved_size, index_size and unused
-        Assumption here on limited testing is that output is always in KB and suffixed as such. This might not be true
-        SP_SPACEUSED is not valid for Azure Serverless SQL Pools
+        """Calculate table data size via SP_SPACEUSED.
+
+        Uses the "data" size column; other columns are reserved_size, index_size, and unused.
+        Output is assumed to be in KB and suffixed as such.
+        SP_SPACEUSED is not valid for Azure Serverless SQL Pools.
         """
         q = f'SP_SPACEUSED "{schema}.{table_name}"'
         rows = self.execute_query_fetch_all(q, query_params=(schema, table_name))

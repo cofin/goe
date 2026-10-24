@@ -26,16 +26,15 @@ from goe.config.config_validation_functions import (
     normalise_rdbms_wallet_options,
     normalise_size_option,
 )
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
+from goe.config.password_tools import PasswordToolsException
 from goe.offload.offload_constants import (
     DBTYPE_MSSQL,
     DBTYPE_ORACLE,
-    DBTYPE_TERADATA,
     HADOOP_BASED_BACKEND_DISTRIBUTIONS,
 )
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_transport_functions import hs2_connection_log_message
-from goe.util.password_tools import PasswordToolsException
+from goe.offload.registry import create_frontend_api
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -162,11 +161,6 @@ EXPECTED_CONFIG_ARGS = [
     "snowflake_role",
     "snowflake_stage",
     "snowflake_warehouse",
-    "sqoop_disable_direct",
-    "sqoop_outdir",
-    "sqoop_password_file",
-    "sqoop_queue_name",
-    "sqoop_overrides",
     "suppress_stdout",
     "synapse_auth_mechanism",
     "synapse_collation",
@@ -182,12 +176,6 @@ EXPECTED_CONFIG_ARGS = [
     "synapse_service_principal_secret",
     "synapse_user",
     "target",
-    "teradata_adm_user",
-    "teradata_adm_pass",
-    "teradata_app_user",
-    "teradata_app_pass",
-    "teradata_server",
-    "teradata_repo_user",
     "use_ssl",
     "use_oracle_wallet",
     "oracledb_thick_mode",
@@ -326,11 +314,6 @@ class OrchestrationConfig:
     snowflake_role: str | None
     snowflake_stage: str | None
     snowflake_warehouse: str | None
-    sqoop_disable_direct: bool
-    sqoop_outdir: str | None
-    sqoop_password_file: str | None
-    sqoop_queue_name: str | None
-    sqoop_overrides: str | None
     suppress_stdout: bool
     synapse_auth_mechanism: str | None
     synapse_collation: str | None
@@ -346,12 +329,6 @@ class OrchestrationConfig:
     synapse_service_principal_secret: str | None
     synapse_user: str | None
     target: str
-    teradata_adm_user: str | None
-    teradata_adm_pass: str | None
-    teradata_app_user: str | None
-    teradata_app_pass: str | None
-    teradata_server: str | None
-    teradata_repo_user: str
     use_ssl: Any
     use_oracle_wallet: bool
     oracledb_thick_mode: bool
@@ -754,17 +731,6 @@ class OrchestrationConfig:
                 "snowflake_warehouse",
                 orchestration_defaults.snowflake_warehouse_default(),
             ),
-            sqoop_disable_direct=config_dict.get(
-                "sqoop_disable_direct",
-                orchestration_defaults.sqoop_disable_direct_default(),
-            ),
-            sqoop_outdir=config_dict.get("sqoop_outdir", orchestration_defaults.sqoop_outdir_default()),
-            sqoop_password_file=config_dict.get(
-                "sqoop_password_file",
-                orchestration_defaults.sqoop_password_file_default(),
-            ),
-            sqoop_queue_name=config_dict.get("sqoop_queue_name", orchestration_defaults.sqoop_queue_name_default()),
-            sqoop_overrides=config_dict.get("sqoop_overrides", orchestration_defaults.sqoop_overrides_default()),
             suppress_stdout=config_dict.get("suppress_stdout", orchestration_defaults.suppress_stdout_default()),
             synapse_auth_mechanism=config_dict.get(
                 "synapse_auth_mechanism",
@@ -798,15 +764,6 @@ class OrchestrationConfig:
             ),
             synapse_user=config_dict.get("synapse_user", orchestration_defaults.synapse_user_default()),
             target=config_dict.get("target", orchestration_defaults.query_engine_default()),
-            teradata_server=config_dict.get("teradata_server", orchestration_defaults.teradata_server_default()),
-            teradata_adm_user=config_dict.get("teradata_adm_user", orchestration_defaults.teradata_adm_user_default()),
-            teradata_adm_pass=config_dict.get("teradata_adm_pass", orchestration_defaults.teradata_adm_pass_default()),
-            teradata_app_user=config_dict.get("teradata_app_user", orchestration_defaults.teradata_app_user_default()),
-            teradata_app_pass=config_dict.get("teradata_app_pass", orchestration_defaults.teradata_app_pass_default()),
-            teradata_repo_user=config_dict.get(
-                "teradata_repo_user",
-                orchestration_defaults.teradata_repo_user_default(),
-            ),
             use_ssl=config_dict.get("use_ssl", orchestration_defaults.use_ssl_default()),
             hiveserver2_http_path=config_dict.get(
                 "hiveserver2_http_path",
@@ -842,8 +799,6 @@ class OrchestrationConfig:
             log_fn("Connecting to Oracle as %s (%s)" % (self.ora_adm_user, self.oracle_dsn))
         elif self.db_type == DBTYPE_MSSQL:
             log_fn("Connecting to Microsoft SQL Server as %s (%s)" % (self.mssql_app_user, self.mssql_dsn))
-        elif self.db_type == DBTYPE_TERADATA:
-            log_fn("Connecting to Teradata as %s (%s)" % (self.teradata_adm_user, self.teradata_server))
 
         if self.backend_distribution in HADOOP_BASED_BACKEND_DISTRIBUTIONS:
             log_fn(hs2_connection_log_message(self.hadoop_host, self.hadoop_port, self, service_name="HiveServer2"))
@@ -874,11 +829,8 @@ class OrchestrationConfig:
             self.offload_fs_prefix = offload_fs_prefix
         normalise_filesystem_options(self)
 
-    def _frontend_api_required(self):
-        return bool(
-            not self._do_not_connect
-            and ((self.db_type == DBTYPE_ORACLE and self.use_oracle_wallet) or self.db_name_prefix is None)
-        )
+    def _frontend_api_required(self) -> bool:
+        return False
 
     def _get_frontend_connection(self):
         """We cannot run some validations until after this object has been constructed because it is needed to create
@@ -887,7 +839,7 @@ class OrchestrationConfig:
                       see a way to maintain previous functionality without creating a connection.
         """
         messages = OffloadMessages.from_options(self)
-        frontend_api = frontend_api_factory(
+        frontend_api = create_frontend_api(
             self.db_type,
             self,
             messages,

@@ -27,7 +27,6 @@ from goe.offload.column_metadata import (
     CanonicalColumn,
     ColumnPartitionInfo,
 )
-from goe.offload.factory.staging_file_factory import staging_file_factory
 from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
     FILE_STORAGE_FORMAT_AVRO,
@@ -46,6 +45,7 @@ from goe.offload.oracle.oracle_column import (
     OracleColumn,
 )
 from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.registry import create_staging_file
 from tests.unit.test_functions import (
     FAKE_ORACLE_BQ_ENV,
     build_fake_oracle_subpartitioned_table,
@@ -115,7 +115,7 @@ def test_golden_rbo_bigquery_ddl_staging_and_final_insert_sql(bq_config, message
         "CLUSTER BY `ID`, `STATUS`;"
     )
 
-    staging_file = staging_file_factory(
+    staging_file = create_staging_file(
         bq_table.get_load_db_name(),
         bq_table.get_load_table_name(),
         FILE_STORAGE_FORMAT_AVRO,
@@ -214,7 +214,7 @@ def test_golden_ipa_range_partitioning_and_chunking(bq_config, messages):
         in synth_ddl[0]
     )
 
-    staging_file = staging_file_factory(
+    staging_file = create_staging_file(
         synth_table.get_load_db_name(),
         synth_table.get_load_table_name(),
         FILE_STORAGE_FORMAT_AVRO,

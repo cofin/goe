@@ -5,7 +5,6 @@ from unittest import TestCase
 
 from numpy import datetime64
 
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.microsoft.mssql_column import (
     MSSQL_TYPE_BIGINT,
     MSSQL_TYPE_DATETIME,
@@ -23,13 +22,12 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP,
     ORACLE_TYPE_VARCHAR2,
 )
+from goe.offload.registry import create_source_table
 from tests.unit.test_functions import (
     FAKE_MSSQL_ENV,
     FAKE_ORACLE_ENV,
-    FAKE_TERADATA_ENV,
     build_mock_options,
     optional_sql_server_dependency_exception,
-    optional_teradata_dependency_exception,
 )
 
 
@@ -46,7 +44,7 @@ class TestOffloadSourceTable(TestCase):
     def setUp(self):
         self.api = None
         self.messages = OffloadMessages()
-        self.api = OffloadSourceTable.create(
+        self.api = create_source_table(
             self.db,
             self.table,
             self.config,
@@ -180,19 +178,6 @@ class TestMSSQLOffloadSourceTable(TestOffloadSourceTable):
                 raise
 
     def test_all_non_connecting_mssql_tests(self):
-        self._run_all_tests()
-
-
-class TestTeradataOffloadSourceTable(TestOffloadSourceTable):
-    def setUp(self):
-        self.config = self._get_mock_config(FAKE_TERADATA_ENV)
-        try:
-            super().setUp()
-        except ModuleNotFoundError as e:
-            if not optional_teradata_dependency_exception(e):
-                raise
-
-    def test_all_non_connecting_teradata_tests(self):
         self._run_all_tests()
 
 

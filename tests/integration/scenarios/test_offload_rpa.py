@@ -12,9 +12,7 @@ from goe.offload.offload_source_data import (
     TOO_MANY_PARTITION_NAMES_EXCEPTION_TEXT,
 )
 from goe.offload.oracle.oracle_column import ORACLE_TYPE_NVARCHAR2
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios.assertion_functions import (
     sales_based_fact_assertion,
     synthetic_part_col_name,
@@ -150,9 +148,6 @@ def offload_range_ipa_standard_tests(
 
     offload3_opt_name = "partition_names_csv"
     offload3_opt_value = "P3"
-    if config.db_type == offload_constants.DBTYPE_TERADATA:
-        offload3_opt_name = less_than_option
-        offload3_opt_value = hv_3
 
     expected_goe_part_name = None
     if synthetic_partition_column_expected:
@@ -181,20 +176,18 @@ def offload_range_ipa_standard_tests(
     )
 
     # Non-Execute RANGE offload of empty partition.
-    if config.db_type != offload_constants.DBTYPE_TERADATA:
-        # Empty partitions do not exist on Teradata.
-        options = {
-            "owner_table": schema + "." + table_name,
-            less_than_option: hv_0,
-            "offload_partition_functions": udf,
-            "offload_partition_granularity": granularity,
-            "offload_partition_lower_value": lower_value,
-            "offload_partition_upper_value": upper_value,
-            "synthetic_partition_digits": synthetic_partition_digits,
-            "reset_backend_table": True,
-            "execute": False,
-        }
-        run_offload(options, config, messages)
+    options = {
+        "owner_table": schema + "." + table_name,
+        less_than_option: hv_0,
+        "offload_partition_functions": udf,
+        "offload_partition_granularity": granularity,
+        "offload_partition_lower_value": lower_value,
+        "offload_partition_upper_value": upper_value,
+        "synthetic_partition_digits": synthetic_partition_digits,
+        "reset_backend_table": True,
+        "execute": False,
+    }
+    run_offload(options, config, messages)
 
     # RANGE Offload 1st Partition.
     options = {
@@ -281,22 +274,20 @@ def offload_range_ipa_standard_tests(
     )
 
     # RANGE Offload With Multiple Partition Names - Expect Exception.
-    if config.db_type != offload_constants.DBTYPE_TERADATA:
-        # TODO Partition names are unpredicatble on Teradata, for MVP we'll not test this.
-        options = {
-            "owner_table": schema + "." + table_name,
-            "partition_names_csv": "P4,P5",
-            "execute": True,
-        }
-        run_offload(
-            options,
-            config,
-            messages,
-            expected_exception_string=TOO_MANY_PARTITION_NAMES_EXCEPTION_TEXT,
-        )
+    options = {
+        "owner_table": schema + "." + table_name,
+        "partition_names_csv": "P4,P5",
+        "execute": True,
+    }
+    run_offload(
+        options,
+        config,
+        messages,
+        expected_exception_string=TOO_MANY_PARTITION_NAMES_EXCEPTION_TEXT,
+    )
 
     # RANGE Offload 3rd Partition.
-    # Test with partition identification by name (if not Teradata) and use agg validate.
+    # Test with partition identification by name and use agg validate.
     options = {
         "owner_table": schema + "." + table_name,
         offload3_opt_name: offload3_opt_value,
@@ -326,12 +317,11 @@ def offload_range_ipa_standard_tests(
         less_than_option: hv_3,
         "execute": True,
     }
-    # On Teradata we can't test by partition name in previous test so this test will not be a no-op.
     offload_messages = run_offload(
         options,
         config,
         messages,
-        expected_status=bool(config.db_type == offload_constants.DBTYPE_TERADATA),
+        expected_status=False,
     )
 
     assert sales_based_fact_assertion(
@@ -431,17 +421,13 @@ def offload_range_ipa_standard_tests(
 
 def test_offload_rpa_int8(config, schema, data_db):
     id = "test_offload_rpa_int8"
-    if config.db_type == offload_constants.DBTYPE_TERADATA:
-        # TODO We need our numeric sales table to be partitioned on YYYYMM for assertions to make sense.
-        #      Didn't have time to rectify this for Teradata MVP.
-        pytest.skip(f"Skipping {id} for system/type: {config.db_type}")
 
     with (
         get_test_messages_ctx(config, id) as messages,
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         offload_range_ipa_standard_tests(
             schema,
@@ -462,7 +448,7 @@ def test_offload_rpa_date(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         offload_range_ipa_standard_tests(
             schema,
@@ -483,7 +469,7 @@ def test_offload_rpa_timestamp(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         offload_range_ipa_standard_tests(
             schema,
@@ -499,16 +485,13 @@ def test_offload_rpa_timestamp(config, schema, data_db):
 
 def test_offload_rpa_string(config, schema, data_db):
     id = "test_offload_rpa_string"
-    if config.db_type == offload_constants.DBTYPE_TERADATA:
-        # TODO In Teradata MVP we don't support string based partitioning.
-        pytest.skip(f"Skipping {id} for system/type: {config.db_type}")
 
     with (
         get_test_messages_ctx(config, id) as messages,
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         offload_range_ipa_standard_tests(
             schema,
@@ -533,7 +516,7 @@ def test_offload_rpa_nvarchar2(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         offload_range_ipa_standard_tests(
             schema,
@@ -558,12 +541,7 @@ def test_offload_rpa_udf_int8(config, schema, data_db):
         if not backend_api.goe_partition_functions_supported():
             pytest.skip(f"Skipping {id} partition function tests due to goe_partition_functions_supported() == False")
 
-        if config.db_type == offload_constants.DBTYPE_TERADATA:
-            # TODO We need our numeric sales table to be partitioned on YYYYMM for assertions to make sense.
-            #      Didn't have time to rectify this for Teradata MVP.
-            pytest.skip(f"Skipping {id} for system/type: {config.db_type}/{frontend_api.test_type_canonical_int_8()}")
-
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         backend_api.create_test_partition_functions(data_db, udf=test_constants.PARTITION_FUNCTION_TEST_FROM_INT8)
 
@@ -592,7 +570,7 @@ def test_offload_rpa_udf_string(config, schema, data_db):
             messages.log(f"Skipping {id} partition function tests due to goe_partition_functions_supported() == False")
             pytest.skip(f"Skipping {id} partition function tests due to goe_partition_functions_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         backend_api.create_test_partition_functions(data_db, udf=test_constants.PARTITION_FUNCTION_TEST_FROM_STRING)
 
@@ -621,7 +599,7 @@ def test_offload_rpa_alpha(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         canonical_string = frontend_api.test_type_canonical_string()
 
@@ -708,15 +686,12 @@ def test_offload_rpa_empty_partitions(config, schema, data_db):
     """Tests ensuring empty partitions are offloaded correctly."""
     id = "test_offload_rpa_empty_partitions"
 
-    if config.db_type == offload_constants.DBTYPE_TERADATA:
-        pytest.skip(f"Skipping {id} for {config.db_type} because empty partitions are not a thing")
-
     with (
         get_test_messages_ctx(config, id) as messages,
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup, create a partitioned table with one populated partition and a series of empty ones
         run_setup(

@@ -2,16 +2,16 @@
 type: Spec
 flow_id: connect_runner_and_connectivity_report_20261024
 title: "Chapter 5.5: Connect Runner and Connectivity Report"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 1
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: finish
+operation_targets: ["1.1", "1.2", "1.3"]
+last_verified_checkpoint: "1.3"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-24T20:15:00Z
 description: "Replace imperative, global-state goe connect modules with immutable CheckDetail, CheckResult, and ConnectivityReport structs and a concurrent ConnectRunner shared by the CLI and Listener."
 tags: [refactor, cli, adapters, typing]
 parent_prd: prd_05_foundation_typing_settings_and_adapter_reduction_20261024
@@ -71,9 +71,9 @@ uv run python -c "import ast,sys; is_priv=lambda n:n.startswith('_') and not (n.
 
 ### Phase 1: Connectivity Models, Concurrent Runner, and CLI/Listener Wiring
 
-- [ ] 1.1 Implement `CheckDetail`, `CheckResult`, and `ConnectivityReport` in `src/goe/connect/models.py` ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Implement `ConnectRunner` in `src/goe/connect/runner.py` and delete legacy `connect_*.py` modules ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 Wire `src/goe/cli/commands/connect.py` and Listener `/api/v1/system/connectivity` to `ConnectRunner` ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.1 Implement `CheckDetail`, `CheckResult`, and `ConnectivityReport` in `src/goe/connect/models.py` ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Implement `ConnectRunner` in `src/goe/connect/runner.py` and delete legacy `connect_*.py` modules ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.3 Wire `src/goe/cli/commands/connect.py` and Listener `/api/v1/system/connectivity` to `ConnectRunner` ([tasks/1.3.md](tasks/1.3.md))
 
 ## Continuity Snapshot
 

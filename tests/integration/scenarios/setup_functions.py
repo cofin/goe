@@ -127,17 +127,13 @@ def get_sales_based_fact_partition_list(
     return partitions
 
 
-def no_query_import_transport_method(config: "OrchestrationConfig", no_table_centric_sqoop=False):
+def no_query_import_transport_method(config: "OrchestrationConfig"):
     if not config:
         return offload_transport.OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
     if offload_transport.is_spark_thrift_available(config, None):
         return offload_transport.OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT
     if offload_transport.is_spark_submit_available(config, None):
         return offload_transport.OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT
-    if offload_transport.is_sqoop_available(None, config):
-        if no_table_centric_sqoop:
-            return offload_transport.OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY
-        return offload_transport.OFFLOAD_TRANSPORT_METHOD_SQOOP
     return offload_transport.OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
 
 

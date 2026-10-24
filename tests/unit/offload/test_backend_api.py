@@ -15,7 +15,7 @@ from unittest import TestCase, main
 import pytest
 from numpy import datetime64
 
-from goe.connect.connect_constants import (
+from goe.offload.backend_api import (
     CONNECT_DETAIL,
     CONNECT_STATUS,
     CONNECT_TEST,
@@ -30,7 +30,6 @@ from goe.offload.column_metadata import (
     ColumnPartitionInfo,
     get_partition_columns,
 )
-from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
     DBTYPE_HIVE,
@@ -42,7 +41,8 @@ from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_PARQUET,
 )
 from goe.offload.offload_messages import OffloadMessages
-from goe.util.misc_functions import add_suffix_in_same_case
+from goe.offload.registry import create_backend_api
+from goe.util.string_utils import add_suffix_in_same_case
 from tests.testlib.test_framework.factory.backend_testing_api_factory import (
     backend_testing_api_factory,
 )
@@ -73,7 +73,7 @@ class TestBackendApi(TestCase):
 
     def setUp(self):
         messages = OffloadMessages()
-        self.api = backend_api_factory(
+        self.api = create_backend_api(
             self.target,
             self.config,
             messages,

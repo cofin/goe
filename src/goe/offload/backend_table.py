@@ -32,7 +32,6 @@ from goe.offload.column_metadata import (
     str_list_of_columns,
     valid_column_list,
 )
-from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.offload.hadoop.hadoop_column import HADOOP_TYPE_STRING
 from goe.offload.offload_constants import (
     DBTYPE_IMPALA,
@@ -48,9 +47,10 @@ from goe.offload.offload_functions import (
     load_db_name,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.registry import create_backend_api
 from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
 from goe.orchestration import command_steps
-from goe.util.misc_functions import csv_split
+from goe.util.string_utils import csv_split
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -140,7 +140,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         if existing_backend_api:
             self._db_api = existing_backend_api
         else:
-            self._db_api = backend_api_factory(
+            self._db_api = create_backend_api(
                 backend_type,
                 self._connection_options,
                 self._messages,

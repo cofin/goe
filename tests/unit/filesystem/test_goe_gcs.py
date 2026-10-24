@@ -7,11 +7,11 @@ from unittest import mock
 
 from google.auth.credentials import AnonymousCredentials
 
+from goe.config.gcp_credentials import CREDENTIAL_TYPE_AUTHORIZED_USER, GcpCredentialBundle
 from goe.filesystem import goe_gcs
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.filesystem.goe_gcs import GOEGcs
 from goe.offload.offload_messages import OffloadMessages
-from goe.util.gcp_credentials import CREDENTIAL_TYPE_AUTHORIZED_USER, GcpCredentialBundle
 from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, build_mock_options
 
 

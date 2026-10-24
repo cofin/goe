@@ -76,7 +76,7 @@ from goe.report.models import (
     OffloadStatusReportException,
     divider,
 )
-from goe.util.misc_functions import backtick_sandwich, format_json_list
+from goe.util.string_utils import backtick_sandwich, format_json_list
 
 
 class ReportRenderersMixin:

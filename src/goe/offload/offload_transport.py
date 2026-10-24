@@ -18,8 +18,6 @@ from goe.offload.transport.availability import (
 )
 from goe.offload.transport.availability import is_spark_submit_available as is_spark_submit_available
 from goe.offload.transport.availability import is_spark_thrift_available as is_spark_thrift_available
-from goe.offload.transport.availability import is_sqoop_available as is_sqoop_available
-from goe.offload.transport.availability import is_sqoop_by_query_available as is_sqoop_by_query_available
 from goe.offload.transport.availability import spark_submit_executable_exists as spark_submit_executable_exists
 from goe.offload.transport.base import OffloadTransport as OffloadTransport
 from goe.offload.transport.base import OffloadTransportException as OffloadTransportException
@@ -47,10 +45,6 @@ from goe.offload.transport.constants import (
 )
 from goe.offload.transport.constants import (
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT as OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
-)
-from goe.offload.transport.constants import OFFLOAD_TRANSPORT_METHOD_SQOOP as OFFLOAD_TRANSPORT_METHOD_SQOOP
-from goe.offload.transport.constants import (
-    OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY as OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
 )
 from goe.offload.transport.constants import (
     OFFLOAD_TRANSPORT_SPARK_GCLOUD_EXECUTABLE as OFFLOAD_TRANSPORT_SPARK_GCLOUD_EXECUTABLE,

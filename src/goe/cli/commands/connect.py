@@ -1,66 +1,61 @@
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""'goe connect' subcommand for pre-flight connectivity and environment validation."""
+"""CLI command definition for goe connect."""
 
+from __future__ import annotations
+
+import sys
 from typing import TYPE_CHECKING, Any
 
 import rich_click as click
 
-from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
-from goe.cli.common import common_options, extract_common_options
+from goe.cli._lazy import LazyImportMap, resolve_lazy_attribute
+from goe.cli.options import common_options
+from goe.config.settings import GOESettings
+from goe.connect.runner import ConnectRunner
+from goe.exceptions import GOEError
 
 if TYPE_CHECKING:
-    from goe.config.config_file import check_config_path
-    from goe.config.options import ConnectOptions
-    from goe.connect.connect import connect as run_connect
+    pass
+
+__all__ = (
+    "connect",
+    "connect_cmd",
+)
 
 _LAZY_IMPORTS: LazyImportMap = {
-    "ConnectOptions": ("goe.config.options", "ConnectOptions"),
     "check_config_path": ("goe.config.config_file", "check_config_path"),
-    "run_connect": ("goe.connect.connect", "connect"),
 }
 
 
 @click.command(
     name="connect",
-    help="Validate connectivity to source RDBMS, cloud storage, backend DW, and Spark cluster.",
+    help="Verify connectivity across frontend, backend, storage, and transport targets.",
     context_settings={"help_option_names": ["-h", "--help"]},
 )
-@click.option(
-    "--upgrade-environment-file",
-    "upgrade_environment_file",
-    is_flag=True,
-    default=False,
-    help="Synchronize current offload.env with the latest template.",
-)
-@click.option(
-    "--create-backend-db",
-    "create_backend_db",
-    is_flag=True,
-    default=None,
-    hidden=True,
-    help="Create backend database/dataset during connectivity check if missing.",
-)
 @common_options
-@click.pass_context
-def connect(
-    ctx: click.Context,
-    upgrade_environment_file: bool = False,
-    create_backend_db: bool | None = None,
-    **kwargs: Any,
-) -> None:
-    """Run pre-flight connectivity tests and display status report."""
-    bind_lazy_imports(__name__, _LAZY_IMPORTS)
-    common_opts = extract_common_options(ctx, kwargs)
-    check_config_path()
-    options = ConnectOptions.from_mapping(common_opts)
-    options.upgrade_environment_file = upgrade_environment_file
-    if create_backend_db is not None:
-        options.create_backend_db = create_backend_db
-    run_connect(options)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit connectivity report as JSON.")
+def connect_cmd(*, verbose: bool = False, as_json: bool = False, **_: object) -> None:
+    """Execute connectivity probes and print text or JSON report."""
+    try:
+        settings = GOESettings.from_env()
+        runner = ConnectRunner(settings)
+        report = runner.run()
+    except GOEError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(exc.exit_code)
+
+    if as_json:
+        click.echo(report.to_json())
+    else:
+        click.echo(report.format_text(include_details=verbose))
+    sys.exit(report.exit_code)
+
+
+connect = connect_cmd
 
 
 def __getattr__(name: str) -> Any:
-    """Lazily import heavy connect runtime dependencies on first attribute access."""
+    """Lazily resolve check_config_path attribute on first access."""
     return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)

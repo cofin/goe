@@ -7,9 +7,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from goe.config import orchestration_defaults
-from goe.offload.factory.offload_transport_rdbms_api_factory import (
-    offload_transport_rdbms_api_factory,
-)
+from goe.config.gcp_credentials import resolve_gcloud_impersonation_principal
 from goe.offload.frontend_api import FRONTEND_TRACE_MODULE
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport import (
@@ -23,9 +21,9 @@ from goe.offload.offload_transport import (
     OffloadTransportException,
     OffloadTransportSpark,
 )
+from goe.offload.registry import create_transport_rdbms_api
 from goe.orchestration import command_steps
-from goe.util.gcp_credentials import resolve_gcloud_impersonation_principal
-from goe.util.misc_functions import write_temp_file
+from goe.util.string_utils import write_temp_file
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -405,7 +403,7 @@ class OffloadTransportSparkBatchesGcloudCanary(OffloadTransportSparkBatchesGclou
             orchestration_defaults.offload_transport_spark_properties_default()
         )
 
-        self._rdbms_api = offload_transport_rdbms_api_factory(
+        self._rdbms_api = create_transport_rdbms_api(
             "dummy_owner",
             "dummy_table",
             self._offload_options,
@@ -502,7 +500,7 @@ class OffloadTransportSparkDataprocGcloudCanary(OffloadTransportSparkDataprocGcl
             orchestration_defaults.offload_transport_spark_properties_default()
         )
 
-        self._rdbms_api = offload_transport_rdbms_api_factory(
+        self._rdbms_api = create_transport_rdbms_api(
             "dummy_owner",
             "dummy_table",
             self._offload_options,

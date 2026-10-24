@@ -38,8 +38,8 @@ from goe.offload.oracle.oracle_column import (
 )
 from goe.offload.oracle.oracle_literal import OracleLiteral
 from goe.persistence.oracle_gateway import OracleGateway, load_sql_file
-from goe.util.goe_version import GOEVersion
-from goe.util.misc_functions import double_quote_sandwich, format_list_for_logging
+from goe.util import GOEVersion
+from goe.util.string_utils import double_quote_sandwich, format_list_for_logging
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

@@ -32,6 +32,7 @@ import logging
 from abc import ABCMeta, abstractmethod
 from typing import Any
 
+from goe.config.password_tools import PasswordTools
 from goe.filesystem.goe_dfs import (
     OFFLOAD_FS_SCHEME_ABFS,
     OFFLOAD_FS_SCHEME_ABFSS,
@@ -93,8 +94,7 @@ from goe.offload.offload_constants import (
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_functions import run_os_cmd
-from goe.util.misc_functions import str_summary_of_self
-from goe.util.password_tools import PasswordTools
+from goe.util.string_utils import str_summary_of_self
 
 
 class BackendApiException(Exception):
@@ -132,6 +132,10 @@ REPORT_ATTR_BACKEND_TYPE = "backend_type"
 REPORT_ATTR_BACKEND_DISPLAY_NAME = "backend_display_name"
 REPORT_ATTR_BACKEND_HOST_INFO_TYPE = "backend_host_info_type"
 REPORT_ATTR_BACKEND_HOST_INFO = "backend_host_info"
+
+CONNECT_TEST = "test"
+CONNECT_STATUS = "status"
+CONNECT_DETAIL = "detail"
 
 
 logger = logging.getLogger(__name__)

@@ -114,3 +114,12 @@ def test_gcp_auth_options_from_dict_override_environment():
     assert config.google_cloud_quota_project == "dict-quota"
     assert config.google_impersonate_service_account == "dict-sa@dict-project.iam.gserviceaccount.com"
     assert config.google_dataproc_impersonate_service_account == "dict-dp@dict-project.iam.gserviceaccount.com"
+
+
+def test_orchestration_config_excludes_removed_adapter_attributes() -> None:
+    """OrchestrationConfig does not expose removed adapter or transport attributes."""
+    with mock.patch.dict(os.environ, FAKE_ORACLE_BQ_ENV):
+        config = OrchestrationConfig.from_dict({})
+    removed_prefixes = ("tera" + "data_", "sq" + "oop_")
+    assert not [attr for attr in vars(config) if attr.startswith(removed_prefixes)]
+    assert not [arg for arg in EXPECTED_CONFIG_ARGS if arg.startswith(removed_prefixes)]

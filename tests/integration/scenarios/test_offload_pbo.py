@@ -8,7 +8,6 @@ import pytest
 from goe.offload.offload_constants import (
     CONFLICTING_DATA_ID_OPTIONS_EXCEPTION_TEXT,
     DBTYPE_ORACLE,
-    DBTYPE_TERADATA,
     IPA_PREDICATE_TYPE_FIRST_OFFLOAD_EXCEPTION_TEXT,
     IPA_PREDICATE_TYPE_REQUIRES_PREDICATE_EXCEPTION_TEXT,
 )
@@ -27,9 +26,7 @@ from goe.offload.offload_source_data import (
     PREDICATE_TYPE_OFFLOAD_TYPE_FULL_EXCEPTION_TEXT,
 )
 from goe.offload.predicate_offload import GenericPredicate
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
@@ -87,8 +84,6 @@ def data_db(schema, config):
 
 
 def const_to_date_expr(config, constant):
-    if config.db_type == DBTYPE_TERADATA:
-        return f"DATE '{constant}'"
     return f"DATE' {constant}'"
 
 
@@ -102,15 +97,6 @@ def gen_simple_unicode_dimension_ddl(config, frontend_api, schema, table_name, u
             unicode_ch1,
             unicode_ch2,
         )
-    elif config.db_type == DBTYPE_TERADATA:
-        subquery = dedent(
-            f"""\
-        SELECT id, CAST('{unicode_ch1}' AS VARCHAR(3) CHARACTER SET UNICODE) AS data
-        FROM {schema}.generated_ids WHERE id = 1
-        UNION ALL
-        SELECT id, CAST('{unicode_ch2}' AS VARCHAR(3) CHARACTER SET UNICODE) AS data
-        FROM {schema}.generated_ids WHERE id = 2"""
-        )
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery)
@@ -123,9 +109,6 @@ def gen_char_frontend_ddl(config, frontend_api, schema, table_name) -> list:
         SELECT 1 AS id, CAST('a' AS CHAR(3)) AS data FROM dual
         UNION ALL SELECT 2 AS id, CAST('b' AS CHAR(3)) AS data FROM dual"""
         )
-    elif config.db_type == DBTYPE_TERADATA:
-        subquery = f"""SELECT id, CAST('a' AS CHAR(3)) AS data FROM {schema}.generated_ids WHERE id = 1
-        UNION ALL SELECT id, CAST('b' AS CHAR(3)) AS data FROM {schema}.generated_ids WHERE id = 2"""
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery)
@@ -138,13 +121,6 @@ def gen_ts_frontend_ddl(config, frontend_api, schema, table_name) -> list:
         SELECT 1 AS id, CAST(TIMESTAMP '2020-01-01 12:12:12.0' AS TIMESTAMP(9)) AS ts FROM dual
         UNION ALL
         SELECT 2 AS id, CAST(TIMESTAMP '2020-02-01 21:21:21.0' AS TIMESTAMP(9)) AS ts FROM dual"""
-        )
-    elif config.db_type == DBTYPE_TERADATA:
-        subquery = dedent(
-            f"""\
-        SELECT id, TIMESTAMP '2020-01-01 12:12:12.0' AS ts FROM {schema}.generated_ids WHERE id = 1
-        UNION ALL
-        SELECT id, TIMESTAMP '2020-02-01 21:21:21.0' AS ts FROM {schema}.generated_ids WHERE id = 2"""
         )
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
@@ -361,7 +337,7 @@ def test_offload_pbo_dim(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -552,7 +528,7 @@ def test_offload_pbo_unicode(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -662,7 +638,7 @@ def test_offload_pbo_char_pad(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -740,7 +716,7 @@ def test_offload_pbo_ts(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -806,7 +782,7 @@ def test_offload_pbo_range(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -953,7 +929,7 @@ def test_offload_pbo_list(config, schema, data_db):
             pytest.skip(f"Skipping {id} for system/type: {config.db_type}/LIST")
 
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(

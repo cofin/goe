@@ -13,7 +13,7 @@ from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DI
 from goe.offload.offload_source_data import OffloadSourcePartitions
 from goe.offload.offload_source_table import OffloadSourceTableInterface
 from goe.offload.offload_transport_rdbms_api import OffloadTransportRdbmsApiInterface
-from goe.util.misc_functions import id_generator
+from goe.util.string_utils import id_generator
 
 if TYPE_CHECKING:
     pass
@@ -66,6 +66,7 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
         convert_expressions_on_rdbms_side=False,
         for_spark=False,
         nan_values_as_null=False,
+        for_qi=False,
     ):
         """Returns an expression suitable for reading a specific column from the RDBMS table"""
         raise NotImplementedError("MSSQL get_rdbms_query_cast() pending implementation")
@@ -75,7 +76,6 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
         module: Any,
         action: Any,
         custom_session_parameters: Any,
-        include_fixed_sqoop: bool = True,
         for_plsql: bool = False,
         include_semi_colons: bool = False,
         escape_semi_colons: bool = False,
@@ -151,27 +151,3 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
         rdbms_session_setup_commands,
     ):
         raise NotImplementedError("MSSQL query_import_extraction() not implemented")
-
-    def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands: Any) -> list[Any]:
-        return []
-
-    def sqoop_rdbms_specific_jvm_table_options(
-        self,
-        partition_chunk: Any,
-        partition_type: Any = None,
-        is_iot: bool = False,
-        consistent_read: bool = False,
-    ) -> list[Any]:
-        return []
-
-    def sqoop_rdbms_specific_options(self) -> list[Any]:
-        return []
-
-    def sqoop_rdbms_specific_table_options(self, rdbms_owner: Any, table_name: Any) -> list[Any]:
-        return [
-            "--",
-            "--schema",
-            rdbms_owner,
-            "--table",
-            self._ssh_cli_safe_value(table_name),
-        ]

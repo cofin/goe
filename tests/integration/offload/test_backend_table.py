@@ -23,13 +23,13 @@ from goe.offload.column_metadata import (
     ColumnMetadataInterface,
     get_partition_columns,
 )
-from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.offload_constants import DBTYPE_IMPALA
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.registry import create_backend_table
 from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
 from goe.orchestration import orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
@@ -91,7 +91,7 @@ class TestCurrentBackendTable(TestCase):
             messages,
             execution_id=execution_id,
         )
-        self.api = backend_table_factory(
+        self.api = create_backend_table(
             self.db,
             self.table,
             self.config.target,

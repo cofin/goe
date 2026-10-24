@@ -10,7 +10,7 @@ from unittest import TestCase, main
 from tests.unit.test_functions import optional_hadoop_dependency_exception
 
 try:
-    from goe.util.better_impyla import BetterImpylaException, from_impala_size
+    from goe.offload.hadoop.better_impyla import BetterImpylaException, from_impala_size
 except ModuleNotFoundError as e:
     if optional_hadoop_dependency_exception(e):
         from_impala_size = None

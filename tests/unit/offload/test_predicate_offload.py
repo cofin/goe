@@ -25,7 +25,6 @@ from goe.offload.predicate_offload import (
 )
 from goe.offload.snowflake import snowflake_column, snowflake_predicate
 from goe.offload.sql_engine import PredicateDialectEngineProtocol
-from goe.offload.teradata import teradata_column, teradata_predicate
 
 BIGQUERY_COLUMNS = [
     bigquery_column.BigQueryColumn("COL_INT", bigquery_column.BIGQUERY_TYPE_INT64),
@@ -78,17 +77,6 @@ SYNAPSE_COLUMNS = [
     synapse_column.SynapseColumn(
         "COL_DECIMAL",
         synapse_column.SYNAPSE_TYPE_DECIMAL,
-        data_precision=10,
-        data_scale=2,
-    ),
-]
-TERADATA_COLUMNS = [
-    teradata_column.TeradataColumn("COL_INT", teradata_column.TERADATA_TYPE_NUMBER, data_precision=5, data_scale=0),
-    teradata_column.TeradataColumn("COL_STRING", teradata_column.TERADATA_TYPE_VARCHAR),
-    teradata_column.TeradataColumn("COL_DATE", teradata_column.TERADATA_TYPE_DATE),
-    teradata_column.TeradataColumn(
-        "COL_DECIMAL",
-        teradata_column.TERADATA_TYPE_NUMBER,
         data_precision=10,
         data_scale=2,
     ),
@@ -356,13 +344,6 @@ class TestIdaPredicateDataTypes(TestCase):
                 "cannot be compared to",
                 synapse_predicate.predicate_to_where_clause,
                 SYNAPSE_COLUMNS,
-                GenericPredicate(predicate_dsl),
-            )
-            self.assertRaisesRegex(
-                OptionValueError,
-                "cannot be compared to",
-                teradata_predicate.predicate_to_where_clause,
-                TERADATA_COLUMNS,
                 GenericPredicate(predicate_dsl),
             )
 

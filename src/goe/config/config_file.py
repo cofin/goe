@@ -1,25 +1,41 @@
-# SPDX-FileCopyrightText: 2024 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
+
+"""Environment configuration file discovery and loading utilities."""
+
+from __future__ import annotations
 
 import os
 import re
-import sys
+from typing import cast
 
 from dotenv import find_dotenv, load_dotenv
 
+from goe.exceptions import ConfigurationError
+
+__all__ = (
+    "CONFIG_FILE_NAME",
+    "KEY_VALUE_PATTERN",
+    "STANDARD_CONFIG_PATHS",
+    "check_config_path",
+    "env_key_value_pair",
+    "find_environment_file",
+    "get_environment_file_path",
+    "load_env",
+)
+
 CONFIG_FILE_NAME = "offload.env"
 KEY_VALUE_PATTERN = re.compile(r"#?[ ]*([A-Z_0-9]+)=(.*)")
-STANDARD_CONFIG_PATHS = (
+STANDARD_CONFIG_PATHS: tuple[str, ...] = (
     "/opt/goe/offload/conf/offload.env",
     "/u01/app/goe/offload/conf/offload.env",
 )
 
 
-def check_config_path():
-    """Check OFFLOAD_HOME in top level command wrappers"""
+def check_config_path() -> None:
+    """Validate that OFFLOAD_HOME is set in top-level command wrappers."""
     if not os.environ.get("OFFLOAD_HOME"):
-        print("OFFLOAD_HOME environment variable missing")
-        sys.exit(1)
+        raise ConfigurationError("OFFLOAD_HOME environment variable missing")
 
 
 def find_environment_file() -> str | None:
@@ -61,28 +77,12 @@ def find_environment_file() -> str | None:
 
 
 def get_environment_file_path() -> str | None:
-    """Return the resolved environment file path or None if not found.
-
-    Delegates to find_environment_file() for backward compatibility.
-    """
+    """Return the resolved environment file path or None if not found."""
     return find_environment_file()
 
 
 def load_env(path: str | None = None, override: bool = False) -> bool:
-    """Load GOE environment variables from an offload.env configuration file.
-
-    Discovers the configuration file if path is not specified, performs POSIX
-    variable interpolation, respects pre-existing environment variables when
-    override is False, and automatically sets OFFLOAD_HOME when the configuration
-    file resides inside a standard conf/ directory.
-
-    Args:
-        path: Explicit path to the configuration file, or None to auto-discover.
-        override: Whether variables in the file overwrite existing environment variables.
-
-    Returns:
-        True if a configuration file was found and loaded, False otherwise.
-    """
+    """Load GOE environment variables from an offload.env configuration file."""
     target_path = path or find_environment_file()
     if not target_path or not os.path.isfile(target_path):
         return False
@@ -98,7 +98,7 @@ def load_env(path: str | None = None, override: bool = False) -> bool:
     return True
 
 
-def env_key_value_pair(line_from_file: str) -> tuple | None:
-    """Used by connect to get the key names from a configuration file"""
-    m = KEY_VALUE_PATTERN.match(line_from_file)
-    return m.groups() if m else None
+def env_key_value_pair(line_from_file: str) -> tuple[str, str] | None:
+    """Extract a (key, value) pair from a configuration file line."""
+    match = KEY_VALUE_PATTERN.match(line_from_file)
+    return cast(tuple[str, str], match.groups()) if match else None

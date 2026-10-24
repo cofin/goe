@@ -4,10 +4,10 @@
 import traceback
 
 from goe.goe import log
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_constants import BACKEND_DISTRO_GCP
 from goe.offload.offload_messages import VVERBOSE
-from goe.util.misc_functions import double_quote_sandwich
+from goe.offload.registry import create_source_table
+from goe.util.string_utils import double_quote_sandwich
 
 from .. import schema_sync_constants
 from ..schema_sync_step import SchemaSyncStep
@@ -32,7 +32,7 @@ class AddBackendColumn(SchemaSyncStep):
         backend_owner = run_params["backend_owner"]
         backend_table_name = run_params["backend_table_name"]
 
-        offload_source_table = OffloadSourceTable.create(
+        offload_source_table = create_source_table(
             rdbms_owner, rdbms_table_name, self._orchestration_options, self._messages
         )
 

@@ -9,12 +9,10 @@ telemetry is active. OTLP exporter classes are bound lazily per protocol so the 
 
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from socket import gethostname
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-import msgspec
 from google.auth.transport.requests import AuthorizedSession
 from opentelemetry.context import Context
 from opentelemetry.sdk.metrics import MeterProvider
@@ -37,11 +35,13 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.sampling import ParentBasedTraceIdRatio
 
 from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
+from goe.config.gcp_credentials import DEFAULT_GCP_SCOPES, resolve_gcp_credentials
 from goe.config.orchestration_defaults import log_path_default
 from goe.observability.config import ObservabilitySettings
 from goe.observability.context import current_execution_attributes
-from goe.util.gcp_credentials import DEFAULT_GCP_SCOPES, resolve_gcp_credentials
-from goe.util.goe_version import goe_version
+from goe.serializers import encode_json_bytes
+from goe.typing import FrozenBaseStruct
+from goe.util import goe_version
 
 if TYPE_CHECKING:
     from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter as GrpcMetricExporter
@@ -101,7 +101,7 @@ class JSONLSpanExporter(SpanExporter):
         try:
             with self._file_path.open("ab") as handle:
                 for span in spans:
-                    handle.write(msgspec.json.encode(_span_record(span)) + b"\n")
+                    handle.write(encode_json_bytes(_span_record(span)) + b"\n")
         except OSError:
             return SpanExportResult.FAILURE
         return SpanExportResult.SUCCESS
@@ -114,8 +114,7 @@ class JSONLSpanExporter(SpanExporter):
         return True
 
 
-@dataclass(frozen=True)
-class SdkProviders:
+class SdkProviders(FrozenBaseStruct, frozen=True):
     """SDK providers plus the in-memory harness handles used when ``exporter == "memory"``."""
 
     tracer_provider: TracerProvider
@@ -238,7 +237,8 @@ def _jsonl_path(settings: ObservabilitySettings) -> str:
 def _gcp_session(config: Any | None) -> tuple[AuthorizedSession, str | None]:
     """Return an ADC-authorized HTTP session and the resolved Google Cloud project."""
     bundle = resolve_gcp_credentials(config, scopes=DEFAULT_GCP_SCOPES)
-    return AuthorizedSession(bundle.credentials), bundle.project
+    session_cls: Any = AuthorizedSession
+    return cast(AuthorizedSession, session_cls(bundle.credentials)), bundle.project
 
 
 def _gcp_url(settings: ObservabilitySettings, signal: str) -> str:

@@ -20,8 +20,6 @@ from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
     OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED,
     POLLING_VALIDATION_TEXT,
     is_livy_available,
@@ -29,15 +27,11 @@ from goe.offload.offload_transport import (
     is_spark_gcloud_dataproc_available,
     is_spark_submit_available,
     is_spark_thrift_available,
-    is_sqoop_available,
-    is_sqoop_by_query_available,
 )
 from goe.offload.offload_transport_rdbms_api import (
     OFFLOAD_TRANSPORT_SQL_STATISTICS_TITLE,
 )
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios.assertion_functions import (
     backend_table_exists,
     load_table_is_compressed,
@@ -74,8 +68,6 @@ SPARK_DATAPROC_DIM = "STORY_OTRANSP_SPARK_DATAPROC"
 SPARK_SUBMIT_DIM = "STORY_OTRANSP_SPARK_SUBMIT"
 SPARK_THRIFT_DIM = "STORY_OTRANSP_SPARK_THRIFT"
 SPARK_LIVY_DIM = "STORY_OTRANSP_SPARK_LIVY"
-SQOOP_DIM = "STORY_OTRANSP_SQOOP"
-SQOOP_BY_QUERY_DIM = "STORY_OTRANSP_SQOOP_BY_QUERY"
 
 
 @pytest.fixture
@@ -107,7 +99,7 @@ def simple_offload_test(
 ):
     frontend_api = get_frontend_testing_api(config, messages, trace_action=test_id)
     backend_api = get_backend_testing_api(config, messages)
-    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
+    repo_client = create_repository_client(config, messages, trace_action=f"repo_client({test_id})")
 
     # Setup
     run_setup(
@@ -176,7 +168,7 @@ def load_table_compression_tests(config, schema, data_db, table_name, transport_
     load_db = load_db_name(schema, config)
     frontend_api = get_frontend_testing_api(config, messages, trace_action=test_id)
     backend_api = get_backend_testing_api(config, messages)
-    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
+    repo_client = create_repository_client(config, messages, trace_action=f"repo_client({test_id})")
     dfs = get_dfs_from_options(config, messages=messages, dry_run=False)
     backend_name = convert_backend_identifier_case(config, table_name)
 
@@ -416,42 +408,6 @@ def test_offload_transport_spark_livy(config, schema, data_db):
             data_db,
             SPARK_LIVY_DIM,
             OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
-            messages,
-            id,
-        )
-
-
-def test_offload_transport_sqoop_table(config, schema, data_db):
-    """Test simple offload with table centric Sqoop."""
-    id = "test_offload_transport_sqoop_table"
-    with get_test_messages_ctx(config, id) as messages:
-        if not is_sqoop_available(None, config, messages=messages):
-            pytest.skip(f"Skipping {id} because Sqoop is not configured")
-
-        simple_offload_test(
-            config,
-            schema,
-            data_db,
-            SQOOP_DIM,
-            OFFLOAD_TRANSPORT_METHOD_SQOOP,
-            messages,
-            id,
-        )
-
-
-def test_offload_transport_sqoop_by_query(config, schema, data_db):
-    """Test simple offload with Sqoop by query."""
-    id = "test_offload_transport_sqoop_by_query"
-    with get_test_messages_ctx(config, id) as messages:
-        if not is_sqoop_by_query_available(config, messages=messages):
-            pytest.skip(f"Skipping {id} because Sqoop is not configured")
-
-        simple_offload_test(
-            config,
-            schema,
-            data_db,
-            SQOOP_BY_QUERY_DIM,
-            OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
             messages,
             id,
         )

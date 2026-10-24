@@ -17,7 +17,6 @@ from subprocess import PIPE, STDOUT
 
 from google.api_core import retry
 
-from goe.config.orchestration_defaults import backend_distribution_default
 from goe.filesystem.goe_dfs import (
     DFS_RETRY_TIMEOUT,
     DFS_TYPE_DIRECTORY,
@@ -30,8 +29,7 @@ from goe.filesystem.goe_dfs import (
     GOEDfsException,
     gen_fs_uri,
 )
-from goe.offload.offload_constants import BACKEND_DISTRO_MAPR
-from goe.util.misc_functions import is_number
+from goe.util.string_utils import is_number
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -73,8 +71,6 @@ class CliHdfs(GOEDfs):
     def dfs_cmd(as_string=False):
         """Return distribution appropriate 'hdfs dfs' command"""
         dfs: list[str] = ["hdfs", "dfs"]
-        if backend_distribution_default() == BACKEND_DISTRO_MAPR:
-            dfs = ["hadoop", "fs"]
 
         if as_string:
             return " ".join(dfs)

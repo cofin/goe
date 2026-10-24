@@ -66,24 +66,6 @@ from goe.offload.snowflake.snowflake_column import (
 )
 from goe.offload.snowflake.snowflake_literal import SnowflakeLiteral
 from goe.offload.spark.pyspark_literal import PysparkLiteral
-from goe.offload.teradata.teradata_column import (
-    TERADATA_TYPE_BIGINT,
-    TERADATA_TYPE_BYTE,
-    TERADATA_TYPE_BYTEINT,
-    TERADATA_TYPE_CHAR,
-    TERADATA_TYPE_CLOB,
-    TERADATA_TYPE_DATE,
-    TERADATA_TYPE_DECIMAL,
-    TERADATA_TYPE_DOUBLE,
-    TERADATA_TYPE_INTEGER,
-    TERADATA_TYPE_NUMBER,
-    TERADATA_TYPE_SMALLINT,
-    TERADATA_TYPE_TIME,
-    TERADATA_TYPE_TIMESTAMP,
-    TERADATA_TYPE_VARBYTE,
-    TERADATA_TYPE_VARCHAR,
-)
-from goe.offload.teradata.teradata_literal import TeradataLiteral
 
 DATE_TIME = datetime(2020, 10, 31, 12, 12, 00)
 DATE_TIME_FRAC = datetime(2020, 10, 31, 12, 12, 00, 12345)
@@ -442,99 +424,6 @@ def test_format_snowflake_literal(py_val, data_type, expected_literal):
 )
 def test_format_synapse_literal(py_val, data_type, expected_literal):
     formatted_value = SynapseLiteral.format_literal(py_val, data_type)
-    assert formatted_value == expected_literal, f"Input value: ({data_type or type(py_val)}) {py_val}"
-
-
-@pytest.mark.parametrize(
-    "py_val,data_type,expected_literal",
-    [
-        # Strings
-        ("Hello", TERADATA_TYPE_VARCHAR, "'Hello'"),
-        (None, TERADATA_TYPE_VARCHAR, "NULL"),
-        ("Hello", TERADATA_TYPE_CHAR, "'Hello'"),
-        (None, TERADATA_TYPE_CHAR, "NULL"),
-        ("Hello", TERADATA_TYPE_CLOB, "'Hello'"),
-        # Numbers
-        (3, TERADATA_TYPE_BYTEINT, "3"),
-        (Decimal(3), TERADATA_TYPE_BYTEINT, "3"),
-        (123, TERADATA_TYPE_SMALLINT, "123"),
-        (1234567890, TERADATA_TYPE_INTEGER, "1234567890"),
-        (1234567890, TERADATA_TYPE_BIGINT, "1234567890"),
-        (Decimal(1234567890), TERADATA_TYPE_BIGINT, "1234567890"),
-        (
-            123456789012345678901234567890,
-            TERADATA_TYPE_NUMBER,
-            "123456789012345678901234567890",
-        ),
-        (
-            -123456789012345678901234567890,
-            TERADATA_TYPE_NUMBER,
-            "-123456789012345678901234567890",
-        ),
-        (123.123, TERADATA_TYPE_NUMBER, "123.123"),
-        (
-            Decimal("1234567890.123456789"),
-            TERADATA_TYPE_NUMBER,
-            "1234567890.123456789",
-        ),
-        (
-            123456789012345678901234567890,
-            TERADATA_TYPE_DECIMAL,
-            "123456789012345678901234567890",
-        ),
-        (
-            -123456789012345678901234567890,
-            TERADATA_TYPE_DECIMAL,
-            "-123456789012345678901234567890",
-        ),
-        (123.123, TERADATA_TYPE_DECIMAL, "123.123"),
-        (
-            Decimal("1234567890.123456789"),
-            TERADATA_TYPE_DECIMAL,
-            "1234567890.123456789",
-        ),
-        (123.123, TERADATA_TYPE_DOUBLE, "123.123"),
-        (
-            Decimal("1234567890.123456789"),
-            TERADATA_TYPE_DOUBLE,
-            "1234567890.123456789",
-        ),
-        # Dates and times
-        (date(2020, 10, 31), TERADATA_TYPE_DATE, "DATE '2020-10-31'"),
-        (date(2020, 10, 31), None, "DATE '2020-10-31'"),
-        (DATE_TIME, TERADATA_TYPE_DATE, "DATE '2020-10-31'"),
-        (datetime64(DATE_TIME), TERADATA_TYPE_DATE, "DATE '2020-10-31'"),
-        (DATE_TIME, TERADATA_TYPE_TIMESTAMP, "TIMESTAMP '2020-10-31 12:12:00.0'"),
-        (
-            DATE_TIME_FRAC,
-            TERADATA_TYPE_TIMESTAMP,
-            "TIMESTAMP '2020-10-31 12:12:00.012345'",
-        ),
-        (
-            datetime64(DATE_TIME),
-            TERADATA_TYPE_TIMESTAMP,
-            "TIMESTAMP '2020-10-31 12:12:00.0'",
-        ),
-        (
-            datetime64(DATE_TIME_FRAC),
-            TERADATA_TYPE_TIMESTAMP,
-            "TIMESTAMP '2020-10-31 12:12:00.012345'",
-        ),
-        ("12:13:14", TERADATA_TYPE_TIME, "TIME '12:13:14'"),
-        (
-            datetime64(DATE_TIME_FRAC),
-            TERADATA_TYPE_TIME,
-            "TIME '%s'" % DATE_TIME_FRAC.strftime("%H:%M:%S.%f"),
-        ),
-        # Binary
-        ("Hello", TERADATA_TYPE_BYTE, "48656c6c6fXB"),
-        (b"Hello", TERADATA_TYPE_BYTE, "48656c6c6fXB"),
-        ("Hello", TERADATA_TYPE_VARBYTE, "48656c6c6fXBV"),
-        (b"Hello", TERADATA_TYPE_VARBYTE, "48656c6c6fXBV"),
-    ],
-)
-def test_format_teradata_literal(py_val, data_type, expected_literal):
-    formatted_value = TeradataLiteral.format_literal(py_val, data_type)
     assert formatted_value == expected_literal, f"Input value: ({data_type or type(py_val)}) {py_val}"
 
 

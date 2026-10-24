@@ -3,9 +3,10 @@
 
 """Type-safe lazy attribute resolution and binding helpers for the GOE CLI."""
 
-import importlib
 import sys
 from typing import Any
+
+from goe.util.module_loader import ensure_module
 
 __all__ = (
     "LazyImportMap",
@@ -22,7 +23,7 @@ def resolve_lazy_attribute(module_name: str, lazy_imports: LazyImportMap, name: 
     if target is None:
         raise AttributeError(f"module {module_name!r} has no attribute {name!r}")
     target_module_name, target_attr = target
-    imported = importlib.import_module(target_module_name)
+    imported = ensure_module(target_module_name)
     value = imported if target_attr is None else getattr(imported, target_attr)
     setattr(sys.modules[module_name], name, value)
     return value

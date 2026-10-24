@@ -13,7 +13,6 @@ from datetime import datetime
 
 from goe.filesystem.goe_dfs import (
     OFFLOAD_FS_SCHEME_HDFS,
-    OFFLOAD_FS_SCHEME_MAPRFS,
     get_scheme_from_location_uri,
 )
 from goe.offload.column_metadata import (
@@ -846,7 +845,7 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
         location = self.get_table_location(load_db, table_name)
         scheme = get_scheme_from_location_uri(location) if location else None
         self._log("Identified scheme: %s" % scheme, detail=VERBOSE)
-        return bool(scheme in (OFFLOAD_FS_SCHEME_HDFS, OFFLOAD_FS_SCHEME_MAPRFS))
+        return bool(scheme == OFFLOAD_FS_SCHEME_HDFS)
 
     def rename_column(self, db_name, table_name, column_name, new_name, sync=None):
         """Issue SQL rename column command for Hadoop backends.

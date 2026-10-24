@@ -33,7 +33,7 @@ from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE,
 )
-from goe.util.misc_functions import (
+from goe.util.string_utils import (
     backtick_sandwich,
     case_insensitive_in,
     csv_split,

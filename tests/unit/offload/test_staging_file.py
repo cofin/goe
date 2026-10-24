@@ -27,7 +27,6 @@ from goe.offload.column_metadata import (
     GOE_TYPE_VARIABLE_STRING,
     CanonicalColumn,
 )
-from goe.offload.factory.staging_file_factory import staging_file_factory
 from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
     DBTYPE_HIVE,
@@ -39,6 +38,7 @@ from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_PARQUET,
 )
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.registry import create_staging_file
 from goe.offload.staging.avro.avro_column import StagingAvroColumn
 from goe.offload.staging.parquet.parquet_column import StagingParquetColumn
 
@@ -104,7 +104,7 @@ class TestStagingFile(TestCase):
     def _test_staging_file(self, source_db_type, target_db_type, staging_format):
         messages = OffloadMessages()
         offload_options = FakeOpts(source_db_type, target=target_db_type)
-        staging_file = staging_file_factory(
+        staging_file = create_staging_file(
             "no_db",
             "no_table",
             staging_format,

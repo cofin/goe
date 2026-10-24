@@ -22,9 +22,12 @@ from google.cloud.exceptions import NotFound
 from numpy import datetime64
 
 from goe import __version__ as GOE_VERSION
-from goe.connect.connect_constants import CONNECT_DETAIL, CONNECT_STATUS, CONNECT_TEST
+from goe.config.gcp_credentials import resolve_gcp_credentials
 from goe.observability.bigquery import merge_trace_labels, record_bigquery_job_metadata, traced_bigquery_job
 from goe.offload.backend_api import (
+    CONNECT_DETAIL,
+    CONNECT_STATUS,
+    CONNECT_TEST,
     FETCH_ACTION_ALL,
     FETCH_ACTION_ONE,
     REPORT_ATTR_BACKEND_CLASS,
@@ -100,8 +103,7 @@ from goe.offload.offload_constants import (
     PART_COL_GRANULARITY_YEAR,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.util.gcp_credentials import resolve_gcp_credentials
-from goe.util.misc_functions import backtick_sandwich, format_list_for_logging
+from goe.util.string_utils import backtick_sandwich, format_list_for_logging
 
 BIGQUERY_INVALID_IDENTIFIER_CHARS_RE = re.compile(r"[^A-Z0-9_ ]", re.IGNORECASE)
 

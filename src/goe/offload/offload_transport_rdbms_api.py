@@ -8,8 +8,6 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
-from goe.offload.offload_transport_functions import ssh_cmd_prefix
-from goe.util.misc_functions import ansi_c_string_safe
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -31,8 +29,6 @@ TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_EXTENT = "extent"
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD = "mod"
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE = "id_range"
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE = "native_range"
-TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_TERADATA_AMP = "amp"
-TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_TERADATA_HASHAMP = "hashamp"
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN = "goe_offload_batch"
 
 TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT = "Transport rowsource split type: "
@@ -99,6 +95,7 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         convert_expressions_on_rdbms_side=False,
         for_spark=False,
         nan_values_as_null=False,
+        for_qi=False,
     ):
         """Return an expression suitable for reading a specific column from the RDBMS table.
         Takes column_expression as an input rather than a column name because a transformation may already have
@@ -108,13 +105,18 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
                                            the DB, not in the extracting language.
         """
 
+    def get_offload_transport_sql_stats_function(
+        self, rdbms_module: Any, rdbms_action: Any, conn_action: Any = None
+    ) -> Any:
+        """Return a callable that queries transport SQL statistics for the given module and action."""
+        raise NotImplementedError("get_offload_transport_sql_stats_function() is not implemented for this RDBMS.")
+
     @abstractmethod
     def get_rdbms_session_setup_commands(
         self,
         module: Any,
         action: Any,
         custom_session_parameters: Any,
-        include_fixed_sqoop: bool = True,
         for_plsql: bool = False,
         include_semi_colons: bool = False,
         escape_semi_colons: bool = False,
@@ -204,49 +206,8 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         a cursor for Query Import to fetch from and write data to a staging file.
         """
 
-    def sqoop_by_query_boundary_query(self, offload_transport_parallelism):
-        """Return a query providing a value range for Sqoop --boundary-query option.
-        Oracle has it's own override.
-        """
-        return f'"SELECT 0, {offload_transport_parallelism - 1}"'
-
-    @abstractmethod
-    def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands: Any) -> list:
-        """Return a list of Sqoop -D JVM overrides specific to the frontend RDBMS"""
-
-    @abstractmethod
-    def sqoop_rdbms_specific_jvm_table_options(
-        self,
-        partition_chunk: Any,
-        partition_type: Any = None,
-        is_iot: bool = False,
-        consistent_read: bool = False,
-    ) -> list:
-        """Return a list of Sqoop -D JVM overrides specific to the frontend table"""
-
-    @abstractmethod
-    def sqoop_rdbms_specific_options(self) -> list:
-        """Return a list of Sqoop options specific to the frontend RDBMS"""
-
-    @abstractmethod
-    def sqoop_rdbms_specific_table_options(self, rdbms_owner: Any, table_name: Any) -> list:
-        """Return a list of Sqoop options specific to the frontend table"""
-
     def _row_source_query_union_all_clause(self, pad):
         if pad is None:
             return " UNION ALL "
         crlf = "\n" + (" " * (pad or 0))
         return crlf + "UNION ALL" + crlf
-
-    def _ssh_cli_safe_value(self, cmd_option_string):
-        """If we are invoking Sqoop via SSH then we need extra protection for special characters on the command line
-        Without SSH the protection added by subprocess module is sufficient
-        """
-        if self._ssh_cmd_prefix():
-            return ansi_c_string_safe(cmd_option_string)
-        return cmd_option_string
-
-    def _ssh_cmd_prefix(self, host=None):
-        """Many calls to ssh_cmd_prefix() in this class use std inputs therefore abstract in this method"""
-        host = host or self._offload_options.offload_transport_cmd_host
-        return ssh_cmd_prefix(self._offload_options.offload_transport_user, host)

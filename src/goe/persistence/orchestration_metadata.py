@@ -10,10 +10,8 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from goe.offload.predicate_offload import GenericPredicate
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
-from goe.util.misc_functions import csv_split
+from goe.offload.registry import create_repository_client
+from goe.util.string_utils import csv_split
 
 if TYPE_CHECKING:
     from goe.persistence.orchestration_repo_client import (
@@ -106,7 +104,7 @@ def build_client(connection_options=None, messages=None, client=None, dry_run=Fa
         return client
     assert connection_options
     assert messages
-    return orchestration_repo_client_factory(
+    return create_repository_client(
         connection_options,
         messages,
         dry_run=dry_run,

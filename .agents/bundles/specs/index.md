@@ -16,7 +16,7 @@ This directory contains specifications and task worksheets for active and planne
 
 The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/goe-architecture-redesign.md)):
 
-- **[Master PRD 5: Adapter Reduction, Core Typing, Declarative Settings, Utility Dissolution, and Connect Runner](prd_05_foundation_typing_settings_and_adapter_reduction_20261024/spec.md)** (`planned`):
+- **[Master PRD 5: Adapter Reduction, Core Typing, Declarative Settings, Utility Dissolution, and Connect Runner](prd_05_foundation_typing_settings_and_adapter_reduction_20261024/spec.md)** (`completed`):
   - Chapter 5.1: Adapter Reduction and `AdapterRegistry` ([`adapter_reduction_and_adapter_registry_20261024`](adapter_reduction_and_adapter_registry_20261024/spec.md))
   - Chapter 5.2: Core Typing, Serializers, Platform Utilities, and Architecture Gate ([`core_typing_serializers_platform_and_architecture_gate_20261024`](core_typing_serializers_platform_and_architecture_gate_20261024/spec.md))
   - Chapter 5.3: Declarative Settings, Option Registry, and Error Model ([`declarative_settings_options_and_error_model_20261024`](declarative_settings_options_and_error_model_20261024/spec.md))

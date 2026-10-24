@@ -41,6 +41,28 @@ def test_normalise_bigquery_options_google_dataproc_batches_version(bq_config, i
             module_under_test.normalise_bigquery_options(bq_config), f"For input: {input}"
 
 
+def test_normalise_filesystem_options_rejects_removed_scheme(bq_config) -> None:
+    """Removed filesystem schemes are rejected during filesystem option validation."""
+    bq_config.offload_fs_scheme = "mapr" + "fs"
+    with pytest.raises(
+        module_under_test.OrchestrationConfigException, match="OFFLOAD_FS_SCHEME/--offload-fs-scheme must be one of"
+    ):
+        module_under_test.normalise_filesystem_options(bq_config)
+
+
+def test_normalise_backend_options_rejects_removed_distribution(bq_config) -> None:
+    """Removed backend distributions are rejected."""
+    bq_config.backend_distribution = "MA" + "PR"
+    assert bq_config.backend_distribution not in offload_constants.HADOOP_BASED_BACKEND_DISTRIBUTIONS
+
+
+def test_normalise_offload_transport_config_rejects_removed_transport(bq_config) -> None:
+    """Removed transport configuration values are rejected."""
+    bq_config.offload_transport = "SQ" + "OOP"
+    with pytest.raises(module_under_test.OrchestrationConfigException, match="Invalid value for OFFLOAD_TRANSPORT"):
+        module_under_test.normalise_offload_transport_config(bq_config)
+
+
 @pytest.mark.parametrize(
     "input,expected_status",
     [
@@ -64,3 +86,25 @@ def test_normalise_bigquery_options_google_dataproc_batches_ttl(bq_config, input
     else:
         with pytest.raises(Exception) as _:
             module_under_test.normalise_bigquery_options(bq_config), f"For input: {input}"
+
+
+def test_normalise_filesystem_options_rejects_removed_scheme(bq_config) -> None:
+    """Removed filesystem schemes are rejected during filesystem option validation."""
+    bq_config.offload_fs_scheme = "mapr" + "fs"
+    with pytest.raises(
+        module_under_test.OrchestrationConfigException, match="OFFLOAD_FS_SCHEME/--offload-fs-scheme must be one of"
+    ):
+        module_under_test.normalise_filesystem_options(bq_config)
+
+
+def test_normalise_backend_options_rejects_removed_distribution(bq_config) -> None:
+    """Removed backend distributions are rejected."""
+    bq_config.backend_distribution = "MA" + "PR"
+    assert bq_config.backend_distribution not in offload_constants.HADOOP_BASED_BACKEND_DISTRIBUTIONS
+
+
+def test_normalise_offload_transport_config_rejects_removed_transport(bq_config) -> None:
+    """Removed transport configuration values are rejected."""
+    bq_config.offload_transport = "SQ" + "OOP"
+    with pytest.raises(module_under_test.OrchestrationConfigException, match="Invalid value for OFFLOAD_TRANSPORT"):
+        module_under_test.normalise_offload_transport_config(bq_config)
