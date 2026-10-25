@@ -52,6 +52,10 @@ class NamedStatements:
         """Return the statement names defined in the file."""
         return self._loader.list_queries()
 
+    def __getitem__(self, name: str) -> str:
+        """Return statement ``name`` with default slots filled and trailing semicolon removed."""
+        return self.text(name)
+
     def text(self, name: str, slots: Mapping[str, str] | None = None) -> str:
         """Return statement ``name`` with slots filled and the trailing semicolon removed.
 

@@ -1,9 +1,10 @@
-#! /usr/bin/env python3
-
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""MSSQLColumn: MSSQL implementation of ColumnMetadataInterface"""
+"""MSSQLColumn: MSSQL implementation of ColumnMetadataInterface."""
+
+from collections.abc import Sequence
+from typing import Any
 
 from goe.offload.column_metadata import ColumnMetadataInterface
 
@@ -37,25 +38,24 @@ MSSQL_TYPE_IMAGE = "image"
 
 
 class MSSQLColumn(ColumnMetadataInterface):
-    """Holds details for a single table column
-    Table objects hold a list of objects of this class
-    """
+    """Hold metadata details for a single Microsoft SQL Server table column."""
 
     def __init__(
         self,
-        name,
-        data_type,
-        data_length=None,
-        data_precision=None,
-        data_scale=None,
-        nullable=None,
-        data_default=None,
-        hidden=None,
-        char_length=None,
-        safe_mapping=True,
-        partition_info=None,
-        char_semantics=None,
-    ):
+        name: str,
+        data_type: str,
+        data_length: int | None = None,
+        data_precision: int | None = None,
+        data_scale: int | None = None,
+        nullable: bool | str | None = None,
+        data_default: Any = None,
+        hidden: bool | str | None = None,
+        char_length: int | None = None,
+        safe_mapping: bool = True,
+        partition_info: Any = None,
+        char_semantics: str | None = None,
+    ) -> None:
+        """Initialize an MSSQLColumn with SQL Server type and length metadata."""
         super().__init__(
             name,
             data_type,
@@ -72,8 +72,8 @@ class MSSQLColumn(ColumnMetadataInterface):
         self.hidden = hidden
 
     @staticmethod
-    def from_mssql(attribute_list):
-        """Accepts a Microsoft SQL Server specific list of attributes for a column and returns object based on them"""
+    def from_mssql(attribute_list: Sequence[Any]) -> "MSSQLColumn":
+        """Construct an MSSQLColumn from a 10-element SQL Server catalog row."""
         (
             name,
             _,
@@ -86,7 +86,7 @@ class MSSQLColumn(ColumnMetadataInterface):
             hidden,
             char_length,
         ) = attribute_list
-        col = MSSQLColumn(
+        return MSSQLColumn(
             name,
             data_type,
             data_length,
@@ -97,19 +97,14 @@ class MSSQLColumn(ColumnMetadataInterface):
             hidden,
             char_length,
         )
-        return col
 
-    def format_data_type(self):
-        """TODO not been through all types and format possibilities"""
+    def format_data_type(self) -> str:
+        """Format the SQL Server data type with precision/scale or length when applicable."""
         if self.data_type in [MSSQL_TYPE_DECIMAL, MSSQL_TYPE_NUMERIC]:
             if self.data_precision and self.data_scale is not None:
-                return "%s(%s,%s)" % (
-                    self.data_type,
-                    self.data_precision,
-                    self.data_scale,
-                )
+                return f"{self.data_type}({self.data_precision},{self.data_scale})"
             if self.data_precision:
-                return "%s(%s)" % (self.data_type, self.data_precision)
+                return f"{self.data_type}({self.data_precision})"
             return self.data_type
         if self.data_type in [
             MSSQL_TYPE_CHAR,
@@ -117,11 +112,11 @@ class MSSQLColumn(ColumnMetadataInterface):
             MSSQL_TYPE_NCHAR,
             MSSQL_TYPE_NVARCHAR,
         ]:
-            return "%s(%s)" % (self.data_type, self.data_length)
+            return f"{self.data_type}({self.data_length})"
         return self.data_type
 
-    def has_time_element(self):
-        """Does the column data contain a time"""
+    def has_time_element(self) -> bool:
+        """Return True if the column data type contains a time component."""
         return bool(
             self.data_type
             in [
@@ -132,14 +127,16 @@ class MSSQLColumn(ColumnMetadataInterface):
             ]
         )
 
-    def is_binary(self):
+    def is_binary(self) -> bool:
+        """Return True if the column data type is binary."""
         return bool(self.data_type.lower() in [MSSQL_TYPE_BINARY, MSSQL_TYPE_VARBINARY, MSSQL_TYPE_IMAGE])
 
-    def is_nan_capable(self):
+    def is_nan_capable(self) -> bool:
+        """Return False as SQL Server types do not store IEEE NaN values."""
         return False
 
-    def is_number_based(self):
-        """Is the column numeric in class"""
+    def is_number_based(self) -> bool:
+        """Return True if the column is numeric in class."""
         return bool(
             self.data_type.lower()
             in [
@@ -157,8 +154,8 @@ class MSSQLColumn(ColumnMetadataInterface):
             ]
         )
 
-    def is_date_based(self):
-        """Is the column date in class"""
+    def is_date_based(self) -> bool:
+        """Return True if the column is date or timestamp based."""
         return any(
             dt in self.data_type
             for dt in [
@@ -170,11 +167,12 @@ class MSSQLColumn(ColumnMetadataInterface):
             ]
         )
 
-    def is_interval(self):
+    def is_interval(self) -> bool:
+        """Return False as SQL Server has no interval type."""
         return False
 
-    def is_string_based(self):
-        """Is the column string based in class"""
+    def is_string_based(self) -> bool:
+        """Return True if the column is character string based."""
         return bool(
             self.data_type.lower()
             in [
@@ -185,14 +183,16 @@ class MSSQLColumn(ColumnMetadataInterface):
             ]
         )
 
-    def is_time_zone_based(self):
-        """Does the column contain time zone data"""
+    def is_time_zone_based(self) -> bool:
+        """Return True if the column contains time zone data."""
         return bool(self.data_type.lower() == MSSQL_TYPE_DATETIMEOFFSET)
 
-    def is_hidden(self):
+    def is_hidden(self) -> Any:
+        """Return the column hidden indicator."""
         return self.hidden
 
-    def valid_for_offload_predicate(self):
+    def valid_for_offload_predicate(self) -> bool:
+        """Return True if the column can be used in an offload predicate."""
         return bool(
             self.is_number_based() or (self.is_date_based() and not self.is_time_zone_based()) or self.is_string_based()
         )

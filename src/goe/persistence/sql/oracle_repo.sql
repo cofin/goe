@@ -509,7 +509,7 @@ SELECT frontend_object_owner
 ,      offload_hash_column
 ,      offload_sort_columns
 ,      offload_partition_functions
-,      command_execution
+,      command_execution_current AS command_execution
 FROM   /* slot: repo_user */.offload_metadata_v
 WHERE  frontend_object_owner = :frontend_owner
 AND    frontend_object_name  = :frontend_name;
@@ -529,7 +529,7 @@ SELECT frontend_object_owner
 ,      offload_hash_column
 ,      offload_sort_columns
 ,      offload_partition_functions
-,      command_execution
+,      command_execution_current AS command_execution
 FROM   /* slot: repo_user */.offload_metadata_v
 WHERE  frontend_object_owner = :frontend_owner
 ORDER BY frontend_object_name;

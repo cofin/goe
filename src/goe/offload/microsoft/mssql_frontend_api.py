@@ -1,20 +1,18 @@
-#! /usr/bin/env python3
-
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""MSSQLFrontendApi: Library for logic/interaction with an MSSQL frontend.
-Implements abstract methods from FrontendApiInterface.
-"""
+"""MSSQLFrontendApi: Library for logic/interaction with an MSSQL frontend."""
 
 import logging
+from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 from textwrap import dedent
 from typing import Any
 
-import pymssql
 from numpy import datetime64
 
+from goe.observability.db import build_db_observability_config
 from goe.offload.frontend_api import (
     FETCH_ACTION_ALL,
     FETCH_ACTION_CURSOR,
@@ -24,65 +22,97 @@ from goe.offload.frontend_api import (
     QueryParameter,
     extract_connection_details_from_dsn,
 )
+from goe.offload.frontend_cache import FrontendCatalogCache, get_frontend_catalog_cache
 from goe.offload.microsoft.mssql_column import MSSQL_TYPE_VARCHAR, MSSQLColumn
 from goe.offload.microsoft.synapse_literal import SynapseLiteral
 from goe.offload.offload_constants import MSSQL_FRONTEND_CAPABILITIES
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.orchestration.execution_id import ExecutionId
+from goe.persistence.statements import NamedStatements
+from goe.typing import FrozenBaseStruct
+from goe.util.module_loader import ensure_module
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
-
 MSSQL_MAX_TABLE_NAME_LENGTH = 128
 
+_MSSQL_CATALOG_SQL = NamedStatements(Path(__file__).resolve().parent / "sql" / "mssql_catalog.sql")
 
-def setup_mssql_session(server, port, database, username, password, appname=FRONTEND_TRACE_MODULE):
-    """Take a set of connection properties and return a SQL Server connection
 
-    Must always use fetchall() - http://pymssql.org/en/latest/pymssql_examples.html#important-note-about-cursors
-    Setting conn_properties='' in order to connect to Azure. Left in as MSSQL is not production and it took me ages
-    to find the SO note:
-    https://stackoverflow.com/questions/52418707/connect-to-sybase-data-base-using-python-3-6-and-pymssql
-    """
+class MssqlTableCatalogSnapshot(FrozenBaseStruct, frozen=True):
+    """Cached catalog snapshot for a single SQL Server table."""
+
+    schema_name: str
+    table_name: str
+    table_exists: bool
+    num_rows: int | None
+    partitioned: str
+    size_bytes: int | None
+    columns: tuple[MSSQLColumn, ...]
+    primary_key_columns: tuple[str, ...]
+    hash_bucket_candidate: str | None
+
+
+def build_mssql_config(
+    server: str,
+    port: int | str,
+    database: str,
+    username: str,
+    password: str,
+) -> Any:
+    """Build a pooled SQLSpec MssqlPythonConfig for SQL Server connections."""
     assert server
     assert port
     assert database
     assert username
     assert password
-    logger.debug('Connecting to DB "%s" as %s' % (database, username))
-    db_conn = pymssql.connect(
+    ensure_module("mssql_python", extra="sql_server")
+    mssql_adapter = ensure_module("sqlspec.adapters.mssql_python", extra="sql_server")
+    pool_params = mssql_adapter.MssqlPythonPoolParams(
         server=server,
+        port=int(port),
+        database=database,
         user=username,
         password=password,
-        database=database,
-        port=port,
-        appname=appname,
-        conn_properties="",
+        trust_server_certificate=True,
     )
-    return db_conn
+    return mssql_adapter.MssqlPythonConfig(
+        connection_config=pool_params,
+        observability_config=build_db_observability_config(),
+    )
+
+
+def setup_mssql_session(
+    server: str,
+    port: int | str,
+    database: str,
+    username: str,
+    password: str,
+    appname: str = FRONTEND_TRACE_MODULE,
+) -> Any:
+    """Create and return a SQL Server connection via MssqlPythonConfig."""
+    logger.debug('Connecting to DB "%s" as %s', database, username)
+    config = build_mssql_config(server, port, database, username, password)
+    return config.create_connection()
 
 
 class MSSQLFrontendApi(FrontendApiInterface):
-    """MSSQL FrontendApi implementation"""
+    """MSSQL FrontendApi implementation backed by MssqlPythonConfig and named catalog SQL."""
 
     def __init__(
         self,
-        connection_options,
-        frontend_type,
-        messages,
-        conn_user_override=None,
-        existing_connection=None,
-        dry_run=False,
-        do_not_connect=False,
-        trace_action=None,
-    ):
-        """Standard CONSTRUCTOR
-
-        Unit testing requires no db connection
-        Be careful caching in state, only cache values that cannot change for a different set of inputs
-        such as for a different db_user or table_name.
-        """
+        connection_options: Any,
+        frontend_type: str,
+        messages: Any,
+        conn_user_override: str | None = None,
+        existing_connection: Any = None,
+        dry_run: bool = False,
+        do_not_connect: bool = False,
+        trace_action: str | None = None,
+        catalog_cache: FrontendCatalogCache | None = None,
+    ) -> None:
+        """Construct MSSQLFrontendApi with optional catalog cache and deferred connection."""
         super().__init__(
             connection_options,
             frontend_type,
@@ -98,101 +128,103 @@ class MSSQLFrontendApi(FrontendApiInterface):
         if dry_run:
             logger.info("* Dry run *")
 
-        self._db_conn = None
-        self._db_curs = None
+        self._catalog_cache = catalog_cache or get_frontend_catalog_cache()
+        self._mssql_config: Any = None
+        self._db_conn: Any = existing_connection
+        self._db_curs: Any = None
         if not do_not_connect:
             self._connect()
 
         self._instance_compatible = None
         self._max_table_name_length = None
 
-    def __del__(self):
-        """Clean up connection"""
+    def __del__(self) -> None:
+        """Clean up connection resources on garbage collection."""
         try:
             self._disconnect()
         except Exception:
             pass
 
-    def close(self, force=False):
+    def close(self, force: bool = False) -> None:
         self._disconnect(force=force)
 
     def agg_validate_sample_column_names(self, schema: str, table_name: str, num_required: int = 5) -> list[str]:
         raise NotImplementedError("MSSQL agg_validate_sample_column_names() not implemented.")
 
-    def create_new_connection(self, user_name, user_password, trace_action_override=None):
-        self._debug("Making new connection with user %s" % user_name)
+    def create_new_connection(
+        self,
+        user_name: str,
+        user_password: str,
+        trace_action_override: str | None = None,
+    ) -> Any:
+        self._debug(f"Making new connection with user {user_name}")
         server, port, database = extract_connection_details_from_dsn(self._connection_options.rdbms_dsn)
-        client = setup_mssql_session(server, port, database, user_name, user_password)
-        return client
+        return setup_mssql_session(server, port, database, user_name, user_password)
 
-    def enclose_identifier(self, identifier):
+    def enclose_identifier(self, identifier: str | None) -> str | None:
         if identifier is None:
             return None
-        return "[%s]" % identifier
+        return f"[{identifier}]"
 
-    def enclose_query_hints(self, hint_contents):
+    def enclose_query_hints(self, hint_contents: str | list[str] | None) -> str:
         if not hint_contents:
             return ""
         if isinstance(hint_contents, str):
             hint_contents = [hint_contents]
         return "OPTION({})".format(", ".join(str(_) for _ in hint_contents if _))
 
-    def enclosure_character(self):
+    def enclosure_character(self) -> str | None:
         return None
 
     def execute_function(
         self,
-        sql_fn,
-        return_type=None,
-        return_type_name=None,
-        arg_list=None,
-        log_level=VERBOSE,
-        not_when_dry_running=False,
-        commit=False,
-    ):
+        sql_fn: str,
+        return_type: Any = None,
+        return_type_name: str | None = None,
+        arg_list: list[Any] | None = None,
+        log_level: int = VERBOSE,
+        not_when_dry_running: bool = False,
+        commit: bool = False,
+    ) -> Any:
         raise NotImplementedError("MSSQL execute_function not implemented.")
 
-    def format_query_parameter(self, param_name):
-        """No named parameters so always return "%s" """
-        return "%s"
+    def format_query_parameter(self, param_name: str) -> str:
+        """Return qmark placeholder expected by mssql-python."""
+        return "?"
 
-    def frontend_db_name(self):
+    def frontend_db_name(self) -> str:
         return self._frontend_type.upper()
 
-    def frontend_version(self):
-        sql = "SELECT @@VERSION"
-        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE)
+    def frontend_version(self) -> Any:
+        row = self.execute_query_fetch_one(_MSSQL_CATALOG_SQL["fetch_server_version"], log_level=VVERBOSE)
         return row[0] if row else None
 
-    def gen_column_object(self, column_name, **kwargs):
+    def gen_column_object(self, column_name: str, **kwargs: Any) -> MSSQLColumn:
         return MSSQLColumn(column_name, **kwargs)
 
     def generic_string_data_type(self) -> str:
         return MSSQL_TYPE_VARCHAR
 
-    def get_columns(self, schema, table_name):
-        q = """
-                    SELECT column_name
-                    ,      ordinal_position                                 AS column_id
-                    ,      is_nullable                                      AS nullable
-                    ,      data_type
-                    ,      COALESCE(numeric_precision, datetime_precision)  AS data_precision
-                    ,      numeric_scale                                    AS data_scale
-                    ,      character_octet_length                           AS byte_length
-                    ,      column_default                                   AS data_default
-                    ,      NULL                                             AS hidden_columns
-                    ,      character_maximum_length                         AS char_length
-                    FROM   information_schema.columns
-                    WHERE  table_schema = %s
-                    AND    table_name   = %s
-                    ORDER BY
-                           ordinal_position"""
+    def get_table_snapshot(
+        self,
+        schema: str,
+        table_name: str,
+        *,
+        force_refresh: bool = False,
+    ) -> MssqlTableCatalogSnapshot:
+        """Return a cached or freshly loaded MssqlTableCatalogSnapshot for (schema, table_name)."""
+        dsn = getattr(self._connection_options, "rdbms_dsn", "mssql")
+        if force_refresh:
+            self._catalog_cache.invalidate_table(dsn, schema, table_name)
+        return self._catalog_cache.get_or_load_snapshot(
+            dsn,
+            schema,
+            table_name,
+            lambda: self._load_table_snapshot(schema, table_name),
+        )
 
-        cols = []
-        for row in self.execute_query_fetch_all(q, query_params=(schema, table_name)):
-            col = MSSQLColumn.from_mssql(row)
-            cols.append(col)
-        return cols
+    def get_columns(self, schema: str, table_name: str) -> list[MSSQLColumn]:
+        return list(self.get_table_snapshot(schema, table_name).columns)
 
     def get_current_scn(self) -> int:
         raise NotImplementedError("MSSQL get_current_scn not implemented.")
@@ -200,7 +232,14 @@ class MSSQLFrontendApi(FrontendApiInterface):
     def get_db_unique_name(self) -> str:
         return self._connection_options.rdbms_dsn.split("=")[1]
 
-    def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
+    def get_distinct_column_values(
+        self,
+        schema: str,
+        table_name: str,
+        column_names: str | list[str],
+        partition_name: str | None = None,
+        order_results: bool = False,
+    ) -> Any:
         assert schema and table_name
         assert column_names
         if isinstance(column_names, str):
@@ -210,16 +249,16 @@ class MSSQLFrontendApi(FrontendApiInterface):
 
     def get_object_ddl(
         self,
-        schema,
-        object_name,
-        object_type,
-        as_list=False,
-        terminate_sql=False,
-        remap_schema=None,
-    ):
+        schema: str,
+        object_name: str,
+        object_type: str,
+        as_list: bool = False,
+        terminate_sql: bool = False,
+        remap_schema: str | None = None,
+    ) -> Any:
         raise NotImplementedError("MSSQL get_object_ddl not implemented.")
 
-    def get_command_step_codes(self) -> list:
+    def get_command_step_codes(self) -> list[Any]:
         raise NotImplementedError("MSSQL get_command_step_codes is not implemented.")
 
     def get_command_executions(self) -> list[dict[str, str | Any]]:
@@ -231,151 +270,118 @@ class MSSQLFrontendApi(FrontendApiInterface):
     def get_command_execution_steps(self, execution_id: ExecutionId) -> list[dict[str, str | Any]]:
         raise NotImplementedError("MSSQL get_command_execution_steps is not implemented.")
 
-    def get_partition_column_names(self, schema, table_name, conv_fn=None):
+    def get_partition_column_names(self, schema: str, table_name: str, conv_fn: Any = None) -> list[str]:
         raise NotImplementedError("MSSQL get_partition_column_names not implemented.")
 
-    def get_partition_columns(self, schema, table_name):
+    def get_partition_columns(self, schema: str, table_name: str) -> list[MSSQLColumn]:
         raise NotImplementedError("MSSQL get_partition_column_names not implemented.")
 
-    def get_primary_key_column_names(self, schema, table_name):
-        q = """
-            SELECT COL_NAME(ic.object_id, ic.column_id) AS column_name
-            FROM   sys.tables           t
-                   INNER JOIN
-                   sys.indexes          i
-                   ON (t.object_id = i.object_id)
-                   INNER JOIN
-                   sys.index_columns    ic
-                   ON (     i.object_id = ic.object_id
-                       AND  i.index_id  = ic.index_id)
-                   INNER JOIN
-                   sys.schemas          s
-                   ON (t.schema_id    = s.schema_id)
-            WHERE  s.name = %s
-            AND    t.name = %s
-            AND    i.is_primary_key = 1
-            ORDER BY
-                   ic.column_id"""
+    def get_primary_key_column_names(self, schema: str, table_name: str) -> list[str]:
+        return list(self.get_table_snapshot(schema, table_name).primary_key_columns)
 
-        rows = self.execute_query_fetch_all(q, query_params=(schema, table_name))
-        return [_[0] for _ in rows] if rows else []
-
-    def get_session_option(self, option_name):
+    def get_session_option(self, option_name: str) -> Any:
         raise NotImplementedError("MSSQL get_session_option not implemented.")
 
     def get_session_user(self) -> str:
         raise NotImplementedError("MSSQL get_session_user not implemented.")
 
-    def get_subpartition_column_names(self, schema, table_name, conv_fn=None):
+    def get_subpartition_column_names(self, schema: str, table_name: str, conv_fn: Any = None) -> list[str]:
         raise NotImplementedError("MSSQL get_subpartition_column_names not implemented.")
 
-    def get_subpartition_columns(self, schema, table_name):
+    def get_subpartition_columns(self, schema: str, table_name: str) -> list[MSSQLColumn]:
         raise NotImplementedError("MSSQL get_subpartition_columns not implemented.")
 
     def get_table_row_count(
         self,
-        schema,
-        table_name,
-        filter_clause=None,
-        filter_clause_params=None,
-        hint_block=None,
-        not_when_dry_running=False,
-        log_level=VVERBOSE,
-    ):
+        schema: str,
+        table_name: str,
+        filter_clause: str | None = None,
+        filter_clause_params: Any = None,
+        hint_block: str | None = None,
+        not_when_dry_running: bool = False,
+        log_level: int = VVERBOSE,
+    ) -> int:
         raise NotImplementedError("MSSQL get_table_row_count not implemented.")
 
-    def get_table_size(self, schema, table_name):
-        """Calculate table data size via SP_SPACEUSED.
+    def get_table_size(self, schema: str, table_name: str) -> int | None:
+        """Return table data size in bytes from sys.dm_db_partition_stats."""
+        return self.get_table_snapshot(schema, table_name).size_bytes
 
-        Uses the "data" size column; other columns are reserved_size, index_size, and unused.
-        Output is assumed to be in KB and suffixed as such.
-        SP_SPACEUSED is not valid for Azure Serverless SQL Pools.
-        """
-        q = f'SP_SPACEUSED "{schema}.{table_name}"'
-        rows = self.execute_query_fetch_all(q, query_params=(schema, table_name))
-        return (int(rows[0][3].replace("KB", "")) * 1024) if rows else None
-
-    def is_view(self, schema, object_name):
+    def is_view(self, schema: str, object_name: str) -> bool:
         return self.view_exists(schema, object_name)
 
     def max_datetime_scale(self) -> int:
-        """MSSQL supports up to milliseconds"""
+        """Return maximum fractional second scale supported by MSSQL."""
         return 3
 
-    def max_datetime_value(self):
+    def max_datetime_value(self) -> datetime64:
         return datetime64("9999-12-31")
 
-    def max_table_name_length(self):
+    def max_table_name_length(self) -> int:
         return MSSQL_MAX_TABLE_NAME_LENGTH
 
-    def min_datetime_value(self):
+    def min_datetime_value(self) -> datetime64:
         return datetime64("1753-01-01")
 
-    def parallel_query_hint(self, query_parallelism):
+    def parallel_query_hint(self, query_parallelism: int | None) -> str:
         if query_parallelism:
             assert isinstance(query_parallelism, int)
-            return "MAXDOP %s" % query_parallelism
+            return f"MAXDOP {query_parallelism}"
         return ""
 
-    def split_partition_high_value_string(self, hv_string):
+    def split_partition_high_value_string(self, hv_string: str) -> list[str]:
         raise NotImplementedError("MSSQL split_partition_high_value_string not implemented.")
 
     def schema_exists(self, schema: str) -> bool:
-        sql = dedent(
-            """\
-                     SELECT schema_name
-                     FROM information_schema.schemata
-                     WHERE schema_name = '%s'"""
+        row = self.execute_query_fetch_one(
+            _MSSQL_CATALOG_SQL["check_schema_exists"],
+            query_params=(schema,),
+            log_level=VVERBOSE,
         )
-        row = self.execute_query_fetch_one(sql, query_params=(schema,), log_level=VVERBOSE)
         return bool(row)
 
     def table_exists(self, schema: str, table_name: str) -> bool:
-        sql = dedent(
-            """\
-                     SELECT table_name
-                     FROM information_schema.tables
-                     WHERE table_type = 'BASE TABLE'
-                     AND table_schema = '%s'
-                     AND table_name = '%s'"""
+        row = self.execute_query_fetch_one(
+            _MSSQL_CATALOG_SQL["check_table_exists"],
+            query_params=(schema, table_name),
+            log_level=VVERBOSE,
         )
-        row = self.execute_query_fetch_one(sql, query_params=(schema, table_name), log_level=VVERBOSE)
         return bool(row)
 
     def to_frontend_literal(self, py_val: Any, data_type: str | None = None) -> str:
-        self._debug("Formatting %s literal: %s" % (type(py_val), repr(py_val)))
-        self._debug("For data type: %s" % data_type)
+        self._debug(f"Formatting {type(py_val)} literal: {py_val!r}")
+        self._debug(f"For data type: {data_type}")
         new_py_val = SynapseLiteral.format_literal(py_val, data_type=data_type)
-        self._debug("Final %s literal: %s" % (type(py_val), str(new_py_val)))
+        self._debug(f"Final {type(py_val)} literal: {new_py_val}")
         return new_py_val
 
     def view_exists(self, schema: str, view_name: str) -> bool:
-        sql = dedent(
-            """\
-                     SELECT table_name
-                     FROM information_schema.tables
-                     WHERE table_type = 'VIEW'
-                     AND table_schema = '%s'
-                     AND table_name = '%s'"""
+        row = self.execute_query_fetch_one(
+            _MSSQL_CATALOG_SQL["check_view_exists"],
+            query_params=(schema, view_name),
+            log_level=VVERBOSE,
         )
-        row = self.execute_query_fetch_one(sql, query_params=(schema, view_name), log_level=VVERBOSE)
         return bool(row)
 
-    def _close_cursor(self):
+    def _close_cursor(self) -> None:
         if self._db_conn and self._db_curs:
             try:
                 self._db_curs.close()
                 self._db_curs = None
             except Exception as exc:
-                self._log("Exception closing cursor:\n%s" % str(exc), detail=VVERBOSE)
+                self._log(f"Exception closing cursor:\n{exc}", detail=VVERBOSE)
 
-    def _connect(self):
+    def _connect(self) -> None:
+        if self._existing_connection is not None:
+            self._db_conn = self._existing_connection
+            return
         server, port, database = extract_connection_details_from_dsn(self._connection_options.rdbms_dsn)
-        self._db_conn = setup_mssql_session(
+        user_name = self._conn_user_override or self._connection_options.rdbms_app_user
+        self._mssql_config = build_mssql_config(
             server,
             port,
             database,
-            self._connection_options.rdbms_app_user,
+            user_name,
             self._connection_options.rdbms_app_pass,
         )
 
@@ -387,7 +393,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
         partition_column_names: Any,
         table_properties: Any = None,
     ) -> str:
-        """This is missing a lot compared to the backend Synapse equivalent, lots of scope for improvement."""
+        """Build a CREATE TABLE DDL statement for SQL Server."""
         if table_properties:
             raise NotImplementedError(f"Create table properties pending implementation: {table_properties}")
 
@@ -407,8 +413,9 @@ class MSSQLFrontendApi(FrontendApiInterface):
         }
         return sql
 
-    def _disconnect(self, force=False):
-        self._debug("Disconnecting from DB") if logger else None
+    def _disconnect(self, force: bool = False) -> None:
+        if logger:
+            self._debug("Disconnecting from DB")
         if not self._existing_connection or force:
             if self._db_curs:
                 self._close_cursor()
@@ -418,54 +425,74 @@ class MSSQLFrontendApi(FrontendApiInterface):
                     self._db_conn = None
             except Exception:
                 pass
+            try:
+                if self._mssql_config is not None and hasattr(self._mssql_config, "close_pool"):
+                    self._mssql_config.close_pool()
+            except Exception:
+                pass
 
     def _execute_ddl_or_dml(
         self,
-        sql,
-        query_options=None,
-        log_level=VERBOSE,
-        trace_action=None,
-        query_params=None,
-    ):
-        """Execute one or more SQL statements.
-        Always opens/closes a fresh cursor to ensure we have a clean session environment with no settings
-        carried forwards from a previous action. All SQLs in sql are executed in the same query environment.
-        """
+        sql: str | list[str],
+        query_options: Any = None,
+        log_level: int = VERBOSE,
+        trace_action: str | None = None,
+        query_params: Any = None,
+    ) -> list[Any]:
+        """Execute one or more DDL or DML statements over the pooled SQL Server session."""
         assert sql
         assert isinstance(sql, (str, list))
-        self._open_cursor()
         run_opts: list[Any] = []
-        run_sqls = []
+        run_sqls: list[str] = []
         sqls = [sql] if isinstance(sql, str) else sql
-        for i, run_sql in enumerate(sqls):
-            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, run_sql), log_level=log_level)
-            run_sqls.append(run_sql)
-            if not self._dry_run:
-                assert self._db_curs is not None
-                if query_params:
-                    self._db_curs.execute(run_sql, self._to_native_query_params(query_params))
-                else:
-                    self._db_curs.execute(run_sql)
-        self._close_cursor()
+        native_params = self._to_native_query_params(query_params) if query_params else ()
+
+        if self._dry_run:
+            for run_sql in sqls:
+                self._log_or_not(f"{self._sql_engine_name} SQL: {run_sql}", log_level=log_level)
+                run_sqls.append(run_sql)
+            return run_opts + run_sqls
+
+        if self._mssql_config is not None:
+            with self._session_scope() as session:
+                for run_sql in sqls:
+                    self._log_or_not(f"{self._sql_engine_name} SQL: {run_sql}", log_level=log_level)
+                    run_sqls.append(run_sql)
+                    if native_params:
+                        session.execute(run_sql, native_params)
+                    else:
+                        session.execute(run_sql)
+        else:
+            self._open_cursor()
+            try:
+                for run_sql in sqls:
+                    self._log_or_not(f"{self._sql_engine_name} SQL: {run_sql}", log_level=log_level)
+                    run_sqls.append(run_sql)
+                    assert self._db_curs is not None
+                    if native_params:
+                        self._db_curs.execute(run_sql, native_params)
+                    else:
+                        self._db_curs.execute(run_sql)
+            finally:
+                self._close_cursor()
+
+        self._catalog_cache.clear()
         return run_opts + run_sqls
 
     def _execute_query_fetch_x(
         self,
-        sql,
-        fetch_action=FETCH_ACTION_ALL,
-        query_options=None,
-        log_level=None,
-        time_sql=False,
-        not_when_dry_running=False,
-        query_params=None,
-        profile=False,
-        trace_action=None,
-        as_dict=False,
-    ):
-        """Run a query, fetch and return the results.
-        Always opens/closes a fresh cursor to ensure we have a clean session environment with no settings
-        carried forwards from a previous action.
-        """
+        sql: str,
+        fetch_action: str = FETCH_ACTION_ALL,
+        query_options: Any = None,
+        log_level: int | None = None,
+        time_sql: bool = False,
+        not_when_dry_running: bool = False,
+        query_params: Any = None,
+        profile: bool = False,
+        trace_action: str | None = None,
+        as_dict: bool = False,
+    ) -> Any:
+        """Run a query, fetch, and return the results via MssqlPythonConfig or an existing connection."""
         assert sql
 
         if self._dry_run and not_when_dry_running:
@@ -475,79 +502,167 @@ class MSSQLFrontendApi(FrontendApiInterface):
             raise NotImplementedError("_execute_query_fetch_x() by FETCH_ACTION_CURSOR is not supported on MSSQL")
 
         t1 = datetime.now().replace(microsecond=0)
+        self._log_or_not(f"{self._sql_engine_name} SQL: {sql}", log_level=log_level)
+        native_params = self._to_native_query_params(query_params) if query_params else ()
 
-        self._open_cursor()
-        try:
-            self._log_or_not("%s SQL: %s" % (self._sql_engine_name, sql), log_level=log_level)
-            assert self._db_curs is not None
-            if query_params:
-                self._db_curs.execute(sql, self._to_native_query_params(query_params))
-            else:
-                self._db_curs.execute(sql)
-            if fetch_action == FETCH_ACTION_ALL:
-                rows = self._db_curs.fetchall()
-            elif fetch_action == FETCH_ACTION_ONE:
-                rows = self._db_curs.fetchall()
-                rows = rows[0] if rows else rows
-            else:
-                rows = None
+        if self._mssql_config is not None:
+            with self._session_scope() as session:
+                if fetch_action == FETCH_ACTION_ALL:
+                    raw_rows = session.select(sql, native_params) if native_params else session.select(sql)
+                    rows: Any = [self._coerce_row(r, as_dict=as_dict) for r in raw_rows]
+                elif fetch_action == FETCH_ACTION_ONE:
+                    raw_row = (
+                        session.select_one_or_none(sql, native_params)
+                        if native_params
+                        else session.select_one_or_none(sql)
+                    )
+                    rows = self._coerce_row(raw_row, as_dict=as_dict) if raw_row is not None else None
+                else:
+                    if native_params:
+                        session.execute(sql, native_params)
+                    else:
+                        session.execute(sql)
+                    rows = None
+        else:
+            self._open_cursor()
+            try:
+                assert self._db_curs is not None
+                if native_params:
+                    self._db_curs.execute(sql, native_params)
+                else:
+                    self._db_curs.execute(sql)
+                if fetch_action == FETCH_ACTION_ALL:
+                    rows = self._db_curs.fetchall()
+                elif fetch_action == FETCH_ACTION_ONE:
+                    fetched = self._db_curs.fetchall()
+                    rows = fetched[0] if fetched else fetched
+                else:
+                    rows = None
+            finally:
+                self._close_cursor()
 
-            if time_sql:
-                t2 = datetime.now().replace(microsecond=0)
-                self._log("Elapsed time: %s" % (t2 - t1), detail=VVERBOSE)
-        finally:
-            self._close_cursor()
+        if time_sql:
+            t2 = datetime.now().replace(microsecond=0)
+            self._log(f"Elapsed time: {t2 - t1}", detail=VVERBOSE)
 
         return rows
 
     def _executemany_dml(
         self,
-        sql,
-        query_options=None,
-        log_level=VERBOSE,
-        trace_action=None,
-        query_params=None,
-        batch_size=None,
-    ):
+        sql: str,
+        query_options: Any = None,
+        log_level: int = VERBOSE,
+        trace_action: str | None = None,
+        query_params: Any = None,
+        batch_size: int | None = None,
+    ) -> Any:
         raise NotImplementedError("_executemany_dml() is not implemented for MSSQL")
 
     def _fast_executemany_dml(
         self,
-        sql,
-        query_options=None,
-        log_level=VERBOSE,
-        trace_action=None,
-        query_params=None,
-        batch_size=None,
-        param_inputsizes=None,
-    ):
+        sql: str,
+        query_options: Any = None,
+        log_level: int = VERBOSE,
+        trace_action: str | None = None,
+        query_params: Any = None,
+        batch_size: int | None = None,
+        param_inputsizes: Any = None,
+    ) -> Any:
         raise NotImplementedError("_fast_executemany_dml() is not implemented for MSSQL")
 
-    def _frontend_capabilities(self):
+    def _frontend_capabilities(self) -> dict[str, Any]:
         return MSSQL_FRONTEND_CAPABILITIES
 
-    def _goe_db_component_version(self):
+    def _goe_db_component_version(self) -> str | None:
         return None
 
-    def _open_cursor(self):
+    def _load_table_snapshot(self, schema: str, table_name: str) -> MssqlTableCatalogSnapshot:
+        """Query SQL Server catalog views in one batch to build MssqlTableCatalogSnapshot."""
+        bind_pair = (schema, table_name)
+        details_row = self.execute_query_fetch_one(
+            _MSSQL_CATALOG_SQL["fetch_table_details"],
+            query_params=bind_pair,
+            log_level=VVERBOSE,
+        )
+        num_rows: int | None = None
+        partitioned = "NO"
+        if details_row:
+            num_rows = int(details_row[1]) if details_row[1] is not None else None
+            partitioned = str(details_row[2] or "NO")
+
+        size_row = self.execute_query_fetch_one(
+            _MSSQL_CATALOG_SQL["fetch_table_size_bytes"],
+            query_params=bind_pair,
+            log_level=VVERBOSE,
+        )
+        size_bytes = int(size_row[0]) if size_row and size_row[0] is not None else None
+
+        col_rows = self.execute_query_fetch_all(
+            _MSSQL_CATALOG_SQL["fetch_table_columns"],
+            query_params=bind_pair,
+            log_level=VVERBOSE,
+        )
+        columns = tuple(MSSQLColumn.from_mssql(row) for row in (col_rows or []))
+
+        pk_rows = self.execute_query_fetch_all(
+            _MSSQL_CATALOG_SQL["fetch_primary_key_columns"],
+            query_params=bind_pair,
+            log_level=VVERBOSE,
+        )
+        primary_key_columns = tuple(str(row[0]) for row in (pk_rows or []))
+
+        hb_row = self.execute_query_fetch_one(
+            _MSSQL_CATALOG_SQL["fetch_hash_bucket_candidate"],
+            query_params=bind_pair,
+            log_level=VVERBOSE,
+        )
+        hash_bucket_candidate = str(hb_row[0]) if hb_row and hb_row[0] is not None else None
+
+        return MssqlTableCatalogSnapshot(
+            schema_name=schema,
+            table_name=table_name,
+            table_exists=num_rows is not None or bool(columns),
+            num_rows=num_rows,
+            partitioned=partitioned,
+            size_bytes=size_bytes,
+            columns=columns,
+            primary_key_columns=primary_key_columns,
+            hash_bucket_candidate=hash_bucket_candidate,
+        )
+
+    def _open_cursor(self) -> None:
         if self._db_conn:
             self._db_curs = self._db_conn.cursor()
         else:
             self._db_curs = None
 
-    def _to_native_query_params(self, query_params):
-        """Using a tuple for pymssql binds.
-        For convenience, if it is already a tuple then turning a blind eye and returning it, this allows code
-        migrated here from OffloadSourceTable to remain unchanged.
+    @contextmanager
+    def _session_scope(self) -> Any:
+        if self._mssql_config is None:
+            self._connect()
+        assert self._mssql_config is not None
+        with self._mssql_config.provide_session() as session:
+            yield session
 
-        If not a tuple then must be a list of QueryParameter objects
-        """
+    @staticmethod
+    def _coerce_row(row: Any, *, as_dict: bool = False) -> Any:
+        if as_dict:
+            if isinstance(row, dict):
+                return dict(row)
+            return {str(idx): val for idx, val in enumerate(row)}
+        if isinstance(row, dict):
+            return tuple(row.values())
+        if isinstance(row, list):
+            return tuple(row)
+        return row
+
+    def _to_native_query_params(self, query_params: Any) -> tuple[Any, ...]:
+        """Convert a tuple or list of QueryParameter instances into a positional bind tuple."""
         if isinstance(query_params, tuple):
             return query_params
         assert isinstance(query_params, list)
-        if query_params:
-            assert isinstance(query_params[0], QueryParameter)
-        param_values = []
-        for qp in query_params:
-            param_values.append(qp.param_value)
-        return tuple(param_values)
+        if not query_params:
+            return ()
+        if isinstance(query_params[0], QueryParameter):
+            return tuple(qp.param_value for qp in query_params)
+        return tuple(query_params)

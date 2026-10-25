@@ -34,7 +34,7 @@ _EXTRA_PROBE_MODULES = {
     "hadoop": "impala",
     "snowflake": "snowflake.connector",
     "synapse": "pyodbc",
-    "sql_server": "pymssql",
+    "sql_server": "mssql_python",
 }
 
 

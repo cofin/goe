@@ -1,5 +1,3 @@
-#! /usr/bin/env python3
-
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,6 +6,7 @@
 import logging
 import re
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from numpy import datetime64
@@ -55,6 +54,11 @@ from goe.offload.offload_source_table import (
     convert_high_values_to_python,
 )
 from goe.offload.oracle import oracle_predicate
+from goe.offload.oracle.catalog import (
+    OracleSessionContext,
+    OracleTableSnapshot,
+    parse_single_high_value_token,
+)
 from goe.offload.oracle.oracle_column import (
     ORACLE_TIMESTAMP_RE,
     ORACLE_TYPE_BINARY_DOUBLE,
@@ -80,6 +84,10 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_VARCHAR2,
     ORACLE_TYPE_XMLTYPE,
     OracleColumn,
+)
+from goe.offload.oracle.oracle_partition import (
+    rdbms_partitions_from_snapshot,
+    rdbms_subpartitions_from_snapshot,
 )
 from goe.util import GOEVersion
 
@@ -143,6 +151,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         dry_run=False,
         conn=None,
         do_not_connect=False,
+        db_api=None,
     ):
         """Converting to str() below because Oracle dictionary tables are VARCHAR2 and unicode casts to NVARCHAR2.
 
@@ -169,6 +178,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
             dry_run=dry_run,
             conn=conn,
             do_not_connect=do_not_connect,
+            db_api=db_api,
         )
 
         logger.info(
@@ -181,7 +191,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         self.table_name = str(self.table_name).upper()
         self._adm_user = connection_options.ora_adm_user
         self._adm_pass = connection_options.ora_adm_pass
-        self._use_oracle_wallet = connection_options.use_oracle_wallet
+        self._use_oracle_wallet = getattr(connection_options, "use_oracle_wallet", False)
         self._dsn = connection_options.rdbms_dsn
         self._db_conn = None
         self._db_curs = None
@@ -189,6 +199,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         self._db_block_size = None
         self._offload_by_subpartition = False
         self._table_stats = None
+        self._snapshot: OracleTableSnapshot | None = None
 
         self._iot_type = None
         self._partitioned = None
@@ -206,16 +217,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
             self._db_conn = None
             self._db_curs = None
         else:
-            self._db_version = self._get_db_version()
-            self._get_db_block_size()
-            self._get_table_details()
-            self._hash_bucket_candidate = None
-            self._columns_setter(self._get_column_details(), skip_exists_check=True)
-            if self._table_exists:
-                self._is_compression_enabled()
-                self._size_in_bytes = self._get_table_size()
-            else:
-                self._compression_enabled = None
+            self._hydrate_from_snapshot_or_db()
 
     @property
     def partition_type(self):
@@ -280,7 +282,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
         self._offload_by_subpartition = desired_state
 
     def get_hash_bucket_candidate(self):
-        if not self._hash_bucket_candidate:
+        if not getattr(self, "_hash_bucket_candidate", None):
             self._hash_bucket_candidate = self._get_hash_bucket_candidate()
         return self._hash_bucket_candidate
 
@@ -580,6 +582,9 @@ class OracleSourceTable(OffloadSourceTableInterface):
         """Return a string based Oracle date/timestamp literal (as found in HIGH_VALUE) as a Python value"""
         if rdbms_literal in ("MAXVALUE", offload_constants.PART_OUT_OF_RANGE):
             return datetime64(datetime.max)
+        parsed = parse_single_high_value_token(str(rdbms_literal))
+        if isinstance(parsed, datetime):
+            return datetime64(parsed)
         if "TO_DATE(" in rdbms_literal:
             td, ds, c1, fmt, c2, cal, br = rdbms_literal.split("'")
             return datetime64(ds)
@@ -595,8 +600,12 @@ class OracleSourceTable(OffloadSourceTableInterface):
         """Return a string based Oracle NUMBER literal (as found in HIGH_VALUE) as a Python value"""
         if rdbms_literal in ("MAXVALUE", offload_constants.PART_OUT_OF_RANGE):
             return float("inf")
-        if re.match(r"^-?\d+$", rdbms_literal.strip("'").strip()):
-            return int(rdbms_literal.strip("'").strip())
+        stripped = str(rdbms_literal).strip("'").strip()
+        if re.match(r"^-?\d+$", stripped):
+            return int(stripped)
+        parsed = parse_single_high_value_token(stripped)
+        if isinstance(parsed, (int, float, Decimal)):
+            return parsed
         raise NotImplementedError("Oracle NUMBER literal not implemented: %s" % rdbms_literal)
 
     def get_subpartition_boundary_info(self):
@@ -949,6 +958,168 @@ class OracleSourceTable(OffloadSourceTableInterface):
             to_string,
         )
 
+    def sample_rdbms_data_types(
+        self,
+        columns_to_sample,
+        data_sample_pct,
+        data_sample_parallelism,
+        backend_min_possible_date,
+        backend_max_decimal_integral_magnitude,
+        backend_max_decimal_scale,
+        allow_decimal_scale_rounding,
+    ):
+        """Sample Oracle column values using Arrow batch streaming when available, falling back to SQL sampling."""
+        if (
+            columns_to_sample
+            and all(not col.is_date_based() for col in columns_to_sample)
+            and self._has_arrow_sampling_support()
+        ):
+            return self._sample_numeric_columns_via_arrow(
+                columns_to_sample,
+                data_sample_pct,
+                data_sample_parallelism,
+                backend_max_decimal_integral_magnitude,
+                backend_max_decimal_scale,
+                allow_decimal_scale_rounding,
+            )
+        return super().sample_rdbms_data_types(
+            columns_to_sample,
+            data_sample_pct,
+            data_sample_parallelism,
+            backend_min_possible_date,
+            backend_max_decimal_integral_magnitude,
+            backend_max_decimal_scale,
+            allow_decimal_scale_rounding,
+        )
+
+    def _hydrate_from_snapshot_or_db(self) -> None:
+        if hasattr(self._db_api, "get_session_context"):
+            ctx = self._db_api.get_session_context()
+            if isinstance(ctx, OracleSessionContext):
+                self._db_version = ctx.version
+                self._db_block_size = ctx.db_block_size
+        if not getattr(self, "_db_version", None):
+            self._db_version = self._get_db_version()
+        if not self._db_block_size:
+            self._get_db_block_size()
+
+        snap = (
+            self._db_api.get_table_snapshot(self.owner, self.table_name)
+            if hasattr(self._db_api, "get_table_snapshot")
+            else None
+        )
+        if isinstance(snap, OracleTableSnapshot):
+            self._snapshot = snap
+            self._table_exists = True
+            self._table_is_view = False
+            self._iot_type = "IOT" if snap.iot_type == "IOT" else None
+            self._stats_num_rows = snap.stats.num_rows
+            self._partitioned = "YES" if snap.partitioned else "NO"
+            self._partition_type = snap.partitioning_type
+            self._subpartition_type = snap.subpartitioning_type or "NONE"
+            self._parallelism = snap.degree
+            self._compression_enabled = bool(snap.compression and snap.compression.upper() == "ENABLED")
+            self._size_in_bytes = snap.stats.size_in_bytes
+            self._primary_key_columns = list(snap.primary_key_columns)
+            self._hash_bucket_candidate = None
+            cols = [
+                OracleColumn.from_oracle(
+                    (
+                        col.name,
+                        col.column_id,
+                        "Y" if col.nullable else "N",
+                        col.data_type,
+                        col.data_precision,
+                        col.data_scale,
+                        col.data_length,
+                        col.data_default,
+                        "YES" if col.hidden else "NO",
+                        col.char_used,
+                        col.char_length,
+                    )
+                )
+                for col in snap.columns
+                if not col.hidden
+            ]
+            self._columns_setter(cols, skip_exists_check=True)
+            return
+
+        self._get_table_details()
+        self._hash_bucket_candidate = None
+        self._columns_setter(self._get_column_details(), skip_exists_check=True)
+        if self._table_exists:
+            self._is_compression_enabled()
+            self._size_in_bytes = self._get_table_size()
+        else:
+            self._compression_enabled = None
+
+    def _has_arrow_sampling_support(self) -> bool:
+        reg = getattr(self._db_api, "registry", None) or getattr(self._db_api, "_registry", None)
+        if reg is None or not hasattr(reg, "adm_session"):
+            return False
+        with reg.adm_session() as driver:
+            return hasattr(driver, "select_to_arrow")
+
+    def _sample_numeric_columns_via_arrow(
+        self,
+        columns_to_sample,
+        data_sample_pct,
+        data_sample_parallelism,
+        backend_max_decimal_integral_magnitude,
+        backend_max_decimal_scale,
+        allow_decimal_scale_rounding,
+    ):
+        local_pct = self._sample_data_types_data_sample_pct(data_sample_pct)
+        local_par = self._sample_data_types_data_sample_parallelism(data_sample_parallelism)
+        hint = self._sample_data_types_parallel_query_hint_block(local_par)
+        sample_clause = self._sample_perc_sql_clause(local_pct)
+        col_list = ", ".join(f'"{c.name.upper()}"' for c in columns_to_sample)
+        sql = f'SELECT {hint} {col_list} FROM "{self.owner.upper()}"."{self.table_name.upper()}" {sample_clause}'
+        reg = getattr(self._db_api, "registry", None) or getattr(self._db_api, "_registry", None)
+        assert reg is not None
+        with reg.adm_session() as driver:
+            batches = driver.select_to_arrow(sql, return_format="batches", batch_size=10_000)
+
+        results = []
+        for col in columns_to_sample:
+            cname = col.name.upper()
+            max_int = 0
+            max_scale = 0
+            seen = False
+            for batch in batches or []:
+                if isinstance(batch, dict):
+                    vals = batch.get(cname, [])
+                elif hasattr(batch, "to_pydict"):
+                    vals = batch.to_pydict().get(cname, [])
+                elif hasattr(batch, "column"):
+                    vals = batch.column(cname).to_pylist()
+                else:
+                    vals = []
+                for v in vals:
+                    if v is None:
+                        continue
+                    seen = True
+                    d = Decimal(str(v))
+                    if d == 0:
+                        int_digits = 1
+                        scale = 0
+                    else:
+                        _, digits, exp = d.as_tuple()
+                        exp_int = exp if isinstance(exp, int) else 0
+                        scale = max(0, -exp_int)
+                        int_digits = max(0, len(digits) + exp_int)
+                    max_int = max(max_int, int_digits)
+                    max_scale = max(max_scale, scale)
+            if not seen:
+                return None
+            if max_int > backend_max_decimal_integral_magnitude:
+                raise OffloadSourceTableException(f"Sampled integral magnitude {max_int} exceeds maximum")
+            if not allow_decimal_scale_rounding and max_scale > backend_max_decimal_scale:
+                raise OffloadSourceTableException(f"Sampled decimal scale {max_scale} exceeds maximum")
+            precision = max_int + max_scale
+            results.append(self._sample_data_types_decimal_column(col, precision, max_scale))
+        return results
+
     def _columns_getter(self):
         if self._is_view():
             return self._columns
@@ -961,10 +1132,18 @@ class OracleSourceTable(OffloadSourceTableInterface):
         if not skip_exists_check and self.exists():
             raise OffloadSourceTableException("Set of columns is only supported when the table does NOT exist")
         self._columns = new_columns
-        self._columns_with_partition_info = self._get_columns_with_partition_info()
-        self._columns_with_subpartition_info = self._get_columns_with_partition_info(
-            part_col_names_override=self._db_api.get_subpartition_column_names(self.owner, self.table_name)
-        )
+        if self._snapshot is not None:
+            self._columns_with_partition_info = self._get_columns_with_partition_info(
+                part_col_names_override=list(self._snapshot.partition_column_names)
+            )
+            self._columns_with_subpartition_info = self._get_columns_with_partition_info(
+                part_col_names_override=list(self._snapshot.subpartition_column_names)
+            )
+        else:
+            self._columns_with_partition_info = self._get_columns_with_partition_info()
+            self._columns_with_subpartition_info = self._get_columns_with_partition_info(
+                part_col_names_override=self._db_api.get_subpartition_column_names(self.owner, self.table_name)
+            )
 
     def _get_db_block_size(self):
         if not self._db_block_size:
@@ -1013,6 +1192,35 @@ class OracleSourceTable(OffloadSourceTableInterface):
             }
         """
         if not self._table_stats:
+            if self._snapshot is not None:
+                snap = self._snapshot
+                block_size = self._db_block_size or 8192
+                self._table_stats = {
+                    "num_rows": snap.stats.num_rows,
+                    "num_bytes": snap.stats.blocks * block_size if snap.stats.blocks else snap.stats.size_in_bytes,
+                    "avg_row_len": snap.stats.avg_row_len,
+                    "column_stats": {
+                        c.name: {
+                            "ndv": c.num_distinct,
+                            "num_nulls": c.num_nulls,
+                            "avg_col_len": c.avg_col_len,
+                            "low_value": c.low_value,
+                            "high_value": c.high_value,
+                        }
+                        for c in snap.columns
+                        if not c.hidden
+                    },
+                    "partition_stats": {
+                        p.partition_name: {
+                            "num_rows": p.num_rows,
+                            "num_bytes": p.blocks * block_size if p.blocks else p.size_in_bytes,
+                            "avg_row_len": p.avg_row_len,
+                        }
+                        for p in snap.partitions
+                    },
+                }
+                return self._table_stats
+
             logger.debug("_get_table_stats: %s, %s" % (self.owner, self.table_name))
 
             table_stats: dict[str, Any] = {
@@ -1105,6 +1313,21 @@ class OracleSourceTable(OffloadSourceTableInterface):
 
     def _get_hash_bucket_candidate(self):
         logger.debug("_get_hash_bucket_candidate: %s, %s" % (self.owner, self.table_name))
+        allowed = self.supported_data_types().difference(self.hash_bucket_unsuitable_data_types())
+        if self._snapshot is not None:
+            num_rows = max(self._snapshot.stats.num_rows, 1)
+            candidates = [
+                (
+                    c.num_distinct * ((num_rows - c.num_nulls) / num_rows),
+                    c.name,
+                )
+                for c in self._snapshot.columns
+                if not c.hidden and c.data_type in allowed
+            ]
+            if not candidates:
+                return None
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            return candidates[0][1]
         q = """SELECT column_name
             FROM (
                 SELECT c.column_name
@@ -1117,31 +1340,19 @@ class OracleSourceTable(OffloadSourceTableInterface):
                 AND    c.data_type IN (%s)
                 ORDER BY ndv_null_factor DESC
             )
-            WHERE ROWNUM = 1""" % ",".join(
-            sorted(
-                "'%s'" % dtype
-                for dtype in self.supported_data_types().difference(self.hash_bucket_unsuitable_data_types())
-            )
-        )
+            WHERE ROWNUM = 1""" % ",".join(sorted("'%s'" % dtype for dtype in allowed))
         rows = self._db_api.execute_query_fetch_one(
             q, query_params={"owner": self.owner, "table_name": self.table_name}
         )
         return rows[0] if rows else None
 
     def _get_partitions(self, strict: bool = True, populate_hvs: bool = True) -> list:
-        """Return a list of RdbmsPartition() objects
-        Partitions are in high value descending order
-
-        GOE-1381: cursor now fetches all subpartitions rather than a single rollup row per partition.
-        This is because we now keep a list of subpartitions per partition in case they are needed
-        for offload transport. As a result, fetchall() and list comprehension has been replaced with
-        an array fetch loop with a nested loop for generating a subpartitions list. Not only is this necessary
-        for assigning the subpartition names to a nested list, it also prevents fetching lots of redundant
-        denormalised high_values from the partition row to the subpartition rows.
-        Initialise new partition on first occurrence of this partition...
-        Append the subpartition name to the list of subpartitions for this partition...
-        Reached the last row for this partition. Add this partition to the list of partitions...
-        """
+        """Return a list of RdbmsPartition() objects in high value descending order."""
+        if self._snapshot is not None:
+            return rdbms_partitions_from_snapshot(
+                self._snapshot,
+                populate_hvs=populate_hvs,
+            )
 
         def hv_python_fn(hv):
             if populate_hvs:
@@ -1243,11 +1454,12 @@ class OracleSourceTable(OffloadSourceTableInterface):
         return partitions
 
     def _get_subpartitions(self, strict=True, populate_hvs=True):
-        """Return a list of RdbmsPartition() objects at subpartition level
-        Partitions are in high value descending order
-
-        sort by high value descending to match output from _get_partitions()
-        """
+        """Return a list of RdbmsPartition() objects at subpartition level in high value descending order."""
+        if self._snapshot is not None:
+            return rdbms_subpartitions_from_snapshot(
+                self._snapshot,
+                populate_hvs=populate_hvs,
+            )
 
         def hv_python_fn(hv):
             if populate_hvs:
@@ -1289,7 +1501,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
                        ON (    tsp.table_owner    = tp.table_owner
                            AND tsp.table_name     = tp.table_name
                            AND tsp.partition_name = tp.partition_name)
-                       LEFT OUTER JOIN                                              -- note the OUTER join
+                       LEFT OUTER JOIN
                        dba_segments               s
                        ON (    s.owner            = t.owner
                            AND s.segment_name     = DECODE(t.iot_type, 'IOT', c.index_name, t.table_name)
@@ -1338,15 +1550,13 @@ class OracleSourceTable(OffloadSourceTableInterface):
         return partitions
 
     def _is_compression_enabled(self) -> bool:
-        """Oracle tables have compression defined at either table/partition/subpartition level
-        and for partitioned tables this can be a mixture of compression types.
-        For this reason it is not simple enough to say is a table compressed, this function
-        is simply defining whether a table has some compressed segments, it is not worrying
-        about the ratio of compressed to uncompressed segments.
-        This function does not handle the db connection, it expects the calling function to
-        have catered for this
-        """
+        """Return whether the table or any of its partitions have segment compression enabled."""
         if self._compression_enabled is None:
+            if self._snapshot is not None:
+                self._compression_enabled = bool(
+                    self._snapshot.compression and self._snapshot.compression.upper() == "ENABLED"
+                )
+                return self._compression_enabled
             if self.is_subpartitioned():
                 sql = """SELECT p.compression
                          FROM   dba_tab_subpartitions p
@@ -1415,6 +1625,16 @@ class OracleSourceTable(OffloadSourceTableInterface):
             col = self.get_column(column_name)
             if not col:
                 raise OffloadSourceTableException('Unknown column name "%s"' % column_name)
+
+            if self._snapshot is not None:
+                for scol in self._snapshot.columns:
+                    if scol.name.upper() == column_name:
+                        if col.is_date_based():
+                            return (
+                                datetime64(scol.low_value) if scol.low_value is not None else None,
+                                datetime64(scol.high_value) if scol.high_value is not None else None,
+                            )
+                        return (scol.low_value, scol.high_value)
 
             params = {
                 "owner": self.owner,

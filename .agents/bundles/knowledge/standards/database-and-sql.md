@@ -41,8 +41,14 @@ tags:
 
 ## SQLSpec Parameter & Named SQL Discipline
 
-- **Named SQL Files**: Place multi-line Oracle dictionary and repository SQL statements in `.sql` files loaded via `sqlspec.loader.SQLFileLoader` (`src/goe/offload/oracle/sql/frontend_metadata.sql` and `src/goe/persistence/sql/oracle_repo.sql`) using `-- name: <statement_name>` markers.
-- **Strict `NAMED_COLON` Bind Discipline**: Never mix positional and named bind parameters in SQLSpec calls. All Oracle SQLSpec queries use `:param_name` (`NAMED_COLON`) binds passed as a `dict[str, Any]`.
+- **Pooled SQLSpec Adapters & `NamedStatements`**:
+  - Oracle dictionary and repository SQL is executed via `OracleDatabaseRegistry` (`src/goe/persistence/oracle/registry.py`) and `NamedStatements` loaded from `src/goe/offload/oracle/sql/oracle_catalog.sql`, `src/goe/offload/oracle/sql/frontend_metadata.sql`, and `src/goe/persistence/oracle/sql/oracle_repo.sql`.
+  - Microsoft SQL Server catalog SQL is executed via `MssqlPythonConfig` (`mssql-python`) and `NamedStatements` loaded from `src/goe/offload/microsoft/sql/mssql_catalog.sql`.
+- **Bind Parameter Discipline**:
+  - Oracle SQLSpec queries use `:param_name` (`NAMED_COLON`) binds passed as a `dict[str, Any]`.
+  - Microsoft SQL Server (`mssql-python`) queries use `qmark` (`?`) positional binds (or `:param_name` compiled by `sqlspec` to `?`).
+- **Execution-Scoped Catalog Caching (`FrontendCatalogCache`)**:
+  - Frontend catalog inspection (`OracleCatalogService.get_table_snapshot` and `MSSQLFrontendApi.get_table_snapshot`) caches immutable `FrozenBaseStruct` snapshots in `FrontendCatalogCache` (`src/goe/offload/frontend_cache.py`) per `(execution_id, db_type, owner, table_name)` and explicitly invalidates on DDL, partition maintenance, or statistics gathering.
 - **SQLCommenter Formatting**: `sqlspec.core.sqlcommenter.generate_comment(attrs)` returns inner key/value pairs without `/*` and `*/` delimiters; wrap the returned string in `/*...*/` when constructing standalone SQL comments (`format_sqlcommenter` in `src/goe/observability/db.py`).
 
 ## Transactional & Snapshot Consistency

@@ -260,7 +260,7 @@ def optional_hadoop_dependency_exception(e: Exception) -> bool:
 
 
 def optional_sql_server_dependency_exception(e: Exception) -> bool:
-    return "pymssql" in str(e)
+    return any(tok in str(e) for tok in ("mssql_python", "mssql-python", "sql_server"))
 
 
 def optional_snowflake_dependency_exception(e: Exception) -> bool:

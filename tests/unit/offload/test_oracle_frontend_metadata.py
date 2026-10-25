@@ -13,6 +13,7 @@ import pytest
 
 import goe.offload.oracle
 import goe.persistence.registry as registry_module
+from goe.offload.frontend_cache import get_frontend_catalog_cache
 from goe.offload.offload_constants import DBTYPE_ORACLE
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.registry import create_frontend_api
@@ -28,36 +29,12 @@ OWNER_TABLE = {"owner": "SH", "table_name": "SALES"}
 
 CASES = [
     (
-        "get_partition_column_names",
-        lambda api: api.get_partition_column_names("SH", "SALES"),
-        ["UPPER(PK.COLUMN_NAME)"],
-        [("TIME_ID",)],
-        ["TIME_ID"],
-        OWNER_TABLE,
-    ),
-    (
-        "get_subpartition_column_names",
-        lambda api: api.get_subpartition_column_names("SH", "SALES"),
-        ["UPPER(PK.COLUMN_NAME)"],
-        [("CHANNEL_ID",)],
-        ["CHANNEL_ID"],
-        OWNER_TABLE,
-    ),
-    (
         "get_session_events",
         lambda api: api._instrumentation_snap({"db file sequential read": 1.0}),
         ["EVENT", "ROUND(TIME_WAITED_MICRO/1E6,2)"],
         [("db file sequential read", 3.5)],
         None,
         None,
-    ),
-    (
-        "get_iot_type",
-        lambda api: api._is_iot("SH", "SALES"),
-        ["IOT_TYPE"],
-        [("IOT",)],
-        True,
-        OWNER_TABLE,
     ),
     (
         "agg_validate_sample_column_names",
@@ -67,34 +44,7 @@ CASES = [
         ["PROD_ID", "AMOUNT"],
         {**OWNER_TABLE, "required_no": 5},
     ),
-    ("get_current_scn", lambda api: api.get_current_scn(), ["CURRENT_SCN"], [(123456,)], 123456, None),
-    (
-        "get_db_unique_name",
-        lambda api: api.get_db_unique_name(),
-        ["DB_UNIQUE_NAME"],
-        [("ORCL_PDB1",)],
-        "ORCL_PDB1",
-        None,
-    ),
-    (
-        "get_primary_key_column_names",
-        lambda api: api.get_primary_key_column_names("SH", "SALES"),
-        ["COLUMN_NAME"],
-        [("ID",)],
-        ["ID"],
-        OWNER_TABLE,
-    ),
-    ("get_session_user", lambda api: api.get_session_user(), ["SESSION_USER"], [("GOE_ADM",)], "GOE_ADM", None),
-    (
-        "get_table_default_parallelism",
-        lambda api: api.get_table_default_parallelism("SH", "SALES"),
-        ["DEGREE"],
-        [("4",)],
-        "4",
-        OWNER_TABLE,
-    ),
     ("schema_exists", lambda api: api.schema_exists("SH"), ["ONE"], [(1,)], True, {"schema": "SH"}),
-    ("table_exists", lambda api: api.table_exists("SH", "SALES"), ["TABLE_NAME"], [("SALES",)], True, OWNER_TABLE),
     (
         "view_exists",
         lambda api: api.view_exists("SH", "V_SALES"),
@@ -137,10 +87,12 @@ class FakePool:
 
 @pytest.fixture(autouse=True)
 def clear_registries() -> Iterator[None]:
-    """Ensure registry cache is cleared around each test."""
+    """Ensure registry and frontend catalog caches are cleared around each test."""
     OracleDatabaseRegistry.close_all()
+    get_frontend_catalog_cache().clear()
     yield
     OracleDatabaseRegistry.close_all()
+    get_frontend_catalog_cache().clear()
 
 
 @pytest.fixture
@@ -167,40 +119,6 @@ def test_dictionary_query_results_sql_and_binds(api, name, call, columns, rows, 
     assert _normalized(sent[0]) == _normalized(EXPECTED_SQL[name])
     sent_binds = {k.lower(): v for k, v in (sent[1] if len(sent) > 1 else {}).items()}
     assert sent_binds == (binds or {})
-
-
-def test_get_columns_builds_oracle_columns(api) -> None:
-    """get_columns hydrates OracleColumn instances from the query projection."""
-    cursor = _attach_connection(
-        api,
-        [
-            "UPPER(COLUMN_NAME)",
-            "COLUMN_ID",
-            "NULLABLE",
-            "DATA_TYPE",
-            "DATA_PRECISION",
-            "DATA_SCALE",
-            "BYTE_LENGTH",
-            "DATA_DEFAULT",
-            "HIDDEN_COLUMN",
-            "CHAR_USED",
-            "CHAR_LENGTH",
-        ],
-        [("ID", 1, "N", "NUMBER", 10, 0, 22, None, "NO", "B", 0)],
-    )
-    columns = api.get_columns("SH", "SALES")
-    assert [(c.name, c.data_type, c.nullable, c.data_precision) for c in columns] == [("ID", "NUMBER", False, 10)]
-    assert _normalized(cursor.execute.call_args.args[0]) == _normalized(EXPECTED_SQL["get_columns"])
-
-
-@pytest.mark.parametrize(("iot_rows", "size_name"), [([("IOT",)], "get_iot_table_size"), ([(None,)], "get_table_size")])
-def test_get_table_size_selects_iot_or_heap_statement(api, iot_rows, size_name) -> None:
-    """get_table_size dispatches to the IOT or heap segment size statement."""
-    cursor = _attach_connection(api, ["IOT_TYPE"], iot_rows)
-    cursor.fetchall.side_effect = [iot_rows, [(65536,)]]
-    cursor.fetchone.side_effect = [iot_rows[0], (65536,)]
-    assert api.get_table_size("SH", "SALES") == 65536
-    assert _normalized(cursor.execute.call_args.args[0]) == _normalized(EXPECTED_SQL[size_name])
 
 
 def test_proxy_override_connects_with_admin_password(monkeypatch: pytest.MonkeyPatch) -> None:

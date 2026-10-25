@@ -1,12 +1,11 @@
-#! /usr/bin/env python3
-
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """OffloadTransportMSSQLApi: Library for logic/interaction with source MSSQL system during offload transport."""
 
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from goe.offload.column_metadata import ColumnMetadataInterface
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
@@ -15,21 +14,19 @@ from goe.offload.offload_source_table import OffloadSourceTableInterface
 from goe.offload.offload_transport_rdbms_api import OffloadTransportRdbmsApiInterface
 from goe.util.string_utils import id_generator
 
-if TYPE_CHECKING:
-    pass
-
 
 class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
-    """MSSQL specific methods"""
+    """MSSQL-specific transport RDBMS API methods."""
 
     def __init__(
         self,
-        rdbms_owner,
-        rdbms_table_name,
-        offload_options,
-        messages,
-        dry_run=False,
-    ):
+        rdbms_owner: str,
+        rdbms_table_name: str,
+        offload_options: Any,
+        messages: Any,
+        dry_run: bool = False,
+    ) -> None:
+        """Initialize OffloadTransportMSSQLApi for a source SQL Server table."""
         super().__init__(
             rdbms_owner,
             rdbms_table_name,
@@ -37,11 +34,12 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
             messages,
             dry_run=dry_run,
         )
-        self.debug("OffloadTransportMSSQLApi setup: (%s, %s)" % (rdbms_owner, rdbms_table_name))
+        self.debug(f"OffloadTransportMSSQLApi setup: ({rdbms_owner}, {rdbms_table_name})")
 
-    def generate_transport_action(self):
+    def generate_transport_action(self) -> str:
+        """Generate a unique transport action identifier for the target table."""
         id_str = id_generator()
-        return "%s_%s" % (id_str, self._rdbms_table_name.lower())
+        return f"{id_str}_{self._rdbms_table_name.lower()}"
 
     def get_id_column_for_range_splitting(
         self,
@@ -59,16 +57,16 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
 
     def get_rdbms_query_cast(
         self,
-        column_expression,
-        rdbms_column,
-        staging_column,
-        max_ts_scale,
-        convert_expressions_on_rdbms_side=False,
-        for_spark=False,
-        nan_values_as_null=False,
-        for_qi=False,
-    ):
-        """Returns an expression suitable for reading a specific column from the RDBMS table"""
+        column_expression: str,
+        rdbms_column: Any,
+        staging_column: Any,
+        max_ts_scale: int | None,
+        convert_expressions_on_rdbms_side: bool = False,
+        for_spark: bool = False,
+        nan_values_as_null: bool = False,
+        for_qi: bool = False,
+    ) -> str:
+        """Return an expression suitable for reading a specific column from the RDBMS table."""
         raise NotImplementedError("MSSQL get_rdbms_query_cast() pending implementation")
 
     def get_rdbms_session_setup_commands(
@@ -83,8 +81,8 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
     ) -> list[Any]:
         raise NotImplementedError("MSSQL get_rdbms_session_setup_commands() not implemented.")
 
-    def get_rdbms_session_setup_hint(self, custom_session_parameters, max_ts_scale):
-        """No session setup hints required on MSSQL"""
+    def get_rdbms_session_setup_hint(self, custom_session_parameters: Any, max_ts_scale: Any) -> str:
+        """Return empty session setup hints for MSSQL."""
         return ""
 
     def get_snapshot_clause(self, transport_scn: int, consistent_read: bool) -> str:
@@ -122,32 +120,32 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
     def get_transport_row_source_query_hint_block(self) -> str:
         raise NotImplementedError("MSSQL get_transport_row_source_query_hint_block() not implemented.")
 
-    def jdbc_driver_name(self):
-        return None
+    def jdbc_driver_name(self) -> str:
+        return ""
 
     def jdbc_url(self) -> str:
         return '"jdbc:sqlserver://' + (self._offload_transport_dsn or "") + '"'
 
     def log_sql_stats(
         self,
-        module,
-        action,
-        payload,
-        validation_polling_interval=OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED,
-    ):
+        module: Any,
+        action: Any,
+        payload: Any,
+        validation_polling_interval: int = OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED,
+    ) -> Any:
         raise NotImplementedError("MSSQL log_sql_stats() not implemented.")
 
-    def get_rdbms_canary_query(self):
+    def get_rdbms_canary_query(self) -> str:
         return "SELECT 1"
 
     @contextmanager
     def query_import_extraction(
         self,
-        staging_columns,
-        source_query,
-        source_binds,
-        fetch_size,
-        compress,
-        rdbms_session_setup_commands,
-    ):
+        staging_columns: list[Any],
+        source_query: str,
+        source_binds: Any,
+        fetch_size: int,
+        compress: bool,
+        rdbms_session_setup_commands: list[str],
+    ) -> Iterator[Any]:
         raise NotImplementedError("MSSQL query_import_extraction() not implemented")

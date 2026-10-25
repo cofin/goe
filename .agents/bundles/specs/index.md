@@ -14,13 +14,8 @@ This directory contains specifications and task worksheets for active and planne
 
 ## Active & Planned Flows
 
-The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/goe-architecture-redesign.md)):
+The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/research/goe-architecture-redesign.md)):
 
-- **[Master PRD 6: Pooled SQLSpec Oracle Data Layer, Repository Service, Catalog Cache, and MSSQL Frontend](prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/spec.md)** (`planned`):
-  - Chapter 6.1: `OracleDatabaseRegistry` and Session Tracing ([`oracle_database_registry_and_session_tracing_20261024`](oracle_database_registry_and_session_tracing_20261024/spec.md))
-  - Chapter 6.2: `OffloadMetadata` and Repository Service ([`offload_metadata_and_repository_service_20261024`](offload_metadata_and_repository_service_20261024/spec.md))
-  - Chapter 6.3: Oracle Catalog Snapshot and Frontend Cache ([`oracle_catalog_snapshot_and_frontend_cache_20261024`](oracle_catalog_snapshot_and_frontend_cache_20261024/spec.md))
-  - Chapter 6.4: MSSQL Frontend on `MssqlPythonConfig` ([`mssql_frontend_on_mssql_python_20261024`](mssql_frontend_on_mssql_python_20261024/spec.md))
 - **[Master PRD 7: Native SQLGlot Dialect Engine, PredicateIR, Concurrent Validation, Schema Sync, and Status Report](prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/spec.md)** (`planned`):
   - Chapter 7.1: Native SQLGlot Dialect Engine ([`native_sqlglot_dialect_engine_20261024`](native_sqlglot_dialect_engine_20261024/spec.md))
   - Chapter 7.2: `PredicateIR` Compiler ([`predicate_ir_compiler_20261024`](predicate_ir_compiler_20261024/spec.md))
@@ -46,6 +41,13 @@ The GOE architecture redesign is planned as six sequenced Master PRDs (research:
 ## Archived Flows & Roadmaps
 
 All previous flows have completed full verification and code review gates and have been synthesized into `.agents/bundles/knowledge/`:
+
+- **Master PRD 6: Pooled SQLSpec Oracle Data Layer, Repository Service, Catalog Cache, and MSSQL Frontend (`prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024`, 13 tasks)**:
+  - Chapter 6.1: `OracleDatabaseRegistry` and Session Tracing (`oracle_database_registry_and_session_tracing_20261024`, 4 tasks)
+  - Chapter 6.2: `OffloadMetadata` and Repository Service (`offload_metadata_and_repository_service_20261024`, 3 tasks)
+  - Chapter 6.3: Oracle Catalog Snapshot and Frontend Cache (`oracle_catalog_snapshot_and_frontend_cache_20261024`, 4 tasks)
+  - Chapter 6.4: MSSQL Frontend on `MssqlPythonConfig` (`mssql_frontend_on_mssql_python_20261024`, 2 tasks)
+  - *Synthesized into*: [Oracle Adapter](../knowledge/frontends/oracle.md), [SQL Server Adapter](../knowledge/frontends/sqlserver.md), [Database & SQL Standards](../knowledge/standards/database-and-sql.md), [Tech Stack](../product/tech-stack.md).
 
 - **Master PRD 5: Adapter Reduction, Core Typing, Declarative Settings, Utility Dissolution, and Connect Runner (`prd_05_foundation_typing_settings_and_adapter_reduction_20261024`, 21 tasks, PR #11)**:
   - Chapter 5.1: Adapter Reduction and `AdapterRegistry` (`adapter_reduction_and_adapter_registry_20261024`, 7 tasks)

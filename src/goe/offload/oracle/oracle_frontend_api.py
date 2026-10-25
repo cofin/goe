@@ -6,9 +6,10 @@ Implements abstract methods from FrontendApiInterface.
 """
 
 import logging
+import re
 import time
 import traceback
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from textwrap import dedent
@@ -30,7 +31,13 @@ from goe.offload.frontend_api import (
     FrontendApiInterface,
     QueryParameter,
 )
+from goe.offload.frontend_cache import FrontendCatalogCache, get_frontend_catalog_cache
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.oracle.catalog import (
+    OracleCatalogService,
+    OracleSessionContext,
+    OracleTableSnapshot,
+)
 from goe.offload.oracle.oracle_column import (
     ORACLE_SPLIT_HIGH_VALUE_RE,
     ORACLE_TYPE_VARCHAR2,
@@ -55,6 +62,10 @@ CREATE_TABLE_ORACLE_PARTITION_SPEC = "partition_spec"
 
 FRONTEND_METADATA_SQL_PATH = Path(__file__).resolve().parent / "sql" / "frontend_metadata.sql"
 LEASE_IDLE_PING_SECONDS: Final = 60.0
+_DDL_TABLE_RE = re.compile(
+    r"(?:TABLE|INDEX|VIEW)\s+(?:IF\s+EXISTS\s+)?(?:\"?(?P<owner>[A-Za-z0-9_$#]+)\"?\.)?\"?(?P<table>[A-Za-z0-9_$#]+)\"?",
+    re.IGNORECASE,
+)
 
 
 def switch_oracle_open_partition_token(frontend_token):
@@ -70,15 +81,18 @@ class OracleFrontendApi(FrontendApiInterface):
 
     def __init__(
         self,
-        connection_options,
-        frontend_type,
-        messages,
-        conn_user_override=None,
-        existing_connection=None,
-        dry_run=False,
-        do_not_connect=False,
-        trace_action=None,
-    ):
+        connection_options: Any,
+        frontend_type: Any,
+        messages: Any,
+        conn_user_override: Any = None,
+        existing_connection: Any = None,
+        dry_run: bool = False,
+        do_not_connect: bool = False,
+        trace_action: Any = None,
+        registry: OracleDatabaseRegistry | None = None,
+        catalog_cache: FrontendCatalogCache | None = None,
+        catalog_service: OracleCatalogService | None = None,
+    ) -> None:
         """Standard CONSTRUCTOR
 
         Unit testing requires no db connection.
@@ -106,7 +120,15 @@ class OracleFrontendApi(FrontendApiInterface):
         self._db_curs: Any = None
         self._lease_role: OracleRole | None = None
         self._last_used = 0.0
-        self._registry = None if do_not_connect else OracleDatabaseRegistry.for_options(connection_options)
+        self._registry: Any = registry or (
+            None if do_not_connect else OracleDatabaseRegistry.for_options(connection_options)
+        )
+        self._catalog_service = catalog_service or OracleCatalogService()
+        self._catalog_cache = catalog_cache or (
+            FrontendCatalogCache(catalog_service=self._catalog_service)
+            if catalog_service is not None
+            else get_frontend_catalog_cache()
+        )
         self._metadata_statements = NamedStatements(FRONTEND_METADATA_SQL_PATH)
         if not do_not_connect:
             self._connect()
@@ -196,9 +218,10 @@ class OracleFrontendApi(FrontendApiInterface):
         return f":{param_name}"
 
     def frontend_version(self):
-        if self._db_conn:
+        if self._db_conn is not None and getattr(self._db_conn, "version", None):
             return self._db_conn.version
-        return None
+        ctx = self.get_session_context()
+        return ctx.version if ctx else None
 
     def gen_column_object(self, column_name, **kwargs):
         return OracleColumn(column_name, **kwargs)
@@ -206,18 +229,66 @@ class OracleFrontendApi(FrontendApiInterface):
     def generic_string_data_type(self) -> str:
         return ORACLE_TYPE_VARCHAR2
 
+    def get_table_snapshot(
+        self,
+        schema: str,
+        table_name: str,
+        *,
+        force_refresh: bool = False,
+    ) -> OracleTableSnapshot | None:
+        """Return the cached or freshly queried OracleTableSnapshot for (schema, table_name)."""
+        return self._with_driver(
+            lambda driver: self._catalog_cache.get_table_snapshot(
+                self._dsn,
+                schema,
+                table_name,
+                driver,
+                force_refresh=force_refresh,
+            )
+        )
+
+    def get_session_context(self, *, force_refresh: bool = False) -> OracleSessionContext | None:
+        """Return the cached or freshly queried OracleSessionContext for the active DSN."""
+        return self._with_driver(
+            lambda driver: self._catalog_cache.get_session_context(
+                self._dsn,
+                driver,
+                force_refresh=force_refresh,
+            )
+        )
+
     def get_columns(self, schema, table_name):
-        rows = self._select_tuples("get_columns", {"owner": schema, "table_name": table_name})
-        return [OracleColumn.from_oracle(row) for row in rows or []]
+        snap = self.get_table_snapshot(schema, table_name)
+        if snap is None:
+            return []
+        return [
+            OracleColumn.from_oracle(
+                (
+                    col.name,
+                    col.column_id,
+                    "Y" if col.nullable else "N",
+                    col.data_type,
+                    col.data_precision,
+                    col.data_scale,
+                    col.data_length,
+                    col.data_default,
+                    "YES" if col.hidden else "NO",
+                    col.char_used,
+                    col.char_length,
+                )
+            )
+            for col in snap.columns
+            if not col.hidden
+        ]
 
     def get_current_scn(self) -> int | None:
         """Return the current system change number for the source RDBMS."""
-        rows = self._select_tuples("get_current_scn")
-        return rows[0][0] if rows else None
+        ctx = self.get_session_context()
+        return ctx.current_scn if ctx else None
 
     def get_db_unique_name(self) -> str:
-        rows = self._select_tuples("get_db_unique_name")
-        return cast(str, rows[0][0] if rows else None)
+        ctx = self.get_session_context()
+        return cast(str, ctx.db_unique_name if ctx else None)
 
     def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
         assert schema and table_name
@@ -271,8 +342,8 @@ class OracleFrontendApi(FrontendApiInterface):
         return part_cols
 
     def get_primary_key_column_names(self, schema, table_name):
-        rows = self._select_tuples("get_primary_key_column_names", {"owner": schema, "table_name": table_name})
-        return [_[0] for _ in rows] if rows else []
+        snap = self.get_table_snapshot(schema, table_name)
+        return list(snap.primary_key_columns) if snap else []
 
     def get_session_option(self, option_name):
         """Using v$parameter to retrieve value for a parameter.
@@ -280,11 +351,22 @@ class OracleFrontendApi(FrontendApiInterface):
         are connected. Making this RAC aware would make it trickier to maintain an interface across all RDBMSs.
         """
         logger.debug(f"Fetching {option_name} from DB")
+        lowered = str(option_name).lower()
+        if lowered in {"compatible", "db_block_size", "max_string_size", "cell_offload_processing"}:
+            ctx = self.get_session_context()
+            if ctx is not None:
+                if lowered == "compatible":
+                    return ctx.compatible
+                if lowered == "db_block_size":
+                    return str(ctx.db_block_size)
+                if lowered == "max_string_size":
+                    return ctx.max_string_size
+                return "TRUE" if ctx.cell_offload_processing else "FALSE"
         return self._execute_plsql_function("offload.get_init_param", return_type=str, arg_list=[option_name])
 
     def get_session_user(self) -> str:
-        rows = self._select_tuples("get_session_user")
-        return cast(str, rows[0][0] if rows else None)
+        ctx = self.get_session_context()
+        return cast(str, ctx.current_user if ctx else None)
 
     def get_subpartition_column_names(self, schema, table_name, conv_fn=None):
         names = self._get_partition_column_names(schema, table_name, subpartition_level=True)
@@ -298,8 +380,12 @@ class OracleFrontendApi(FrontendApiInterface):
         return part_cols
 
     def get_table_default_parallelism(self, schema, table_name):
-        rows = self._select_tuples("get_table_default_parallelism", {"owner": schema, "table_name": table_name})
-        return rows[0][0] if rows else None
+        snap = self.get_table_snapshot(schema, table_name)
+        return snap.degree if snap else None
+
+    def get_table_row_count_from_metadata(self, schema: Any, table_name: Any) -> int | None:
+        snap = self.get_table_snapshot(schema, table_name)
+        return snap.stats.num_rows if snap else None
 
     def get_table_row_count(
         self,
@@ -326,14 +412,16 @@ class OracleFrontendApi(FrontendApiInterface):
         )
         return row[0] if row else None
 
-    def get_table_size(self, schema, table_name):
+    def get_table_size(self, schema: Any, table_name: Any, no_caching: bool = False) -> int | None:
         """Total size (in bytes) of segments for a table.
         NB: does not currently include LOB or overflow segments
         """
         logger.debug("get_table_size: %s, %s" % (schema, table_name))
-        query_name = "get_iot_table_size" if self._is_iot(schema, table_name) else "get_table_size"
-        rows = self._select_tuples(query_name, {"owner": schema, "table_name": table_name})
-        return rows[0][0] if rows else None
+        snap = self.get_table_snapshot(schema, table_name, force_refresh=no_caching)
+        return snap.stats.size_in_bytes if snap else None
+
+    def is_iot(self, schema: Any, table_name: Any) -> bool:
+        return self._is_iot(schema, table_name)
 
     def is_view(self, schema: Any, object_name: Any) -> bool:
         return self.view_exists(schema, object_name)
@@ -443,7 +531,7 @@ class OracleFrontendApi(FrontendApiInterface):
         return bool(self._select_tuples("schema_exists", {"schema": schema}))
 
     def table_exists(self, schema: Any, table_name: Any) -> bool:
-        return bool(self._select_tuples("table_exists", {"owner": schema, "table_name": table_name}))
+        return self.get_table_snapshot(str(schema), str(table_name)) is not None
 
     def to_frontend_literal(self, py_val: Any, data_type: Any = None) -> str:
         self._debug("Formatting %s literal: %s" % (type(py_val), repr(py_val)))
@@ -454,6 +542,39 @@ class OracleFrontendApi(FrontendApiInterface):
 
     def view_exists(self, schema: Any, view_name: Any) -> bool:
         return bool(self._select_tuples("view_exists", {"owner": schema, "view_name": view_name}))
+
+    @property
+    def _dsn(self) -> str:
+        if self._registry is not None and getattr(self._registry, "settings", None) is not None:
+            return str(self._registry.settings.dsn or "default")
+        return str(
+            getattr(self._connection_options, "rdbms_dsn", None)
+            or getattr(self._connection_options, "ora_dsn", None)
+            or "default"
+        )
+
+    def _with_driver(self, fn: Callable[[Any], Any]) -> Any:
+        if self._db_conn is not None and self._registry is not None and hasattr(self._registry, "driver_for"):
+            return run_with_session_retry(
+                lambda: fn(self._registry.driver_for(self._active_connection(), self._lease_role or "adm")),
+                self._renew_connection,
+            )
+        if self._registry is not None and hasattr(self._registry, "adm_session"):
+            with self._registry.adm_session() as driver:
+                return fn(driver)
+        return None
+
+    def _invalidate_cache_for_ddl(self, sqls: list[str]) -> None:
+        matched = False
+        for stmt in sqls:
+            for m in _DDL_TABLE_RE.finditer(stmt):
+                owner = m.group("owner")
+                table = m.group("table")
+                if owner and table:
+                    self._catalog_cache.invalidate_table(self._dsn, owner, table)
+                    matched = True
+        if not matched:
+            self._catalog_cache.clear()
 
     def _active_connection(self) -> Any:
         """Return the attached connection, pinging a lease idle for LEASE_IDLE_PING_SECONDS and renewing a lost one."""
@@ -576,17 +697,28 @@ class OracleFrontendApi(FrontendApiInterface):
             self._log_or_not("%s SQL: %s" % (self._sql_engine_name, run_sql), log_level=log_level)
             run_sqls.append(run_sql)
             if not self._dry_run:
-                assert self._db_curs is not None
-                if query_params:
-                    self._log_or_not("Bind values:", log_level=log_level)
-                    self._log_or_not(
-                        "\n".join("%s = %s" % (k, v) for k, v in self._to_native_query_params(query_params).items()),
-                        log_level=log_level,
-                    )
-                    self._db_curs.execute(run_sql, self._to_native_query_params(query_params))
+                if self._db_curs is not None:
+                    if query_params:
+                        self._log_or_not("Bind values:", log_level=log_level)
+                        self._log_or_not(
+                            "\n".join(
+                                "%s = %s" % (k, v) for k, v in self._to_native_query_params(query_params).items()
+                            ),
+                            log_level=log_level,
+                        )
+                        self._db_curs.execute(run_sql, self._to_native_query_params(query_params))
+                    else:
+                        self._db_curs.execute(run_sql)
                 else:
-                    self._db_curs.execute(run_sql)
+                    params = self._to_native_query_params(query_params) if query_params else None
+
+                    def _exec_ddl_stmt(driver: Any) -> Any:
+                        return driver.execute(run_sql, params)
+
+                    self._with_driver(_exec_ddl_stmt)
         self._close_cursor()
+        if not self._dry_run:
+            self._invalidate_cache_for_ddl(run_sqls)
         if trace_action and self._db_conn:
             self._db_conn.action = self._trace_action
         return run_opts + run_sqls
@@ -859,9 +991,10 @@ class OracleFrontendApi(FrontendApiInterface):
     def _get_partition_column_names(self, schema, table_name, subpartition_level=False):
         """Return a list of partition column names in the correct order."""
         logger.debug("_get_partition_column_names: %s, %s" % (schema, table_name))
-        query_name = "get_subpartition_column_names" if subpartition_level else "get_partition_column_names"
-        rows = self._select_tuples(query_name, {"owner": schema, "table_name": table_name})
-        return [_[0] for _ in rows or []]
+        snap = self.get_table_snapshot(schema, table_name)
+        if snap is None:
+            return []
+        return list(snap.subpartition_column_names if subpartition_level else snap.partition_column_names)
 
     def _instrumentation_snap(self, delta_dict=None):
         """Capture and return session events and CPU usage and return as a dict
@@ -896,8 +1029,8 @@ class OracleFrontendApi(FrontendApiInterface):
         return profile_dict
 
     def _is_iot(self, schema, table_name):
-        rows = self._select_tuples("get_iot_type", {"owner": schema, "table_name": table_name})
-        return bool(rows and rows[0][0] == "IOT")
+        snap = self.get_table_snapshot(schema, table_name)
+        return bool(snap and snap.iot_type == "IOT")
 
     def _open_cursor(self) -> None:
         """Open a fresh cursor on the active connection, or clear the cursor when unconnected."""

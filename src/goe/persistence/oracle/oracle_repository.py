@@ -4,22 +4,23 @@
 """Oracle repository service executing named SQL and OFFLOAD_REPO procedures over pooled SQLSpec sessions."""
 
 import logging
+import sys
 import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 import msgspec
 
+from goe.offload.frontend_cache import FrontendCatalogCache, get_frontend_catalog_cache
 from goe.offload.offload_constants import (
     BACKEND_DISTRO_CDH,
     BACKEND_DISTRO_GCP,
     BACKEND_DISTRO_MSAZURE,
     BACKEND_DISTRO_SNOWFLAKE,
-    DBTYPE_ORACLE,
 )
 from goe.offload.offload_messages import QUIET, VERBOSE, VVERBOSE, OffloadMessages
 from goe.offload.offload_source_data import OffloadSourcePartition
-from goe.offload.registry import create_frontend_api, create_source_table
+from goe.offload.oracle.catalog import OracleTableSnapshot
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.models import (
@@ -73,6 +74,7 @@ class OracleRepositoryService:
         dry_run: bool = False,
         trace_action: str | None = None,
         registry: OracleDatabaseRegistry | None = None,
+        catalog_cache: FrontendCatalogCache | None = None,
     ) -> None:
         assert connection_options
         self._connection_options = connection_options
@@ -81,6 +83,7 @@ class OracleRepositoryService:
         self._trace_action = trace_action or self.__class__.__name__
         self._repo_user = str(connection_options.ora_repo_user or "")
         self._registry = registry
+        self._catalog_cache = catalog_cache or get_frontend_catalog_cache()
         self._repo_statements: NamedStatements | None = None
         self._weak_udt_cache: weakref.WeakKeyDictionary[Any, dict[str, Any]] = weakref.WeakKeyDictionary()
         self._id_udt_cache: dict[tuple[int, str], Any] = {}
@@ -365,85 +368,53 @@ class OracleRepositoryService:
 
     def get_table_columns(self, schema_name: str, table_name: str) -> list[ColumnDetail]:
         """Return column metadata with partition and subpartition positions for ``schema_name.table_name``."""
-        frontend_api = create_frontend_api(
-            DBTYPE_ORACLE,
-            self._connection_options,
-            self._messages,
-            dry_run=self._dry_run,
-            trace_action=self._trace_action,
-        )
-        try:
-            owner_upper = schema_name.upper()
-            name_upper = table_name.upper()
-            cols = frontend_api.get_columns(owner_upper, name_upper)
-            partition_columns = frontend_api.get_partition_columns(owner_upper, name_upper)
-            subpartition_columns = frontend_api.get_subpartition_columns(owner_upper, name_upper)
-            return_columns = [
-                ColumnDetail(
-                    column_name=one_col.name,
-                    data_type=one_col.data_type,
-                    data_precision=one_col.data_precision,
-                    data_scale=one_col.data_scale,
-                    is_nullable=one_col.nullable,
-                    partition_position=None,
-                )
-                for one_col in cols
-            ]
-            for part_pos, part_col in enumerate(partition_columns, start=1):
-                for tab_col in return_columns:
-                    if tab_col.column_name == part_col.name:
-                        tab_col.partition_position = part_pos
-            for subpart_pos, subpart_col in enumerate(subpartition_columns, start=1):
-                for tab_col in return_columns:
-                    if tab_col.column_name == subpart_col.name:
-                        tab_col.subpartition_position = subpart_pos
-            return return_columns
-        finally:
-            frontend_api.close()
+        snapshot = self._get_table_snapshot(schema_name, table_name)
+        if snapshot is None:
+            return []
+        return [
+            ColumnDetail(
+                column_name=col.name,
+                data_type=col.data_type,
+                data_precision=col.data_precision,
+                data_scale=col.data_scale,
+                is_nullable=col.nullable,
+                partition_position=col.partition_position,
+                subpartition_position=col.subpartition_position,
+            )
+            for col in snapshot.columns
+        ]
 
     def get_table_partitions(self, schema_name: str, table_name: str) -> list[dict[str, Any]]:
         """Return partition details for ``schema_name.table_name``."""
-        frontend_table = create_source_table(
-            schema_name.upper(),
-            table_name.upper(),
-            self._connection_options,
-            OffloadMessages(detail=QUIET),
-            offload_by_subpartition=False,
-        )
-        try:
-            table_partitions = frontend_table.get_partitions()
-        except Exception as exc:
-            logger.error(f"Table partition type is not supported: {exc.__class__.__qualname__}{exc.args}")
+        snapshot = self._get_table_snapshot(schema_name, table_name)
+        if snapshot is None or not snapshot.partitioned:
             return []
-        else:
-            if table_partitions:
-                return [PartitionDetail.from_orm(table_partition).to_dict() for table_partition in table_partitions]
-            return []
-        finally:
-            if hasattr(frontend_table, "close"):
-                frontend_table.close()
+        return [
+            PartitionDetail(
+                partition_name=part.partition_name,
+                partition_position=part.partition_position,
+                high_value=part.high_value_csv,
+                row_count=part.num_rows,
+                total_size_in_bytes=part.size_in_bytes,
+            ).to_dict()
+            for part in snapshot.partitions
+        ]
 
     def get_table_subpartitions(self, schema_name: str, table_name: str) -> list[SubPartitionDetail]:
         """Return subpartition details for ``schema_name.table_name``."""
-        frontend_table = create_source_table(
-            schema_name.upper(),
-            table_name.upper(),
-            self._connection_options,
-            OffloadMessages(detail=QUIET),
-            offload_by_subpartition=False,
-        )
-        try:
-            table_subpartitions = frontend_table.get_subpartitions()
-        except Exception as exc:
-            logger.error(f"Table subpartition type is not supported: {exc.__class__.__qualname__}{exc.args}")
+        snapshot = self._get_table_snapshot(schema_name, table_name)
+        if snapshot is None or not snapshot.subpartitioning_type:
             return []
-        else:
-            if table_subpartitions:
-                return [SubPartitionDetail.from_orm(table_subpartition) for table_subpartition in table_subpartitions]
-            return []
-        finally:
-            if hasattr(frontend_table, "close"):
-                frontend_table.close()
+        return [
+            SubPartitionDetail(
+                partition_name=sp.partition_name,
+                partition_position=sp.partition_position,
+                subpartition_name=sp.subpartition_name,
+                subpartition_position=sp.subpartition_position,
+                high_value=sp.high_value_csv,
+            )
+            for sp in snapshot.subpartitions
+        ]
 
     def get_command_step_codes(self) -> list[str]:
         """Return sorted command step codes from ``COMMAND_STEP``."""
@@ -502,6 +473,17 @@ class OracleRepositoryService:
             self._registry = OracleDatabaseRegistry.for_options(self._connection_options)
         return self._registry
 
+    def _get_table_snapshot(self, schema_name: str, table_name: str) -> OracleTableSnapshot | None:
+        """Fetch a cached or fresh ``OracleTableSnapshot`` through the pooled ADM session."""
+        assert schema_name and table_name
+        dsn = self._adm_registry.settings.dsn or "default"
+
+        def _query() -> OracleTableSnapshot | None:
+            with self._adm_registry.adm_session(action=self._trace_action) as driver:
+                return self._catalog_cache.get_table_snapshot(dsn, schema_name, table_name, driver)
+
+        return run_with_session_retry(_query)
+
     @property
     def _statements(self) -> NamedStatements:
         """Return lazily validated ``NamedStatements`` for ``oracle_repo.sql``."""
@@ -543,12 +525,25 @@ class OracleRepositoryService:
                 self._id_udt_cache[key] = connection.gettype(qualified)
             return self._id_udt_cache[key]
 
+    @staticmethod
+    def _set_ora_object_attr(connection: Any, obj: Any, attr_name: str, attr_val: Any) -> None:
+        """Assign an attribute on an Oracle ``DbObject``, wrapping ``str`` as a temporary ``CLOB`` when required."""
+        try:
+            setattr(obj, attr_name, attr_val)
+        except Exception:
+            if isinstance(attr_val, str) and hasattr(connection, "createlob"):
+                db_type_clob = getattr(sys.modules.get("oracledb"), "DB_TYPE_CLOB", None)
+                if db_type_clob is not None:
+                    setattr(obj, attr_name, connection.createlob(db_type_clob, attr_val))
+                    return
+            raise
+
     def _build_metadata_ora_object(self, connection: Any, metadata: OffloadMetadata) -> Any:
         """Construct and populate an ``OFFLOAD_METADATA_OT`` instance from ``metadata``."""
         ora_type = self._get_ora_type(connection, OFFLOAD_METADATA_ORA_TYPE_NAME)
         obj = ora_type.newobject()
         for attr_name, attr_val in metadata.to_repo_binds().items():
-            setattr(obj, attr_name, attr_val)
+            self._set_ora_object_attr(connection, obj, attr_name, attr_val)
         return obj
 
     def _build_partitions_ora_object(
@@ -572,7 +567,7 @@ class OracleRepositoryService:
             part_obj.PARTITION_NAME = partition.partition_name
             part_obj.PARTITION_LEVEL = offload_partition_level
             part_obj.PARTITION_BYTES = partition.size_in_bytes
-            part_obj.PARTITION_BOUNDARY = partition.partition_literal
+            self._set_ora_object_attr(connection, part_obj, "PARTITION_BOUNDARY", partition.partition_literal)
             partitions_ntt.append(part_obj)
         return partitions_ntt
 

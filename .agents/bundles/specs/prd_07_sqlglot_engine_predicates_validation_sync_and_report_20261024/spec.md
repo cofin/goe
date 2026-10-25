@@ -28,8 +28,8 @@ child_flows:
   - concurrent_cross_db_validation_20261024
   - schema_sync_and_status_report_redesign_20261024
 research:
-  - .agents/bundles/specs/prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
-  - .agents/bundles/specs/prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/module-by-module-redesign.md
+  - .agents/bundles/specs/prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
+  - .agents/bundles/specs/prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/research/module-by-module-redesign.md
 ---
 
 # Master PRD 7: Native SQLGlot Dialect Engine, PredicateIR, Concurrent Validation, Schema Sync, and Status Report
@@ -38,7 +38,7 @@ research:
 
 ### 1. North Star
 
-All SQL GOE generates is built as `sqlglot==30.24.0` ASTs behind the `src/goe/offload/sql_engine.py` protocol seam (which itself imports no `sqlglot` symbol), predicates keep exact numeric and temporal precision, validation compares exact values concurrently, and schema sync and the status report run on set-based queries ([research](../prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/sqlspec-sqlglot-and-caching-architecture.md)):
+All SQL GOE generates is built as `sqlglot==30.24.0` ASTs behind the `src/goe/offload/sql_engine.py` protocol seam (which itself imports no `sqlglot` symbol), predicates keep exact numeric and temporal precision, validation compares exact values concurrently, and schema sync and the status report run on set-based queries ([research](../prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/research/sqlspec-sqlglot-and-caching-architecture.md)):
 
 1. **Native dialect engine**: delete `register_oracle_dialect_extensions()` and the private `sqlspec.builder._generation` import in `src/goe/offload/oracle/oracle_dialect.py`; `sqlglot==30.24.0` parses and generates Oracle `PARTITION (...)`, `SUBPARTITION (...)`, and `AS OF SCN :scn` with post-version aliases natively. `src/goe/offload/sql_ast/dialect_engine.py` (`DialectSqlEngine`) consolidates `OracleSqlEngine` and `BigQuerySqlEngine` for `oracle`, `bigquery`, `snowflake`, `tsql`, and `hive`/`spark`.
 2. **`PredicateIR`**: an `@lru_cache` Lark parse produces an immutable `msgspec` tagged union (`DecimalVal` stored as a string, nanosecond `TimestampVal`, and boolean/comparison/membership/null-check nodes) compiled by one dialect-profile `sqlglot` compiler (`copy=False`) in bind mode (placeholders and typed parameters returned as `sqlspec.core.SQL`) or literal mode (DDL, views, logs), cached in `sqlspec.core.NamespacedCache`. The 8 `*_literal.py` and 6 `*_predicate.py` classes are deleted. The persisted predicate DSL and `incremental_predicate_value` metadata format stay compatible.

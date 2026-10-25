@@ -80,7 +80,10 @@ snowflake = [
 ]
 sql_server = [
     # For SQL Server frontend
-    "pymssql",
+    "mssql-python",
+]
+mssql = [
+    "mssql-python",
 ]
 synapse = [
     "pyodbc",
@@ -100,7 +103,7 @@ all = [
     "requests-kerberos",
     "thrift-sasl",
     "snowflake-connector-python",
-    "pymssql",
+    "mssql-python",
     "pyodbc",
     "sqlspec[performance,oracledb,adbc,duckdb]>=0.68.0",
 ]
