@@ -204,7 +204,7 @@ def test_idle_lease_is_pinged_and_renewed(api) -> None:
     api._connect()
     first_conn = pool.acquired[0]
     first_conn.ping.side_effect = oracledb.DatabaseError("ORA-02396: exceeded maximum idle time")
-    api._last_used = 0.0
+    api._last_used = -1000.0
     assert api.get_current_scn() == 999
     assert pool.dropped == [first_conn]
     assert len(pool.acquired) == 2

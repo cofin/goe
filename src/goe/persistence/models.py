@@ -216,7 +216,7 @@ class OffloadMetadata(FrozenBaseStruct, frozen=True, kw_only=True):
         )
 
     @classmethod
-    def from_legacy_dict(cls, metadata_dict: dict[str, Any] | "OffloadMetadata") -> "OffloadMetadata":
+    def from_legacy_dict(cls, metadata_dict: "dict[str, Any] | OffloadMetadata") -> "OffloadMetadata":
         """Construct ``OffloadMetadata`` from a legacy upper-case metadata dictionary or existing instance."""
         if isinstance(metadata_dict, OffloadMetadata):
             return metadata_dict
