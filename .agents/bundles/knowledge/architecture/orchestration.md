@@ -25,12 +25,17 @@ The orchestration engine coordinates data offloading, schema synchronization, an
 - **Execution**: Instantiates `OffloadSourceTable` and `BackendTable` before invoking `offload_table()`.
 - **Finalization & Error Handling**: Records final status (`COMMAND_SUCCESS` or `COMMAND_ERROR`), records `goe.commands.total` and `goe.commands.duration` metrics, emits step summary timings, and releases locks and connections.
 
-### 2. Execution Locking (`src/goe/orchestration/orchestration_lock.py`)
-- **`FileLockOrchestrationLock`**: Uses `filelock.FileLock` to acquire `$OFFLOAD_HOME/run/orchestration_<owner>_<table_name>.lock`.
+### 2. Execution Locking & Process Worker Primitives (`src/goe/platform/locking.py`, `src/goe/platform/worker.py`)
+- **`FileOrchestrationLock` (`src/goe/platform/locking.py`)**: Uses `filelock.FileLock` to acquire `$OFFLOAD_HOME/run/orchestration_<owner>_<table_name>.lock` via `orchestration_lock_for_table()` and `orchestration_lock_from_hybrid_metadata()`.
 - **Fail-Fast Semantics**: Zero-second timeout ensures that if another process is operating on the same table, `OrchestrationLockTimeout` is thrown immediately to prevent concurrent metadata corruption or conflicting data staging.
+- **`LocalProcessWorker`, `LameDuckController`, and `CgroupQuota` (`src/goe/platform/worker.py`)**: Provide cgroup v2 CPU/memory quota reading (`cpu.max`, `memory.max`), graceful lame-duck drain signaling (`SIGTERM` / `SIGINT` with in-flight task tracking), and subprocess execution management.
 
-### 3. Execution Identity & OpenTelemetry Context Bridge (`src/goe/orchestration/execution_id.py`, `src/goe/observability/context.py`)
-- **`ExecutionId`**: Dataclass wrapping Python `uuid.UUID`.
+### 3. Declarative Adapter Registry (`src/goe/offload/registry.py`)
+- **`AdapterRegistry` & `ADAPTER_REGISTRY`**: Consolidates all 9 adapter domains (`FRONTEND_API`, `BACKEND_API`, `BACKEND_TABLE`, `SOURCE_TABLE`, `REPOSITORY_CLIENT`, `TRANSPORT`, `TRANSPORT_RDBMS_API`, `STAGING_FILE`, `QUERY_IMPORT_ENCODER`) into a single declarative registry of `AdapterEntry(kind, key, LazyTarget(module, attribute, extra))` structs, replacing the retired `src/goe/offload/factory/*` and `src/goe/persistence/factory/*` modules.
+- **Lazy Resolution**: `ADAPTER_REGISTRY.resolve(kind, key)` imports target modules on demand via `ensure_module(target.module, extra=target.extra)` (`src/goe/util/module_loader.py`), while `resolve_dry_run(kind, key)` inspects registered targets without importing third-party driver packages.
+
+### 4. Execution Identity & OpenTelemetry Context Bridge (`src/goe/orchestration/execution_id.py`, `src/goe/observability/context.py`)
+- **`ExecutionId`**: `FrozenBaseStruct` wrapping Python `uuid.UUID`.
 - Supports bi-directional conversion:
   - String format: `36` characters with hyphens (e.g. `1bf72363-03f8-4985-8ed1-728486b4b187`).
   - Binary format: 16-byte raw binary (`RAW(16)`) for compact storage in Oracle repository tables.

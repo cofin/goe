@@ -16,9 +16,10 @@ tags:
 - Development packages & lockfile: Managed via `uv` with `pyproject.toml` (`[dependency-groups]`) and `uv.lock`.
 - Unit testing: `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false && uv run pytest tests/unit` (or `make test-unit`).
 - Integration testing: `export GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOE_TEST_USER_PASS=... && uv run pytest tests/integration -n 4` (or `make test-integration`).
-- Code formatting & linting: `make format` (`uv run ruff format` and `uv run ruff check --fix`) and `make lint` (`uv run ruff check` and `uv run mypy src/goe`).
+- Code formatting & linting: `make format` (`uv run ruff format` and `uv run ruff check --fix`) and `make lint` (`uv run ruff check .`, `uv run mypy src/goe`, and `uv run python tools/verify_architecture.py`).
+- Base CI environment simulation: `.github/workflows/test.yaml` runs `uv sync --dev --locked` (without `--all-extras`); verify unit tests in an isolated base CI environment via `UV_PROJECT_ENVIRONMENT=/tmp/ci-venv uv sync --python .venv/bin/python --dev --locked --offline && UV_PROJECT_ENVIRONMENT=/tmp/ci-venv GOOGLE_API_USE_CLIENT_CERTIFICATE=false uv run --no-sync pytest tests/unit -q`.
 - Packaging & release build: `make build` (produces wheel and sdist in `dist/`), `make target` (compiles runtime tree in `target/offload`), and `make package` (produces `goe_<version>.tar.gz`).
-- Pre-flight environment check: `goe connect` (checks configuration, frontend DB, backend DW, and transport connectivity).
+- Pre-flight environment check: `goe connect` (or `goe connect --json`; checks configuration, frontend DB, backend DW, and transport connectivity via `ConnectRunner`).
 - Offload CLI: `goe offload -t <owner.table> -x` (executes offload with execution lock and audit trail).
 - Task files under `.agents/bundles/specs/<flow_id>/tasks/` are authoritative; `spec.md` is the synchronized checklist and continuity view.
 - Consumer operational skills install only under `.agents/skills/`. Product, knowledge, research, and specs remain under `.agents/bundles/`.

@@ -29,7 +29,7 @@ child_flows:
   - schema_sync_and_status_report_redesign_20261024
 research:
   - .agents/bundles/specs/prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
-  - .agents/bundles/specs/prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/module-by-module-redesign.md
+  - .agents/bundles/specs/prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/module-by-module-redesign.md
 ---
 
 # Master PRD 7: Native SQLGlot Dialect Engine, PredicateIR, Concurrent Validation, Schema Sync, and Status Report

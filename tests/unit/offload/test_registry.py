@@ -31,6 +31,7 @@ from goe.typing import FrozenBaseStruct
 from goe.util.module_loader import MissingOptionalDependencyError
 
 _EXTRA_PROBE_MODULES = {
+    "hadoop": "impala",
     "snowflake": "snowflake.connector",
     "synapse": "pyodbc",
     "sql_server": "pymssql",

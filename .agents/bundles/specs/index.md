@@ -14,14 +14,8 @@ This directory contains specifications and task worksheets for active and planne
 
 ## Active & Planned Flows
 
-The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/goe-architecture-redesign.md)):
+The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/goe-architecture-redesign.md)):
 
-- **[Master PRD 5: Adapter Reduction, Core Typing, Declarative Settings, Utility Dissolution, and Connect Runner](prd_05_foundation_typing_settings_and_adapter_reduction_20261024/spec.md)** (`completed`):
-  - Chapter 5.1: Adapter Reduction and `AdapterRegistry` ([`adapter_reduction_and_adapter_registry_20261024`](adapter_reduction_and_adapter_registry_20261024/spec.md))
-  - Chapter 5.2: Core Typing, Serializers, Platform Utilities, and Architecture Gate ([`core_typing_serializers_platform_and_architecture_gate_20261024`](core_typing_serializers_platform_and_architecture_gate_20261024/spec.md))
-  - Chapter 5.3: Declarative Settings, Option Registry, and Error Model ([`declarative_settings_options_and_error_model_20261024`](declarative_settings_options_and_error_model_20261024/spec.md))
-  - Chapter 5.4: Utility Dissolution, Dependency Slimming, and Lint Hygiene ([`util_dissolution_dependency_and_lint_hygiene_20261024`](util_dissolution_dependency_and_lint_hygiene_20261024/spec.md))
-  - Chapter 5.5: Connect Runner and Connectivity Report ([`connect_runner_and_connectivity_report_20261024`](connect_runner_and_connectivity_report_20261024/spec.md))
 - **[Master PRD 6: Pooled SQLSpec Oracle Data Layer, Repository Service, Catalog Cache, and MSSQL Frontend](prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/spec.md)** (`planned`):
   - Chapter 6.1: `OracleDatabaseRegistry` and Session Tracing ([`oracle_database_registry_and_session_tracing_20261024`](oracle_database_registry_and_session_tracing_20261024/spec.md))
   - Chapter 6.2: `OffloadMetadata` and Repository Service ([`offload_metadata_and_repository_service_20261024`](offload_metadata_and_repository_service_20261024/spec.md))
@@ -52,6 +46,14 @@ The GOE architecture redesign is planned as six sequenced Master PRDs (research:
 ## Archived Flows & Roadmaps
 
 All previous flows have completed full verification and code review gates and have been synthesized into `.agents/bundles/knowledge/`:
+
+- **Master PRD 5: Adapter Reduction, Core Typing, Declarative Settings, Utility Dissolution, and Connect Runner (`prd_05_foundation_typing_settings_and_adapter_reduction_20261024`, 21 tasks, PR #11)**:
+  - Chapter 5.1: Adapter Reduction and `AdapterRegistry` (`adapter_reduction_and_adapter_registry_20261024`, 7 tasks)
+  - Chapter 5.2: Core Typing, Serializers, Platform Utilities, and Architecture Gate (`core_typing_serializers_platform_and_architecture_gate_20261024`, 4 tasks)
+  - Chapter 5.3: Declarative Settings, Option Registry, and Error Model (`declarative_settings_options_and_error_model_20261024`, 4 tasks)
+  - Chapter 5.4: Utility Dissolution, Dependency Slimming, and Lint Hygiene (`util_dissolution_dependency_and_lint_hygiene_20261024`, 3 tasks)
+  - Chapter 5.5: Connect Runner and Connectivity Report (`connect_runner_and_connectivity_report_20261024`, 3 tasks)
+  - *Synthesized into*: [Serialization & Utils](../knowledge/patterns/serialization-and-utils.md), [CLI Architecture](../knowledge/patterns/cli-architecture.md), [Orchestration Core](../knowledge/architecture/orchestration.md), [CLI Tools](../knowledge/operations/cli-tools.md), [Configuration & Environment Variables](../knowledge/operations/configuration-and-env.md), [Python Standards](../knowledge/standards/python.md), [Development Workflow](../knowledge/workflow.md).
 
 - **Master PRD 4: End-to-End OpenTelemetry Observability, Step Spans, Metrics & Log Correlation (`prd_04_end_to_end_opentelemetry_observability_20261010`, 15 tasks)**:
   - Chapter 4.1: OpenTelemetry Foundation, Config & `ExecutionId` Context Bridge (`opentelemetry_foundation_and_context_propagation_20261010`, 6 tasks)

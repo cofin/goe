@@ -28,7 +28,7 @@ child_flows:
   - mssql_frontend_on_mssql_python_20261024
 research:
   - .agents/bundles/specs/prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
-  - .agents/bundles/specs/prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/module-by-module-redesign.md
+  - .agents/bundles/specs/prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/module-by-module-redesign.md
 ---
 
 # Master PRD 6: Pooled SQLSpec Oracle Data Layer, Repository Service, Catalog Cache, and MSSQL Frontend

@@ -11,8 +11,7 @@ from os.path import basename
 from os.path import exists as file_exists
 from typing import Any
 
-from azure.common import AzureMissingResourceHttpError
-from azure.core.exceptions import HttpResponseError
+from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
 from azure.storage.blob import BlobServiceClient
 from google.api_core import retry
 
@@ -169,10 +168,9 @@ class GOEAzure(GOEDfs):
             try:
                 container_client = self._client.get_container_client(container)
                 container_client.delete_blob(path)
-            except AzureMissingResourceHttpError:
+            except ResourceNotFoundError:
                 self.debug(
-                    "delete_blob(%s, %s) returned 404 (AzureMissingResourceHttpError), accepting as deleted"
-                    % (container, path)
+                    "delete_blob(%s, %s) returned 404 (ResourceNotFoundError), accepting as deleted" % (container, path)
                 )
 
         assert dfs_path

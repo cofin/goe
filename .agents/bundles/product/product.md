@@ -12,11 +12,11 @@ tags:
 # Product Definition
 
 <!-- truth: start -->
-- GOE (Gluent Offload Engine) orchestrates high-throughput, consistent data offloading from RDBMS (Oracle, SQL Server, Teradata) to cloud data warehouses (Google BigQuery, Snowflake, Azure Synapse) and Hadoop engines.
+- GOE (Gluent Offload Engine) orchestrates high-throughput, consistent data offloading from RDBMS (Oracle, SQL Server) to cloud data warehouses (Google BigQuery, Snowflake, Azure Synapse) and Hadoop engines.
 - Provides non-invasive data movement preserving RDBMS transactional snapshot consistency (via SCN / Flashback) without requiring source table downtime.
 - Supports Full Table Offload, Partition-Based Incremental Offload (Range, List, List-as-Range), and Predicate-Based Offload.
-- Employs a 3-tier canonical column typing abstraction and pluggable Protocol-based SQL dialect engines (`src/goe/offload/sql_engine.py`) to ensure lossless type conversion and SQL generation across disparate dialects.
-- Includes a REST Listener and MCP service (Litestar, Granian, `litestar-queues`, in-process `MemoryCache`) and opt-in end-to-end OpenTelemetry observability (`src/goe/observability/`).
+- Employs a declarative `AdapterRegistry` (`src/goe/offload/registry.py`), a 3-tier canonical column typing abstraction, and pluggable Protocol-based SQL dialect engines (`src/goe/offload/sql_engine.py`) to ensure lossless type conversion and SQL generation across disparate dialects.
+- Includes a concurrent pre-flight connectivity runner (`ConnectRunner` in `src/goe/connect/runner.py`), a REST Listener and MCP service (Litestar, Granian, `litestar-queues`, in-process `MemoryCache`), and opt-in end-to-end OpenTelemetry observability (`src/goe/observability/`).
 <!-- truth: end -->
 
 ## Core Capabilities

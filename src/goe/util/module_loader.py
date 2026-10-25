@@ -21,12 +21,19 @@ __all__ = [
 ]
 
 
-class MissingOptionalDependencyError(OffloadException, ImportError):
+class MissingOptionalDependencyError(OffloadException, ModuleNotFoundError):
     """Raised when an optional dependency module cannot be imported."""
 
-    def __init__(self, module_name: str, *, extra: str | None = None) -> None:
+    def __init__(
+        self,
+        module_name: str,
+        *,
+        extra: str | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
         hint = f" (install extra '{extra}' via 'uv sync --extra {extra}')" if extra else ""
-        super().__init__(f"Optional dependency '{module_name}' is not installed{hint}")
+        cause_detail = f" ({cause})" if cause is not None and str(cause) and module_name not in str(cause) else ""
+        super().__init__(f"Optional dependency '{module_name}' is not installed{cause_detail}{hint}")
         self.module_name = module_name
         self.extra = extra
 
@@ -55,7 +62,7 @@ def ensure_module(module_name: str, *, extra: str | None = None) -> ModuleType:
     try:
         return importlib.import_module(module_name)
     except ImportError as exc:
-        raise MissingOptionalDependencyError(module_name, extra=extra) from exc
+        raise MissingOptionalDependencyError(module_name, extra=extra, cause=exc) from exc
 
 
 def lazy_exports(
