@@ -9,9 +9,7 @@ from goe.offload.offload_messages import VERBOSE
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
     from tests.testlib.test_framework.backend_testing_api import (
         BackendTestingApiInterface,
     )
@@ -70,7 +68,7 @@ def drop_backend_test_load_table(
     drop_backend_test_table(config, backend_api, test_messages, db, table_name)
 
 
-def drop_offload_metadata(repo_client: "OrchestrationRepoClientInterface", schema: str, table_name: str):
+def drop_offload_metadata(repo_client: "OracleRepositoryService", schema: str, table_name: str):
     """Simple wrapper over drop_offload_metadata() in case we need to catch exceptions in the future."""
     repo_client.drop_offload_metadata(schema, table_name)
 

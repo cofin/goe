@@ -21,7 +21,7 @@ from goe.offload.offload_source_data import (
 )
 from goe.offload.predicate_offload import GenericPredicate
 from goe.offload.registry import create_repository_client
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE_AND_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,

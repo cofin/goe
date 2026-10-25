@@ -14,8 +14,6 @@ from socket import getfqdn, gethostname
 from subprocess import PIPE, STDOUT
 from typing import TYPE_CHECKING, Any, Optional
 
-import oracledb as cxo
-
 from goe.observability.transport import (
     finalize_chunk,
     finalize_transport,
@@ -24,7 +22,6 @@ from goe.observability.transport import (
     traced_os_cmd,
     traced_transport,
 )
-from goe.offload.frontend_api import FRONTEND_TRACE_MODULE
 from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_AVRO,
     HADOOP_BASED_BACKEND_DISTRIBUTIONS,
@@ -48,9 +45,7 @@ if TYPE_CHECKING:
     from goe.offload.offload_transport import OffloadTransport
     from goe.offload.predicate_offload import GenericPredicate
     from goe.orchestration.execution_id import ExecutionId
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 
 class OffloadTransportException(Exception):
@@ -122,23 +117,6 @@ def scp_to_cmd(user: Any, host: Any, from_path: Any, to_path: Any) -> list:
             to_path = os.path.join(os.environ.get("HOME", ""), to_path)
         return ["scp", from_path, to_path]
     return ["scp", from_path, "%s@%s:%s" % (user, host, to_path)]
-
-
-def get_rdbms_connection_for_oracle(ora_user, ora_pass, ora_dsn, use_oracle_wallet=False, ora_trace_id="GOE"):
-    """Ping updates the module/action in the session."""
-    if use_oracle_wallet:
-        ora_conn = cxo.connect(dsn=ora_dsn)
-    else:
-        ora_conn = cxo.connect(user=ora_user, password=ora_pass, dsn=ora_dsn)
-    session_cursor = ora_conn.cursor()
-    try:
-        session_cursor.execute('ALTER SESSION SET TRACEFILE_IDENTIFIER="%s"' % ora_trace_id)
-    finally:
-        session_cursor.close()
-    ora_conn.module = FRONTEND_TRACE_MODULE
-    ora_conn.action = "OffloadTransport"
-    ora_conn.ping()
-    return ora_conn
 
 
 def credential_provider_path_jvm_override(credential_provider_path: Any) -> str:
@@ -284,7 +262,7 @@ def transport_and_load_offload_chunk(
     offload_source_table: "OffloadSourceTableInterface",
     offload_target_table: "BackendTableInterface",
     execution_id: "ExecutionId",
-    repo_client: "OrchestrationRepoClientInterface",
+    repo_client: "OracleRepositoryService",
     messages: "OffloadMessages",
     partition_chunk: Optional["OffloadSourcePartitions"] = None,
     chunk_count: int = 0,

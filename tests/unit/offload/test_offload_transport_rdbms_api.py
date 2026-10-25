@@ -3,6 +3,10 @@
 
 """TestOffloadTransportRdbmsApi: Unit tests for each Offload Transport RDBMS API."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from unittest.mock import MagicMock
+
 import pytest
 
 from goe.offload.offload_messages import OffloadMessages
@@ -15,6 +19,7 @@ from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
 )
+from goe.offload.oracle.oracle_offload_transport_rdbms_api import LOG_SQL_STATS_QUERY_TEXT
 from goe.offload.registry import create_transport_rdbms_api
 from tests.unit.test_functions import (
     FAKE_MSSQL_ENV,
@@ -297,3 +302,85 @@ def test_get_transport_split_type_oracle_subpartitioned(
     assert isinstance(split_return, tuple)
     assert split_return[0] == expected_split_type
     assert split_return[1] == expected_parallelism
+
+
+class FakeRegistry:
+    """In-memory stand-in for OracleDatabaseRegistry in transport API tests."""
+
+    def __init__(self, version: str = "19.3.0.0.0") -> None:
+        self.version = version
+        self.sessions: list[tuple[str, str, bool]] = []
+        self.connection = MagicMock()
+        self.connection.cursor.return_value.execute.return_value.fetchone.return_value = (1, 99)
+        self.connection.cursor.return_value.execute.return_value.fetchall.return_value = [("sqlid", 0, 10, 1, 0, 1)]
+
+    def server_version(self) -> str:
+        """Return the configured Oracle server version."""
+        return self.version
+
+    @contextmanager
+    def app_transport_session(self, module: str, action: str, *, isolate_session: bool = False) -> Iterator[MagicMock]:
+        """Record the transport session request and yield the mock connection."""
+        self.sessions.append((module, action, isolate_session))
+        yield self.connection
+
+
+def test_oracle_id_range_uses_transport_session(oracle_config, messages) -> None:
+    """get_id_range checks out an app_transport_session and closes its cursor."""
+    api = create_transport_rdbms_api("SH_TEST", "SALES", oracle_config, messages, dry_run=True)
+    registry = FakeRegistry()
+    api._registry = registry
+    assert api.get_id_range("ID", "") == (1, 99)
+    assert registry.sessions == [("GOE", "OffloadTransport", False)]
+    registry.connection.cursor.return_value.close.assert_called_once_with()
+
+
+def test_oracle_sql_stats_function_keeps_transport_module_and_action(oracle_config, messages) -> None:
+    """get_offload_transport_sql_stats_function checks out a session per call and binds module/action."""
+    api = create_transport_rdbms_api("SH_TEST", "SALES", oracle_config, messages, dry_run=True)
+    registry = FakeRegistry()
+    api._registry = registry
+    fn = api.get_offload_transport_sql_stats_function("GOE", "A1B2_sales", "OffloadTransportSqlStatsThread")
+    assert fn() == [("sqlid", 0, 10, 1, 0, 1)]
+    assert registry.sessions == [("GOE", "OffloadTransportSqlStatsThread", False)]
+    registry.connection.cursor.return_value.execute.assert_called_with(
+        LOG_SQL_STATS_QUERY_TEXT, {"module": "GOE", "action": "A1B2_sales"}
+    )
+    fn()
+    assert len(registry.sessions) == 2
+
+
+def test_oracle_query_import_isolates_session(oracle_config, messages) -> None:
+    """query_import_extraction uses isolate_session=True and runs session setup before the source query."""
+    api = create_transport_rdbms_api("SH_TEST", "SALES", oracle_config, messages, dry_run=False)
+    registry = FakeRegistry()
+    api._registry = registry
+    with api.query_import_extraction(
+        [],
+        "SELECT 1 FROM dual",
+        None,
+        100,
+        False,
+        ["ALTER SESSION SET TIME_ZONE='UTC'"],
+    ) as cursor:
+        assert registry.sessions == [("GOE", "OffloadTransport", True)]
+        assert cursor.arraysize == 100
+        executed = [call.args[0] for call in cursor.execute.call_args_list]
+        assert executed == ["ALTER SESSION SET TIME_ZONE='UTC'", "SELECT 1 FROM dual"]
+
+
+def test_fixed_goe_parameters_use_cached_server_version(oracle_config, messages) -> None:
+    """_get_fixed_goe_parameters reads server_version() without opening a transport session."""
+    api_12_1 = create_transport_rdbms_api("SH_TEST", "SALES", oracle_config, messages, dry_run=True)
+    reg_12_1 = FakeRegistry(version="12.1.0.2.0")
+    api_12_1._registry = reg_12_1
+    api_12_1._fixed_goe_parameters = None
+    assert api_12_1._get_fixed_goe_parameters() == {"CELL_OFFLOAD_PROCESSING": "FALSE"}
+    assert reg_12_1.sessions == []
+
+    api_19 = create_transport_rdbms_api("SH_TEST", "SALES", oracle_config, messages, dry_run=True)
+    reg_19 = FakeRegistry(version="19.3.0.0.0")
+    api_19._registry = reg_19
+    api_19._fixed_goe_parameters = None
+    assert api_19._get_fixed_goe_parameters() == {}
+    assert reg_19.sessions == []

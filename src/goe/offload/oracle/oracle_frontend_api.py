@@ -1,5 +1,3 @@
-#! /usr/bin/env python3
-
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,23 +6,25 @@ Implements abstract methods from FrontendApiInterface.
 """
 
 import logging
+import time
 import traceback
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, cast
+from typing import Any, Final, cast
 
+import msgspec
 import oracledb as cxo
 from numpy import datetime64
+from sqlspec.core.sqlcommenter import SQLCommenterContext
 
-from goe.observability.db import apply_oracle_session_trace_info
 from goe.offload import offload_constants
 from goe.offload.column_metadata import match_table_column
 from goe.offload.frontend_api import (
     FETCH_ACTION_ALL,
     FETCH_ACTION_CURSOR,
     FETCH_ACTION_ONE,
-    FRONTEND_TRACE_ID,
     FRONTEND_TRACE_MODULE,
     FrontendApiException,
     FrontendApiInterface,
@@ -37,7 +37,9 @@ from goe.offload.oracle.oracle_column import (
     OracleColumn,
 )
 from goe.offload.oracle.oracle_literal import OracleLiteral
-from goe.persistence.oracle_gateway import OracleGateway, load_sql_file
+from goe.persistence.registry import OracleDatabaseRegistry, OracleRole
+from goe.persistence.retry import run_with_session_retry
+from goe.persistence.statements import NamedStatements
 from goe.util import GOEVersion
 from goe.util.string_utils import double_quote_sandwich, format_list_for_logging
 
@@ -52,17 +54,7 @@ ORACLE_VERSION_WITH_128_BYTE_IDENTIFIERS = "12.2.0"
 CREATE_TABLE_ORACLE_PARTITION_SPEC = "partition_spec"
 
 FRONTEND_METADATA_SQL_PATH = Path(__file__).resolve().parent / "sql" / "frontend_metadata.sql"
-
-RECONNECT_ERROR_MARKERS = (
-    "ORA-02396",
-    "ORA-2396",
-    "ORA-03113",
-    "ORA-3113",
-    "ORA-03114",
-    "ORA-3114",
-    "ORA-03135",
-    "ORA-3135",
-)
+LEASE_IDLE_PING_SECONDS: Final = 60.0
 
 
 def switch_oracle_open_partition_token(frontend_token):
@@ -110,11 +102,12 @@ class OracleFrontendApi(FrontendApiInterface):
 
         self._trace_action = self.v_session_safe_action(self._trace_action)
 
-        self._db_conn = None
-        self._db_curs = None
-        self._metadata_gateway = OracleGateway(
-            self.get_validated_oracle_connection, load_sql_file(FRONTEND_METADATA_SQL_PATH)
-        )
+        self._db_conn: Any = None
+        self._db_curs: Any = None
+        self._lease_role: OracleRole | None = None
+        self._last_used = 0.0
+        self._registry = None if do_not_connect else OracleDatabaseRegistry.for_options(connection_options)
+        self._metadata_statements = NamedStatements(FRONTEND_METADATA_SQL_PATH)
         if not do_not_connect:
             self._connect()
 
@@ -140,14 +133,13 @@ class OracleFrontendApi(FrontendApiInterface):
     def agg_validate_sample_column_names(self, schema: Any, table_name: Any, num_required: int = 5) -> list:
         params = {"owner": schema, "table_name": table_name, "required_no": num_required}
         self._log_or_not(
-            "%s SQL: %s"
-            % (self._sql_engine_name, self._metadata_gateway.statement_text("agg_validate_sample_column_names")),
+            "%s SQL: %s" % (self._sql_engine_name, self._metadata_statements.text("agg_validate_sample_column_names")),
             log_level=VVERBOSE,
         )
         self._log_or_not(
             "Bind values:\n%s" % "\n".join("%s = %s" % (k, v) for k, v in params.items()), log_level=VVERBOSE
         )
-        rows = self._metadata_gateway.select_tuples("agg_validate_sample_column_names", params)
+        rows = self._select_tuples("agg_validate_sample_column_names", params)
         return [_[0] for _ in rows or []]
 
     def create_new_connection(self, user_name, user_password, trace_action_override=None):
@@ -215,16 +207,16 @@ class OracleFrontendApi(FrontendApiInterface):
         return ORACLE_TYPE_VARCHAR2
 
     def get_columns(self, schema, table_name):
-        rows = self._metadata_gateway.select_tuples("get_columns", {"owner": schema, "table_name": table_name})
+        rows = self._select_tuples("get_columns", {"owner": schema, "table_name": table_name})
         return [OracleColumn.from_oracle(row) for row in rows or []]
 
     def get_current_scn(self) -> int | None:
         """Return the current system change number for the source RDBMS."""
-        rows = self._metadata_gateway.select_tuples("get_current_scn")
+        rows = self._select_tuples("get_current_scn")
         return rows[0][0] if rows else None
 
     def get_db_unique_name(self) -> str:
-        rows = self._metadata_gateway.select_tuples("get_db_unique_name")
+        rows = self._select_tuples("get_db_unique_name")
         return cast(str, rows[0][0] if rows else None)
 
     def get_distinct_column_values(self, schema, table_name, column_names, partition_name=None, order_results=False):
@@ -233,7 +225,7 @@ class OracleFrontendApi(FrontendApiInterface):
         if isinstance(column_names, str):
             column_names = [column_names]
         projection = ",".join([self.enclose_identifier(_) for _ in column_names])
-        partition_clause = f" PARTITION ({partition_name})" if partition_name else ""
+        partition_clause = f" PARTITION ({self.enclose_identifier(partition_name)})" if partition_name else ""
         order_clause = f" ORDER BY {projection}" if order_results else ""
         sql = "SELECT DISTINCT %(col)s FROM %(own)s.%(tab)s%(part_clause)s%(order_clause)s" % {
             "col": projection,
@@ -267,16 +259,6 @@ class OracleFrontendApi(FrontendApiInterface):
         """Return an Oracle connection object. Oracle specific method not provided by other frontends."""
         return self._db_conn
 
-    def get_validated_oracle_connection(self) -> "cxo.Connection | None":
-        """Return the live connection after ``_open_cursor`` tagging and reconnect checks, or ``None`` if unconnected.
-
-        Oracle-specific method used as the ``OracleGateway`` connection provider so gateway queries keep the same
-        ``TRACEFILE_IDENTIFIER`` tagging and sniped-session reconnect as ``execute_query_fetch_*``.
-        """
-        self._open_cursor()
-        self._close_cursor()
-        return self._db_conn
-
     def get_partition_column_names(self, schema, table_name, conv_fn=None):
         names = self._get_partition_column_names(schema, table_name)
         return [conv_fn(_) for _ in names or []] if conv_fn else names
@@ -289,9 +271,7 @@ class OracleFrontendApi(FrontendApiInterface):
         return part_cols
 
     def get_primary_key_column_names(self, schema, table_name):
-        rows = self._metadata_gateway.select_tuples(
-            "get_primary_key_column_names", {"owner": schema, "table_name": table_name}
-        )
+        rows = self._select_tuples("get_primary_key_column_names", {"owner": schema, "table_name": table_name})
         return [_[0] for _ in rows] if rows else []
 
     def get_session_option(self, option_name):
@@ -303,7 +283,7 @@ class OracleFrontendApi(FrontendApiInterface):
         return self._execute_plsql_function("offload.get_init_param", return_type=str, arg_list=[option_name])
 
     def get_session_user(self) -> str:
-        rows = self._metadata_gateway.select_tuples("get_session_user")
+        rows = self._select_tuples("get_session_user")
         return cast(str, rows[0][0] if rows else None)
 
     def get_subpartition_column_names(self, schema, table_name, conv_fn=None):
@@ -318,9 +298,7 @@ class OracleFrontendApi(FrontendApiInterface):
         return part_cols
 
     def get_table_default_parallelism(self, schema, table_name):
-        rows = self._metadata_gateway.select_tuples(
-            "get_table_default_parallelism", {"owner": schema, "table_name": table_name}
-        )
+        rows = self._select_tuples("get_table_default_parallelism", {"owner": schema, "table_name": table_name})
         return rows[0][0] if rows else None
 
     def get_table_row_count(
@@ -354,7 +332,7 @@ class OracleFrontendApi(FrontendApiInterface):
         """
         logger.debug("get_table_size: %s, %s" % (schema, table_name))
         query_name = "get_iot_table_size" if self._is_iot(schema, table_name) else "get_table_size"
-        rows = self._metadata_gateway.select_tuples(query_name, {"owner": schema, "table_name": table_name})
+        rows = self._select_tuples(query_name, {"owner": schema, "table_name": table_name})
         return rows[0][0] if rows else None
 
     def is_view(self, schema: Any, object_name: Any) -> bool:
@@ -381,6 +359,13 @@ class OracleFrontendApi(FrontendApiInterface):
 
     def min_datetime_value(self):
         return datetime64("-4712-01-01")
+
+    def new_out_var(self, python_type: type) -> Any:
+        """Return an OUT bind variable of ``python_type`` allocated on the attached connection."""
+        connection = self._active_connection()
+        if connection is None:
+            raise FrontendApiException("No Oracle connection is available to allocate an OUT bind variable")
+        return connection.cursor().var(python_type)
 
     def oracle_get_column_low_high_dates(self, schema, table_name, column_name):
         """Expose a specific call to offload.get_column_low_high_dates() procedure.
@@ -425,6 +410,25 @@ class OracleFrontendApi(FrontendApiInterface):
             return "PARALLEL(%s)" % query_parallelism
         return ""
 
+    def select_statement[S: msgspec.Struct](
+        self,
+        statements: NamedStatements,
+        name: str,
+        params: Mapping[str, Any] | None = None,
+        *,
+        schema_type: type[S],
+        slots: Mapping[str, str] | None = None,
+    ) -> list[S] | None:
+        """Return rows of a named statement hydrated into ``schema_type`` on the attached connection.
+
+        Returns None when the API is not connected. Retries once after a lost session.
+        """
+        if self._db_conn is None or self._registry is None:
+            return None
+        return run_with_session_retry(
+            lambda: self._run_statement(statements, name, params, slots, schema_type), self._renew_connection
+        )
+
     def split_partition_high_value_string(self, hv_string):
         """Break up high value by comma while respecting parentheses in TO_DATE(...,...,...)
         TIMESTAMPs don't contain commas and are therefore not a special case.
@@ -436,10 +440,10 @@ class OracleFrontendApi(FrontendApiInterface):
         return tokens
 
     def schema_exists(self, schema: Any) -> bool:
-        return bool(self._metadata_gateway.select_tuples("schema_exists", {"schema": schema}))
+        return bool(self._select_tuples("schema_exists", {"schema": schema}))
 
     def table_exists(self, schema: Any, table_name: Any) -> bool:
-        return bool(self._metadata_gateway.select_tuples("table_exists", {"owner": schema, "table_name": table_name}))
+        return bool(self._select_tuples("table_exists", {"owner": schema, "table_name": table_name}))
 
     def to_frontend_literal(self, py_val: Any, data_type: Any = None) -> str:
         self._debug("Formatting %s literal: %s" % (type(py_val), repr(py_val)))
@@ -449,28 +453,16 @@ class OracleFrontendApi(FrontendApiInterface):
         return new_py_val
 
     def view_exists(self, schema: Any, view_name: Any) -> bool:
-        return bool(self._metadata_gateway.select_tuples("view_exists", {"owner": schema, "view_name": view_name}))
+        return bool(self._select_tuples("view_exists", {"owner": schema, "view_name": view_name}))
 
-    def _conn_user_and_pass_for_override(self):
-        """Return a user and password from connection_options object for the override user
-
-        Assume we want to proxy to a hybrid schema through the adm user
-        """
-        assert self._conn_user_override
-        if self._conn_user_override.upper() == self._upper_or_empty(self._connection_options.ora_adm_user):
-            return (
-                self._connection_options.ora_adm_user,
-                self._connection_options.ora_adm_pass,
-            )
-        if self._conn_user_override.upper() == self._upper_or_empty(self._connection_options.ora_app_user):
-            return (
-                self._connection_options.ora_app_user,
-                self._connection_options.ora_app_pass,
-            )
-        return (
-            "%s[%s]" % (self._connection_options.ora_adm_user, self._conn_user_override),
-            self._connection_options.ora_app_pass,
-        )
+    def _active_connection(self) -> Any:
+        """Return the attached connection, pinging a lease idle for LEASE_IDLE_PING_SECONDS and renewing a lost one."""
+        if self._db_conn is None:
+            return None
+        if self._lease_role is not None and time.monotonic() - self._last_used >= LEASE_IDLE_PING_SECONDS:
+            run_with_session_retry(lambda: self._db_conn.ping(), self._renew_connection)
+        self._last_used = time.monotonic()
+        return self._db_conn
 
     def _close_cursor(self):
         if self._db_conn and self._db_curs:
@@ -486,40 +478,23 @@ class OracleFrontendApi(FrontendApiInterface):
         if default_type == cxo.DB_TYPE_BLOB:
             return cursor.var(cxo.DB_TYPE_LONG_RAW, arraysize=cursor.arraysize)
 
-    def _connect(self):
-        made_new_connection = False
+    def _connect(self) -> None:
+        """Attach the borrowed, proxied, or leased connection selected by the constructor arguments."""
+        assert self._registry is not None
+        override = (self._conn_user_override or "").upper()
+        adm_user = self._upper_or_empty(self._connection_options.ora_adm_user)
+        app_user = self._upper_or_empty(self._connection_options.ora_app_user)
         if self._existing_connection:
             self._db_conn = self._existing_connection
+            self._db_conn.module = FRONTEND_TRACE_MODULE
+            self._db_conn.action = self._trace_action
+        elif override and override not in (adm_user, app_user):
+            self._db_conn = self._registry.connect_proxy(self._conn_user_override, action=self._trace_action)
         else:
-            dsn = self._connection_options.rdbms_dsn
-            if self._connection_options.use_oracle_wallet:
-                if self._conn_user_override and self._conn_user_override.upper() not in [
-                    self._upper_or_empty(self._connection_options.ora_adm_user),
-                    self._upper_or_empty(self._connection_options.ora_app_user),
-                ]:
-                    self._debug("Proxying to DSN [%s]%s" % (self._conn_user_override, dsn))
-                    self._db_conn = cxo.connect(user="[%s]" % self._conn_user_override, dsn=dsn)
-                else:
-                    self._debug("Connecting to DSN %s" % dsn)
-                    self._db_conn = cxo.connect(dsn=dsn)
-            elif self._conn_user_override:
-                conn_user, conn_pass = self._conn_user_and_pass_for_override()
-                self._debug("Connecting to %s" % conn_user)
-                self._db_conn = cxo.connect(user=conn_user, password=conn_pass, dsn=dsn)
-            else:
-                self._debug("Connecting to %s" % self._connection_options.ora_adm_user)
-                self._db_conn = cxo.connect(
-                    user=self._connection_options.ora_adm_user,
-                    password=self._connection_options.ora_adm_pass,
-                    dsn=dsn,
-                )
-            made_new_connection = True
-        self._db_conn.module = FRONTEND_TRACE_MODULE
-        self._db_conn.action = self._trace_action
+            self._lease_role = "app" if override and override == app_user else "adm"
+            self._db_conn = self._registry.lease(self._lease_role, action=self._trace_action)
         self._db_conn.outputtypehandler = self._connection_output_type_handler
-        apply_oracle_session_trace_info(self._db_conn)
-        self._db_conn.ping()
-        return made_new_connection
+        self._last_used = time.monotonic()
 
     def _create_table_sql_text(
         self,
@@ -556,18 +531,25 @@ class OracleFrontendApi(FrontendApiInterface):
     def _cx_getvalue(self, incoming):
         return incoming.getvalue() if incoming and hasattr(incoming, "getvalue") else incoming
 
-    def _disconnect(self, force=False):
+    def _disconnect(self, force: bool = False) -> None:
+        """Release a lease, close a proxy connection, or close a borrowed connection only when forced."""
         self._debug("Disconnecting from DB")
-        if not self._existing_connection or force:
-            if self._db_curs:
-                self._close_cursor()
+        if self._existing_connection and not force:
+            return
+        if self._db_curs:
+            self._close_cursor()
+        connection, self._db_conn = self._db_conn, None
+        lease_role, self._lease_role = self._lease_role, None
+        if connection is not None:
             try:
-                if self._db_conn:
-                    self._db_conn.close()
-                    self._db_conn = None
+                if lease_role is not None and self._registry is not None:
+                    connection.outputtypehandler = None
+                    self._registry.release(lease_role, connection)
+                else:
+                    connection.close()
             except Exception as exc:
                 self._log("Exception closing connection:\n%s" % str(exc), detail=VVERBOSE)
-            self._existing_connection = None
+        self._existing_connection = None
 
     def _execute_ddl_or_dml(
         self,
@@ -590,7 +572,7 @@ class OracleFrontendApi(FrontendApiInterface):
         run_opts = self._execute_session_options(query_options, log_level=log_level)
         run_sqls = []
         sqls = [sql] if isinstance(sql, str) else sql
-        for i, run_sql in enumerate(sqls):
+        for run_sql in sqls:
             self._log_or_not("%s SQL: %s" % (self._sql_engine_name, run_sql), log_level=log_level)
             run_sqls.append(run_sql)
             if not self._dry_run:
@@ -878,7 +860,7 @@ class OracleFrontendApi(FrontendApiInterface):
         """Return a list of partition column names in the correct order."""
         logger.debug("_get_partition_column_names: %s, %s" % (schema, table_name))
         query_name = "get_subpartition_column_names" if subpartition_level else "get_partition_column_names"
-        rows = self._metadata_gateway.select_tuples(query_name, {"owner": schema, "table_name": table_name})
+        rows = self._select_tuples(query_name, {"owner": schema, "table_name": table_name})
         return [_[0] for _ in rows or []]
 
     def _instrumentation_snap(self, delta_dict=None):
@@ -896,8 +878,7 @@ class OracleFrontendApi(FrontendApiInterface):
 
         logger.debug("Fetching session events from DB")
         profile_dict = {
-            event_name: event_sec
-            for event_name, event_sec in self._metadata_gateway.select_tuples("get_session_events") or []
+            event_name: event_sec for event_name, event_sec in self._select_tuples("get_session_events") or []
         }
 
         if not delta_dict:
@@ -915,40 +896,57 @@ class OracleFrontendApi(FrontendApiInterface):
         return profile_dict
 
     def _is_iot(self, schema, table_name):
-        rows = self._metadata_gateway.select_tuples("get_iot_type", {"owner": schema, "table_name": table_name})
+        rows = self._select_tuples("get_iot_type", {"owner": schema, "table_name": table_name})
         return bool(rows and rows[0][0] == "IOT")
 
     def _open_cursor(self) -> None:
-        """Open a fresh cursor, reconnecting once when the session was sniped or the connection was lost.
+        """Open a fresh cursor on the active connection, or clear the cursor when unconnected."""
+        connection = self._active_connection()
+        self._db_curs = connection.cursor() if connection is not None else None
 
-        The ``ALTER SESSION SET TRACEFILE_IDENTIFIER`` execute is what surfaces a dead session; taking a cursor is
-        not enough. Errors are matched by substring because python-oracledb reports padded (``ORA-02396``) and
-        unpadded (``DPI-1080: connection was closed by ORA-2396``) codes: ORA-02396 idle-time sniping, ORA-03113
-        end-of-file, ORA-03114 not connected, ORA-03135 lost contact. Reconnection runs after the ``except`` block,
-        once, so a failed reconnect is not chained to the original error.
-        """
+    def _renew_connection(self, failure: BaseException | None = None) -> None:
+        """Discard a lost lease or proxy connection and attach a fresh one."""
+        self._log(f"Reconnecting to Oracle due to: {failure}", detail=VVERBOSE)
+        logger.info(f"Reconnecting to Oracle due to: {failure}")
+        connection, self._db_conn = self._db_conn, None
+        lease_role, self._lease_role = self._lease_role, None
+        if connection is not None and lease_role is not None and self._registry is not None:
+            self._registry.release(lease_role, connection, discard=True)
+        elif connection is not None and not self._existing_connection:
+            try:
+                connection.close()
+            except Exception as exc:
+                self._log("Exception closing connection:\n%s" % str(exc), detail=VVERBOSE)
+        self._connect()
 
-        def setup_cursor() -> None:
-            assert self._db_conn is not None
-            self._db_curs = self._db_conn.cursor()
-            self._db_curs.execute('ALTER SESSION SET TRACEFILE_IDENTIFIER="%s"' % FRONTEND_TRACE_ID)
+    def _run_statement(
+        self,
+        statements: NamedStatements,
+        name: str,
+        params: Mapping[str, Any] | None,
+        slots: Mapping[str, str] | None,
+        schema_type: type[Any] | None,
+    ) -> list[Any]:
+        """Execute a named statement on the active connection through a pool-shared SQLSpec driver."""
+        assert self._registry is not None
+        driver = self._registry.driver_for(self._active_connection(), self._lease_role or "adm")
+        text = statements.text(name, slots)
+        binds = dict(params or {})
+        with SQLCommenterContext.scope({"module": FRONTEND_TRACE_MODULE, "action": self._trace_action}):
+            if schema_type is None:
+                return driver.select(text, binds) if binds else driver.select(text)
+            if binds:
+                return driver.select(text, binds, schema_type=schema_type)
+            return driver.select(text, schema_type=schema_type)
 
-        if not self._db_conn:
-            self._db_curs = None
-            return
-        reconnect_reason = None
-        try:
-            setup_cursor()
-        except cxo.DatabaseError as exc:
-            if not any(marker in str(exc) for marker in RECONNECT_ERROR_MARKERS):
-                raise
-            reconnect_reason = str(exc)
-        if reconnect_reason is not None:
-            self._log(f"Reconnecting to Oracle due to: {reconnect_reason}", detail=VVERBOSE)
-            logger.info(f"Reconnecting to Oracle due to: {reconnect_reason}")
-            self._disconnect(force=True)
-            self._connect()
-            setup_cursor()
+    def _select_tuples(self, name: str, params: Mapping[str, Any] | None = None) -> list[tuple[Any, ...]] | None:
+        """Return rows of a ``frontend_metadata.sql`` statement as tuples in projection order, or None unconnected."""
+        if self._db_conn is None or self._registry is None:
+            return None
+        rows = run_with_session_retry(
+            lambda: self._run_statement(self._metadata_statements, name, params, None, None), self._renew_connection
+        )
+        return [tuple(row.values()) for row in rows]
 
     def _to_native_query_params(self, query_params):
         """Using a dict for oracledb binds.

@@ -26,7 +26,7 @@ from goe.offload.offload_metadata_functions import (
     incremental_hv_csv_from_list,
 )
 from goe.offload.predicate_offload import GenericPredicate, create_or_relation_predicate
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE_AND_PREDICATE,

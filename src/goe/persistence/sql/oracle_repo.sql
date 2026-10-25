@@ -216,13 +216,13 @@ WITH unsupported_columns AS (
             AND COALESCE( s.partition_name, s.segment_name) = COALESCE( t.subpartition_name, t.partition_name, t.table_name)
             )
         LEFT OUTER JOIN
-            {repo_user}.frontend_object fo
+            /* slot: repo_user */.frontend_object fo
             ON (
             fo.database_name = t.table_owner
             AND fo.object_name = t.table_name
             )
         LEFT OUTER JOIN
-            {repo_user}.offload_partition op
+            /* slot: repo_user */.offload_partition op
             ON (
             op.frontend_object_id = fo.id
             AND op.name = COALESCE( t.subpartition_name, t.partition_name, t.table_name)
@@ -239,9 +239,9 @@ WITH unsupported_columns AS (
             , fo.object_name   table_name
             , sum(op.bytes)    table_reclaimed_size
         FROM
-            {repo_user}.frontend_object fo
+            /* slot: repo_user */.frontend_object fo
         INNER JOIN
-            {repo_user}.offload_partition op
+            /* slot: repo_user */.offload_partition op
             ON (
             op.frontend_object_id = fo.id
             )
@@ -319,8 +319,8 @@ WITH unsupported_columns AS (
         ,      uc.unsupported_col_name_3_count
         ,      uc.unsupported_col_name_4
         ,      uc.unsupported_col_name_4_count
-        ,      uc.{unsupported_col_name}       AS unsupported_col_name
-        ,      uc.{unsupported_col_name_count} AS unsupported_col_name_count
+        ,      uc./* slot: unsupported_col_name */       AS unsupported_col_name
+        ,      uc./* slot: unsupported_col_name_count */ AS unsupported_col_name_count
         FROM   dba_all_tables           t
             INNER JOIN
             size_data                sd
@@ -339,7 +339,7 @@ WITH unsupported_columns AS (
             ON (    uc.owner         = t.owner
                 AND uc.table_name    = t.table_name)
             LEFT OUTER JOIN
-                {repo_user}.offload_metadata om
+                /* slot: repo_user */.offload_metadata om
             ON (    om.offloaded_owner              = t.owner
                 AND om.offloaded_table              = t.table_name
                 AND om.hybrid_view_type             = 'GOE_OFFLOAD_HYBRID_VIEW')
@@ -420,7 +420,7 @@ FROM table_data t
 ORDER BY t.table_name;
 
 -- name: get_command_step_codes
-SELECT code FROM {repo_user}.command_step ORDER BY 1;
+SELECT code FROM /* slot: repo_user */.command_step ORDER BY 1;
 
 -- name: get_command_executions
 SELECT  CE.UUID                AS EXECUTION_ID,
@@ -435,10 +435,10 @@ SELECT  CE.UUID                AS EXECUTION_ID,
         CE.COMMAND_PARAMETERS  AS COMMAND_PARAMETERS,
         GV.VERSION             AS GOE_VERSION,
         GV.BUILD               AS GOE_BUILD
-FROM {repo_user}.COMMAND_EXECUTION CE
-JOIN {repo_user}.STATUS S on S.ID = CE.STATUS_ID
-JOIN {repo_user}.COMMAND_TYPE CT on CT.ID = CE.COMMAND_TYPE_ID
-JOIN {repo_user}.GOE_VERSION GV on GV.ID = CE.GOE_VERSION_ID;
+FROM /* slot: repo_user */.COMMAND_EXECUTION CE
+JOIN /* slot: repo_user */.STATUS S on S.ID = CE.STATUS_ID
+JOIN /* slot: repo_user */.COMMAND_TYPE CT on CT.ID = CE.COMMAND_TYPE_ID
+JOIN /* slot: repo_user */.GOE_VERSION GV on GV.ID = CE.GOE_VERSION_ID;
 
 -- name: get_command_execution
 SELECT  CE.UUID                AS EXECUTION_ID,
@@ -453,10 +453,10 @@ SELECT  CE.UUID                AS EXECUTION_ID,
         CE.COMMAND_PARAMETERS  AS COMMAND_PARAMETERS,
         GV.VERSION             AS GOE_VERSION,
         GV.BUILD               AS GOE_BUILD
-FROM {repo_user}.COMMAND_EXECUTION CE
-JOIN {repo_user}.STATUS S on S.ID = CE.STATUS_ID
-JOIN {repo_user}.COMMAND_TYPE CT on CT.ID = CE.COMMAND_TYPE_ID
-JOIN {repo_user}.GOE_VERSION GV on GV.ID = CE.GOE_VERSION_ID
+FROM /* slot: repo_user */.COMMAND_EXECUTION CE
+JOIN /* slot: repo_user */.STATUS S on S.ID = CE.STATUS_ID
+JOIN /* slot: repo_user */.COMMAND_TYPE CT on CT.ID = CE.COMMAND_TYPE_ID
+JOIN /* slot: repo_user */.GOE_VERSION GV on GV.ID = CE.GOE_VERSION_ID
 WHERE CE.UUID = :execution_id;
 
 -- name: get_command_execution_steps_all
@@ -469,12 +469,12 @@ SELECT  CE.UUID          AS EXECUTION_ID,
         CES.START_TIME   AS STARTED_AT,
         CES.END_TIME     AS COMPLETED_AT,
         CES.STEP_DETAILS AS STEP_DETAILS
-FROM {repo_user}.COMMAND_EXECUTION CE
-JOIN {repo_user}.STATUS S on S.ID = CE.STATUS_ID
-JOIN {repo_user}.COMMAND_EXECUTION_STEP CES ON CE.ID = CES.COMMAND_EXECUTION_ID
-JOIN {repo_user}.STATUS CESS on CESS.ID = CES.STATUS_ID
-JOIN {repo_user}.COMMAND_STEP CS ON CS.ID = CES.COMMAND_STEP_ID
-JOIN {repo_user}.COMMAND_TYPE CT ON CT.ID = CES.COMMAND_TYPE_ID;
+FROM /* slot: repo_user */.COMMAND_EXECUTION CE
+JOIN /* slot: repo_user */.STATUS S on S.ID = CE.STATUS_ID
+JOIN /* slot: repo_user */.COMMAND_EXECUTION_STEP CES ON CE.ID = CES.COMMAND_EXECUTION_ID
+JOIN /* slot: repo_user */.STATUS CESS on CESS.ID = CES.STATUS_ID
+JOIN /* slot: repo_user */.COMMAND_STEP CS ON CS.ID = CES.COMMAND_STEP_ID
+JOIN /* slot: repo_user */.COMMAND_TYPE CT ON CT.ID = CES.COMMAND_TYPE_ID;
 
 -- name: get_command_execution_steps_by_id
 SELECT  CE.UUID          AS EXECUTION_ID,
@@ -486,10 +486,50 @@ SELECT  CE.UUID          AS EXECUTION_ID,
         CES.START_TIME   AS STARTED_AT,
         CES.END_TIME     AS COMPLETED_AT,
         CES.STEP_DETAILS AS STEP_DETAILS
-FROM {repo_user}.COMMAND_EXECUTION CE
-JOIN {repo_user}.STATUS S on S.ID = CE.STATUS_ID
-JOIN {repo_user}.COMMAND_EXECUTION_STEP CES ON CE.ID = CES.COMMAND_EXECUTION_ID
-JOIN {repo_user}.STATUS CESS on CESS.ID = CES.STATUS_ID
-JOIN {repo_user}.COMMAND_STEP CS ON CS.ID = CES.COMMAND_STEP_ID
-JOIN {repo_user}.COMMAND_TYPE CT ON CT.ID = CES.COMMAND_TYPE_ID
+FROM /* slot: repo_user */.COMMAND_EXECUTION CE
+JOIN /* slot: repo_user */.STATUS S on S.ID = CE.STATUS_ID
+JOIN /* slot: repo_user */.COMMAND_EXECUTION_STEP CES ON CE.ID = CES.COMMAND_EXECUTION_ID
+JOIN /* slot: repo_user */.STATUS CESS on CESS.ID = CES.STATUS_ID
+JOIN /* slot: repo_user */.COMMAND_STEP CS ON CS.ID = CES.COMMAND_STEP_ID
+JOIN /* slot: repo_user */.COMMAND_TYPE CT ON CT.ID = CES.COMMAND_TYPE_ID
 WHERE CE.UUID = :execution_id;
+
+-- name: get_offload_metadata
+SELECT frontend_object_owner
+,      frontend_object_name
+,      backend_object_owner
+,      backend_object_name
+,      offload_type
+,      offload_range_type
+,      offload_key
+,      offload_high_value
+,      offload_predicate_type
+,      offload_predicate_value
+,      offload_snapshot
+,      offload_hash_column
+,      offload_sort_columns
+,      offload_partition_functions
+,      command_execution
+FROM   /* slot: repo_user */.offload_metadata_v
+WHERE  frontend_object_owner = :frontend_owner
+AND    frontend_object_name  = :frontend_name;
+
+-- name: list_offload_metadata_by_owner
+SELECT frontend_object_owner
+,      frontend_object_name
+,      backend_object_owner
+,      backend_object_name
+,      offload_type
+,      offload_range_type
+,      offload_key
+,      offload_high_value
+,      offload_predicate_type
+,      offload_predicate_value
+,      offload_snapshot
+,      offload_hash_column
+,      offload_sort_columns
+,      offload_partition_functions
+,      command_execution
+FROM   /* slot: repo_user */.offload_metadata_v
+WHERE  frontend_object_owner = :frontend_owner
+ORDER BY frontend_object_name;

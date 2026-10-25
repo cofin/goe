@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from goe.offload.backend_table import BackendTableInterface
     from goe.offload.offload_messages import OffloadMessages
     from goe.offload.offload_source_table import OffloadSourceTableInterface
-    from goe.persistence.orchestration_metadata import OrchestrationMetadata
+    from goe.persistence.models import OffloadMetadata
 
 
 class OffloadSortColumnsException(Exception):
@@ -33,7 +33,7 @@ UNKNOWN_SORT_COLUMN_EXCEPTION_TEXT = "Unknown columns specified for backend sort
 
 
 def default_sort_columns_from_metadata(
-    hybrid_metadata: "OrchestrationMetadata",
+    hybrid_metadata: "OffloadMetadata",
 ) -> list[str] | None:
     sort_columns = None
     if hybrid_metadata and hybrid_metadata.offload_sort_columns:
@@ -68,7 +68,7 @@ def validate_sort_column_types(sort_columns: list, backend_cols: list, backend_a
 
 def sort_columns_csv_to_sort_columns(
     sort_columns_csv: str,
-    hybrid_metadata: "OrchestrationMetadata | None",
+    hybrid_metadata: "OffloadMetadata | None",
     offload_source_table: "OffloadSourceTableInterface",
     backend_cols: list,
     backend_api: "BackendApiInterface",

@@ -18,7 +18,7 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_VARCHAR2,
 )
 from goe.offload.registry import create_repository_client
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )

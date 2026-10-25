@@ -2,16 +2,19 @@
 type: Spec
 flow_id: offload_metadata_and_repository_service_20261024
 title: "Chapter 6.2: OffloadMetadata and Repository Service"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 1
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: completed
+operation_targets:
+  - "1.1"
+  - "1.2"
+  - "1.3"
+last_verified_checkpoint: "1.3"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-25T15:43:00Z
 description: "Replace the mutable active-record OrchestrationMetadata and OracleOrchestrationRepoClient with frozen msgspec persistence models and an OracleRepositoryService that loads offload metadata in one round trip and executes repository procedures through pooled SQLSpec sessions."
 tags: [refactor, persistence, oracle, sqlspec, msgspec]
 parent_prd: prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024
@@ -95,21 +98,21 @@ make test-integration-oracle
 
 ### Phase 1: Frozen Persistence Models and Repository Service
 
-- [ ] 1.1 Add frozen OffloadMetadata and execution record models in src/goe/persistence/models.py ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Implement OracleRepositoryService and 1-RTT offload_metadata_v queries ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.1 Add frozen OffloadMetadata and execution record models in src/goe/persistence/models.py ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Implement OracleRepositoryService and 1-RTT offload_metadata_v queries ([tasks/1.2.md](tasks/1.2.md))
 
 ### Phase 2: Caller Migration
 
-- [ ] 1.3 Migrate orchestration, offload, sync, report, and Listener callers to OffloadMetadata and OracleRepositoryService ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.3 Migrate orchestration, offload, sync, report, and Listener callers to OffloadMetadata and OracleRepositoryService ([tasks/1.3.md](tasks/1.3.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `offload_metadata_and_repository_service_20261024`, `planned`.
+- **Flow / lifecycle**: `offload_metadata_and_repository_service_20261024`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `1.3` (2026-10-25T15:43:00Z).
 - **Decisions**: `OffloadMetadata` is a pure value object (`FrozenBaseStruct`) with no embedded repository client; `OracleRepositoryService` uses `OracleDatabaseRegistry` admin sessions with `fetch_lobs=False` to read `offload_metadata_v` in 1 round trip and caches `DbObjectType` objects per connection in a `WeakKeyDictionary`.
-- **Discoveries**: none yet.
-- **Blockers**: Chapter 6.1 (`oracle_database_registry_and_session_tracing_20261024`) must complete first.
-- **Next exact step**: execute task `1.1` (`offload_metadata_and_repository_service_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: `msgspec.convert` disallows `bytes | str` unions because both are considered string-like types by `msgspec`; typing raw `RAW(16)` columns (`OffloadMetadataRow.command_execution`, `CommandExecutionRow.execution_id`, `CommandExecutionStepRow.execution_id`) as `Any` and coercing via `_coerce_execution_id` in `from_repo_row` / `from_row` allows `driver.select(..., schema_type=...)` to hydrate rows regardless of whether the driver returns `bytes` or `str`.
+- **Blockers**: none.
+- **Next exact step**: Chapter 6.3 (`source_catalog_caching_and_listener_discovery_20261024`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 1`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/frontends/oracle.md`, `.agents/bundles/knowledge/standards/database-and-sql.md`, `.agents/bundles/knowledge/operations/database-installation.md`.

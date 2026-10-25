@@ -9,7 +9,6 @@ files = [
     "src/goe/offload/staging/avro/avro_staging_file.py",
     "src/goe/offload/transport/base.py",
     "src/goe/orchestration/operation.py",
-    "src/goe/persistence/schemas.py",
     "src/goe/report/collector.py",
     "src/goe/report/renderers.py",
     "tests/unit/cli/test_cli_root.py",
@@ -26,10 +25,7 @@ files = [
 ]
 
 [oracledb-boundary]
-files = [
-    "src/goe/offload/offload_transport_functions.py",
-    "src/goe/persistence/oracle_gateway.py",
-]
+files = []
 
 [nested-import]
 files = [

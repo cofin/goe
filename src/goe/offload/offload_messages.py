@@ -24,9 +24,7 @@ from goe.util.goe_log_fh import GOELogFileHandle
 from goe.util.string_utils import standard_log_name
 
 if TYPE_CHECKING:
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 
 class OffloadMessagesException(Exception):
@@ -406,7 +404,7 @@ class OffloadMessages:
         skip: Any = None,
         error_before_step: Any = None,
         error_after_step: Any = None,
-        repo_client: "OrchestrationRepoClientInterface | None" = None,
+        repo_client: "OracleRepositoryService | None" = None,
         command_type: str | None = None,
     ) -> None:
         """Cache some operational attributes that can be used by offload_step().

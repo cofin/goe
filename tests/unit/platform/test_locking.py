@@ -7,8 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from goe.offload.offload_messages import OffloadMessages
-from goe.persistence.orchestration_metadata import OrchestrationMetadata
+from goe.persistence.models import OffloadMetadata
 from goe.platform.locking import (
     FileOrchestrationLock,
     OrchestrationLockTimeout,
@@ -49,8 +48,7 @@ def test_file_orchestration_lock_from_hybrid_metadata(
     monkeypatch.setenv("OFFLOAD_HOME", str(tmp_path))
     (tmp_path / "run").mkdir(parents=True, exist_ok=True)
 
-    metadata = OrchestrationMetadata.from_attributes(
-        messages=OffloadMessages(),
+    metadata = OffloadMetadata.from_attributes(
         offloaded_owner="SH",
         offloaded_table="COSTS",
     )

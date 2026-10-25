@@ -48,7 +48,7 @@ from goe.offload.registry import (
     create_source_table,
 )
 from goe.orchestration import command_steps, orchestration_constants
-from goe.persistence.orchestration_metadata import OrchestrationMetadata
+from goe.persistence.models import OffloadMetadata
 from goe.report.demo_data import DemoDataMixin
 from goe.report.models import (
     AAPD_OBJECTS,
@@ -884,7 +884,7 @@ ORDER  BY
         new_metadata_dict["OFFLOADED_TABLE"] = offloaded_table[SOURCE_TABLE]
         new_metadata_dict["HADOOP_OWNER"] = offloaded_table[OFFLOAD_OWNER]
         new_metadata_dict["HADOOP_TABLE"] = offloaded_table[OFFLOAD_TABLE]
-        return OrchestrationMetadata(new_metadata_dict, client=self._repo_client)
+        return OffloadMetadata.from_legacy_dict(new_metadata_dict)
 
     def _get_offload_data(self, offloaded_table, rdbms_join_objects):
         """Return the offload data for an offloaded table. Data includes space and partitions

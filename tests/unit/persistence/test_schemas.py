@@ -5,7 +5,7 @@ from goe.persistence.schemas import (
     ColumnDetail,
     CommandExecutionSchema,
     LogEventSchema,
-    OffloadMetadataSchema,
+    PartitionMetadataSchema,
     StepDetailSchema,
     SubPartitionDetail,
     decode_schema,
@@ -44,20 +44,18 @@ def test_command_execution_schema_round_trip():
     assert decoded.parameters == {"table": "SH.SALES", "mode": "INCREMENTAL"}
 
 
-def test_offload_metadata_schema_round_trip():
-    meta = OffloadMetadataSchema(
-        offloaded_owner="SH",
-        offloaded_table="SALES",
-        target_owner="goe_target",
-        target_table="sales",
-        offload_status="ACTIVE",
-        incremental_key="TIME_ID",
+def test_partition_metadata_schema_round_trip():
+    part = PartitionMetadataSchema(
+        partition_name="P_2025",
+        high_values_csv="2025-01-01",
+        partition_size=65536,
+        num_rows=1000,
     )
-    encoded = encode_schema(meta)
-    decoded = decode_schema(OffloadMetadataSchema, encoded)
-    assert decoded.offloaded_owner == "SH"
-    assert decoded.offloaded_table == "SALES"
-    assert decoded.incremental_key == "TIME_ID"
+    encoded = encode_schema(part)
+    decoded = decode_schema(PartitionMetadataSchema, encoded)
+    assert decoded.partition_name == "P_2025"
+    assert decoded.partition_size == 65536
+    assert decoded.num_rows == 1000
 
 
 def test_log_event_schema():

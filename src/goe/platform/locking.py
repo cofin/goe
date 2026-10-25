@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from filelock import FileLock, Timeout
 
 if TYPE_CHECKING:
-    from goe.persistence.orchestration_metadata import OrchestrationMetadata
+    from goe.persistence.models import OffloadMetadata
 
 __all__ = [
     "LOCK_FILE_PREFIX",
@@ -109,7 +109,7 @@ def orchestration_lock_for_table(
 
 
 def orchestration_lock_from_hybrid_metadata(
-    hybrid_metadata: "OrchestrationMetadata",
+    hybrid_metadata: "OffloadMetadata",
     dry_run: bool = False,
 ) -> FileOrchestrationLock:
     """Return a FileOrchestrationLock using offloaded owner/table attributes on hybrid_metadata."""

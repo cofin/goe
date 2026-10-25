@@ -9,9 +9,7 @@ from goe.offload.registry import create_backend_api
 if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages
     from goe.orchestration.execution_id import ExecutionId
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 
 class SchemaSyncStep:
@@ -27,7 +25,7 @@ class SchemaSyncStep:
         orchestration_options: Any,
         messages: "OffloadMessages",
         execution_id: "ExecutionId",
-        repo_client: "OrchestrationRepoClientInterface",
+        repo_client: "OracleRepositoryService",
     ) -> None:
         self.name = name
         self._options = options

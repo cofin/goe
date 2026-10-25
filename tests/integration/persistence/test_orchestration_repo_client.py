@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""TestOrchestrationRepoClient: Unit test Orchestration Repo client library.
-Excludes metadata specific methods, they are tested in TestOrchestrationMetadata.
+"""TestOracleRepository: Integration test for repository client library.
+Excludes metadata specific methods, they are tested in TestOffloadMetadata.
 """
 
 from unittest import TestCase, main
@@ -21,9 +21,9 @@ from tests.testlib.test_framework.test_functions import (
 GB = 1024**3
 
 
-class TestOrchestrationRepoClient(TestCase):
-    """TestOrchestrationRepoClient: Unit test Orchestration Repo client library.
-    Excludes metadata specific methods, they are tested in TestOrchestrationMetadata.
+class TestOracleRepository(TestCase):
+    """TestOracleRepository: Integration test for repository client library.
+    Excludes metadata specific methods, they are tested in TestOffloadMetadata.
     """
 
     def test_orchestration_command_logging_cli(self):

@@ -1,27 +1,22 @@
 # SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Oracle session trace tagging, SQLSpec SQLCommenter helpers, and SQLSpec observability wiring.
+"""Oracle transport trace helpers, SQLSpec SQLCommenter formatting, and the SQLSpec observability configuration used by the Oracle registry pools.
 
 Every helper is a no-op when telemetry is disabled so Oracle sessions, transport SQL text, and SQLSpec statement
 caching behave exactly as before. ``MODULE``/``ACTION`` are never modified because ``LOG_SQL_STATS_QUERY_TEXT``
 locates transport SQL in ``gv$sql`` by those values.
 """
 
-from typing import Any
-
 from sqlspec.core.sqlcommenter import generate_comment
 from sqlspec.observability import LoggingConfig, RedactionConfig, TelemetryConfig
 from sqlspec.observability import ObservabilityConfig as SqlspecObservabilityConfig
-from sqlspec.observability import ObservabilityRuntime as SqlspecObservabilityRuntime
 
 from goe.observability.context import get_current_trace_context
 from goe.observability.runtime import get_observability_runtime, get_tracer_provider
 
 __all__ = (
     "ORACLE_CLIENT_INFO_MAX_BYTES",
-    "apply_oracle_session_trace_info",
-    "attach_db_observability",
     "build_db_observability_config",
     "build_oracle_client_info_command",
     "build_transport_sql_comment",
@@ -42,14 +37,6 @@ def format_oracle_client_info() -> str | None:
     if snapshot.execution_id:
         return _truncate_utf8(f"goe:{snapshot.execution_id}", ORACLE_CLIENT_INFO_MAX_BYTES)
     return None
-
-
-def apply_oracle_session_trace_info(db_conn: Any) -> str | None:
-    """Set ``db_conn.clientinfo`` to the current trace identity; never touches ``module`` or ``action``."""
-    client_info = format_oracle_client_info()
-    if client_info is not None and db_conn is not None:
-        db_conn.clientinfo = client_info
-    return client_info
 
 
 def build_oracle_client_info_command(for_plsql: bool = False) -> str | None:
@@ -102,21 +89,6 @@ def build_db_observability_config() -> SqlspecObservabilityConfig | None:
         redaction=RedactionConfig(mask_parameters=True),
         logging=LoggingConfig(include_sql_hash=True, include_trace_context=True),
     )
-
-
-def attach_db_observability(driver: Any) -> None:
-    """Attach a SQLSpec observability runtime and optional SQLCommenter transform to ``driver`` when enabled."""
-    active = get_observability_runtime()
-    config = build_db_observability_config()
-    if config is not None:
-        driver.attach_observability(SqlspecObservabilityRuntime(config, config_name="OracleGateway"))
-    if active.enabled and active.settings.sqlcommenter and getattr(driver, "statement_config", None) is not None:
-        driver.statement_config = driver.statement_config.replace(
-            enable_sqlcommenter=True,
-            sqlcommenter_attributes={"db_driver": "oracledb", "framework": "goe"},
-            sqlcommenter_enable_traceparent=True,
-            sqlcommenter_enable_context=True,
-        )
 
 
 def _truncate_utf8(value: str, max_bytes: int) -> str:

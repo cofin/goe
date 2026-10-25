@@ -36,9 +36,7 @@ from goe.orchestration.execution_id import ExecutionId
 from goe.platform.locking import orchestration_lock_for_table
 
 if TYPE_CHECKING:
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 
 logger = logging.getLogger(__name__)
@@ -160,7 +158,7 @@ class OrchestrationRunner:
             dry_run=(not operation.execute),
         )
 
-    def _build_repo_client(self, messages: Any, dry_run: bool = False) -> "OrchestrationRepoClientInterface":
+    def _build_repo_client(self, messages: Any, dry_run: bool = False) -> "OracleRepositoryService":
         return create_repository_client(
             self._config,
             messages,
@@ -185,9 +183,9 @@ class OrchestrationRunner:
         self,
         command_type: str,
         params: Any,
-        repo_client: "OrchestrationRepoClientInterface",
+        repo_client: "OracleRepositoryService",
         operation: Any = None,
-    ) -> int:
+    ) -> int | None:
         assert command_type
         assert params
         assert repo_client
@@ -224,7 +222,7 @@ class OrchestrationRunner:
             raise
         return command_id
 
-    def _command_end(self, command_id: int, repo_client: "OrchestrationRepoClientInterface") -> None:
+    def _command_end(self, command_id: int | None, repo_client: "OracleRepositoryService") -> None:
         assert repo_client
         try:
             repo_client.end_command(command_id, orchestration_constants.COMMAND_SUCCESS)
@@ -235,9 +233,9 @@ class OrchestrationRunner:
 
     def _command_fail(
         self,
-        command_id: int,
+        command_id: int | None,
         external_exc: Exception,
-        repo_client: "OrchestrationRepoClientInterface",
+        repo_client: "OracleRepositoryService",
     ) -> None:
         assert repo_client
         self._log_error(f"Failing command due to exception: {external_exc!s}", detail=VVERBOSE)
@@ -277,7 +275,7 @@ class OrchestrationRunner:
     def _gen_offload_operation(
         self,
         params: Any,
-        repo_client: "OrchestrationRepoClientInterface",
+        repo_client: "OracleRepositoryService",
     ) -> Any:
         """Return an OffloadOperation object based on either a parameter dict or OptParse object."""
         try:
@@ -342,7 +340,7 @@ class OrchestrationRunner:
         execution_id: ExecutionId | None = None,
         reuse_log: bool = False,
         messages_override: OffloadMessages | None = None,
-    ) -> "OrchestrationRepoClientInterface":
+    ) -> "OracleRepositoryService":
         """Initialize an orchestration command.
         Sets execution_id, messages in state and returns repo_client.
         We do NOT store repo_client in state because of multiprocess issues with oracledb.

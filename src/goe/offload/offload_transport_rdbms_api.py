@@ -51,12 +51,8 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         self._messages = messages
         self._dry_run = dry_run
         self._offload_transport_dsn = offload_options.offload_transport_dsn
-        self._rdbms_adm_dsn = offload_options.rdbms_dsn
         self._offload_transport_rdbms_session_parameters = offload_options.offload_transport_rdbms_session_parameters
-        self._rdbms_adm_conn: Any = None
-        self._rdbms_app_conn: Any = None
         self._fixed_goe_parameters: Any = None
-        self._app_user: Any = None
 
     def log(self, msg, detail=None):
         self._messages.log(msg, detail=detail)

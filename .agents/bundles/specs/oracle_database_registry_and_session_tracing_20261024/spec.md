@@ -2,16 +2,20 @@
 type: Spec
 flow_id: oracle_database_registry_and_session_tracing_20261024
 title: "Chapter 6.1: OracleDatabaseRegistry and Session Tracing"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 1
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: completed
+operation_targets:
+  - "1.1"
+  - "1.2"
+  - "1.3"
+  - "1.4"
+last_verified_checkpoint: "1.4"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-25T15:42:00Z
 description: "Replace per-query OracleGateway drivers and per-cursor ALTER SESSION round trips with pooled SQLSpec Oracle configurations that share one statement cache and observability runtime, apply the session environment once per physical connection, keep transport MODULE/ACTION intact, and fix the proxy password and partition quoting defects."
 tags: [refactor, oracle, sqlspec, persistence, observability]
 parent_prd: prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024
@@ -105,22 +109,22 @@ make test-integration-oracle
 
 ### Phase 1: Registry Foundation
 
-- [ ] 1.1 Add the Oracle lost-session retry policy ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Add OracleDatabaseRegistry with pooled admin, application, and Listener configurations ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.1 Add the Oracle lost-session retry policy ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Add OracleDatabaseRegistry with pooled admin, application, and Listener configurations ([tasks/1.2.md](tasks/1.2.md))
 
 ### Phase 2: Caller Migration
 
-- [ ] 1.3 Replace OracleGateway with registry leases and named statements ([tasks/1.3.md](tasks/1.3.md))
-- [ ] 1.4 Move Oracle transport connections onto registry sessions ([tasks/1.4.md](tasks/1.4.md))
+- [x] 1.3 Replace OracleGateway with registry leases and named statements ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.4 Move Oracle transport connections onto registry sessions ([tasks/1.4.md](tasks/1.4.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `oracle_database_registry_and_session_tracing_20261024`, `planned`.
+- **Flow / lifecycle**: `oracle_database_registry_and_session_tracing_20261024`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
-- **Decisions**: one process-wide `OracleDatabaseRegistry` per connection settings; `OracleFrontendApi` leases a pooled connection per API object so UDT objects and OUT binds created by the repository client stay on one session until Chapter 6.2 moves repository calls onto per-operation sessions; the pool callback applies `TRACEFILE_IDENTIFIER` only; `CLIENT_INFO` tagging stays only in transport session setup commands executed by external engines (`build_oracle_client_info_command`); named statements live in the new `src/goe/persistence/statements.py`.
-- **Discoveries**: none yet.
-- **Blockers**: Master PRD 5 (Chapter 5.2 `goe.typing`, Chapter 5.1 `AdapterRegistry`, Chapter 5.3 connection-time Thick initialization) must complete first.
-- **Next exact step**: execute task `1.1` (`oracle_database_registry_and_session_tracing_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Last verified checkpoint**: `1.4` (2026-10-25T15:42:00Z).
+- **Decisions**: one process-wide `OracleDatabaseRegistry` per connection settings; `OracleFrontendApi` leases a pooled connection per API object so UDT objects and OUT binds stay on one session; the pool callback applies `TRACEFILE_IDENTIFIER` only; `CLIENT_INFO` tagging stays only in transport session setup commands executed by external engines (`build_oracle_client_info_command`); named statements live in `src/goe/persistence/statements.py`.
+- **Discoveries**: `ora_query.py` was moved by Chapter 5.4 to `src/goe/offload/oracle/ora_query.py` and updated with `_rows_as_dicts`; `tools/verify_architecture.py` was updated so `src/goe/persistence/registry.py` is the canonical `oracledb` boundary owner, and `tools/architecture_baseline.toml` had zero remaining `oracledb-boundary` entries.
+- **Blockers**: none.
+- **Next exact step**: Chapter 6.2 (`offload_metadata_and_repository_service_20261024`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 1`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/frontends/oracle.md`, `.agents/bundles/knowledge/standards/database-and-sql.md`, `.agents/bundles/knowledge/operations/observability.md`, `.agents/bundles/knowledge/standards/testing.md`.
