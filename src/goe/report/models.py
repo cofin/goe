@@ -4,11 +4,15 @@
 """Constants, exception, and partition-matching helper for the Offload Status Report."""
 
 import os
+from typing import Any, cast
+
+import msgspec
 
 from goe.offload import offload_constants
 from goe.offload.offload_metadata_functions import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
 )
+from goe.typing import FrozenBaseStruct
 
 HTML = "html"
 TEXT = "text"
@@ -120,3 +124,51 @@ def incremental_partition_match(row_high_value, table_high_value, incremental_pr
     if row_high_value == (offload_constants.PART_OUT_OF_LIST,):
         return False
     return bool(row_high_value <= table_high_value)
+
+
+class PartitionStatusRow(FrozenBaseStruct, frozen=True):
+    """Per-partition status metric row."""
+
+    partition_name: str
+    high_value: str | None
+    offloaded: bool
+    source_rows: int = 0
+    source_bytes: int = 0
+    target_rows: int = 0
+    target_bytes: int = 0
+
+
+class TableStatusReport(FrozenBaseStruct, frozen=True):
+    """Aggregated offload status metrics for a single table."""
+
+    schema_name: str
+    table_name: str
+    target_schema: str
+    target_table: str
+    offload_type: str
+    incremental_key: str | None = None
+    incremental_high_value: str | None = None
+    incremental_predicate_type: str | None = None
+    source_rows: int = 0
+    source_bytes: int = 0
+    offloaded_rows: int = 0
+    offloaded_bytes: int = 0
+    reclaimable_rows: int = 0
+    reclaimable_bytes: int = 0
+    partitions: tuple[PartitionStatusRow, ...] = ()
+
+
+class StatusReportEnvelope(FrozenBaseStruct, frozen=True):
+    """Top-level status report envelope across schemas and tables."""
+
+    generated_at: str
+    database_name: str
+    total_tables: int
+    total_source_bytes: int
+    total_offloaded_bytes: int
+    total_reclaimable_bytes: int
+    tables: tuple[TableStatusReport, ...] = ()
+
+    def to_report_dict(self) -> dict[str, Any]:
+        """Convert to a builtins dictionary suitable for Jinja2/Text/CSV/JSON rendering."""
+        return cast(dict[str, Any], msgspec.to_builtins(self))

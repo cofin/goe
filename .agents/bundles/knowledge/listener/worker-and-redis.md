@@ -12,7 +12,7 @@ tags:
 
 # Listener Workers & Embedded Caching
 
-The Listener uses an embedded thread-safe in-process TTL cache (`MemoryCache` and `MemorySyncCache` in [`src/goe/listener/utils/cache.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/utils/cache.py)) and `litestar-queues` (`QueuePlugin` in [`src/goe/listener/app.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/app.py) and [`src/goe/listener/jobs.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/jobs.py)) for background task execution, metadata caching, heartbeat registration, and event buffering without requiring external Redis infrastructure.
+The Listener uses an embedded thread-safe in-process TTL cache (`MemoryCache` and `MemorySyncCache` in `src/goe/listener/utils/cache.py`) and `litestar-queues` (`QueuePlugin` in `src/goe/listener/app.py` and `src/goe/listener/jobs.py`) for background task execution, metadata caching, heartbeat registration, and event buffering without requiring external Redis infrastructure.
 
 ## Embedded Cache Architecture (`src/goe/listener/utils/cache.py`)
 

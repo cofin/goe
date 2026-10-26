@@ -87,6 +87,12 @@ _LAZY_IMPORTS: LazyImportMap = {
     help="Skip partition boundary checks during validation.",
 )
 @click.option(
+    "--diff",
+    is_flag=True,
+    default=False,
+    help="Perform an in-memory DuckDB EXCEPT row diff on mismatched groups.",
+)
+@click.option(
     "--dev-log-level",
     "dev_log_level",
     default=None,

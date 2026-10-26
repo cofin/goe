@@ -8,9 +8,6 @@ import pathlib
 import re
 import types
 
-import jinja2
-import pytest
-
 from goe.offload.backend_api import (
     REPORT_ATTR_BACKEND_CLASS,
     REPORT_ATTR_BACKEND_DISPLAY_NAME,
@@ -19,8 +16,8 @@ from goe.offload.backend_api import (
     REPORT_ATTR_BACKEND_TYPE,
 )
 from goe.offload.offload_messages import OffloadMessages
-from goe.offload.offload_status_report import OffloadStatusReport
 from goe.orchestration import orchestration_constants
+from goe.report import OffloadStatusReport
 
 LEVELS = ("summary", "detail")
 FORMATS = ("csv", "text", "json", "raw")
@@ -57,12 +54,20 @@ def test_demo_report_outputs_are_unchanged(tmp_path: pathlib.Path) -> None:
     assert render_all(tmp_path) == GOLDEN_SHA256
 
 
-def test_html_output_fails_on_missing_template(tmp_path: pathlib.Path) -> None:
-    """HTML output keeps its template lookup and still fails because the template is absent (D-2.2-A)."""
-    report = _demo_report()
-    data = report.get_offload_status_report_data(None, None, "summary", True)
-    with pytest.raises(jinja2.TemplateNotFound):
-        report.gen_offload_status_report(data, "html", "golden", str(tmp_path), ",", '"')
+def test_html_output_renders_summary_and_detail(tmp_path: pathlib.Path) -> None:
+    """HTML output resolves packaged templates and renders summary and detail reports cleanly."""
+    for level in LEVELS:
+        out_dir = tmp_path / level
+        out_dir.mkdir(parents=True, exist_ok=True)
+        report = _demo_report()
+        data = report.get_offload_status_report_data(None, None, level, True)
+        status = report.gen_offload_status_report(data, "html", "golden", str(out_dir), ",", '"')
+        assert status == 0
+        out_file = out_dir / "golden.html"
+        assert out_file.exists()
+        html_text = out_file.read_text(encoding="utf-8")
+        assert "<html" in html_text.lower()
+        assert "COSTS" in html_text
 
 
 def _demo_report() -> OffloadStatusReport:

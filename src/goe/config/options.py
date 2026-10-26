@@ -337,6 +337,7 @@ class AggValidateOptions(TableOperationOptions, kw_only=True):
         default_factory=orchestration_defaults.verify_parallelism_default
     )
     skip_boundary_check: bool | None = None
+    diff: bool = False
 
 
 class ConnectOptions(CommonOptions, kw_only=True):

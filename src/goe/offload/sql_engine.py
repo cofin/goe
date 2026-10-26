@@ -267,6 +267,38 @@ class DialectSqlEngineProtocol(Protocol):
     ) -> str:
         """Render ALTER TABLE ... ALTER COLUMN ... DROP NOT NULL in this dialect."""
 
+    def validation_aggregate_query(
+        self,
+        *,
+        table: "TableRef",
+        questions: Sequence[tuple[str | None, str, str]],
+        group_bys: Sequence[str] = (),
+        where_clauses: Sequence[str] = (),
+        as_of_scn_bind: bool = False,
+        parallelism: int | None = None,
+    ) -> str:
+        """Render a batched cross-DB aggregate validation query."""
+
+    def validation_sample_hash_query(
+        self,
+        *,
+        table: "TableRef",
+        key_columns: Sequence[str],
+        value_columns: Sequence[str],
+        where_clauses: Sequence[str] = (),
+        as_of_scn_bind: bool = False,
+    ) -> str:
+        """Render a sample row-level hash aggregate query."""
+
+    def transpile_safe_filter(
+        self,
+        raw_filter: str,
+        *,
+        source_dialect: str = "oracle",
+        quote_identifiers: bool = False,
+    ) -> str:
+        """Validate a raw filter condition against an AST allowlist and render in this dialect."""
+
 
 @runtime_checkable
 class PredicateDialectEngineProtocol(Protocol):

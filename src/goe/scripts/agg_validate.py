@@ -1,15 +1,15 @@
-#! /usr/bin/env python3
-
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
+"""Validate that data in frontend RDBMS matches backend data warehouse via aggregates."""
 
 import logging
-import re
 import sys
+from typing import Any, cast
 
 from goe.config.options import AggValidateOptions
 from goe.config.orchestration_config import OrchestrationConfig
+from goe.exceptions import GOEError
 from goe.goe import (
     get_log_fh,
     get_log_fh_name,
@@ -25,6 +25,7 @@ from goe.offload.offload_validation import (
     DEFAULT_AGGS,
     GROUPBY_PARTITIONS,
     SUPPORTED_OPERATIONS,
+    CrossDbValidationBuilder,
     CrossDbValidator,
 )
 from goe.orchestration import command_steps
@@ -33,26 +34,35 @@ from goe.util.string_utils import (
     csv_split,
     is_number,
     is_pos_int,
-    parse_python_from_string,
+)
+
+__all__ = (
+    "DEFAULT_AGGS",
+    "GROUPBY_PARTITIONS",
+    "PROG_BANNER",
+    "SUPPORTED_OPERATIONS",
+    "AggValidateException",
+    "post_process_args",
+    "print_title",
+    "run_agg_validate",
+    "set_logging",
+    "validate_table",
 )
 
 
 class AggValidateException(Exception):
-    pass
+    """Raised when agg_validate option parsing or execution fails."""
 
 
 PROG_BANNER = "Validate (agg_validate) v%s" % version()
 
-REGEX_FILTER = re.compile(r"(\S+)\s+(%s)\s+(\S+)" % "|".join(SUPPORTED_OPERATIONS), re.IGNORECASE)
-
-
 logger = logging.getLogger("agg_validate")
 
 
-def validate_table(args, messages):
-    """Validate specific table"""
+def validate_table(args: Any, messages: Any) -> bool:
+    """Validate a specific table using CrossDbValidator."""
 
-    def step_fn():
+    def step_fn() -> bool:
         config = OrchestrationConfig.from_dict({"verbose": args.verbose})
         validator = CrossDbValidator(
             db_name=args.owner,
@@ -60,7 +70,6 @@ def validate_table(args, messages):
             connection_options=config,
             messages=messages,
         )
-
         status, _ = validator.validate(
             selects=args.selects,
             filters=args.filters,
@@ -74,53 +83,45 @@ def validate_table(args, messages):
         if status:
             messages.log("[OK]", ansi_code="green")
             return True
+        if getattr(args, "diff", False) and args.execute:
+            diff_rows = validator.run_row_diff()
+            if diff_rows:
+                messages.warning(f"Row-level diff detected {len(diff_rows)} differing group row(s): {diff_rows}")
         messages.log("[ERROR]", ansi_code="red")
         return False
 
-    return (
+    return bool(
         messages.offload_step(
             command_steps.STEP_VALIDATE_DATA,
             step_fn,
             execute=args.execute,
         )
-        or False
     )
 
 
-def set_logging(log_level):
-    """Set "global" logging parameters"""
+def set_logging(log_level: str | None) -> None:
+    """Set global logging parameters."""
+    if log_level:
+        logging.basicConfig(
+            level=logging.getLevelName(log_level),
+            format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
-    logging.basicConfig(
-        level=logging.getLevelName(log_level),
-        format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
 
-
-def print_title():
-    """Print utility title"""
-
-    print("%s\n" % (PROG_BANNER))
+def print_title() -> None:
+    """Print utility title."""
+    sys.stdout.write(f"{PROG_BANNER}\n\n")
 
 
 def post_process_args(args: AggValidateOptions) -> None:
-    """Post process arguments"""
-
-    def parse_filters(filters):
-        def parse_single_filter(filt):
-            match = REGEX_FILTER.match(filt)
-            if match:
-                return (
-                    match.group(1),
-                    match.group(2),
-                    parse_python_from_string(match.group(3)),
-                )
-            raise AggValidateException("Invalid FILTER expression: %s" % filt)
-
-        return [parse_single_filter(_.strip()) for _ in filters.split(",")]
-
+    """Post-process and AST-validate CLI arguments."""
     if isinstance(args.filters, str) and args.filters:
-        args.filters = parse_filters(args.filters)
+        builder = CrossDbValidationBuilder("oracle")
+        try:
+            args.filters = cast(list[tuple[str, str, object]], builder.parse_filter_tuples(args.filters))
+        except GOEError as exc:
+            raise AggValidateException(f"Invalid FILTER expression: {args.filters}") from exc
     if args.selects:
         if isinstance(args.selects, (list, str)) and len(args.selects) == 1 and is_number(args.selects[0]):
             args.selects = args.selects[0]

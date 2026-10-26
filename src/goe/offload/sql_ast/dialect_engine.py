@@ -12,7 +12,7 @@ from sqlglot import exp
 from sqlglot.dialects.bigquery import BigQuery
 from sqlglot.tokenizer_core import TokenType
 
-from goe.exceptions import GOEError
+from goe.exceptions import GOEError, ValidationError
 from goe.offload.bigquery.bigquery_column import (
     BIGQUERY_TYPE_DATE,
     BIGQUERY_TYPE_DATETIME,
@@ -37,11 +37,38 @@ __all__ = (
     "get_dialect_engine",
 )
 
-type SqlDialect = Literal["oracle", "bigquery", "snowflake", "tsql", "hive", "spark"]
+type SqlDialect = Literal["oracle", "bigquery", "snowflake", "tsql", "hive", "spark", "impala", "teradata", "duckdb"]
 
 _ALTER_DIALECTS: frozenset[str] = frozenset({"bigquery", "snowflake", "tsql"})
 _ALTER_COLUMN_DIALECTS: frozenset[str] = frozenset({"bigquery", "snowflake"})
 _IF_NOT_EXISTS_DIALECTS: frozenset[str] = frozenset({"bigquery", "snowflake"})
+_FORBIDDEN_FILTER_NODES: tuple[type[exp.Expr], ...] = (
+    exp.Select,
+    exp.Subquery,
+    exp.Table,
+    exp.Union,
+    exp.Intersect,
+    exp.Except,
+    exp.Exists,
+    exp.DDL,
+    exp.DML,
+    exp.Command,
+)
+_ALLOWED_FILTER_ANONYMOUS: frozenset[str] = frozenset(
+    {
+        "TO_DATE",
+        "TO_TIMESTAMP",
+        "TO_CHAR",
+        "TO_NUMBER",
+        "NVL",
+        "COALESCE",
+        "TRUNC",
+        "UPPER",
+        "LOWER",
+        "SUBSTR",
+        "LENGTH",
+    }
+)
 
 
 class DialectNotSupportedError(GOEError):
@@ -622,6 +649,252 @@ class DialectSqlEngine:
         action = exp.AlterColumn(this=exp.Identifier(this=column, quoted=True), drop=True, allow_null=True)
         return exp.Alter(this=self._table_node(table), kind="TABLE", actions=[action]).sql(self._dialect)
 
+    def schema_sync_add_column(self, *, table: TableRef, column: str, data_type: str, nullable: bool = True) -> str:
+        """Render an ALTER TABLE ADD COLUMN statement for schema synchronization across dialects."""
+        table_sql = self._table_node(table).sql(self._dialect)
+        col_sql = exp.Identifier(this=column, quoted=True).sql(self._dialect)
+        type_sql = exp.DataType.build(data_type, dialect=self._dialect).sql(self._dialect)
+        null_suffix = "" if nullable else " NOT NULL"
+        if self._dialect == "oracle":
+            return f"ALTER TABLE {table_sql} ADD ({col_sql} {type_sql}{null_suffix})"
+        return f"ALTER TABLE {table_sql} ADD COLUMN {col_sql} {type_sql}{null_suffix}"
+
+    def schema_sync_widen_column(self, *, table: TableRef, column: str, data_type: str) -> str:
+        """Render an ALTER TABLE column type widening statement for schema synchronization."""
+        if self._dialect in _ALTER_COLUMN_DIALECTS:
+            return self.alter_column_set_data_type(table=table, column=column, data_type=data_type)
+        table_sql = self._table_node(table).sql(self._dialect)
+        col_sql = exp.Identifier(this=column, quoted=True).sql(self._dialect)
+        type_sql = exp.DataType.build(data_type, dialect=self._dialect).sql(self._dialect)
+        if self._dialect == "oracle":
+            return f"ALTER TABLE {table_sql} MODIFY ({col_sql} {type_sql})"
+        return f"ALTER TABLE {table_sql} ALTER COLUMN {col_sql} {type_sql}"
+
+    def schema_sync_relax_nullability(self, *, table: TableRef, column: str) -> str:
+        """Render an ALTER TABLE statement relaxing NOT NULL on a column."""
+        if self._dialect in _ALTER_COLUMN_DIALECTS:
+            return self.alter_column_drop_not_null(table=table, column=column)
+        table_sql = self._table_node(table).sql(self._dialect)
+        col_sql = exp.Identifier(this=column, quoted=True).sql(self._dialect)
+        if self._dialect == "oracle":
+            return f"ALTER TABLE {table_sql} MODIFY ({col_sql} NULL)"
+        return f"ALTER TABLE {table_sql} ALTER COLUMN {col_sql} DROP NOT NULL"
+
+    def schema_sync_drop_partition(self, *, table: TableRef, partition_name: str) -> str:
+        """Render an ALTER TABLE DROP PARTITION statement for schema synchronization."""
+        table_sql = self._table_node(table).sql(self._dialect)
+        part_sql = exp.Identifier(this=partition_name, quoted=True).sql(self._dialect)
+        return f"ALTER TABLE {table_sql} DROP PARTITION {part_sql}"
+
+    def validation_aggregate_query(
+        self,
+        *,
+        table: TableRef,
+        questions: Sequence[tuple[str | None, str, str]],
+        group_bys: Sequence[str] = (),
+        where_clauses: Sequence[str] = (),
+        as_of_scn_bind: bool = False,
+        parallelism: int | None = None,
+    ) -> str:
+        """Render a batched cross-DB aggregate validation query."""
+        projections: list[exp.Expr] = [
+            exp.alias_(
+                exp.Column(this=exp.Identifier(this=col, quoted=True)),
+                col,
+                quoted=True,
+                copy=False,
+            )
+            for col in group_bys
+        ]
+        for col_name, func_name, alias_name in questions:
+            agg_expr = self._build_validation_agg_expr(col_name, func_name)
+            projections.append(exp.alias_(agg_expr, alias_name, quoted=True, copy=False))
+
+        table_node = self._table_node(table)
+        if self._dialect == "oracle":
+            table_node.set("alias", exp.TableAlias(this=exp.Identifier(this="t", quoted=False)))
+            if as_of_scn_bind:
+                table_node.set(
+                    "version",
+                    exp.Version(this="SCN", kind="AS OF", expression=exp.Placeholder(this="scn")),
+                )
+
+        select_node = exp.select(*projections, copy=False).from_(table_node, copy=False)
+        if self._dialect == "oracle" and parallelism and parallelism > 1:
+            select_node = select_node.hint(exp.Var(this=f"NO_INDEX(t) PARALLEL(t, {parallelism})"))
+
+        if where_clauses:
+            combined_where: exp.Expr | None = None
+            for clause in where_clauses:
+                clause_expr = exp.Var(this=clause)
+                combined_where = (
+                    clause_expr if combined_where is None else exp.And(this=combined_where, expression=clause_expr)
+                )
+            if combined_where is not None:
+                select_node = select_node.where(combined_where, copy=False)
+
+        if group_bys:
+            group_exprs = [exp.Column(this=exp.Identifier(this=col, quoted=True)) for col in group_bys]
+            select_node = select_node.group_by(*group_exprs, copy=False)
+            order_exprs = [
+                exp.Var(
+                    this=f"{exp.Column(this=exp.Identifier(this=col, quoted=True)).sql(self._dialect)} ASC NULLS LAST"
+                )
+                for col in group_bys
+            ]
+            select_node = select_node.order_by(*order_exprs, copy=False)
+
+        return select_node.sql(self._dialect)
+
+    def validation_sample_hash_query(
+        self,
+        *,
+        table: TableRef,
+        key_columns: Sequence[str],
+        value_columns: Sequence[str],
+        where_clauses: Sequence[str] = (),
+        as_of_scn_bind: bool = False,
+    ) -> str:
+        """Render a sample row-level hash aggregate query."""
+        cols = [*key_columns, *value_columns]
+        if not cols:
+            raise ValidationError("At least one column is required for sample hash validation")
+
+        cast_type = (
+            "VARCHAR2(4000)"
+            if self._dialect == "oracle"
+            else ("STRING" if self._dialect in ("bigquery", "spark", "impala") else "VARCHAR")
+        )
+        casted: list[exp.Expr] = []
+        for col in cols:
+            col_ident = exp.Column(this=exp.Identifier(this=col, quoted=True))
+            casted.append(
+                exp.Coalesce(
+                    this=exp.Cast(this=col_ident, to=exp.DataType.build(cast_type, dialect=self._dialect)),
+                    expressions=[exp.Literal.string("~")],
+                )
+            )
+        concat_expr: exp.Expr = casted[0] if len(casted) == 1 else exp.Concat(expressions=casted, safe=True)
+        agg_expr = self._build_hash_aggregate_on_expr(concat_expr)
+        projection = exp.alias_(agg_expr, "ROW_HASH_AGG", quoted=True, copy=False)
+
+        table_node = self._table_node(table)
+        if self._dialect == "oracle" and as_of_scn_bind:
+            table_node.set(
+                "version",
+                exp.Version(this="SCN", kind="AS OF", expression=exp.Placeholder(this="scn")),
+            )
+
+        select_node = exp.select(projection, copy=False).from_(table_node, copy=False)
+        if where_clauses:
+            combined_where: exp.Expr | None = None
+            for clause in where_clauses:
+                clause_expr = exp.Var(this=clause)
+                combined_where = (
+                    clause_expr if combined_where is None else exp.And(this=combined_where, expression=clause_expr)
+                )
+            if combined_where is not None:
+                select_node = select_node.where(combined_where, copy=False)
+
+        return select_node.sql(self._dialect)
+
+    def transpile_safe_filter(
+        self,
+        raw_filter: str,
+        *,
+        source_dialect: str = "oracle",
+        quote_identifiers: bool = False,
+    ) -> str:
+        """Validate a raw filter condition against an AST allowlist and render in this dialect."""
+        cleaned = raw_filter.strip()
+        if not cleaned or ";" in cleaned or "--" in cleaned or "/*" in cleaned or "*/" in cleaned:
+            raise ValidationError(f"Unsafe or empty filter clause: {raw_filter!r}")
+        try:
+            statements = [stmt for stmt in sqlglot.parse(cleaned, read=source_dialect) if stmt is not None]
+        except Exception as exc:
+            raise ValidationError(f"Invalid filter clause {raw_filter!r}: {exc}") from exc
+        if len(statements) != 1:
+            raise ValidationError(f"Unsafe filter expression in {raw_filter!r}: multiple statements")
+        parsed = statements[0]
+        for node in parsed.walk():
+            if isinstance(node, _FORBIDDEN_FILTER_NODES):
+                raise ValidationError(
+                    f"Unsafe filter expression in {raw_filter!r}: forbidden AST node {type(node).__name__}"
+                )
+            if isinstance(node, exp.Anonymous) and node.name.upper() not in _ALLOWED_FILTER_ANONYMOUS:
+                raise ValidationError(f"Unsafe filter function in {raw_filter!r}: {node.name}")
+            if quote_identifiers and isinstance(node, exp.Column) and isinstance(node.this, exp.Identifier):
+                node.this.set("quoted", True)
+        return parsed.sql(self._dialect)
+
+    def parse_filter_tuples(
+        self,
+        raw_filter: str,
+        *,
+        source_dialect: str = "oracle",
+    ) -> list[tuple[str, str, Any] | str]:
+        """Parse comma-separated or single filter clauses via sqlglot AST into validated tuples or clauses."""
+        parts = [part.strip() for part in raw_filter.split(",") if part.strip()]
+        if not parts:
+            raise ValidationError(f"Unsafe or empty filter clause: {raw_filter!r}")
+        results: list[tuple[str, str, Any] | str] = []
+        op_map: dict[type[exp.Expr], str] = {
+            exp.EQ: "=",
+            exp.NEQ: "!=",
+            exp.LT: "<",
+            exp.LTE: "<=",
+            exp.GT: ">",
+            exp.GTE: ">=",
+            exp.Like: "like",
+        }
+        for part in parts:
+            validated_sql = self.transpile_safe_filter(part, source_dialect=source_dialect)
+            parsed = sqlglot.parse_one(validated_sql, read=self._dialect)
+            if isinstance(parsed, exp.Not) and isinstance(parsed.this, exp.Like):
+                like_node = parsed.this
+                if isinstance(like_node.this, exp.Column) and isinstance(like_node.expression, exp.Literal):
+                    results.append((like_node.this.name, "not like", self._literal_to_python(like_node.expression)))
+                    continue
+            if (
+                type(parsed) in op_map
+                and isinstance(parsed.this, exp.Column)
+                and isinstance(parsed.expression, exp.Literal)
+            ):
+                results.append((parsed.this.name, op_map[type(parsed)], self._literal_to_python(parsed.expression)))
+            else:
+                results.append(validated_sql)
+        return results
+
+    def build_spec_aggregate_query(
+        self,
+        *,
+        table_identifier: str,
+        select_items: Sequence[str],
+        where_sql: str = "",
+        group_by_cols: Sequence[str] = (),
+        order_by_cols: Sequence[str] = (),
+        query_hints: str = "",
+        prior_to_where: str = "",
+    ) -> str:
+        """Construct an aggregate validation SELECT query from raw clause components."""
+        projections = [exp.Var(this=item) for item in select_items]
+        from_target = f"{table_identifier} {prior_to_where}".strip()
+        select_node = exp.select(*projections, copy=False).from_(exp.Var(this=from_target), copy=False)
+        if where_sql:
+            select_node = select_node.where(exp.Var(this=where_sql), copy=False)
+        if group_by_cols:
+            select_node = select_node.group_by(*[exp.Var(this=col) for col in group_by_cols], copy=False)
+        if order_by_cols:
+            select_node = select_node.order_by(
+                *[exp.Ordered(this=exp.Var(this=col)) for col in order_by_cols],
+                copy=False,
+            )
+        rendered = select_node.sql(self._dialect)
+        if query_hints:
+            hint_str = query_hints.strip()
+            rendered = f"SELECT {hint_str} {rendered[len('SELECT ') :]}"
+        return rendered
+
     def _require(self, method: str, *dialects: str) -> None:
         """Raise DialectNotSupportedError when this engine's dialect is not in dialects."""
         if self._dialect not in dialects:
@@ -732,8 +1005,78 @@ class DialectSqlEngine:
                 props.append(exp.Property(this=exp.Var(this=key), value=cls._option_value(val)))
         return props
 
+    def _build_validation_agg_expr(self, column_name: str | None, func_name: str) -> exp.Expr:
+        """Build a dialect-aware validation aggregate expression AST node."""
+        if func_name == "COUNT":
+            if column_name is None:
+                return exp.Count(this=exp.Star())
+            return exp.Count(this=exp.Column(this=exp.Identifier(this=column_name, quoted=True)))
 
-@lru_cache(maxsize=8)
+        col_expr = exp.Column(this=exp.Identifier(this=column_name or "*", quoted=bool(column_name)))
+        if func_name == "MIN":
+            return exp.Min(this=col_expr)
+        if func_name == "MAX":
+            return exp.Max(this=col_expr)
+        if func_name == "SUM":
+            return exp.Sum(this=col_expr)
+        if func_name == "AVG":
+            return exp.Avg(this=col_expr)
+        if func_name == "STDDEV":
+            if self._dialect == "oracle":
+                return exp.Stddev(this=col_expr)
+            return exp.StddevSamp(this=col_expr)
+        if func_name == "HASH_XOR":
+            cast_type = (
+                "VARCHAR2(4000)"
+                if self._dialect == "oracle"
+                else ("STRING" if self._dialect in ("bigquery", "spark", "impala") else "VARCHAR")
+            )
+            str_expr = exp.Coalesce(
+                this=exp.Cast(this=col_expr, to=exp.DataType.build(cast_type, dialect=self._dialect)),
+                expressions=[exp.Literal.string("~")],
+            )
+            return self._build_hash_aggregate_on_expr(str_expr)
+        raise ValidationError(f"Unsupported aggregate function: {func_name!r}")
+
+    def _build_hash_aggregate_on_expr(self, value_expr: exp.Expr) -> exp.Expr:
+        """Build a dialect-specific hash aggregate expression over value_expr."""
+        if self._dialect == "bigquery":
+            return exp.Anonymous(
+                this="BIT_XOR",
+                expressions=[exp.Anonymous(this="FARM_FINGERPRINT", expressions=[value_expr])],
+            )
+        if self._dialect == "oracle":
+            return exp.Sum(this=exp.Anonymous(this="ORA_HASH", expressions=[value_expr]))
+        if self._dialect == "snowflake":
+            return exp.Anonymous(
+                this="BITXOR_AGG",
+                expressions=[exp.Anonymous(this="HASH", expressions=[value_expr])],
+            )
+        if self._dialect == "teradata":
+            return exp.Sum(this=exp.Anonymous(this="HASHROW", expressions=[value_expr]))
+        if self._dialect in ("spark", "impala"):
+            return exp.Sum(this=exp.Anonymous(this="XXHASH64", expressions=[value_expr]))
+        return exp.Anonymous(
+            this="BIT_XOR",
+            expressions=[exp.Anonymous(this="HASH", expressions=[value_expr])],
+        )
+
+    @staticmethod
+    def _literal_to_python(node: exp.Literal) -> Any:
+        """Convert an exp.Literal AST node to a Python int, float, or str."""
+        if node.is_string:
+            return str(node.this)
+        text = str(node.this)
+        try:
+            return int(text)
+        except ValueError:
+            try:
+                return float(text)
+            except ValueError:
+                return text
+
+
+@lru_cache(maxsize=16)
 def get_dialect_engine(dialect: SqlDialect) -> DialectSqlEngine:
     """Return the cached DialectSqlEngine for a dialect."""
     return DialectSqlEngine(dialect)

@@ -14,6 +14,8 @@ from litestar_security import AuthenticationPolicy, SecureController, public, re
 from goe.connect.models import ConnectivityReport
 from goe.listener import schemas, utils
 from goe.listener.services.system import SystemService
+from goe.report.models import TableStatusReport
+from goe.sync.differ import SchemaDiff
 from goe.util.concurrency import async_
 
 
@@ -105,3 +107,23 @@ class SystemController(SecureController):
         for partition in normalized_partitions:
             partition["subpartitions"] = grouped.get(partition.get("partition_name"), [])
         return schemas.PartitionDetails(count=len(normalized_partitions), results=normalized_partitions)
+
+    @get("/schemas/{schema_name:str}/{table_name:str}/status/", mcp_tool="get_table_offload_status")
+    async def get_table_offload_status(
+        self,
+        system_service: NamedDependency[SystemService],
+        schema_name: FromPath[str],
+        table_name: FromPath[str],
+    ) -> TableStatusReport:
+        """Return offload status report for a single table."""
+        return await async_(system_service.get_table_offload_status)(schema_name, table_name)
+
+    @get("/schemas/{schema_name:str}/{table_name:str}/drift/", mcp_tool="preview_schema_drift")
+    async def preview_schema_drift(
+        self,
+        system_service: NamedDependency[SystemService],
+        schema_name: FromPath[str],
+        table_name: FromPath[str],
+    ) -> SchemaDiff:
+        """Preview schema drift between source and target for a single table."""
+        return await async_(system_service.preview_schema_drift)(schema_name, table_name)

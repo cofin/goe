@@ -4,7 +4,7 @@
 """System metadata service for GOE Listener."""
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 from uuid import NAMESPACE_DNS, UUID, uuid3
 
@@ -19,6 +19,14 @@ from goe.offload.offload_messages import OffloadMessages
 from goe.offload.registry import create_repository_client
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.oracle.oracle_repository import OracleRepositoryService
+from goe.report.models import TableStatusReport
+from goe.report.service import StatusReportService
+from goe.sync.differ import (
+    SchemaDiff,
+    SchemaSyncService,
+    SourceColumnSnapshot,
+    TargetColumnSnapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +113,50 @@ class SystemService:
         """Execute connectivity probes and return a typed ConnectivityReport."""
         resolved_settings = settings or GOESettings.from_env(environ=environ)
         return ConnectRunner(resolved_settings).run()
+
+    def get_table_offload_status(
+        self,
+        schema_name: str,
+        table_name: str,
+        *,
+        report_service: StatusReportService | None = None,
+    ) -> TableStatusReport:
+        """Return TableStatusReport for a table via StatusReportService."""
+        service = report_service or StatusReportService()
+        envelope = service.collect_report(
+            schema=schema_name,
+            table=table_name,
+            demo_mode=self.config is None,
+        )
+        if envelope.tables:
+            return envelope.tables[0]
+        return TableStatusReport(
+            schema_name=schema_name.upper(),
+            table_name=table_name.upper(),
+            target_schema=schema_name.lower(),
+            target_table=table_name.lower(),
+            offload_type="FULL",
+        )
+
+    def preview_schema_drift(
+        self,
+        schema_name: str,
+        table_name: str,
+        *,
+        source_columns: Sequence[SourceColumnSnapshot] = (),
+        target_columns: Sequence[TargetColumnSnapshot] = (),
+        sync_service: SchemaSyncService | None = None,
+    ) -> SchemaDiff:
+        """Preview schema drift for a table via SchemaSyncService without opening unpooled connections."""
+        service = sync_service or SchemaSyncService()
+        diff, _ = service.sync_table(
+            schema_name=schema_name,
+            table_name=table_name,
+            source_columns=source_columns,
+            target_columns=target_columns,
+            execute=False,
+        )
+        return diff
 
 
 _default_service: SystemService | None = None

@@ -33,8 +33,8 @@ child_flows:
   - listener_on_vertebra_runtime_20261024
 research:
   - .agents/bundles/specs/prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024/research/vertebra-and-runtime-evaluation.md
-  - .agents/bundles/specs/prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/research/module-by-module-redesign.md
-  - .agents/bundles/specs/prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
+  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/module-by-module-redesign.md
+  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
 ---
 
 # Master PRD 10: Execution Context, Staged OffloadPlan, Durable Job Queue, and the Listener on Vertebra
@@ -43,7 +43,7 @@ research:
 
 ### 1. North Star
 
-Offloads run safely side by side in one process, an offload is planned as an immutable value before anything mutates a target, the Listener coordinates jobs durably across workers and hosts, and the Listener is served by Vertebra ([Vertebra research](research/vertebra-and-runtime-evaluation.md), [module blueprint](../prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/module-by-module-redesign.md)):
+Offloads run safely side by side in one process, an offload is planned as an immutable value before anything mutates a target, the Listener coordinates jobs durably across workers and hosts, and the Listener is served by Vertebra ([Vertebra research](research/vertebra-and-runtime-evaluation.md), [module blueprint](../prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/module-by-module-redesign.md)):
 
 1. **Execution context and concurrency safety**: a `ContextVar`-scoped `ExecutionContext(FrozenBaseStruct)` routes structured events to `ExecutionSink`s (`LogFileSink`, `ConsoleSink` with byte-identical stdout, `TelemetrySink`, `RepositoryStepSink`, `ListenerCacheSink`), replacing the module globals in `src/goe/orchestration/logging_init.py:35-145` and the shared `_runner` state in `src/goe/listener/services/orchestration.py` and `src/goe/orchestration/orchestration_runner.py:112-160`. It fixes the unraised `OffloadException` (`execution.py:438-439`), the in-place `override_offload_dfs_config` mutation (`execution.py:442`), runtime `os.environ["NLS_LANG"]` mutation (`operation.py:181-196`), the leaked backend API (`operation.py:1181`), the `get_hybrid_metadata(offload_options)` argument bug (`operation.py:1194`), the throwaway Oracle connection in `_get_max_hybrid_identifier_length` (`orchestration_runner.py:320-336`), and the double `OrchestrationConfig.from_dict` construction (`cli_entry_points.py:53-57`).
 2. **Staged `OffloadPlan`**: `SourceDiscoveryStage` -> `PartitionBoundaryStage` -> `TypeResolutionStage` -> `TargetTableStage` -> `TransportPlanStage` produce an immutable, serializable `OffloadPlan(FrozenBaseStruct)` (with `SourcePartitionSlice` declared `array_like=True, frozen=True, gc=False`) that `StatelessOffloadExecutor` executes under `OrchestrationLockInterface`. `--dry-run` and the MCP `plan_offload_dry_run` tool render the plan without touching targets. The 1,735-LOC `OffloadOperation` and procedural `execution.py` are replaced; every Incremental Partition Append rule (`100/0`, `90/10`, `100/10`, `RANGE`, `LIST`, composite subpartitions, Partition-Based Offload, `--older-than-date`, `--older-than-days`, `--less-than-value`, `--equal-to-values`, predicate offload, `--reset-backend-table`, `--reset-hybrid-view`, `--offload-chunk-column`, `--offload-chunk-size`, verification) is pinned by characterization tests before code moves.

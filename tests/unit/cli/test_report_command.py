@@ -18,7 +18,7 @@ def test_report_help():
     assert "--output-level" in result.output
 
 
-@patch("goe.cli.commands.report.offload_status_report_run")
+@patch("goe.cli.commands.report.StatusReportService.run_from_options")
 def test_report_dispatch(mock_osr):
     runner = CliRunner()
     result = runner.invoke(cli, ["report", "-s", "SH", "-t", "SALES", "-o", "JSON"])
@@ -30,7 +30,7 @@ def test_report_dispatch(mock_osr):
     assert options.output_format == "JSON"
 
 
-@patch("goe.cli.commands.report.offload_status_report_run")
+@patch("goe.cli.commands.report.StatusReportService.run_from_options")
 def test_report_defaults_to_text_and_summary(mock_osr):
     """Verify goe report defaults output_format to 'text', output_level to 'summary', and ansi to True."""
     runner = CliRunner()
@@ -42,7 +42,7 @@ def test_report_defaults_to_text_and_summary(mock_osr):
     assert options.ansi is True
 
 
-@patch("goe.cli.commands.report.offload_status_report_run")
+@patch("goe.cli.commands.report.StatusReportService.run_from_options")
 def test_report_demo_mode_and_common_options(mock_osr):
     """Verify goe report accepts hidden -d/--demo and trailing common options."""
     runner = CliRunner()

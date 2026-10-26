@@ -24,7 +24,7 @@ depends_on:
   - durable_job_queue_listener_cache_and_mcp_20261024
 research:
   - .agents/bundles/specs/prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024/research/vertebra-and-runtime-evaluation.md
-  - .agents/bundles/specs/prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/module-by-module-redesign.md
+  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/module-by-module-redesign.md
 ---
 
 # Chapter 10.5: Listener on Vertebra Runtime

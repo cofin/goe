@@ -9,6 +9,7 @@ from goe.offload.offload_validation import (
     CrossDbValidatorException,
     OffloadValidationException,
     combine_validation_filters,
+    diff_rows_in_duckdb,
     get_validation_query_engine,
     validate_raw_filter_clause,
 )
@@ -72,3 +73,11 @@ def test_combine_validation_filters_wraps_and_simplifies() -> None:
     """Verify multiple filter clauses are combined into a parenthesized conjunction dropping 1=1."""
     where_sql = combine_validation_filters(["1 = 1", "ID > 10", "REGION = 'US'"], dialect="bigquery")
     assert where_sql == "(ID > 10) AND (REGION = 'US')"
+
+
+def test_diff_rows_in_duckdb_returns_differing_source_rows() -> None:
+    """Verify diff_rows_in_duckdb computes in-memory DuckDB EXCEPT diffs over row dicts."""
+    source_rows = [{"P1": "2026-01", "CNT": 100}, {"P1": "2026-02", "CNT": 250}]
+    target_rows = [{"p1": "2026-01", "cnt": 100}, {"p1": "2026-02", "cnt": 249}]
+    diffs = diff_rows_in_duckdb(source_rows, target_rows)
+    assert diffs == [{"P1": "2026-02", "CNT": "250"}]

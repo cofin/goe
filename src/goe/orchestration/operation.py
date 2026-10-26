@@ -3,7 +3,6 @@
 
 """RDBMS/NLS helpers, option normalisers, BaseOperation, and OffloadOperation."""
 
-import json
 import os
 import os.path
 import re
@@ -72,8 +71,11 @@ from goe.offload.option_validation import (
     normalise_stats_options,
     normalise_verify_options,
 )
-from goe.offload.oracle.ora_query import get_oracle_connection
-from goe.offload.registry import create_backend_api, create_repository_client
+from goe.offload.registry import (
+    create_backend_api,
+    create_frontend_api,
+    create_repository_client,
+)
 from goe.orchestration.constants import (
     NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE,
     OFFLOAD_OP_NAME,
@@ -90,6 +92,7 @@ from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE,
     OffloadMetadata,
 )
+from goe.serializers import decode_json
 from goe.util.string_utils import (
     all_int_chars,
     csv_split,
@@ -101,15 +104,19 @@ if TYPE_CHECKING:
 
 
 def ora_single_item_query(opts, qry, ora_conn=None, params={}):
-    use_conn = ora_conn or oracle_connection(opts)
+    if ora_conn is not None:
+        c = ora_conn.cursor()
+        try:
+            row = c.execute(qry, params).fetchone()
+            return row[0] if row else row
+        finally:
+            c.close()
+    frontend_api = create_frontend_api(opts.db_type, opts, messages=None)
     try:
-        c = use_conn.cursor()
-        row = c.execute(qry, params).fetchone()
+        row = frontend_api.execute_query_fetch_one(qry, query_params=params or None)
         return row[0] if row else row
     finally:
-        c.close()
-        if not ora_conn:
-            use_conn.close()
+        frontend_api.close()
 
 
 def get_db_unique_name(opts):
@@ -219,25 +226,6 @@ def get_offload_type(
         with_messages=with_messages,
     )
     return offload_type
-
-
-def oracle_connection(opts, proxy_user=None):
-    return get_oracle_connection(
-        opts.ora_adm_user,
-        opts.ora_adm_pass,
-        opts.rdbms_dsn,
-        opts.use_oracle_wallet,
-        proxy_user,
-    )
-
-
-def oracle_offload_transport_connection(config_options):
-    return get_oracle_connection(
-        config_options.rdbms_app_user,
-        config_options.rdbms_app_pass,
-        config_options.offload_transport_dsn,
-        config_options.use_oracle_wallet,
-    )
 
 
 def bool_option_from_string(opt_name, opt_val):
@@ -495,7 +483,9 @@ def normalise_options(options, normalise_owner_table=True):
 def verify_json_option(option_name, option_value):
     if option_value:
         try:
-            properties = json.loads(option_value)
+            properties = decode_json(option_value)
+            if not isinstance(properties, dict):
+                raise ValueError("Expected JSON object")
 
             invalid_props = [k for k, v in properties.items() if type(v) not in (str, int, float)]
             if invalid_props:
@@ -509,7 +499,9 @@ def verify_json_option(option_name, option_value):
                 raise OffloadOptionError(
                     "Invalid property value in %s for keys: %s" % (option_name, str(invalid_props))
                 )
-        except ValueError as ve:
+        except OffloadOptionError:
+            raise
+        except Exception as ve:
             log(traceback.format_exc(), vverbose)
             raise OffloadOptionError("Invalid JSON value for %s: %s" % (option_name, str(ve)))
 

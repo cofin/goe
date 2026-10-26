@@ -13,11 +13,11 @@ from goe.cli.common import common_options, extract_common_options
 
 if TYPE_CHECKING:
     from goe.config.options import StatusReportOptions
-    from goe.offload.offload_status_report import offload_status_report_run
+    from goe.report.service import StatusReportService
 
 _LAZY_IMPORTS: LazyImportMap = {
     "StatusReportOptions": ("goe.config.options", "StatusReportOptions"),
-    "offload_status_report_run": ("goe.offload.offload_status_report", "offload_status_report_run"),
+    "StatusReportService": ("goe.report.service", "StatusReportService"),
 }
 
 
@@ -70,9 +70,9 @@ def report(ctx: click.Context, **kwargs: Any) -> None:
             overrides[key] = value.lower()
         else:
             overrides[key] = value
-    offload_status_report_run(StatusReportOptions.from_mapping(overrides))
+    StatusReportService.run_from_options(StatusReportOptions.from_mapping(overrides))
 
 
 def __getattr__(name: str) -> Any:
-    """Lazily import offload_status_report dependencies on first attribute access."""
+    """Lazily import status report dependencies on first attribute access."""
     return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)

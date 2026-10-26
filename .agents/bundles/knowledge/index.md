@@ -26,7 +26,7 @@ Canonical setup, development, testing, packaging, and validation workflows with 
 - [Orchestration Core](architecture/orchestration.md) - `OrchestrationRunner`, locking, execution IDs, OpenTelemetry context bridge, and command steps.
 - [Offload Lifecycle](architecture/offload-lifecycle.md) - Step-by-step data offloading flow from discovery to verification.
 - [Canonical Type Mapping](architecture/type-mapping.md) - 3-tier typing system, sampling algorithms, and type conversion matrices.
-- [Schema Evolution](architecture/schema-evolution.md) - `schema_sync` analysis, difference vector resolution, and DDL generation.
+- [Schema Evolution](architecture/schema-evolution.md) - `SchemaSyncService` (`src/goe/sync/differ.py`), single-pass `SchemaDiff` resolution, and `DialectSqlEngine` DDL generation.
 
 ### 4. [Frontend RDBMS Adapters](frontends/index.md)
 - [Oracle Adapter](frontends/oracle.md) - `oracledb`, SQLSpec `OracleGateway`, named SQL files, custom Oracle dialect AST (`AS OF SCN` / `PARTITION`), PL/SQL packages, and `V$SESSION.CLIENT_INFO` trace tagging.
@@ -55,7 +55,7 @@ Canonical setup, development, testing, packaging, and validation workflows with 
 - [Listener Workers & Embedded Caching](listener/worker-and-redis.md) - `litestar-queues` background tasks, node heartbeats, scheduled cron jobs, and embedded in-process TTL caching.
 
 ### 9. [Operations & Tooling](operations/index.md)
-- [CLI Utilities](operations/cli-tools.md) - `offload`, `connect`, `logmgr`, `agg_validate`, and `listener` commands.
+- [CLI Utilities](operations/cli-tools.md) - `offload`, `connect`, `validate`, `sync`, `report`, `logmgr`, and `listener` commands.
 - [Offload Home Runtime](operations/offload-home.md) - Directory layout, build targets, packaging, and virtualenv management.
 - [Configuration Reference](operations/configuration-and-env.md) - Full inventory of environment variables, defaults, and validation.
 - [OpenTelemetry Observability](operations/observability.md) - Zero-cost-by-default tracing, metrics, `ExecutionId` context bridge, OTLP / Google Cloud Telemetry API exporters, and JSONL log correlation.
@@ -64,6 +64,6 @@ Canonical setup, development, testing, packaging, and validation workflows with 
 
 ### 10. [Development Standards](standards/index.md)
 - [Python Standards](standards/python.md) - Coding standards, type annotations, formatting, docstrings, and error handling.
-- [Database & SQL Standards](standards/database-and-sql.md) - Pluggable SQL dialect protocols (`sql_engine.py`), SQLSpec `OracleGateway` conventions, and transactional snapshot safety.
+- [Database & SQL Standards](standards/database-and-sql.md) - Unified `DialectSqlEngine` (`src/goe/offload/sql_ast/`), `PredicateExpr` IR (`src/goe/offload/predicates/`), `CrossDbValidator` (`src/goe/offload/validation/`), SQLSpec `OracleGateway` conventions, and transactional snapshot safety.
 - [Shell & Tooling Standards](standards/shell-and-tooling.md) - Bash script conventions and build tooling.
 - [Testing & Quality Assurance](standards/testing.md) - Unit testing, integration test harness, and mock databases.

@@ -5,6 +5,7 @@
 
 import pytest
 
+from goe import report as offload_status_report
 from goe.config.options import (
     EXPECTED_OFFLOAD_ARGS,
     LISTENER_OFFLOAD_CSV_ALIASES,
@@ -20,7 +21,7 @@ from goe.config.options import (
 from goe.exceptions import OffloadOptionError, OptionValueError
 from goe.goe import EXPECTED_OFFLOAD_ARGS as GOE_EXPECTED_OFFLOAD_ARGS
 from goe.goe import normalise_owner_table_options
-from goe.offload import offload_status_report, offload_validation
+from goe.offload import offload_validation
 
 
 def test_option_value_error_is_offload_option_error() -> None:
