@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Opt-in DuckDB offload transport: Oracle batches streamed to GCS Parquet via duckdb-oracle and gcs."""
+"""Opt-in DuckDB 2.0 offload transport: Oracle batches streamed to cloud Parquet via shared DuckDBEngine."""
 
-import os
 import shutil
 import tempfile
+import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,20 +24,24 @@ from goe.offload.offload_transport_rdbms_api import (
 )
 from goe.offload.transport.base import OffloadTransport, OffloadTransportException, convert_nans_to_nulls
 from goe.offload.transport.constants import TRANSPORT_CXT_BYTES, TRANSPORT_CXT_ROWS
-from goe.offload.transport.duckdb_constants import DUCKDB_GCS_SCOPE, OFFLOAD_TRANSPORT_METHOD_DUCKDB
-from goe.offload.transport.duckdb_engine import (
-    DuckDBTransportSettings,
-    attach_oracle,
-    build_batch_copy_sql,
+from goe.offload.transport.duckdb.engine import (
+    CloudStorageSecretSpec,
+    DuckDBEngine,
+    DuckDBSessionConfig,
     build_cast_projection,
-    create_gcs_token_secret,
-    load_gcs_extension,
-    load_oracle_extension,
-    open_batch_connection,
-    parse_ezconnect_dsn,
-    to_duckdb_gcs_uri,
     verify_batch_scn_invariant,
 )
+from goe.offload.transport.duckdb.oracle_pushdown import (
+    OracleExtensionTransport,
+    OracleFallbackAssessment,
+    OraclePushdownPlan,
+)
+from goe.offload.transport.duckdb.parquet_writer import (
+    DuckDBParquetWriter,
+    ParquetCompression,
+    ParquetWriteOptions,
+)
+from goe.offload.transport.duckdb_constants import DUCKDB_GCS_SCOPE, OFFLOAD_TRANSPORT_METHOD_DUCKDB
 from goe.orchestration import command_steps
 
 if TYPE_CHECKING:
@@ -51,7 +56,7 @@ DUCKDB_MIN_ORACLE_CONNECTION_LIMIT = 8
 
 
 class OffloadTransportDuckDB(OffloadTransport):
-    """Transport Oracle data to GCS Parquet with in-process DuckDB, duckdb-oracle and the community gcs extension."""
+    """Transport Oracle data to cloud Parquet with a shared in-process DuckDB 2.0 engine."""
 
     def __init__(
         self,
@@ -61,8 +66,10 @@ class OffloadTransportDuckDB(OffloadTransport):
         offload_options: "OrchestrationConfig",
         messages: "OffloadMessages",
         dfs_client: "GOEDfs",
+        *,
+        arrow_fallback_runner: Callable[[list[str], str, str], int] | None = None,
     ) -> None:
-        """Initialise base transport state, NaN handling and DuckDB resource settings."""
+        """Initialise base transport state, NaN handling, and DuckDB 2.0 session configuration."""
         self._offload_transport_method = OFFLOAD_TRANSPORT_METHOD_DUCKDB
         super().__init__(
             offload_source_table,
@@ -73,17 +80,28 @@ class OffloadTransportDuckDB(OffloadTransport):
             dfs_client,
         )
         self._convert_nans_to_nulls = convert_nans_to_nulls(offload_target_table, offload_operation)
-        self._duckdb_settings = DuckDBTransportSettings(
-            threads=offload_options.offload_transport_duckdb_threads,
-            memory_limit=offload_options.offload_transport_duckdb_memory_limit,
+        self._duckdb_temp_root = offload_options.offload_transport_duckdb_temp_directory
+        self._session_config = DuckDBSessionConfig(
+            execution_key=uuid.uuid4().hex[:12],
+            parallelism=max(1, int(self._offload_transport_parallelism or 1)),
+            memory_limit_override=offload_options.offload_transport_duckdb_memory_limit,
+            threads_override=offload_options.offload_transport_duckdb_threads,
+            temp_directory=self._duckdb_temp_root or "/tmp/goe_duckdb",
             extension_repository=offload_options.offload_transport_duckdb_extension_repository,
-            extension_dir=offload_options.offload_transport_duckdb_extension_dir,
+            extension_directory=offload_options.offload_transport_duckdb_extension_dir,
             extension_path=offload_options.offload_transport_duckdb_extension_path,
         )
-        self._duckdb_temp_root = offload_options.offload_transport_duckdb_temp_directory
+        self._arrow_fallback_runner = arrow_fallback_runner
+        self._shared_engine: DuckDBEngine | None = None
+
+    def assess_fallback(self, *, has_oci_library: bool | None = None) -> OracleFallbackAssessment:
+        """Return whether the source table requires Arrow fallback instead of duckdb-oracle pushdown."""
+        columns = getattr(self, "_rdbms_columns", None) or []
+        effective_oci = getattr(self, "_has_oci_library", has_oci_library)
+        return OracleExtensionTransport.assess_table_eligibility(columns, has_oci_library=effective_oci)
 
     def transport(self, partition_chunk: "OffloadSourcePartitions | None" = None) -> int | None:
-        """Extract every batch to gcss:// Parquet, then hand the staged files to the backend load table."""
+        """Extract every batch to canonical Parquet URIs, then hand the staged files to the backend load table."""
         self._reset_transport_context()
 
         def step_fn() -> int | None:
@@ -91,17 +109,34 @@ class OffloadTransportDuckDB(OffloadTransport):
                 return 0
             self._refresh_rdbms_action()
             cast_projection = build_cast_projection(self._staging_file.get_staging_columns())
-            compression = "SNAPPY" if self._compress_load_table else "UNCOMPRESSED"
-            staging_uri = to_duckdb_gcs_uri(self._staging_table_location.rstrip("/"))
-            copy_sqls = []
-            for batch, oracle_sql in enumerate(self._batch_oracle_queries(partition_chunk)):
+            compression: ParquetCompression = "SNAPPY" if self._compress_load_table else "UNCOMPRESSED"
+            staging_uri = self._staging_table_location.rstrip("/")
+            batch_queries = self._batch_oracle_queries(partition_chunk)
+            plan = OraclePushdownPlan(
+                batch_queries=tuple(batch_queries),
+                cast_projection=cast_projection,
+                consistent_read=bool(self._offload_transport_consistent_read),
+                snapshot_scn=self._offload_transport_snapshot,
+            )
+            pushdown = OracleExtensionTransport(DuckDBEngine(self._default_session_config()))
+            writer = DuckDBParquetWriter(ParquetWriteOptions(compression=compression, per_thread_output=False))
+            copy_sqls: list[str] = []
+            for batch, oracle_sql in enumerate(batch_queries):
                 target_uri = f"{staging_uri}/part-{batch:05d}.parquet"
                 self.log(f"DuckDB batch {batch} extraction SQL: {oracle_sql}", detail=VERBOSE)
                 self.log(f"DuckDB batch {batch} target: {target_uri}", detail=VERBOSE)
-                copy_sqls.append(build_batch_copy_sql(cast_projection, oracle_sql, target_uri, compression))
-            rows_imported = None
+                relation_sql = pushdown.build_oracle_query_relation_sql(plan, batch)
+                copy_sqls.append(writer.build_copy_sql(relation_sql, target_uri))
+            rows_imported: int | None = None
             if not self._dry_run:
-                rows_imported = self._run_batches(copy_sqls)
+                fallback_runner = getattr(self, "_arrow_fallback_runner", None)
+                assessment = self.assess_fallback(has_oci_library=True if fallback_runner is None else None)
+                if assessment.requires_arrow_fallback and fallback_runner is not None:
+                    for reason in assessment.reasons:
+                        self.log(f"DuckDB transport routing to Arrow fallback: {reason}", detail=VERBOSE)
+                    rows_imported = fallback_runner(batch_queries, staging_uri, compression)
+                else:
+                    rows_imported = self._run_batches(copy_sqls)
                 self.log(f"DuckDB transport rows staged: {rows_imported}", detail=VVERBOSE)
             self._check_rows_imported(rows_imported)
             self._transport_context[TRANSPORT_CXT_BYTES] = self._check_and_log_transported_files(rows_imported)
@@ -117,6 +152,32 @@ class OffloadTransportDuckDB(OffloadTransport):
     def ping_source_rdbms(self) -> None:
         """Not supported: DuckDB connectivity is exercised by the transport itself."""
         raise NotImplementedError("ping_source_rdbms not implemented for DUCKDB transport")
+
+    def _default_session_config(self, temp_directory: str | None = None) -> DuckDBSessionConfig:
+        """Return the active DuckDBSessionConfig or construct one for partially initialized test doubles."""
+        existing = getattr(self, "_session_config", None)
+        if isinstance(existing, DuckDBSessionConfig):
+            if temp_directory is None:
+                return existing
+            return DuckDBSessionConfig(
+                execution_key=existing.execution_key,
+                parallelism=existing.parallelism,
+                configured_memory_bytes=existing.configured_memory_bytes,
+                memory_limit_override=existing.memory_limit_override,
+                threads_override=existing.threads_override,
+                temp_directory=temp_directory,
+                max_temp_directory_size=existing.max_temp_directory_size,
+                extension_repository=existing.extension_repository,
+                extension_directory=existing.extension_directory,
+                extension_path=existing.extension_path,
+                oracle_array_size=existing.oracle_array_size,
+                oracle_call_timeout_ms=existing.oracle_call_timeout_ms,
+            )
+        return DuckDBSessionConfig(
+            execution_key=uuid.uuid4().hex[:12],
+            parallelism=max(1, int(getattr(self, "_offload_transport_parallelism", 1) or 1)),
+            temp_directory=temp_directory or getattr(self, "_duckdb_temp_root", None) or "/tmp/goe_duckdb",
+        )
 
     def _batch_split(self, partition_chunk: "OffloadSourcePartitions | None") -> tuple[str, int | None, int | None]:
         """Return the split type and optional id range, switching to MOD when the id range is blank."""
@@ -160,39 +221,39 @@ class OffloadTransportDuckDB(OffloadTransport):
         bundle.credentials.refresh(Request())
         return str(bundle.credentials.token or ""), bundle.project
 
-    def _run_batch(self, batch: int, copy_sql: str, access_token: str, project_id: str | None, run_dir: Path) -> int:
-        """Run one COPY on a fresh DuckDB connection and return the number of rows written.
-
-        A fresh connection per batch is required because the gcs extension caches its storage client per connection.
-        """
-        ezconnect = parse_ezconnect_dsn(self._offload_transport_dsn)
-        if ezconnect is None:
-            raise OffloadTransportException(
-                f"DUCKDB transport requires an EZConnect DSN: {self._offload_transport_dsn}"
-            )
-        batch_temp = run_dir / f"batch_{batch:05d}"
-        batch_temp.mkdir(parents=True, exist_ok=True)
-        conn = open_batch_connection(self._duckdb_settings, str(batch_temp))
+    def _open_shared_engine(self, run_dir: Path, access_token: str) -> DuckDBEngine:
+        """Open a single shared DuckDBEngine for the run, attach Oracle, and clear the metadata cache."""
+        session_cfg = self._default_session_config(temp_directory=str(run_dir))
+        engine = DuckDBEngine(session_cfg)
+        cloud_secret = CloudStorageSecretSpec(scheme="gs", bearer_token=access_token) if access_token else None
         try:
-            load_oracle_extension(conn, self._duckdb_settings)
-            load_gcs_extension(conn)
-            conn.execute(
-                "SET oracle_connection_limit = %s"
-                % max(DUCKDB_MIN_ORACLE_CONNECTION_LIMIT, self._offload_transport_parallelism)
-            )
-            attach_oracle(
+            conn = engine.open(load_oracle=True, cloud_secret=cloud_secret)
+            options = getattr(self, "_offload_options", None)
+            dsn = str(getattr(self, "_offload_transport_dsn", "") or "")
+            OracleExtensionTransport(engine).prepare_session(
                 conn,
-                self._offload_options.rdbms_app_user or "",
-                self._offload_options.rdbms_app_pass or "",
-                ezconnect,
+                user=getattr(options, "rdbms_app_user", None),
+                password=getattr(options, "rdbms_app_pass", None),
+                dsn=dsn,
+                wallet_path=getattr(options, "oracle_wallet_location", None),
             )
-            create_gcs_token_secret(conn, access_token, project_id)
-            row = conn.execute(copy_sql).fetchone()
-            return int(row[0]) if row else 0
+            return engine
+        except duckdb.Error as exc:
+            engine.close()
+            raise OffloadTransportException(f"DuckDB transport initialization failed: {exc}") from exc
+
+    def _run_batch(self, batch: int, copy_sql: str, access_token: str, project_id: str | None, run_dir: Path) -> int:
+        """Execute one batch COPY statement over a worker cursor from the shared DuckDBEngine."""
+        del access_token, project_id, run_dir
+        engine = getattr(self, "_shared_engine", None)
+        if engine is None:
+            raise OffloadTransportException(f"DuckDB transport batch {batch} failed: shared DuckDBEngine is not open")
+        try:
+            with engine.cursor() as cursor:
+                row = cursor.execute(copy_sql).fetchone()
+                return int(row[0]) if row and row[0] is not None else 0
         except duckdb.Error as exc:
             raise OffloadTransportException(f"DuckDB transport batch {batch} failed: {exc}") from exc
-        finally:
-            conn.close()
 
     def _run_batch_traced(
         self, batch: int, copy_sql: str, access_token: str, project_id: str | None, run_dir: Path
@@ -205,18 +266,24 @@ class OffloadTransportDuckDB(OffloadTransport):
             return rows
 
     def _run_batches(self, copy_sqls: list[str]) -> int:
-        """Run all batches concurrently in a private spill directory that is always removed."""
-        os.environ["ORA_SDTZ"] = "UTC"
+        """Run all batches concurrently over a single shared DuckDBEngine and clean up the spill directory."""
         access_token, project_id = self._gcs_access_token()
-        temp_root = self._duckdb_temp_root or tempfile.gettempdir()
+        temp_root = getattr(self, "_duckdb_temp_root", None) or tempfile.gettempdir()
         Path(temp_root).mkdir(parents=True, exist_ok=True)
         run_dir = Path(tempfile.mkdtemp(prefix="goe_duckdb_", dir=temp_root))
+        custom_batch_fn = "_run_batch" in self.__dict__
+        self._shared_engine = None
         try:
-            with ThreadPoolExecutor(max_workers=len(copy_sqls)) as executor:
+            if not custom_batch_fn:
+                self._shared_engine = self._open_shared_engine(run_dir, access_token)
+            with ThreadPoolExecutor(max_workers=max(1, len(copy_sqls))) as executor:
                 futures = [
                     submit_with_context(executor, self._run_batch_traced, batch, sql, access_token, project_id, run_dir)
                     for batch, sql in enumerate(copy_sqls)
                 ]
                 return sum(future.result() for future in futures)
         finally:
+            if self._shared_engine is not None:
+                self._shared_engine.close()
+                self._shared_engine = None
             shutil.rmtree(run_dir, ignore_errors=True)

@@ -52,9 +52,7 @@ files = [
     "tests/unit/offload/test_synthetic_partition_literal.py",
     "tests/unit/test_framework/test_backend_testing_api.py",
     "tests/unit/test_framework/test_test_value_generators.py",
-    "tests/unit/util/test_avro_encoder.py",
     "tests/unit/util/test_hs2_connection.py",
     "tests/unit/util/test_misc_functions.py",
-    "tests/unit/util/test_parquet_encoder.py",
     "tests/unit/util/test_polling_thread.py",
 ]

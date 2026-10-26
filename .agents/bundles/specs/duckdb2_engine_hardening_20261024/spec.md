@@ -2,7 +2,7 @@
 type: Spec
 flow_id: duckdb2_engine_hardening_20261024
 title: "Chapter 8.1: DuckDB 2.0 Engine Hardening, Community Oracle Extension, and Multi-File Parquet Sink"
-state: planned
+state: done
 plan_revision: 1
 plan_commit: null
 state_revision: 0
@@ -78,9 +78,9 @@ uv run python tools/verify_architecture.py
 ## Implementation Plan
 
 ### Phase 1: DuckDB 2.0 Engine, Oracle Pushdown, and Parquet Sink
-- [ ] 1.1 Implement `DuckDBSessionConfig` and `DuckDBEngine` over `sqlspec.adapters.duckdb.DuckDBConfig` with core `httpfs` secrets and signed community `oracle` loading ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Implement `OracleExtensionTransport` with `oracle_clear_cache()`, `AS OF SCN` split pushdown, and type-based fallback routing to `OracleArrowStreamExtractor` ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 Implement `DuckDBParquetWriter` multi-file `COPY ... TO (FORMAT PARQUET, PER_THREAD_OUTPUT true, RETURN_FILES true)` and `StagedFileManifest` verification ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.1 Implement `DuckDBSessionConfig` and `DuckDBEngine` over `sqlspec.adapters.duckdb.DuckDBConfig` with core `httpfs` secrets and signed community `oracle` loading ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Implement `OracleExtensionTransport` with `oracle_clear_cache()`, `AS OF SCN` split pushdown, and type-based fallback routing to `OracleArrowStreamExtractor` ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.3 Implement `DuckDBParquetWriter` multi-file `COPY ... TO (FORMAT PARQUET, PER_THREAD_OUTPUT true, RETURN_FILES true)` and `StagedFileManifest` verification ([tasks/1.3.md](tasks/1.3.md))
 
 ## Continuity Snapshot
 

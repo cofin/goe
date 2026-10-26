@@ -323,12 +323,12 @@ ADAPTER_REGISTRY = AdapterRegistry(
         AdapterEntry(
             AdapterKind.QUERY_IMPORT_ENCODER,
             FILE_STORAGE_FORMAT_AVRO,
-            LazyTarget("goe.offload.staging.avro.avro_encoder", "AvroEncoder"),
+            LazyTarget("goe.offload.staging.arrow_writers", "ArrowAvroStagingWriter"),
         ),
         AdapterEntry(
             AdapterKind.QUERY_IMPORT_ENCODER,
             FILE_STORAGE_FORMAT_PARQUET,
-            LazyTarget("goe.offload.staging.parquet.parquet_encoder", "ParquetEncoder"),
+            LazyTarget("goe.offload.staging.arrow_writers", "ArrowParquetStagingWriter"),
         ),
         AdapterEntry(
             AdapterKind.REPOSITORY_CLIENT,

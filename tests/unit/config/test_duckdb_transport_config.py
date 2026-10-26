@@ -11,16 +11,16 @@ from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, build_mock_options
 
 
 def test_duckdb_transport_defaults() -> None:
-    """Defaults match the duckdb-oracle v0.2.2 / DuckDB 1.5.5 build and conservative per-batch resources."""
+    """Defaults match the DuckDB 2.0 community oracle extension and 100G table limit."""
     config = build_mock_options(FAKE_ORACLE_BQ_ENV)
-    assert config.offload_transport_duckdb_version == "1.5.5"
+    assert config.offload_transport_duckdb_version == "2.0.0"
     assert config.offload_transport_duckdb_extension_path is None
     assert config.offload_transport_duckdb_extension_dir is None
-    assert config.offload_transport_duckdb_extension_repository == "https://cofin.github.io/duckdb-oracle"
+    assert config.offload_transport_duckdb_extension_repository == "community"
     assert config.offload_transport_duckdb_threads == 2
     assert config.offload_transport_duckdb_memory_limit == "2GB"
     assert config.offload_transport_duckdb_temp_directory == "/tmp/offload/run/duckdb"
-    assert config.offload_transport_duckdb_max_bytes == 20 * 1024**3
+    assert config.offload_transport_duckdb_max_bytes == 100 * 1024**3
 
 
 def test_duckdb_transport_overrides() -> None:

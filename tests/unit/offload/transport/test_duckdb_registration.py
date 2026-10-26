@@ -28,7 +28,7 @@ from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, build_mock_options
 @pytest.fixture(autouse=True)
 def pin_duckdb_version_to_configured_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin the runtime DuckDB version reported to availability checks to the configured default."""
-    monkeypatch.setattr("goe.offload.transport.duckdb_availability.duckdb.__version__", "1.5.5")
+    monkeypatch.setattr("goe.offload.transport.duckdb_availability.duckdb.__version__", "2.0.0")
 
 
 def test_duckdb_is_registered_but_never_automatic() -> None:
@@ -49,10 +49,8 @@ def test_eligible_offload_validates() -> None:
     ("attribute", "value", "reason"),
     [
         ("target", "snowflake", "BigQuery"),
-        ("offload_fs_scheme", "s3a", "OFFLOAD_FS_SCHEME"),
+        ("offload_fs_scheme", "hdfs", "OFFLOAD_FS_SCHEME"),
         ("offload_staging_format", "AVRO", "PARQUET"),
-        ("use_oracle_wallet", True, "user/password"),
-        ("offload_transport_dsn", "PRODDB_TNS_ALIAS", "EZConnect"),
         ("offload_transport_duckdb_version", "1.4.3", "OFFLOAD_TRANSPORT_DUCKDB_VERSION"),
     ],
 )
@@ -66,7 +64,7 @@ def test_config_rejections_are_logged(attribute: str, value: object, reason: str
 
 
 def test_table_rejections() -> None:
-    """Oversized tables and LOB/LONG/RAW/XMLTYPE columns are ineligible."""
+    """Oversized tables and LOB/LONG/XMLTYPE columns are ineligible."""
     config = build_mock_options(FAKE_ORACLE_BQ_ENV)
     oversized = _table(size=config.offload_transport_duckdb_max_bytes + 1)
     assert is_duckdb_available(MagicMock(), config, offload_source_table=oversized) is False

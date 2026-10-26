@@ -99,8 +99,8 @@ make test-integration-oracle
 
 ## Implementation Plan
 
-- [ ] 8.1 `duckdb2_engine_hardening_20261024` — DuckDB 2.0 gate, signed extension, `httpfs`, shared instance ([spec](../duckdb2_engine_hardening_20261024/spec.md)).
-- [ ] 8.2 `arrow_extraction_and_query_import_parity_20261024` — Arrow batch source, parity suite, `QUERY_IMPORT` replacement ([spec](../arrow_extraction_and_query_import_parity_20261024/spec.md)).
+- [x] 8.1 `duckdb2_engine_hardening_20261024` — DuckDB 2.0 gate, signed extension, `httpfs`, shared instance ([spec](../duckdb2_engine_hardening_20261024/spec.md)).
+- [x] 8.2 `arrow_extraction_and_query_import_parity_20261024` — Arrow batch source, parity suite, `QUERY_IMPORT` replacement ([spec](../arrow_extraction_and_query_import_parity_20261024/spec.md)).
 - [ ] 8.3 `transport_decomposition_and_auto_selection_20261024` — `base.py` decomposition, canary probe, automatic selection, `tools/` ([spec](../transport_decomposition_and_auto_selection_20261024/spec.md)).
 - [ ] 8.4 `sqlspec_storage_filesystem_backends_20261024` — `GOEDfs` on `sqlspec.storage` ([spec](../sqlspec_storage_filesystem_backends_20261024/spec.md)).
 

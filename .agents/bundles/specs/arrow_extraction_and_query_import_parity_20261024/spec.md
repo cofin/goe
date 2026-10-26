@@ -2,7 +2,7 @@
 type: Spec
 flow_id: arrow_extraction_and_query_import_parity_20261024
 title: "Chapter 8.2: Clientless Arrow Extraction, Staging Writers, Differential Parity Suite, and QUERY_IMPORT Cutover"
-state: planned
+state: done
 plan_revision: 1
 plan_commit: null
 state_revision: 0
@@ -78,10 +78,10 @@ uv run python tools/verify_architecture.py
 ## Implementation Plan
 
 ### Phase 1: Arrow Stream Extractor, Staging Writers, Parity Suite, and Cutover
-- [ ] 1.1 Implement `OracleArrowStreamExtractor` lazy `RecordBatchReader` over `fetch_df_batches` with output-type handlers for all Oracle types ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Implement `ArrowParquetStagingWriter` and `ArrowAvroStagingWriter` and replace `avro` with `fastavro` ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 Build the differential parity suite and committed golden fixtures across all 19 Oracle type families ([tasks/1.3.md](tasks/1.3.md))
-- [ ] 1.4 Cut `OffloadTransportQueryImport` over to the Arrow streaming pipeline and delete legacy `ParquetEncoder`, `AvroEncoder`, and `QueryImportInterface` ([tasks/1.4.md](tasks/1.4.md))
+- [x] 1.1 Implement `OracleArrowStreamExtractor` lazy `RecordBatchReader` over `fetch_df_batches` with output-type handlers for all Oracle types ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Implement `ArrowParquetStagingWriter` and `ArrowAvroStagingWriter` and replace `avro` with `fastavro` ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.3 Build the differential parity suite and committed golden fixtures across all 19 Oracle type families ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.4 Cut `OffloadTransportQueryImport` over to the Arrow streaming pipeline and delete legacy `ParquetEncoder`, `AvroEncoder`, and `QueryImportInterface` ([tasks/1.4.md](tasks/1.4.md))
 
 ## Continuity Snapshot
 

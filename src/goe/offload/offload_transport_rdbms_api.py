@@ -4,10 +4,12 @@
 """OffloadTransportRdbmsApi: Library for logic/interaction with source RDBMS during offload transport"""
 
 from abc import ABCMeta, abstractmethod
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
+from goe.offload.transport.arrow_extractor import ArrowExtractionConfig, OracleArrowStreamExtractor
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -201,6 +203,45 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         """Context manager that logs into a frontend system, executes an extraction query and then returns
         a cursor for Query Import to fetch from and write data to a staging file.
         """
+
+    @contextmanager
+    def arrow_batch_extraction(
+        self,
+        staging_columns: Sequence[Any],
+        source_query: str,
+        source_binds: Any,
+        fetch_size: int,
+        compress: bool,
+        rdbms_session_setup_commands: list[str],
+        *,
+        nan_values_as_null: bool = False,
+        base64_columns: Sequence[str] = (),
+        source_columns: Sequence[Any] = (),
+    ) -> Iterator[Any]:
+        """Yield a lazy pyarrow.RecordBatchReader over source_query."""
+        extractor = OracleArrowStreamExtractor(
+            ArrowExtractionConfig(
+                batch_size=int(fetch_size or 65_536),
+                nan_values_as_null=nan_values_as_null,
+                base64_columns=frozenset(base64_columns),
+            )
+        )
+        with self.query_import_extraction(
+            staging_columns,
+            source_query,
+            source_binds,
+            fetch_size,
+            compress,
+            rdbms_session_setup_commands,
+        ) as rdbms_cursor:
+            if self._dry_run:
+                yield extractor.empty_reader(staging_columns)
+            else:
+                yield extractor.from_cursor(
+                    rdbms_cursor,
+                    staging_columns,
+                    source_columns=source_columns,
+                )
 
     def _row_source_query_union_all_clause(self, pad):
         if pad is None:
