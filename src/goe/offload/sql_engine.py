@@ -10,15 +10,16 @@ import msgspec
 
 if TYPE_CHECKING:
     from goe.offload.column_metadata import ColumnMetadataInterface
+    from goe.offload.predicates.ast import PredicateExpr
+    from goe.offload.sql_ast.dialect_engine import TableRef
 
-__all__ = [
-    "BigQueryDialectEngineProtocol",
-    "OracleExtractionQueryProtocol",
+__all__ = (
+    "DialectSqlEngineProtocol",
     "PredicateDialectEngineProtocol",
     "RenderedSQL",
     "ValidationQueryEngineProtocol",
     "ValidationQuerySpec",
-]
+)
 
 
 class RenderedSQL(msgspec.Struct, frozen=True, kw_only=True):
@@ -42,111 +43,12 @@ class ValidationQuerySpec(msgspec.Struct, frozen=True, kw_only=True):
 
 
 @runtime_checkable
-class BigQueryDialectEngineProtocol(Protocol):
-    """Protocol for generating BigQuery DDL, DML, and projection SQL strings."""
+class DialectSqlEngineProtocol(Protocol):
+    """Protocol for the dialect-aware SQL AST engine returned by get_dialect_engine()."""
 
-    def partition_by_clause(self, partition_column: "ColumnMetadataInterface") -> str:
-        """Render the BigQuery PARTITION BY expression for a partition column."""
-
-    def properties_clause(
-        self,
-        *,
-        partition_expr_sql: str | None = None,
-        cluster_cols: Sequence[str] | None = None,
-        options: Mapping[str, Any] | None = None,
-    ) -> str:
-        """Render the BigQuery PARTITION BY / CLUSTER BY / OPTIONS clause."""
-
-    def create_table(
-        self,
-        *,
-        project: str | None,
-        db_name: str,
-        table_name: str,
-        columns: Sequence["ColumnMetadataInterface"],
-        partition_expr_sql: str | None = None,
-        cluster_cols: Sequence[str] | None = None,
-        options: Mapping[str, Any] | None = None,
-        replace: bool = False,
-    ) -> str:
-        """Render a BigQuery CREATE [OR REPLACE] TABLE statement."""
-
-    def create_external_table(
-        self,
-        *,
-        project: str | None,
-        db_name: str,
-        table_name: str,
-        columns: Sequence["ColumnMetadataInterface"] | None = None,
-        storage_format: str = "PARQUET",
-        uris: Sequence[str] = (),
-        extra_options: Mapping[str, Any] | None = None,
-        replace: bool = False,
-    ) -> str:
-        """Render a BigQuery CREATE [OR REPLACE] EXTERNAL TABLE statement."""
-
-    def create_or_replace_ddl(self, ddl: str) -> str:
-        """Rewrite a BigQuery CREATE TABLE DDL string to CREATE OR REPLACE TABLE via lexical tokenization."""
-
-    def ctas(
-        self,
-        *,
-        project: str | None,
-        db_name: str,
-        table_name: str,
-        from_project: str | None = None,
-        from_db_name: str | None = None,
-        from_table_name: str | None = None,
-        select_expr_tuples: Sequence[tuple[Any, str]] | None = None,
-        options: Mapping[str, Any] | None = None,
-        row_limit: int | None = None,
-        replace: bool = False,
-    ) -> str:
-        """Render a BigQuery CREATE [OR REPLACE] TABLE ... AS SELECT statement."""
-
-    def insert_select(
-        self,
-        *,
-        project: str | None,
-        db_name: str,
-        table_name: str,
-        select_expr_tuples: Sequence[tuple[Any, str]],
-        insert_col_names: Sequence[str] | None = None,
-        from_project: str | None = None,
-        from_db_name: str | None = None,
-        from_table_name: str | None = None,
-        from_object_override: str | None = None,
-        where_clauses: Sequence[str] | None = None,
-    ) -> str:
-        """Render a BigQuery INSERT INTO ... SELECT statement."""
-
-    def alter_add_columns(
-        self,
-        *,
-        project: str | None,
-        db_name: str,
-        table_name: str,
-        column_name_type_pairs: Sequence[tuple[str, str]],
-    ) -> str:
-        """Render a BigQuery ALTER TABLE ... ADD COLUMN IF NOT EXISTS statement."""
-
-    def create_view(
-        self,
-        *,
-        project: str | None,
-        db_name: str,
-        view_name: str,
-        select_expr_tuples: Sequence[tuple[Any, str]],
-        from_tables: str,
-        where_clauses: Sequence[str] | None = None,
-        replace: bool = False,
-    ) -> str:
-        """Render a BigQuery CREATE [OR REPLACE] VIEW statement."""
-
-
-@runtime_checkable
-class OracleExtractionQueryProtocol(Protocol):
-    """Protocol for building and parsing Oracle extraction queries with AS OF SCN and PARTITION clauses."""
+    @property
+    def dialect(self) -> str:
+        """Return the dialect configured for this engine."""
 
     def snapshot_scn_clause(self, transport_scn: int | None) -> str:
         """Render an Oracle AS OF SCN clause from an integer SCN."""
@@ -249,26 +151,140 @@ class OracleExtractionQueryProtocol(Protocol):
         """Render a single UNION ALL branch for SPLIT_BY_ID_RANGE."""
 
     def parse_and_render(self, sql: str) -> str:
-        """Parse an Oracle query (including PARTITION/SUBPARTITION and AS OF SCN) and render back to SQL."""
+        """Parse a SQL query and render back to SQL for this dialect."""
+
+    def partition_by_clause(self, partition_column: "ColumnMetadataInterface") -> str:
+        """Render the BigQuery PARTITION BY expression for a partition column."""
+
+    def properties_clause(
+        self,
+        *,
+        partition_expr_sql: str | None = None,
+        cluster_cols: Sequence[str] | None = None,
+        options: Mapping[str, Any] | None = None,
+    ) -> str:
+        """Render the BigQuery PARTITION BY / CLUSTER BY / OPTIONS clause."""
+
+    def create_table(
+        self,
+        *,
+        project: str | None,
+        db_name: str,
+        table_name: str,
+        columns: "Sequence[ColumnMetadataInterface]",
+        partition_expr_sql: str | None = None,
+        cluster_cols: Sequence[str] | None = None,
+        options: Mapping[str, Any] | None = None,
+        replace: bool = False,
+    ) -> str:
+        """Render a BigQuery CREATE [OR REPLACE] TABLE statement."""
+
+    def create_external_table(
+        self,
+        *,
+        project: str | None,
+        db_name: str,
+        table_name: str,
+        columns: "Sequence[ColumnMetadataInterface] | None" = None,
+        storage_format: str = "PARQUET",
+        uris: Sequence[str] = (),
+        extra_options: Mapping[str, Any] | None = None,
+        replace: bool = False,
+    ) -> str:
+        """Render a BigQuery CREATE [OR REPLACE] EXTERNAL TABLE statement."""
+
+    def create_or_replace_ddl(self, ddl: str) -> str:
+        """Rewrite a BigQuery CREATE TABLE DDL string to CREATE OR REPLACE TABLE via lexical tokenization."""
+
+    def ctas(
+        self,
+        *,
+        project: str | None,
+        db_name: str,
+        table_name: str,
+        from_project: str | None = None,
+        from_db_name: str | None = None,
+        from_table_name: str | None = None,
+        select_expr_tuples: Sequence[tuple[Any, str]] | None = None,
+        options: Mapping[str, Any] | None = None,
+        row_limit: int | None = None,
+        replace: bool = False,
+    ) -> str:
+        """Render a BigQuery CREATE [OR REPLACE] TABLE ... AS SELECT statement."""
+
+    def insert_select(
+        self,
+        *,
+        project: str | None,
+        db_name: str,
+        table_name: str,
+        select_expr_tuples: Sequence[tuple[Any, str]],
+        insert_col_names: Sequence[str] | None = None,
+        from_project: str | None = None,
+        from_db_name: str | None = None,
+        from_table_name: str | None = None,
+        from_object_override: str | None = None,
+        where_clauses: Sequence[str] | None = None,
+    ) -> str:
+        """Render a BigQuery INSERT INTO ... SELECT statement."""
+
+    def create_view(
+        self,
+        *,
+        project: str | None,
+        db_name: str,
+        view_name: str,
+        select_expr_tuples: Sequence[tuple[Any, str]],
+        from_tables: str,
+        where_clauses: Sequence[str] | None = None,
+        replace: bool = False,
+    ) -> str:
+        """Render a BigQuery CREATE [OR REPLACE] VIEW statement."""
+
+    def alter_add_columns(
+        self,
+        *,
+        table: "TableRef",
+        columns: Sequence[tuple[str, str]],
+        if_not_exists: bool = False,
+    ) -> str:
+        """Render ALTER TABLE ... ADD for one or more (name, type) pairs in this dialect."""
+
+    def alter_column_set_data_type(
+        self,
+        *,
+        table: "TableRef",
+        column: str,
+        data_type: str,
+    ) -> str:
+        """Render ALTER TABLE ... ALTER COLUMN ... SET DATA TYPE in this dialect."""
+
+    def alter_column_drop_not_null(
+        self,
+        *,
+        table: "TableRef",
+        column: str,
+    ) -> str:
+        """Render ALTER TABLE ... ALTER COLUMN ... DROP NOT NULL in this dialect."""
 
 
 @runtime_checkable
 class PredicateDialectEngineProtocol(Protocol):
-    """Protocol for rendering typed Lark predicate trees to dialect SQL and validating WHERE clauses."""
+    """Protocol for rendering PredicateExpr ASTs to dialect SQL and validating WHERE clauses."""
 
     def render_literal_sql(
         self,
-        typed_tree: Any,
-        columns: Sequence["ColumnMetadataInterface"],
+        typed_tree: "PredicateExpr | Any",
+        columns: "Sequence[ColumnMetadataInterface]",
     ) -> str:
-        """Render a typed predicate tree into a SQL WHERE clause with inline literals."""
+        """Render a typed predicate expression into a SQL WHERE clause with inline literals."""
 
     def render_bind_sql(
         self,
-        typed_tree: Any,
-        columns: Sequence["ColumnMetadataInterface"],
+        typed_tree: "PredicateExpr | Any",
+        columns: "Sequence[ColumnMetadataInterface]",
     ) -> RenderedSQL:
-        """Render a typed predicate tree into a SQL WHERE clause with named bind parameters."""
+        """Render a typed predicate expression into a SQL WHERE clause with named bind parameters."""
 
     def validate_where_clause(self, raw_sql: str, dialect: str) -> str:
         """Validate a raw SQL WHERE condition against an AST allowlist and return normalized SQL."""

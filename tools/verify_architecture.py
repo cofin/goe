@@ -170,7 +170,7 @@ def _check_import_boundaries(tree: ast.AST, *, rel_path: str) -> list[Architectu
     """Enforce sqlglot and oracledb package import boundaries within src/goe/."""
     if not rel_path.startswith("src/goe/"):
         return []
-    allow_sqlglot = rel_path.startswith("src/goe/offload/sql_ast/")
+    allow_sqlglot = rel_path.startswith(("src/goe/offload/sql_ast/", "src/goe/offload/predicates/"))
     allow_oracledb = (
         rel_path.startswith(("src/goe/persistence/oracle/", "src/goe/offload/oracle/"))
         or rel_path == "src/goe/persistence/registry.py"

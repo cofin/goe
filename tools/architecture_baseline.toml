@@ -18,10 +18,7 @@ files = [
 
 [sqlglot-boundary]
 files = [
-    "src/goe/offload/bigquery/bigquery_sql.py",
     "src/goe/offload/offload_validation.py",
-    "src/goe/offload/oracle/oracle_dialect.py",
-    "src/goe/offload/predicate_offload.py",
 ]
 
 [oracledb-boundary]

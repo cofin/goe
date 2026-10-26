@@ -2,16 +2,16 @@
 type: Spec
 flow_id: native_sqlglot_dialect_engine_20261024
 title: "Chapter 7.1: Native SQLGlot Dialect Engine"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 2
 current_task: null
-last_operation: null
+last_operation: finish
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: "1.2"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-25T17:54:00Z
 description: "Replace the monkey-patched Oracle dialect and the separate Oracle and BigQuery SQL engines with one DialectSqlEngine built on native sqlglot 30.24 generation, preserving every generated string byte for byte."
 tags: [refactor, sqlglot, oracle, bigquery]
 parent_prd: prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024
@@ -89,17 +89,17 @@ The `git grep` command must print nothing.
 ## Implementation Plan
 
 ### Phase 1: Engine and Cutover
-- [ ] 1.1 Build DialectSqlEngine on native sqlglot generation ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Move engine call sites to DialectSqlEngine and delete the Oracle monkey patch ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.1 Build DialectSqlEngine on native sqlglot generation ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Move engine call sites to DialectSqlEngine and delete the Oracle monkey patch ([tasks/1.2.md](tasks/1.2.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `native_sqlglot_dialect_engine_20261024`, `planned`.
+- **Flow / lifecycle**: `native_sqlglot_dialect_engine_20261024`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `1.2` (`pytest`, `ruff`, `mypy`, `tools/verify_architecture.py`).
 - **Decisions**: one engine class with a dialect argument instead of one class per dialect; Oracle-only and BigQuery-only methods raise `DialectNotSupportedError` for other dialects; `get_dialect_engine()` is `lru_cache`d per dialect; the chapter has two tasks because every engine file may appear in only one task and the new module must land before the cutover deletes the old engines; the sqlglot import boundary is enforced by the Chapter 5.2 architecture gate, so the AST source-scanner tests in the deleted test files are not ported.
-- **Discoveries**: none yet.
-- **Blockers**: Master PRDs 5 and 6 must complete first (`goe.typing.FrozenBaseStruct`, `goe.exceptions.GOEError`, `tools/verify_architecture.py`).
-- **Next exact step**: execute task `1.1` (`native_sqlglot_dialect_engine_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: `TableRef(FrozenBaseStruct, frozen=True)` requires explicit `frozen=True` on `msgspec.Struct` subclasses under `mypy` to avoid `Non-frozen dataclass cannot inherit from a frozen dataclass [misc]`.
+- **Blockers**: none.
+- **Next exact step**: completed.
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 2`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/standards/database-and-sql.md`, `.agents/bundles/knowledge/frontends/oracle.md`, `.agents/bundles/knowledge/backends/bigquery.md`.

@@ -1,18 +1,17 @@
-#! /usr/bin/env python3
-
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """Offload predicate test code."""
 
 import ast
+from decimal import Decimal
 from pathlib import Path
 from unittest import TestCase, main
 
 import numpy as np
-from lark import Token, Tree
 
 from goe.exceptions import OptionValueError
+from goe.offload import predicate_offload
 from goe.offload.bigquery import bigquery_column, bigquery_predicate
 from goe.offload.hadoop import hadoop_column, hadoop_predicate
 from goe.offload.microsoft import synapse_column, synapse_predicate
@@ -23,6 +22,7 @@ from goe.offload.predicate_offload import (
     get_predicate_dialect_engine,
     parse_predicate_dsl,
 )
+from goe.offload.predicates.ast import BinaryComparison, TypedValue
 from goe.offload.snowflake import snowflake_column, snowflake_predicate
 from goe.offload.sql_engine import PredicateDialectEngineProtocol
 
@@ -85,59 +85,59 @@ SYNAPSE_COLUMNS = [
 
 class TestIdaPredicateParse(TestCase):
     def test_parse_numeric(self):
-        self._test_parse_single_numeric("3.141", ("SIGNED_DECIMAL", 3.141))
-        self._test_parse_single_numeric("+3.141", ("SIGNED_DECIMAL", 3.141))
-        self._test_parse_single_numeric("-3.141", ("SIGNED_DECIMAL", (-3.141)))
-        self._test_parse_single_numeric(" 3.141", ("SIGNED_DECIMAL", 3.141))
-        self._test_parse_single_numeric(" 3.141 ", ("SIGNED_DECIMAL", 3.141))
-        self._test_parse_single_numeric("3.", ("SIGNED_DECIMAL", float(3)))
+        self._test_parse_single_numeric("3.141", ("decimal", Decimal("3.141")))
+        self._test_parse_single_numeric("+3.141", ("decimal", Decimal("3.141")))
+        self._test_parse_single_numeric("-3.141", ("decimal", Decimal("-3.141")))
+        self._test_parse_single_numeric(" 3.141", ("decimal", Decimal("3.141")))
+        self._test_parse_single_numeric(" 3.141 ", ("decimal", Decimal("3.141")))
+        self._test_parse_single_numeric("3.", ("decimal", Decimal("3.0")))
 
-        self._test_parse_single_numeric("3", ("SIGNED_INTEGER", 3))
-        self._test_parse_single_numeric("+3", ("SIGNED_INTEGER", 3))
-        self._test_parse_single_numeric("-3", ("SIGNED_INTEGER", (-3)))
+        self._test_parse_single_numeric("3", ("integer", 3))
+        self._test_parse_single_numeric("+3", ("integer", 3))
+        self._test_parse_single_numeric("-3", ("integer", -3))
 
-        self._test_parse_single_numeric(" 3", ("SIGNED_INTEGER", 3))
-        self._test_parse_single_numeric("3 ", ("SIGNED_INTEGER", 3))
-        self._test_parse_single_numeric(" 3 ", ("SIGNED_INTEGER", 3))
+        self._test_parse_single_numeric(" 3", ("integer", 3))
+        self._test_parse_single_numeric("3 ", ("integer", 3))
+        self._test_parse_single_numeric(" 3 ", ("integer", 3))
 
     def test_parse_datetime(self):
-        self._test_parse_single_datetime("2012-01-01", ("DATE", np.datetime64("2012-01-01")))
+        self._test_parse_single_datetime("2012-01-01", np.datetime64("2012-01-01"))
         self.assertRaises(OptionValueError, self._test_parse_single_datetime, "2012-01-0", None)
         self.assertRaises(OptionValueError, self._test_parse_single_datetime, "2012-0101", None)
         self.assertRaises(OptionValueError, self._test_parse_single_datetime, "", None)
 
-        self._test_parse_single_datetime("2001-01-01 12:00:01", ("TIMESTAMP", np.datetime64("2001-01-01 12:00:01")))
-        self._test_parse_single_datetime("2001-01-01 06:00:01", ("TIMESTAMP", np.datetime64("2001-01-01 06:00:01")))
+        self._test_parse_single_datetime("2001-01-01 12:00:01", np.datetime64("2001-01-01 12:00:01"))
+        self._test_parse_single_datetime("2001-01-01 06:00:01", np.datetime64("2001-01-01 06:00:01"))
         self.assertRaises(
             OptionValueError,
             self._test_parse_single_datetime,
             "2012-01-01 6:00:01",
-            ("TIMESTAMP", np.datetime64("2012-01-01 06:00:01")),
+            np.datetime64("2012-01-01 06:00:01"),
         )
 
         self._test_parse_single_datetime(
             "2001-01-01 12:00:01.050",
-            ("TIMESTAMP_FRACTIONAL", np.datetime64("2001-01-01 12:00:01.050")),
+            np.datetime64("2001-01-01 12:00:01.050"),
         )
         self._test_parse_single_datetime(
             "2001-01-01 06:00:01.000090",
-            ("TIMESTAMP_FRACTIONAL", np.datetime64("2001-01-01 06:00:01.000090")),
+            np.datetime64("2001-01-01 06:00:01.000090"),
         )
         self._test_parse_single_datetime(
             "2001-01-01 06:00:01.000000123",
-            ("TIMESTAMP_FRACTIONAL", np.datetime64("2001-01-01 06:00:01.000000123")),
+            np.datetime64("2001-01-01 06:00:01.000000123"),
         )
         self.assertRaises(
             OptionValueError,
             self._test_parse_single_datetime,
             "2012-01-01 06:00:01.",
-            ("TIMESTAMP_FRACTIONAL", np.datetime64("2012-01-01 06:00:01.000")),
+            np.datetime64("2012-01-01 06:00:01.000"),
         )
         self.assertRaises(
             OptionValueError,
             self._test_parse_single_datetime,
             "2012-01-01 06:00:01.0000000000",
-            ("TIMESTAMP_FRACTIONAL", np.datetime64("2012-01-01 06:00:01.000")),
+            np.datetime64("2012-01-01 06:00:01.000"),
         )
 
     def test_parse_string(self):
@@ -190,26 +190,26 @@ class TestIdaPredicateParse(TestCase):
         for predicate_dsl in parse_dsl:
             GenericPredicate(predicate_dsl)
 
-    def _test_parse_single_numeric(self, dsl_value_str, ast_token_values):
-        self.assertEqual(
-            parse_predicate_dsl(f"numeric({dsl_value_str})", top_level_node="value"),
-            Tree("numeric_value", [Token(*ast_token_values)]),
-        )
+    def _test_parse_single_numeric(self, dsl_value_str, expected_kind_and_raw):
+        expected_kind, expected_raw = expected_kind_and_raw
+        expr = parse_predicate_dsl(f"column(c) = numeric({dsl_value_str})")
+        self.assertIsInstance(expr, BinaryComparison)
+        self.assertEqual(expr.literal.value.kind, expected_kind)
+        self.assertEqual(expr.literal.value.raw, expected_raw)
 
-    def _test_parse_single_datetime(self, dsl_value_str, ast_token_values):
-        self.assertEqual(
-            parse_predicate_dsl(f"datetime({dsl_value_str})", top_level_node="value"),
-            Tree("datetime_value", [Token(*ast_token_values)]),
-        )
+    def _test_parse_single_datetime(self, dsl_value_str, expected_raw):
+        expr = parse_predicate_dsl(f"column(c) = datetime({dsl_value_str})")
+        self.assertIsInstance(expr, BinaryComparison)
+        self.assertEqual(expr.literal.value.kind, "datetime")
+        self.assertEqual(expr.literal.value.raw, expected_raw)
 
     def _test_parse_single_string(self, dsl_value_str, ast_value_str=None):
         ast_value_str = dsl_value_str if ast_value_str is None else ast_value_str
+        expr = parse_predicate_dsl(f'column(c) = string("{dsl_value_str}")')
+        self.assertIsInstance(expr, BinaryComparison)
         self.assertEqual(
-            parse_predicate_dsl(f'string("{dsl_value_str}")', top_level_node="value"),
-            Tree(
-                "string_value",
-                [Token("ESCAPED_STRING", ast_value_str.replace('\\"', '"'))],
-            ),
+            expr.literal.value,
+            TypedValue(kind="string", text=ast_value_str.replace('\\"', '"')),
         )
 
 
@@ -348,9 +348,16 @@ class TestIdaPredicateDataTypes(TestCase):
             )
 
 
-def test_oracle_and_bigquery_predicate_modules_have_zero_sqlglot_imports() -> None:
-    """Verify oracle_predicate.py and bigquery_predicate.py do not import sqlglot."""
-    for mod in (oracle_predicate, bigquery_predicate):
+def test_predicate_modules_have_zero_lark_or_sqlglot_imports() -> None:
+    """Verify predicate_offload and dialect predicate modules do not import lark or sqlglot."""
+    dialect_mods = (
+        oracle_predicate,
+        bigquery_predicate,
+        snowflake_predicate,
+        synapse_predicate,
+        hadoop_predicate,
+    )
+    for mod in (predicate_offload, *dialect_mods):
         assert mod.__file__ is not None
         source = Path(mod.__file__).read_text(encoding="utf-8")
         tree = ast.parse(source)
@@ -360,11 +367,12 @@ def test_oracle_and_bigquery_predicate_modules_have_zero_sqlglot_imports() -> No
                 imported_names.extend(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported_names.append(node.module)
+        assert not any("lark" in name for name in imported_names)
         assert not any("sqlglot" in name for name in imported_names)
 
 
-def test_oracle_predicate_sql_and_bind_rendering_with_nanoseconds() -> None:
-    """Verify Oracle and BigQuery predicate rendering preserves FF9 nanoseconds, positional decimals, and operators."""
+def test_multi_dialect_predicate_sql_and_bind_rendering_with_nanoseconds() -> None:
+    """Verify Oracle, BigQuery, Snowflake, Synapse, and Hadoop predicate rendering."""
     engine = get_predicate_dialect_engine("oracle")
     bq_engine = get_predicate_dialect_engine("bigquery")
     assert isinstance(engine, PredicateDialectEngineProtocol)
@@ -393,6 +401,12 @@ def test_oracle_predicate_sql_and_bind_rendering_with_nanoseconds() -> None:
 
     pred_dec = GenericPredicate("column(COL_DECIMAL) = numeric(-0.00000000000000000001)")
     assert oracle_predicate.predicate_to_where_clause(cols, pred_dec) == '"COL_DECIMAL" = -0.00000000000000000001'
+
+    pred_38_dec = GenericPredicate("column(COL_DECIMAL) = numeric(123456789012345678901234567890.12345678)")
+    assert (
+        oracle_predicate.predicate_to_where_clause(cols, pred_38_dec)
+        == '"COL_DECIMAL" = 123456789012345678901234567890.12345678'
+    )
 
     pred_big_int = GenericPredicate("column(COL_INT) = numeric(1234567890123456789012345)")
     assert oracle_predicate.predicate_to_where_clause(cols, pred_big_int) == '"COL_INT" = 1234567890123456789012345'
@@ -428,6 +442,16 @@ def test_oracle_predicate_sql_and_bind_rendering_with_nanoseconds() -> None:
     bq_bind_sql, bq_binds = bigquery_predicate.predicate_to_where_clause_with_binds(BIGQUERY_COLUMNS, bq_neq)
     assert bq_bind_sql == "`COL_INT` != @bind_0"
     assert bq_binds == {"bind_0": 4}
+
+    assert (
+        snowflake_predicate.predicate_to_where_clause(SNOWFLAKE_COLUMNS, bq_dt)
+        == "\"COL_DATE\" = '1970-01-01 12:13:14'::TIMESTAMP_NTZ"
+    )
+    assert synapse_predicate.predicate_to_where_clause(SYNAPSE_COLUMNS, bq_dt) == "[COL_DATE] = '1970-01-01 12:13:14'"
+    assert hadoop_predicate.predicate_to_where_clause(HADOOP_COLUMNS, bq_dt) == "COL_DATE = '1970-01-01 12:13:14'"
+    hadoop_bind_sql, hadoop_binds = hadoop_predicate.predicate_to_where_clause_with_binds(HADOOP_COLUMNS, bq_dt)
+    assert hadoop_bind_sql == "COL_DATE = :bind_0"
+    assert hadoop_binds == {"bind_0": np.datetime64("1970-01-01T12:13:14")}
 
     assert (
         engine.validate_where_clause(

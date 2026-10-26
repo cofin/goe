@@ -55,7 +55,6 @@ from goe.offload.bigquery.bigquery_column import (
     BigQueryColumn,
 )
 from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
-from goe.offload.bigquery.bigquery_sql import get_bigquery_dialect_engine
 from goe.offload.column_metadata import (
     ALL_CANONICAL_TYPES,
     CANONICAL_CHAR_SEMANTICS_CHAR,
@@ -103,6 +102,7 @@ from goe.offload.offload_constants import (
     PART_COL_GRANULARITY_YEAR,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.sql_ast.dialect_engine import TableRef, get_dialect_engine
 from goe.util.string_utils import backtick_sandwich, format_list_for_logging
 
 BIGQUERY_INVALID_IDENTIFIER_CHARS_RE = re.compile(r"[^A-Z0-9_ ]", re.IGNORECASE)
@@ -195,7 +195,7 @@ class BackendBigQueryApi(BackendApiInterface):
         return "BigQuery"
 
     def add_columns(self, db_name, table_name, column_tuples, sync=None):
-        """Add columns to an existing BigQuery table via BigQueryDialectEngineProtocol."""
+        """Add columns to an existing BigQuery table via DialectSqlEngine."""
         assert db_name and table_name
         assert column_tuples
         assert isinstance(column_tuples, list), "%s is not list" % type(column_tuples)
@@ -203,11 +203,10 @@ class BackendBigQueryApi(BackendApiInterface):
         table = self._get_bq_table(db_name, table_name)
         original_schema = table.schema
         self._debug("add_columns original schema: %s" % original_schema)
-        sql = get_bigquery_dialect_engine().alter_add_columns(
-            project=self._effective_project_name(),
-            db_name=db_name,
-            table_name=table_name,
-            column_name_type_pairs=[(str(col[0]), str(col[1])) for col in column_tuples],
+        sql = get_dialect_engine("bigquery").alter_add_columns(
+            table=TableRef(name=table_name, schema=db_name, catalog=self._effective_project_name()),
+            columns=[(str(col[0]), str(col[1])) for col in column_tuples],
+            if_not_exists=True,
         )
         if not self._dry_run:
             self.execute_ddl(sql, sync=sync)
@@ -453,8 +452,8 @@ class BackendBigQueryApi(BackendApiInterface):
         filter_clauses=None,
         sync=None,
     ):
-        """Create a BigQuery view via BigQueryDialectEngineProtocol."""
-        sql = get_bigquery_dialect_engine().create_view(
+        """Create a BigQuery view via DialectSqlEngine."""
+        sql = get_dialect_engine("bigquery").create_view(
             project=self._effective_project_name(),
             db_name=db_name,
             view_name=view_name,
@@ -779,13 +778,13 @@ LIMIT 1""" % {
         external=False,
         table_properties=None,
     ):
-        """Render a BigQuery CREATE TABLE AS SELECT SQL string via BigQueryDialectEngineProtocol."""
+        """Render a BigQuery CREATE TABLE AS SELECT SQL string via DialectSqlEngine."""
         assert db_name and table_name
         assert column_tuples
         assert isinstance(column_tuples, list), "%s is not list" % type(column_tuples)
         assert isinstance(column_tuples[0], (tuple, list))
 
-        return get_bigquery_dialect_engine().ctas(
+        return get_dialect_engine("bigquery").ctas(
             project=self._effective_project_name(),
             db_name=db_name,
             table_name=table_name,
@@ -812,7 +811,7 @@ LIMIT 1""" % {
         insert_hint=None,
         from_object_override=None,
     ):
-        """Format INSERT from SELECT statement for BigQuery via BigQueryDialectEngineProtocol."""
+        """Format INSERT from SELECT statement for BigQuery via DialectSqlEngine."""
         self._gen_insert_select_sql_assertions(
             db_name,
             table_name,
@@ -824,7 +823,7 @@ LIMIT 1""" % {
             from_object_override,
         )
         projected_expressions = list(select_expr_tuples) + list(partition_expr_tuples or [])
-        return get_bigquery_dialect_engine().insert_select(
+        return get_dialect_engine("bigquery").insert_select(
             project=self._effective_project_name(),
             db_name=db_name,
             table_name=table_name,
@@ -841,7 +840,7 @@ LIMIT 1""" % {
         """Generate the BigQuery PARTITION BY expression for a partition column."""
         if partition_column.data_type == BIGQUERY_TYPE_INT64 and not partition_column.partition_info:
             raise BackendApiException("Partition information not provided for column: %s" % partition_column.name)
-        return get_bigquery_dialect_engine().partition_by_clause(partition_column)
+        return get_dialect_engine("bigquery").partition_by_clause(partition_column)
 
     def gen_sql_text(
         self,
@@ -964,7 +963,7 @@ LIMIT 1""" % {
         """Return DDL for a BigQuery table, optionally rewritten to CREATE OR REPLACE TABLE."""
         ddl_str = self._get_table_ddl(db_name, table_name, terminate_sql=terminate_sql)
         if for_replace:
-            ddl_str = get_bigquery_dialect_engine().create_or_replace_ddl(ddl_str)
+            ddl_str = get_dialect_engine("bigquery").create_or_replace_ddl(ddl_str)
         self._debug("Table DDL: %s" % ddl_str)
         if as_list:
             return ddl_str.split("\n")
@@ -1809,7 +1808,7 @@ LIMIT 1""" % {
         location: Any = None,
         with_terminator: bool = False,
     ) -> list:
-        """Create a BigQuery external table using BigQueryDialectEngineProtocol."""
+        """Create a BigQuery external table via DialectSqlEngine."""
         assert db_name
         assert table_name
         assert storage_format in (
@@ -1818,7 +1817,7 @@ LIMIT 1""" % {
         ), f"Unsupported staging format: {storage_format}"
         assert location
 
-        sql = get_bigquery_dialect_engine().create_external_table(
+        sql = get_dialect_engine("bigquery").create_external_table(
             project=self._effective_project_name(),
             db_name=db_name,
             table_name=table_name,
@@ -1844,11 +1843,11 @@ LIMIT 1""" % {
         return merged
 
     def _create_table_properties_clause(self, table_properties):
-        """Build OPTIONS clause for CREATE TABLE statements via BigQueryDialectEngineProtocol."""
+        """Build OPTIONS clause for CREATE TABLE statements via DialectSqlEngine."""
         merged = self._merged_table_options(table_properties)
         if not merged:
             return ""
-        return "\n" + get_bigquery_dialect_engine().properties_clause(options=merged)
+        return "\n" + get_dialect_engine("bigquery").properties_clause(options=merged)
 
     def _default_job_config(self) -> bigquery.QueryJobConfig:
         """Return a GoogleSQL job config normalised to UTC (matching data extractions) with GOE job labels."""
@@ -2047,7 +2046,7 @@ LIMIT 1""" % {
         sort_column_names=None,
         for_replace=False,
     ):
-        """Build a CREATE TABLE SQL statement via BigQueryDialectEngineProtocol."""
+        """Build a CREATE TABLE SQL statement via DialectSqlEngine."""
         assert db_name
         assert table_name
         assert column_list
@@ -2070,7 +2069,7 @@ LIMIT 1""" % {
             self._debug("Partitioning by: %s %s" % (real_col.name, real_col.data_type))
             part_expr_sql = self.gen_native_range_partition_key_cast(real_col)
 
-        return get_bigquery_dialect_engine().create_table(
+        return get_dialect_engine("bigquery").create_table(
             project=self._effective_project_name(),
             db_name=db_name,
             table_name=table_name,

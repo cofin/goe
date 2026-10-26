@@ -30,7 +30,6 @@ from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessagesMixin
 from goe.offload.offload_metadata_functions import (
     decode_metadata_incremental_high_values_from_metadata,
 )
-from goe.offload.oracle.oracle_dialect import register_oracle_dialect_extensions
 from goe.offload.predicate_offload import (
     PredicateOffloadException,
     get_predicate_dialect_engine,
@@ -106,8 +105,6 @@ class ValidationSqlEngine(ValidationQueryEngineProtocol):
 
     def __init__(self, dialect: str = "oracle") -> None:
         self._dialect = dialect
-        if dialect == "oracle":
-            register_oracle_dialect_extensions()
 
     def validate_filter_clause(self, raw_filter: str, dialect: str) -> str:
         """Validate a raw filter condition string for the given dialect."""
@@ -115,8 +112,6 @@ class ValidationSqlEngine(ValidationQueryEngineProtocol):
 
     def build_aggregate_query(self, spec: ValidationQuerySpec) -> str:
         """Construct an aggregate validation SELECT query from a ValidationQuerySpec."""
-        if spec.dialect == "oracle":
-            register_oracle_dialect_extensions()
         projections = [exp.Var(this=item) for item in spec.select_items]
         from_target = f"{spec.table_identifier} {spec.prior_to_where}".strip()
         select_node = exp.select(*projections, copy=False).from_(exp.Var(this=from_target), copy=False)

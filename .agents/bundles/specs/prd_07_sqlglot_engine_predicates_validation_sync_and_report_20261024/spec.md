@@ -97,19 +97,19 @@ uv run pytest tests/unit -q
 
 ## Implementation Plan
 
-- [ ] 7.1 `native_sqlglot_dialect_engine_20261024` — native Oracle dialect support and `DialectSqlEngine` ([spec](../native_sqlglot_dialect_engine_20261024/spec.md)).
-- [ ] 7.2 `predicate_ir_compiler_20261024` — `PredicateIR` compiler replacing literal and predicate classes ([spec](../predicate_ir_compiler_20261024/spec.md)).
+- [x] 7.1 `native_sqlglot_dialect_engine_20261024` — native Oracle dialect support and `DialectSqlEngine` ([spec](../native_sqlglot_dialect_engine_20261024/spec.md)).
+- [x] 7.2 `predicate_ir_compiler_20261024` — `PredicateIR` compiler replacing literal and predicate classes ([spec](../predicate_ir_compiler_20261024/spec.md)).
 - [ ] 7.3 `concurrent_cross_db_validation_20261024` — concurrent exact validation and `goe validate --diff` ([spec](../concurrent_cross_db_validation_20261024/spec.md)).
 - [ ] 7.4 `schema_sync_and_status_report_redesign_20261024` — schema sync and status report rewrites, `ora_query.py` retirement ([spec](../schema_sync_and_status_report_redesign_20261024/spec.md)).
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024`, `planned`; four child flows.
+- **Flow / lifecycle**: `prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024`, `in_progress`; four child flows (7.1 and 7.2 completed).
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `7.2` (`predicate_ir_compiler_20261024:1.3`).
 - **Decisions**: see §4.
-- **Discoveries**: none yet.
-- **Blockers**: Master PRDs 5 and 6 must complete first.
-- **Next exact step**: execute Chapter 7.1 task `1.1` (`native_sqlglot_dialect_engine_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: see child specs 7.1 and 7.2.
+- **Blockers**: none.
+- **Next exact step**: execute Chapter 7.3 (`concurrent_cross_db_validation_20261024`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 2`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/standards/database-and-sql.md`, `.agents/bundles/knowledge/architecture/schema-evolution.md`, `.agents/bundles/knowledge/architecture/type-mapping.md`, `.agents/bundles/knowledge/operations/cli-tools.md`.

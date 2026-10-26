@@ -64,9 +64,8 @@ from goe.offload.microsoft.mssql_column import (
 )
 from goe.offload.offload_source_table import OffloadSourceTableInterface
 from goe.offload.predicate_offload import (
-    GenericPredicateToTyped,
     get_predicate_dialect_engine,
-    handle_parse_errors,
+    resolve_predicate_types,
 )
 
 logger = logging.getLogger(__name__)
@@ -278,18 +277,16 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
     def predicate_to_where_clause(self, predicate: Any, columns_override: Any = None) -> str | None:
         if not predicate:
             return None
-        with handle_parse_errors():
-            target_columns = list(columns_override or self.columns)
-            typed_ast = GenericPredicateToTyped(target_columns).transform(predicate.ast)
-            return get_predicate_dialect_engine("tsql").render_literal_sql(typed_ast, target_columns)
+        target_columns = list(columns_override or self.columns)
+        resolved = resolve_predicate_types(predicate.ast, target_columns, include_synthetic=False)
+        return get_predicate_dialect_engine("tsql").render_literal_sql(resolved, target_columns)
 
     def predicate_to_where_clause_with_binds(self, predicate: Any) -> tuple[str, list[QueryParameter]]:
-        with handle_parse_errors():
-            target_columns = list(self.columns)
-            typed_ast = GenericPredicateToTyped(target_columns).transform(predicate.ast)
-            rendered = get_predicate_dialect_engine("tsql").render_bind_sql(typed_ast, target_columns)
-            query_params = [QueryParameter(param_name=k, param_value=v) for k, v in rendered.params.items()]
-            return rendered.sql, query_params
+        target_columns = list(self.columns)
+        resolved = resolve_predicate_types(predicate.ast, target_columns, include_synthetic=False)
+        rendered = get_predicate_dialect_engine("tsql").render_bind_sql(resolved, target_columns)
+        query_params = [QueryParameter(param_name=k, param_value=v) for k, v in rendered.params.items()]
+        return rendered.sql, query_params
 
     def valid_canonical_override(self, column: MSSQLColumn, canonical_override: CanonicalColumn | str) -> bool:
         """Return True when canonical_override is a supported target type for column."""

@@ -2,16 +2,16 @@
 type: Spec
 flow_id: predicate_ir_compiler_20261024
 title: "Chapter 7.2: PredicateIR Compiler"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 3
 current_task: null
-last_operation: null
+last_operation: finish
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: "1.3"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-25T17:56:00Z
 description: "Replace the Lark predicate transformer pipeline and per-dialect literal/predicate classes with an immutable msgspec PredicateExpr AST, sqlglot-backed parser, and cached multi-dialect PredicateCompiler."
 tags:
   - refactor
@@ -84,18 +84,18 @@ The `git grep` command must print nothing.
 ## Implementation Plan
 
 ### Phase 1: Predicate AST, SQLGlot Parser, Multi-Dialect Compiler, and Caller Cutover
-- [ ] 1.1 Build immutable PredicateExpr AST and sqlglot-backed predicate DSL parser ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Build multi-dialect PredicateCompiler and render_predicate with NamespacedCache memoization ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 Rewire predicate_offload.py and dialect predicate callers onto goe.offload.predicates and remove lark ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.1 Build immutable PredicateExpr AST and sqlglot-backed predicate DSL parser ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Build multi-dialect PredicateCompiler and render_predicate with NamespacedCache memoization ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.3 Rewire predicate_offload.py and dialect predicate callers onto goe.offload.predicates and remove lark ([tasks/1.3.md](tasks/1.3.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `predicate_ir_compiler_20261024`, `planned`.
+- **Flow / lifecycle**: `predicate_ir_compiler_20261024`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
-- **Decisions**: `sqlglot.parse_one` parses the GOE predicate DSL directly because `column(X)`, `numeric(123)`, `string("abc")`, and `datetime(...)` tokenize as function-like expressions in `sqlglot` once `datetime(...)` inner tokens are normalized; `PredicateExpr` is a frozen `msgspec` tagged union so it is hashable for `@lru_cache` and `NamespacedCache`; `src/goe/offload/predicates/compiler.py` is registered in `tools/verify_architecture.py` (or re-exported from `goe.offload.sql_ast`) as an allowed `sqlglot` consumer alongside `goe.offload.sql_ast`.
-- **Discoveries**: none yet.
-- **Blockers**: Chapter 7.1 (`native_sqlglot_dialect_engine_20261024`) must complete first.
-- **Next exact step**: execute task `1.1` (`predicate_ir_compiler_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Last verified checkpoint**: `1.3` (`pytest`, `ruff`, `mypy`, `tools/verify_architecture.py`, zero `lark` references).
+- **Decisions**: `PredicateExpr` is a frozen `msgspec` tagged union so it is hashable for `@lru_cache` and `NamespacedCache`; `src/goe/offload/predicates/` is registered in `tools/verify_architecture.py` as an allowed `sqlglot` consumer alongside `goe.offload.sql_ast`.
+- **Discoveries**: `exp.Literal(this=val.text, is_string=False)` is used instead of `exp.Literal.number(val.text)` so negative high-precision decimals such as `-0.00000000000000000001` are emitted in positional notation rather than scientific notation (`-1E-20`).
+- **Blockers**: none.
+- **Next exact step**: completed.
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 3`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/standards/database-and-sql.md`, `.agents/bundles/knowledge/architecture/type-mapping.md`.

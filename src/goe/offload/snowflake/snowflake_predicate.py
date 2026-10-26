@@ -1,47 +1,31 @@
-#! /usr/bin/env python3
-
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Offload predicate specialisations for Snowflake SQL dialect.
+"""Offload predicate specialisation for Snowflake SQL."""
 
-Includes transformer for inserting synthetic partition predicates.
-"""
+from typing import Any
 
-import numpy as np
-
-from goe.offload import predicate_offload
-from goe.offload.snowflake.snowflake_literal import SnowflakeLiteral
-
-
-def predicate_to_template(backend_columns):
-    generic_to_typed = predicate_offload.GenericPredicateToTyped(backend_columns)
-    insert_synthetic_partition_clauses = predicate_offload.InsertSyntheticPartitionClauses(backend_columns)
-    return generic_to_typed * insert_synthetic_partition_clauses * TypedPredicateToSnowflakeTemplate()
+from goe.offload.predicate_offload import (
+    GenericPredicate,
+    get_predicate_dialect_engine,
+    resolve_predicate_types,
+)
 
 
-def predicate_to_where_clause(backend_columns, predicate):
-    with predicate_offload.handle_parse_errors():
-        to_literal_ast = predicate_to_template(backend_columns) * TypedPredicateToSnowflakeLiterals()
-        to_sql = GenericPredicateToSnowflakeSQL()
-        return (to_literal_ast * to_sql).transform(predicate.ast)
+def predicate_to_where_clause(
+    snowflake_columns: list[Any],
+    predicate: GenericPredicate,
+) -> str:
+    """Render a GenericPredicate into a Snowflake SQL WHERE clause with synthetic partition clauses."""
+    resolved = resolve_predicate_types(predicate.ast, snowflake_columns, include_synthetic=True)
+    return get_predicate_dialect_engine("snowflake").render_literal_sql(resolved, snowflake_columns)
 
 
-class GenericPredicateToSnowflakeSQL(predicate_offload.GenericPredicateToSQL):
-    def column(self, items):
-        return ".".join('"%s"' % i for i in items)
-
-
-class TypedPredicateToSnowflakeTemplate(predicate_offload.TypedPredicateToTemplate):
-    pass
-
-
-class TypedPredicateToSnowflakeLiterals(predicate_offload.TypedPredicateToLiterals):
-    def datetime_value(self, items):
-        value, data_type = items[0].value
-        assert isinstance(value, np.datetime64)
-        return SnowflakeLiteral.format_literal(value, data_type)
-
-    def numeric_value(self, items):
-        value, data_type = items[0].value
-        return SnowflakeLiteral.format_literal(value, data_type)
+def predicate_to_where_clause_with_binds(
+    snowflake_columns: list[Any],
+    predicate: GenericPredicate,
+) -> tuple[str, dict[str, Any]]:
+    """Render a GenericPredicate into a Snowflake SQL WHERE clause and named bind dictionary."""
+    resolved = resolve_predicate_types(predicate.ast, snowflake_columns, include_synthetic=True)
+    rendered = get_predicate_dialect_engine("snowflake").render_bind_sql(resolved, snowflake_columns)
+    return rendered.sql, rendered.params
