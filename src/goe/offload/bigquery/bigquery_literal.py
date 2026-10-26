@@ -10,7 +10,8 @@ from datetime import date, time
 
 from numpy import datetime64
 
-from goe.offload.bigquery.bigquery_column import (
+from goe.offload.format_literal import FormatLiteralInterface
+from goe.offload.schema.column_spec import (
     BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_BYTES,
     BIGQUERY_TYPE_DATE,
@@ -19,7 +20,6 @@ from goe.offload.bigquery.bigquery_column import (
     BIGQUERY_TYPE_TIME,
     BIGQUERY_TYPE_TIMESTAMP,
 )
-from goe.offload.format_literal import FormatLiteralInterface
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

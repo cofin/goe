@@ -2,16 +2,18 @@
 type: Spec
 flow_id: prd_09_composable_backends_and_direct_bigquery_ingestion_20261024
 title: "Master PRD 9: Canonical Column Model, Composable Backends, Cached Backend Catalog, and Direct BigQuery Ingestion"
-state: planned
+state: in_progress
 plan_revision: 1
 plan_commit: null
-state_revision: 0
-current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+state_revision: 2
+current_task: "bigquery_ingest_strategies_20261024"
+last_operation: complete_child_flow
+operation_targets:
+  - canonical_column_model_and_type_registry_20261024
+  - backend_capabilities_and_cached_catalog_20261024
+last_verified_checkpoint: "9.2"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-26T21:30:00Z
 description: "Master roadmap that replaces mutable column metadata subclasses with a frozen column model and table-driven type registry, replaces the monolithic backend API and table interfaces with capabilities, a write-through cached catalog, dialect SQL, and pluggable ingest strategies, loads BigQuery directly from target-typed Parquet, and aligns Snowflake, Synapse, and Hadoop backends."
 tags:
   - refactor
@@ -98,19 +100,19 @@ make test-integration-gcp
 
 ## Implementation Plan
 
-- [ ] 9.1 `canonical_column_model_and_type_registry_20261024` — `ColumnSpec` and `CanonicalTypeRegistry` ([spec](../canonical_column_model_and_type_registry_20261024/spec.md)).
-- [ ] 9.2 `backend_capabilities_and_cached_catalog_20261024` — `BackendCapabilities`, `CachedBackendCatalog`, interface collapse ([spec](../backend_capabilities_and_cached_catalog_20261024/spec.md)).
+- [x] 9.1 `canonical_column_model_and_type_registry_20261024` — `ColumnSpec` and `CanonicalTypeRegistry` ([spec](../canonical_column_model_and_type_registry_20261024/spec.md)).
+- [x] 9.2 `backend_capabilities_and_cached_catalog_20261024` — `BackendCapabilities`, `CachedBackendCatalog`, interface collapse ([spec](../backend_capabilities_and_cached_catalog_20261024/spec.md)).
 - [ ] 9.3 `bigquery_ingest_strategies_20261024` — `BigQuerySession` and ingest strategies ([spec](../bigquery_ingest_strategies_20261024/spec.md)).
 - [ ] 9.4 `snowflake_synapse_hadoop_backend_alignment_20261024` — secondary backends on the new protocols ([spec](../snowflake_synapse_hadoop_backend_alignment_20261024/spec.md)).
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `prd_09_composable_backends_and_direct_bigquery_ingestion_20261024`, `planned`; four child flows.
-- **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Flow / lifecycle**: `prd_09_composable_backends_and_direct_bigquery_ingestion_20261024`, `in_progress`; four child flows (9.1 and 9.2 completed).
+- **Current task / claimant**: `bigquery_ingest_strategies_20261024`.
+- **Last verified checkpoint**: `9.2` (`backend_capabilities_and_cached_catalog_20261024`).
 - **Decisions**: see §4.
-- **Discoveries**: none yet.
-- **Blockers**: Master PRDs 5, 7, and 8 must complete first.
-- **Next exact step**: execute Chapter 9.1 task `1.1` (`canonical_column_model_and_type_registry_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: Chapters 9.1 and 9.2 completed with full golden parity, unit test coverage, and zero static/architectural violations.
+- **Blockers**: none.
+- **Next exact step**: execute Chapter 9.3 (`bigquery_ingest_strategies_20261024:1.1`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 2`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/backends/bigquery.md`, `.agents/bundles/knowledge/backends/snowflake.md`, `.agents/bundles/knowledge/backends/synapse.md`, `.agents/bundles/knowledge/backends/hadoop.md`, `.agents/bundles/knowledge/architecture/type-mapping.md`, `.agents/bundles/knowledge/patterns/offload-and-typing.md`.

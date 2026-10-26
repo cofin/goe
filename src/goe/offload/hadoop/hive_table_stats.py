@@ -13,7 +13,15 @@ from collections import defaultdict
 from typing import Any
 
 from goe.offload.hadoop.better_impyla import HiveConnection, HiveTable
-from goe.offload.hadoop.hadoop_column import (
+from goe.offload.hadoop.hive_ddl import DDLTransform
+from goe.offload.offload_constants import (
+    DBTYPE_HIVE,
+    DBTYPE_IMPALA,
+    EMPTY_BACKEND_COLUMN_STATS_DICT,
+    EMPTY_BACKEND_TABLE_STATS_DICT,
+)
+from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessages
+from goe.offload.schema.column_spec import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_DOUBLE,
     HADOOP_TYPE_FLOAT,
@@ -23,14 +31,6 @@ from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_TIMESTAMP,
     HADOOP_TYPE_TINYINT,
 )
-from goe.offload.hadoop.hive_ddl import DDLTransform
-from goe.offload.offload_constants import (
-    DBTYPE_HIVE,
-    DBTYPE_IMPALA,
-    EMPTY_BACKEND_COLUMN_STATS_DICT,
-    EMPTY_BACKEND_TABLE_STATS_DICT,
-)
-from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessages
 from goe.util import GOEVersion
 from goe.util.string_utils import is_number
 

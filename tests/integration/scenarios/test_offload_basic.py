@@ -8,10 +8,6 @@ import pytest
 from goe.filesystem.goe_dfs import OFFLOAD_FS_SCHEME_GS, gen_fs_uri
 from goe.offload import offload_constants
 from goe.offload.backend_api import IMPALA_NOSHUFFLE_HINT
-from goe.offload.column_metadata import (
-    match_table_column,
-    str_list_of_columns,
-)
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
@@ -24,6 +20,7 @@ from goe.offload.offload_metadata_functions import (
 )
 from goe.offload.offload_source_data import MAX_QUERY_OPTIMISTIC_PRUNE_CLAUSE
 from goe.offload.registry import create_repository_client
+from goe.offload.schema.column_spec import match_table_column, str_list_of_columns
 from goe.orchestration import command_steps
 from goe.orchestration.command_steps import step_title
 from tests.integration.scenarios.assertion_functions import (

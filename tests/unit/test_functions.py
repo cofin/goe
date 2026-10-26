@@ -8,15 +8,16 @@ from unittest import mock
 import numpy
 
 from goe.config.orchestration_config import OrchestrationConfig
-from goe.offload.column_metadata import ColumnPartitionInfo
 from goe.offload.offload_source_table import RdbmsPartition
-from goe.offload.oracle.oracle_column import (
-    ORACLE_TYPE_DATE,
-    ORACLE_TYPE_NUMBER,
-    OracleColumn,
-)
 from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
 from goe.offload.registry import create_backend_table
+from goe.offload.schema.column_spec import (
+    ORACLE_TYPE_DATE,
+    ORACLE_TYPE_NUMBER,
+    ColumnDialect,
+    ColumnPartitionSpec,
+    ColumnSpec,
+)
 
 if TYPE_CHECKING:
     from goe.offload.backend_table import BackendTableInterface
@@ -145,18 +146,21 @@ FAKE_ORACLE_SYNAPSE_ENV.update(
 )
 
 FAKE_ORACLE_COLUMNS = [
-    OracleColumn(
+    ColumnSpec(
+        ColumnDialect.ORACLE,
         "ID",
         ORACLE_TYPE_NUMBER,
         data_precision=8,
         data_scale=0,
     ),
-    OracleColumn(
+    ColumnSpec(
+        ColumnDialect.ORACLE,
         "TIME_ID",
         ORACLE_TYPE_DATE,
-        partition_info=ColumnPartitionInfo(position=0, range_end=None, range_start=None, source_column_name=None),
+        partition_info=ColumnPartitionSpec(position=0, range_end=None, range_start=None, source_column_name=None),
     ),
-    OracleColumn(
+    ColumnSpec(
+        ColumnDialect.ORACLE,
         "PROD_ID",
         ORACLE_TYPE_NUMBER,
         data_precision=4,

@@ -12,7 +12,6 @@ from typing import Any, cast
 import duckdb
 
 from goe.exceptions import ValidationError
-from goe.offload.column_metadata import match_table_column
 from goe.offload.frontend_api import QueryParameter
 from goe.offload.offload_constants import DBTYPE_ORACLE
 from goe.offload.offload_functions import (
@@ -37,6 +36,7 @@ from goe.offload.registry import (
     create_repository_client,
     create_source_table,
 )
+from goe.offload.schema.column_spec import match_table_column
 from goe.offload.sql_ast.dialect_engine import SqlDialect, get_dialect_engine
 from goe.offload.sql_engine import ValidationQueryEngineProtocol, ValidationQuerySpec
 from goe.offload.validation.ast_builder import (

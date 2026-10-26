@@ -13,7 +13,8 @@ import random
 import re
 from textwrap import dedent
 
-from goe.offload.column_metadata import (
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
     CANONICAL_CHAR_SEMANTICS_UNICODE,
     GOE_TYPE_BINARY,
     GOE_TYPE_DATE,
@@ -33,11 +34,6 @@ from goe.offload.column_metadata import (
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
     GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-    match_table_column,
-)
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_BINARY_DOUBLE,
     ORACLE_TYPE_BINARY_FLOAT,
     ORACLE_TYPE_BLOB,
@@ -56,7 +52,9 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP_TZ,
     ORACLE_TYPE_VARCHAR,
     ORACLE_TYPE_VARCHAR2,
-    OracleColumn,
+    ColumnDialect,
+    ColumnSpec,
+    match_table_column,
 )
 from tests.testlib.setup import gen_test_data
 from tests.testlib.test_framework.frontend_testing_api import (
@@ -167,7 +165,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         )
 
     def _data_type_supports_precision_and_scale(self, column_or_type):
-        if isinstance(column_or_type, OracleColumn):
+        if isinstance(column_or_type, ColumnSpec) and column_or_type.dialect is ColumnDialect.ORACLE:
             data_type = column_or_type.data_type
         else:
             data_type = column_or_type
@@ -185,7 +183,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         allow_nan=True,
         allow_inf=True,
     ):
-        assert isinstance(column, OracleColumn)
+        assert isinstance(column, ColumnSpec) and column.dialect is ColumnDialect.ORACLE
         if column.data_type in [
             ORACLE_TYPE_VARCHAR2,
             ORACLE_TYPE_VARCHAR,
@@ -257,13 +255,13 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         column_list = [
             {"column": self._id_column(), "ordered": True},
             {
-                "column": OracleColumn(name(), ORACLE_TYPE_CHAR, data_length=100),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_CHAR, data_length=100),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
                 "ordered": True,
             },
             {
-                "column": OracleColumn(name(), ORACLE_TYPE_NCHAR, char_length=100),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NCHAR, char_length=100),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
                 "ordered": True,
@@ -297,19 +295,25 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         max_precision = min(max_backend_precision, 38)
         all_columns = {
             name(ORACLE_TYPE_BINARY_DOUBLE): {
-                "column": OracleColumn(name(ORACLE_TYPE_BINARY_DOUBLE), ORACLE_TYPE_BINARY_DOUBLE),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_BINARY_DOUBLE), GOE_TYPE_DOUBLE),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_BINARY_DOUBLE), ORACLE_TYPE_BINARY_DOUBLE),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_BINARY_DOUBLE), GOE_TYPE_DOUBLE
+                ),
             },
             name(ORACLE_TYPE_BINARY_FLOAT): {
-                "column": OracleColumn(name(ORACLE_TYPE_BINARY_FLOAT), ORACLE_TYPE_BINARY_FLOAT),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_BINARY_FLOAT), GOE_TYPE_FLOAT),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_BINARY_FLOAT), ORACLE_TYPE_BINARY_FLOAT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_BINARY_FLOAT), GOE_TYPE_FLOAT
+                ),
             },
             name(ORACLE_TYPE_BINARY_FLOAT, GOE_TYPE_DOUBLE): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_BINARY_FLOAT, GOE_TYPE_DOUBLE),
                     ORACLE_TYPE_BINARY_FLOAT,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_BINARY_FLOAT, GOE_TYPE_DOUBLE),
                     GOE_TYPE_DOUBLE,
                 ),
@@ -317,22 +321,28 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 "literals": [1.5, 2.5, 3.5],
             },
             name(ORACLE_TYPE_BLOB): {
-                "column": OracleColumn(name(ORACLE_TYPE_BLOB), ORACLE_TYPE_BLOB),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_BLOB), GOE_TYPE_LARGE_BINARY),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_BLOB), ORACLE_TYPE_BLOB),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_BLOB), GOE_TYPE_LARGE_BINARY
+                ),
             },
             name(ORACLE_TYPE_CHAR): {
-                "column": OracleColumn(name(ORACLE_TYPE_CHAR), ORACLE_TYPE_CHAR, data_length=3),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_CHAR), GOE_TYPE_FIXED_STRING),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_CHAR), ORACLE_TYPE_CHAR, data_length=3),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_CHAR), GOE_TYPE_FIXED_STRING
+                ),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_CHAR, UNICODE_NAME_TOKEN): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_CHAR, UNICODE_NAME_TOKEN),
                     ORACLE_TYPE_CHAR,
                     data_length=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_CHAR, UNICODE_NAME_TOKEN),
                     GOE_TYPE_FIXED_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -342,14 +352,19 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_CLOB): {
-                "column": OracleColumn(name(ORACLE_TYPE_CLOB), ORACLE_TYPE_CLOB),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_CLOB), GOE_TYPE_LARGE_STRING),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_CLOB), ORACLE_TYPE_CLOB),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_CLOB), GOE_TYPE_LARGE_STRING
+                ),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_CLOB, UNICODE_NAME_TOKEN): {
-                "column": OracleColumn(name(ORACLE_TYPE_CLOB, UNICODE_NAME_TOKEN), ORACLE_TYPE_CLOB),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_CLOB, UNICODE_NAME_TOKEN), ORACLE_TYPE_CLOB
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_CLOB, UNICODE_NAME_TOKEN),
                     GOE_TYPE_LARGE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -359,12 +374,16 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_DATE): {
-                "column": OracleColumn(name(ORACLE_TYPE_DATE), ORACLE_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_DATE), GOE_TYPE_TIMESTAMP),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_DATE), ORACLE_TYPE_DATE),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_DATE), GOE_TYPE_TIMESTAMP
+                ),
             },
             name(ORACLE_TYPE_DATE, GOE_TYPE_DATE): {
-                "column": OracleColumn(name(ORACLE_TYPE_DATE, GOE_TYPE_DATE), ORACLE_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_DATE, GOE_TYPE_DATE), GOE_TYPE_DATE),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_DATE, GOE_TYPE_DATE), ORACLE_TYPE_DATE),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_DATE, GOE_TYPE_DATE), GOE_TYPE_DATE
+                ),
                 "offload_options": {"date_columns_csv": name(ORACLE_TYPE_DATE, GOE_TYPE_DATE)},
                 "literals": [
                     datetime.date(1970, 1, 1),
@@ -374,54 +393,70 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_DATE, GOE_TYPE_VARIABLE_STRING): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_DATE, GOE_TYPE_VARIABLE_STRING),
                     ORACLE_TYPE_DATE,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_DATE, GOE_TYPE_VARIABLE_STRING),
                     GOE_TYPE_VARIABLE_STRING,
                 ),
                 "offload_options": {"variable_string_columns_csv": name(ORACLE_TYPE_DATE, GOE_TYPE_VARIABLE_STRING)},
             },
             name(ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ): {
-                "column": OracleColumn(name(ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ), ORACLE_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ), ORACLE_TYPE_DATE
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ),
                     GOE_TYPE_TIMESTAMP_TZ,
                 ),
                 "offload_options": {"timestamp_tz_columns_csv": name(ORACLE_TYPE_DATE, GOE_TYPE_TIMESTAMP_TZ)},
             },
             name(ORACLE_TYPE_FLOAT): {
-                "column": OracleColumn(name(ORACLE_TYPE_FLOAT), ORACLE_TYPE_FLOAT),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_FLOAT), GOE_TYPE_DECIMAL),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_FLOAT), ORACLE_TYPE_FLOAT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_FLOAT), GOE_TYPE_DECIMAL
+                ),
             },
             name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE): {
-                "column": OracleColumn(name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE), ORACLE_TYPE_FLOAT),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE), GOE_TYPE_DOUBLE),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE), ORACLE_TYPE_FLOAT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE), GOE_TYPE_DOUBLE
+                ),
                 "offload_options": {"double_columns_csv": name(ORACLE_TYPE_FLOAT, GOE_TYPE_DOUBLE)},
                 "literals": [1.5, 2.5, 3.5],
             },
             name(ORACLE_TYPE_INTERVAL_DS): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_INTERVAL_DS),
                     ORACLE_TYPE_INTERVAL_DS,
                     data_precision=9,
                     data_scale=9,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_INTERVAL_DS), GOE_TYPE_INTERVAL_DS),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_INTERVAL_DS), GOE_TYPE_INTERVAL_DS
+                ),
             },
             name(ORACLE_TYPE_INTERVAL_YM): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_INTERVAL_YM),
                     ORACLE_TYPE_INTERVAL_YM,
                     data_precision=9,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_INTERVAL_YM), GOE_TYPE_INTERVAL_YM),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_INTERVAL_YM), GOE_TYPE_INTERVAL_YM
+                ),
             },
             name(ORACLE_TYPE_NCHAR): {
-                "column": OracleColumn(name(ORACLE_TYPE_NCHAR), ORACLE_TYPE_NCHAR, char_length=3),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_NCHAR), ORACLE_TYPE_NCHAR, char_length=3),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NCHAR),
                     GOE_TYPE_FIXED_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -430,8 +465,9 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_NCLOB): {
-                "column": OracleColumn(name(ORACLE_TYPE_NCLOB), ORACLE_TYPE_NCLOB),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_NCLOB), ORACLE_TYPE_NCLOB),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NCLOB),
                     GOE_TYPE_LARGE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -440,12 +476,17 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_NUMBER): {
-                "column": OracleColumn(name(ORACLE_TYPE_NUMBER), ORACLE_TYPE_NUMBER),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_NUMBER), GOE_TYPE_DECIMAL),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_NUMBER), ORACLE_TYPE_NUMBER),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_NUMBER), GOE_TYPE_DECIMAL
+                ),
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_1): {
-                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_1), ORACLE_TYPE_NUMBER),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_1), ORACLE_TYPE_NUMBER
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
@@ -457,8 +498,11 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_2): {
-                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_2), ORACLE_TYPE_NUMBER),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_2), ORACLE_TYPE_NUMBER
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
@@ -470,8 +514,11 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_4): {
-                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_4), ORACLE_TYPE_NUMBER),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_4), ORACLE_TYPE_NUMBER
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_4,
                 ),
@@ -483,8 +530,11 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_8): {
-                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_8), ORACLE_TYPE_NUMBER),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_8), ORACLE_TYPE_NUMBER
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_8,
                 ),
@@ -496,8 +546,11 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_38): {
-                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_38), ORACLE_TYPE_NUMBER),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_38), ORACLE_TYPE_NUMBER
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_38,
                 ),
@@ -511,82 +564,102 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE): {
-                "column": OracleColumn(name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE), ORACLE_TYPE_NUMBER),
-                "expected_canonical_column": CanonicalColumn(
-                    name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE), GOE_TYPE_DOUBLE
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE), ORACLE_TYPE_NUMBER
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE), GOE_TYPE_DOUBLE
                 ),
                 "offload_options": {"double_columns_csv": name(ORACLE_TYPE_NUMBER, GOE_TYPE_DOUBLE)},
                 "literals": [1, 2, 3],
             },
             name(ORACLE_TYPE_NUMBER, "2"): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_NUMBER, "2"),
                     ORACLE_TYPE_NUMBER,
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_NUMBER, "2"), GOE_TYPE_INTEGER_1),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_NUMBER, "2"), GOE_TYPE_INTEGER_1
+                ),
             },
             name(ORACLE_TYPE_NUMBER, "4"): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_NUMBER, "4"),
                     ORACLE_TYPE_NUMBER,
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_NUMBER, "4"), GOE_TYPE_INTEGER_2),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_NUMBER, "4"), GOE_TYPE_INTEGER_2
+                ),
             },
             name(ORACLE_TYPE_NUMBER, "9"): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_NUMBER, "9"),
                     ORACLE_TYPE_NUMBER,
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_NUMBER, "9"), GOE_TYPE_INTEGER_4),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_NUMBER, "9"), GOE_TYPE_INTEGER_4
+                ),
             },
             name(ORACLE_TYPE_NUMBER, "18"): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_NUMBER, "18"),
                     ORACLE_TYPE_NUMBER,
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_NUMBER, "18"), GOE_TYPE_INTEGER_8),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_NUMBER, "18"), GOE_TYPE_INTEGER_8
+                ),
             },
             name(ORACLE_TYPE_NUMBER, "19"): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_NUMBER, "19"),
                     ORACLE_TYPE_NUMBER,
                     data_precision=19,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NUMBER, "19"),
                     GOE_TYPE_INTEGER_38,
                     data_precision=19,
                 ),
             },
             name(ORACLE_TYPE_NUMBER, str(max_decimal_integral_magnitude)): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_NUMBER, str(max_decimal_integral_magnitude)),
                     ORACLE_TYPE_NUMBER,
                     data_precision=max_decimal_integral_magnitude,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NUMBER, str(max_decimal_integral_magnitude)),
                     GOE_TYPE_INTEGER_38,
                 ),
             },
             name(ORACLE_TYPE_NUMBER, str(max_precision), str(generic_scale)): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_NUMBER, str(max_precision), str(generic_scale)),
                     ORACLE_TYPE_NUMBER,
                     data_precision=max_precision,
                     data_scale=generic_scale,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NUMBER, str(max_precision), str(generic_scale)),
                     GOE_TYPE_DECIMAL,
                     data_precision=max_precision,
@@ -594,11 +667,13 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ),
             },
             name(ORACLE_TYPE_NUMBER, GOE_TYPE_DECIMAL, "10", "3"): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_DECIMAL, "10", "3"),
                     ORACLE_TYPE_NUMBER,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NUMBER, GOE_TYPE_DECIMAL, "10", "3"),
                     GOE_TYPE_DECIMAL,
                     data_precision=10,
@@ -615,13 +690,15 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NUMBER, "9", "2", GOE_TYPE_DECIMAL, "10", "3"): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_NUMBER, "9", "2", GOE_TYPE_DECIMAL, "10", "3"),
                     ORACLE_TYPE_NUMBER,
                     data_precision=9,
                     data_scale=2,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NUMBER, "9", "2", GOE_TYPE_DECIMAL, "10", "3"),
                     GOE_TYPE_DECIMAL,
                     data_precision=10,
@@ -638,8 +715,11 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_NVARCHAR2): {
-                "column": OracleColumn(name(ORACLE_TYPE_NVARCHAR2), ORACLE_TYPE_NVARCHAR2, char_length=30),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_NVARCHAR2), ORACLE_TYPE_NVARCHAR2, char_length=30
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_NVARCHAR2),
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -648,16 +728,24 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_RAW): {
-                "column": OracleColumn(name(ORACLE_TYPE_RAW), ORACLE_TYPE_RAW, data_length=30),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_RAW), GOE_TYPE_BINARY),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_RAW), ORACLE_TYPE_RAW, data_length=30),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_RAW), GOE_TYPE_BINARY
+                ),
             },
             name(ORACLE_TYPE_TIMESTAMP): {
-                "column": OracleColumn(name(ORACLE_TYPE_TIMESTAMP), ORACLE_TYPE_TIMESTAMP),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_TIMESTAMP), GOE_TYPE_TIMESTAMP),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_TIMESTAMP), ORACLE_TYPE_TIMESTAMP),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_TIMESTAMP), GOE_TYPE_TIMESTAMP
+                ),
             },
             name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE): {
-                "column": OracleColumn(name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE), ORACLE_TYPE_TIMESTAMP),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE), GOE_TYPE_DATE),
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE), ORACLE_TYPE_TIMESTAMP
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE), GOE_TYPE_DATE
+                ),
                 "offload_options": {"date_columns_csv": name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_DATE)},
                 "literals": [
                     datetime.date(1970, 1, 1),
@@ -667,11 +755,13 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 ],
             },
             name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_VARIABLE_STRING): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_VARIABLE_STRING),
                     ORACLE_TYPE_TIMESTAMP,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_VARIABLE_STRING),
                     GOE_TYPE_VARIABLE_STRING,
                 ),
@@ -680,33 +770,43 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
                 },
             },
             name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ),
                     ORACLE_TYPE_TIMESTAMP,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ),
                     GOE_TYPE_TIMESTAMP_TZ,
                 ),
                 "offload_options": {"timestamp_tz_columns_csv": name(ORACLE_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP_TZ)},
             },
             name(ORACLE_TYPE_TIMESTAMP_TZ): {
-                "column": OracleColumn(name(ORACLE_TYPE_TIMESTAMP_TZ), ORACLE_TYPE_TIMESTAMP_TZ),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_TIMESTAMP_TZ), GOE_TYPE_TIMESTAMP_TZ),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(ORACLE_TYPE_TIMESTAMP_TZ), ORACLE_TYPE_TIMESTAMP_TZ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_TIMESTAMP_TZ), GOE_TYPE_TIMESTAMP_TZ
+                ),
             },
             name(ORACLE_TYPE_VARCHAR2): {
-                "column": OracleColumn(name(ORACLE_TYPE_VARCHAR2), ORACLE_TYPE_VARCHAR2, data_length=30),
-                "expected_canonical_column": CanonicalColumn(name(ORACLE_TYPE_VARCHAR2), GOE_TYPE_VARIABLE_STRING),
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE, name(ORACLE_TYPE_VARCHAR2), ORACLE_TYPE_VARCHAR2, data_length=30
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(ORACLE_TYPE_VARCHAR2), GOE_TYPE_VARIABLE_STRING
+                ),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
             name(ORACLE_TYPE_VARCHAR2, UNICODE_NAME_TOKEN): {
-                "column": OracleColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.ORACLE,
                     name(ORACLE_TYPE_VARCHAR2, UNICODE_NAME_TOKEN),
                     ORACLE_TYPE_VARCHAR2,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(ORACLE_TYPE_VARCHAR2, UNICODE_NAME_TOKEN),
                     GOE_TYPE_VARIABLE_STRING,
                 ),
@@ -743,36 +843,37 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         column_list = [
             {"column": self._id_column(), "ordered": True},
             {
-                "column": OracleColumn(name(), ORACLE_TYPE_CHAR, data_length=100),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_CHAR, data_length=100),
                 "ascii_only": True,
                 "notnull": all_chars_notnull,
             },
             {
-                "column": OracleColumn(name(), ORACLE_TYPE_VARCHAR2, data_length=1100),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_VARCHAR2, data_length=1100),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
             {
-                "column": OracleColumn(name(), ORACLE_TYPE_NCHAR, char_length=100),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NCHAR, char_length=100),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
             {
-                "column": OracleColumn(name(), ORACLE_TYPE_NVARCHAR2, char_length=1100),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NVARCHAR2, char_length=1100),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             },
-            {"column": OracleColumn(name(), ORACLE_TYPE_DATE)},
-            {"column": OracleColumn(name(), ORACLE_TYPE_TIMESTAMP, data_scale=0)},
-            {"column": OracleColumn(name(), ORACLE_TYPE_TIMESTAMP)},
-            {"column": OracleColumn(name(), ORACLE_TYPE_TIMESTAMP_TZ)},
+            {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_DATE)},
+            {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_TIMESTAMP, data_scale=0)},
+            {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_TIMESTAMP)},
+            {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_TIMESTAMP_TZ)},
         ]
         if include_interval_columns:
             column_list.extend(
                 [
-                    {"column": OracleColumn(name(), ORACLE_TYPE_INTERVAL_YM, data_precision=9)},
+                    {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_INTERVAL_YM, data_precision=9)},
                     {
-                        "column": OracleColumn(
+                        "column": ColumnSpec(
+                            ColumnDialect.ORACLE,
                             name(),
                             ORACLE_TYPE_INTERVAL_DS,
                             data_precision=9,
@@ -783,45 +884,49 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
             )
         column_list.extend(
             [
-                {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER)},
-                {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=2)},
-                {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=4)},
-                {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=9)},
-                {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=18)},
+                {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NUMBER)},
+                {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NUMBER, data_precision=2)},
+                {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NUMBER, data_precision=4)},
+                {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NUMBER, data_precision=9)},
+                {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NUMBER, data_precision=18)},
                 # GOE-1503: due to a cx_Oracle 7.1.0 - 7.3.0 issue with binding over 36 digits for negative numbers, we've
                 # temporarily dropped the spec to 36. We'll raise a bug with cx_Oracle and re-instate extreme testing when
                 # a fix is available.
-                {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=36)},
-                {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=None, data_scale=0)},
+                {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NUMBER, data_precision=36)},
+                {
+                    "column": ColumnSpec(
+                        ColumnDialect.ORACLE, name(), ORACLE_TYPE_NUMBER, data_precision=None, data_scale=0
+                    )
+                },
             ]
         )
 
         if supported_canonical_types and GOE_TYPE_FLOAT in supported_canonical_types:
-            column_list.append({"column": OracleColumn(name(), ORACLE_TYPE_BINARY_FLOAT)})
+            column_list.append({"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_BINARY_FLOAT)})
 
         column_list.extend(
             [
-                {"column": OracleColumn(name(), ORACLE_TYPE_BINARY_DOUBLE)},
-                {"column": OracleColumn(name(), ORACLE_TYPE_FLOAT)},
-                {"column": OracleColumn(name(), ORACLE_TYPE_RAW, data_length=16)},
-                {"column": OracleColumn(name(), ORACLE_TYPE_RAW, data_length=2000)},
+                {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_BINARY_DOUBLE)},
+                {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_FLOAT)},
+                {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_RAW, data_length=16)},
+                {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_RAW, data_length=2000)},
                 {
-                    "column": OracleColumn(name(), ORACLE_TYPE_CLOB),
+                    "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_CLOB),
                     "ascii_only": ascii_only,
                     "notnull": all_chars_notnull,
                 },
                 {
-                    "column": OracleColumn(name(), ORACLE_TYPE_BLOB),
+                    "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_BLOB),
                     "ascii_only": ascii_only,
                     "notnull": all_chars_notnull,
                 },
                 {
-                    "column": OracleColumn(name(), ORACLE_TYPE_NCLOB),
+                    "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NCLOB),
                     "ascii_only": ascii_only,
                     "notnull": all_chars_notnull,
                 },
                 {
-                    "column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=1),
+                    "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NUMBER, data_precision=1),
                     "column_spec_extra_clause": "AS (MOD(id,10)) VIRTUAL",
                 },
             ]
@@ -846,17 +951,21 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
 
         column_list = [{"column": self._id_column(), "ordered": True}]
 
-        column_list.extend({"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=9)} for _ in range(5))
+        column_list.extend(
+            {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NUMBER, data_precision=9)} for _ in range(5)
+        )
         column_list.extend(
             {
-                "column": OracleColumn(name(), ORACLE_TYPE_VARCHAR, data_length=10),
+                "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_VARCHAR, data_length=10),
                 "ascii_only": ascii_only,
                 "notnull": all_chars_notnull,
             }
             for _ in range(5)
         )
-        column_list.extend({"column": OracleColumn(name(), ORACLE_TYPE_DATE)} for _ in range(5))
-        column_list.extend({"column": OracleColumn(name(), ORACLE_TYPE_TIMESTAMP, data_scale=0)} for _ in range(5))
+        column_list.extend({"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_DATE)} for _ in range(5))
+        column_list.extend(
+            {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_TIMESTAMP, data_scale=0)} for _ in range(5)
+        )
 
         extra_column_count = min(self._goe_wide_max_test_column_count(), backend_max_test_column_count) - len(
             column_list
@@ -865,14 +974,14 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         column_list.extend(
             random.choice(
                 [
-                    {"column": OracleColumn(name(), ORACLE_TYPE_NUMBER, data_precision=9)},
+                    {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_NUMBER, data_precision=9)},
                     {
-                        "column": OracleColumn(name(), ORACLE_TYPE_VARCHAR, data_length=10),
+                        "column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_VARCHAR, data_length=10),
                         "ascii_only": ascii_only,
                         "notnull": all_chars_notnull,
                     },
-                    {"column": OracleColumn(name(), ORACLE_TYPE_DATE)},
-                    {"column": OracleColumn(name(), ORACLE_TYPE_TIMESTAMP, data_scale=0)},
+                    {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_DATE)},
+                    {"column": ColumnSpec(ColumnDialect.ORACLE, name(), ORACLE_TYPE_TIMESTAMP, data_scale=0)},
                 ]
             )
             for _ in range(extra_column_count)
@@ -881,7 +990,7 @@ class OracleFrontendTestingApi(FrontendTestingApiInterface):
         return column_list
 
     def _id_column(self):
-        return OracleColumn("ID", ORACLE_TYPE_NUMBER, data_precision=18, data_scale=0)
+        return ColumnSpec(ColumnDialect.ORACLE, "ID", ORACLE_TYPE_NUMBER, data_precision=18, data_scale=0)
 
     def _populate_generated_test_table(self, schema, table_name, columns, rows, fastexecute=False):
         """Using cx-Oracle specific syntax due to copying code directly from 'test --setup'"""

@@ -207,7 +207,7 @@ CAPABILITY_LOW_HIGH_VALUE_FROM_STATS = "low_high_value_from_stats"
         Does the backend have any floating point datatypes that support Nan/Infinity/-Infinity values.
         If not then --allow-floating-point-conversions must be used to offload RDBMS
         nan capable datatypes (for Oracle these are BINARY_%).
-        Note that ColumnMetadataInterface has an is_nan_capable method that determines
+        Note that ColumnSpec has an is_nan_capable method that determines
         which column datatypes are nan capable.
 """
 CAPABILITY_NAN = "nan"

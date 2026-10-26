@@ -12,9 +12,7 @@ from typing import Any
 
 import pyarrow as pa
 
-from goe.offload.column_metadata import ColumnMetadataInterface
-from goe.offload.staging.avro.avro_column import StagingAvroColumn
-from goe.offload.staging.parquet.parquet_column import StagingParquetColumn
+from goe.offload.schema.column_spec import ColumnDialect, ColumnSpec
 from goe.offload.transport.arrow_extractor import ArrowExtractionConfig, OracleArrowStreamExtractor
 from goe.offload.transport.duckdb.engine import DuckDBEngine, DuckDBSessionConfig, build_cast_projection
 from goe.offload.transport.duckdb.parquet_writer import (
@@ -47,7 +45,7 @@ class ArrowParquetStagingWriter:
         *,
         write_options: ParquetWriteOptions | None = None,
         compression: bool = False,
-        staging_columns: Sequence[ColumnMetadataInterface] = (),
+        staging_columns: Sequence[ColumnSpec] = (),
         base64_columns: Sequence[Any] | None = (),
     ) -> None:
         self._engine: Any = engine if hasattr(engine, "cursor") else None
@@ -58,7 +56,7 @@ class ArrowParquetStagingWriter:
         )
         self._writer = DuckDBParquetWriter(resolved_options)
         if staging_columns:
-            self._staging_columns: tuple[ColumnMetadataInterface, ...] = tuple(staging_columns)
+            self._staging_columns: tuple[ColumnSpec, ...] = tuple(staging_columns)
         elif isinstance(engine, Sequence) and not isinstance(engine, (str, bytes)):
             self._staging_columns = _staging_parquet_columns_from_schema(engine)
         else:
@@ -73,13 +71,13 @@ class ArrowParquetStagingWriter:
     def write(
         self,
         reader: pa.RecordBatchReader,
-        staging_columns: Sequence[ColumnMetadataInterface] | str | Path | None = None,
+        staging_columns: Sequence[ColumnSpec] | str | Path | None = None,
         target_uri: str | Path = "",
     ) -> StagedFileManifest:
         """Register reader on a cursor, stream COPY ... TO (FORMAT PARQUET), and always unregister."""
         if isinstance(staging_columns, (str, Path)) and not target_uri:
             resolved_uri = str(staging_columns)
-            effective_columns: Sequence[ColumnMetadataInterface] = self._staging_columns
+            effective_columns: Sequence[ColumnSpec] = self._staging_columns
         else:
             resolved_uri = str(target_uri)
             effective_columns = (
@@ -112,7 +110,7 @@ class ArrowParquetStagingWriter:
         self,
         local_output_path: str,
         extraction_cursor: Any,
-        source_columns: Sequence[ColumnMetadataInterface],
+        source_columns: Sequence[ColumnSpec],
         fetch_size: int | None = None,
     ) -> int:
         """Stream rows from a DB-API cursor into local_output_path and return the staged row count."""
@@ -143,7 +141,7 @@ class ArrowAvroStagingWriter:
         compress: bool | None = None,
         compression: bool = False,
         base64_columns: Sequence[Any] | None = (),
-        staging_columns: Sequence[ColumnMetadataInterface] = (),
+        staging_columns: Sequence[ColumnSpec] = (),
     ) -> None:
         self._raw_schema: dict[str, Any] = (
             decode_json(schema_json) if isinstance(schema_json, str) else dict(schema_json)
@@ -152,7 +150,7 @@ class ArrowAvroStagingWriter:
         self._compress = compression if compress is None else compress
         self._base64_columns = _normalize_base64_column_names(base64_columns)
         self._field_types = self._extract_field_primitives(self._raw_schema)
-        self._staging_columns: tuple[ColumnMetadataInterface, ...] = (
+        self._staging_columns: tuple[ColumnSpec, ...] = (
             tuple(staging_columns) if staging_columns else _staging_avro_columns_from_fields(self._field_types)
         )
 
@@ -200,7 +198,7 @@ class ArrowAvroStagingWriter:
         self,
         local_output_path: str,
         extraction_cursor: Any,
-        source_columns: Sequence[ColumnMetadataInterface],
+        source_columns: Sequence[ColumnSpec],
         fetch_size: int | None = None,
     ) -> int:
         """Stream rows from a DB-API cursor into local_output_path and return the staged row count."""
@@ -264,27 +262,25 @@ def _normalize_base64_column_names(base64_columns: Sequence[Any] | None) -> froz
     return frozenset(getattr(col, "name", str(col)) for col in base64_columns if col is not None)
 
 
-def _staging_parquet_columns_from_schema(schema_tuples: Sequence[Any]) -> tuple[ColumnMetadataInterface, ...]:
-    """Construct StagingParquetColumn objects from (name, data_type, nullable) schema tuples."""
-    cols: list[ColumnMetadataInterface] = []
+def _staging_parquet_columns_from_schema(schema_tuples: Sequence[Any]) -> tuple[ColumnSpec, ...]:
+    """Construct ColumnSpec objects from (name, data_type, nullable) schema tuples."""
+    cols: list[ColumnSpec] = []
     for item in schema_tuples:
-        if isinstance(item, ColumnMetadataInterface):
+        if isinstance(item, ColumnSpec):
             cols.append(item)
         elif isinstance(item, (tuple, list)) and len(item) >= 2:
             name = str(item[0])
             dtype = str(item[1])
             nullable = bool(item[2]) if len(item) >= 3 else True
-            col = StagingParquetColumn(name, dtype, nullable=nullable)
-            col.staging_file_column_name = name
+            col = ColumnSpec(ColumnDialect.PARQUET, name, dtype, nullable=nullable, staging_file_column_name=name)
             cols.append(col)
     return tuple(cols)
 
 
-def _staging_avro_columns_from_fields(field_types: dict[str, str]) -> tuple[ColumnMetadataInterface, ...]:
-    """Construct StagingAvroColumn objects from extracted Avro field primitive types."""
-    cols: list[ColumnMetadataInterface] = []
+def _staging_avro_columns_from_fields(field_types: dict[str, str]) -> tuple[ColumnSpec, ...]:
+    """Construct ColumnSpec objects from extracted Avro field primitive types."""
+    cols: list[ColumnSpec] = []
     for name, prim in field_types.items():
-        col = StagingAvroColumn(name, prim, nullable=True)
-        col.staging_file_column_name = name
+        col = ColumnSpec(ColumnDialect.AVRO, name, prim, nullable=True, staging_file_column_name=name)
         cols.append(col)
     return tuple(cols)

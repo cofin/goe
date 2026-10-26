@@ -18,19 +18,6 @@ from goe.filesystem.goe_dfs import (
 )
 from goe.offload import offload_constants
 from goe.offload.backend_api import IMPALA_NOSHUFFLE_HINT, IMPALA_SHUFFLE_HINT
-from goe.offload.column_metadata import (
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-    match_table_column,
-)
 from goe.offload.offload import (
     active_data_append_options,
     normalise_less_than_options,
@@ -72,6 +59,19 @@ from goe.offload.registry import (
     create_backend_api,
     create_frontend_api,
     create_repository_client,
+)
+from goe.offload.schema.column_spec import (
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_INTEGER_1,
+    GOE_TYPE_INTEGER_2,
+    GOE_TYPE_INTEGER_4,
+    GOE_TYPE_INTEGER_8,
+    GOE_TYPE_INTEGER_38,
+    GOE_TYPE_TIMESTAMP_TZ,
+    GOE_TYPE_VARIABLE_STRING,
+    match_table_column,
 )
 from goe.offload.transport.selector import (
     validate_offload_transport_method,
@@ -980,8 +980,7 @@ class BaseOperation:
         new_columns = []
         for canonical_column in canonical_columns:
             rdbms_column = match_table_column(canonical_column.name, rdbms_columns)
-            canonical_column.partition_info = get_partition_info(rdbms_column)
-            new_columns.append(canonical_column)
+            new_columns.append(canonical_column.replace(partition_info=get_partition_info(rdbms_column)))
         return new_columns
 
     def validate_ipa_predicate_type(self, offload_source_table):

@@ -2,16 +2,16 @@
 type: Spec
 flow_id: backend_capabilities_and_cached_catalog_20261024
 title: "Chapter 9.2: Backend Capabilities and Cached Catalog"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 3
 current_task: null
-last_operation: null
+last_operation: complete_flow
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: "1.3"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-26T21:30:00Z
 description: "Replace the 34-key capability dictionaries, 65+ capability query methods, and monolithic BackendApiInterface and BackendTableInterface classes with BackendCapabilities, a write-through CachedBackendCatalog, and focused backend session, DDL, staging load, and final merge services."
 tags: [refactor, backends, caching, capabilities, ddl]
 parent_prd: prd_09_composable_backends_and_direct_bigquery_ingestion_20261024
@@ -105,21 +105,21 @@ Expected: every test suite, linter, type check, and architecture check exits 0.
 
 ### Phase 1: Capabilities, Catalog Cache, and Composable Services
 
-- [ ] 1.1 Add BackendCapabilities and write-through CachedBackendCatalog ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Extract BackendSessionManager, BackendDDLCompiler, StagingLoadService, and FinalTableMerger ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.1 Add BackendCapabilities and write-through CachedBackendCatalog ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Extract BackendSessionManager, BackendDDLCompiler, StagingLoadService, and FinalTableMerger ([tasks/1.2.md](tasks/1.2.md))
 
 ### Phase 2: Base Interface Delegation
 
-- [ ] 1.3 Slim BackendApiInterface and BackendTableInterface to delegate to capabilities, catalog cache, and backend services ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.3 Slim BackendApiInterface and BackendTableInterface to delegate to capabilities, catalog cache, and backend services ([tasks/1.3.md](tasks/1.3.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `backend_capabilities_and_cached_catalog_20261024`, `planned`.
+- **Flow / lifecycle**: `backend_capabilities_and_cached_catalog_20261024`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `1.3`.
 - **Decisions**: place the composable backend modules directly under `src/goe/offload/` (`backend_capabilities.py`, `backend_cache.py`, `backend_session.py`, `backend_ddl.py`, `backend_load.py`) so all existing `goe.offload.*` imports remain cohesive; scope `CachedBackendCatalog` strictly per `BackendApiInterface` instance with automatic write-through invalidation on DDL and load operations.
-- **Discoveries**: none yet.
-- **Blockers**: Chapter 9.1 (`canonical_column_model_and_type_registry_20261024`) must complete first.
-- **Next exact step**: execute task `1.1` (`backend_capabilities_and_cached_catalog_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: `BackendCapabilities`, `CachedBackendCatalog`, `BackendSessionManager`, `BackendDDLCompiler`, `StagingLoadService`, and `FinalTableMerger` extracted and wired into `BackendApiInterface` and `BackendTableInterface`; `UdfParameter` and `UdfDetails` converted to `FrozenBaseStruct` (fixing a tuple-vs-`UdfParameter` bug in `snowflake_backend_api.py`).
+- **Blockers**: none.
+- **Next exact step**: Proceed to Chapter 9.3 (`bigquery_ingest_strategies_20261024`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 3`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/backends/bigquery.md`, `.agents/bundles/knowledge/backends/snowflake.md`, `.agents/bundles/knowledge/backends/synapse.md`, `.agents/bundles/knowledge/backends/hadoop.md`, `.agents/bundles/knowledge/patterns/offload-and-typing.md`.

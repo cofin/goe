@@ -11,8 +11,8 @@ from goe.offload.offload_functions import (
 from goe.offload.offload_source_data import (
     TOO_MANY_PARTITION_NAMES_EXCEPTION_TEXT,
 )
-from goe.offload.oracle.oracle_column import ORACLE_TYPE_NVARCHAR2
 from goe.offload.registry import create_repository_client
+from goe.offload.schema.column_spec import ORACLE_TYPE_NVARCHAR2
 from tests.integration.scenarios.assertion_functions import (
     sales_based_fact_assertion,
     synthetic_part_col_name,

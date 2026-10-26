@@ -2,16 +2,16 @@
 type: Spec
 flow_id: canonical_column_model_and_type_registry_20261024
 title: "Chapter 9.1: Canonical Column Model and Type Registry"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 4
 current_task: null
-last_operation: null
+last_operation: complete_flow
 operation_targets: []
-last_verified_checkpoint: null
+last_verified_checkpoint: "1.4"
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-26T21:30:00Z
 description: "Replace the mutable ColumnMetadataInterface hierarchy and the per-dialect column subclasses with one frozen ColumnSpec and a table-driven CanonicalTypeRegistry after pinning every current mapping with golden characterization tables."
 tags: [refactor, typing, type-mapping, backends]
 parent_prd: prd_09_composable_backends_and_direct_bigquery_ingestion_20261024
@@ -118,22 +118,22 @@ Expected: every command exits 0; the two `test -z` checks print nothing.
 
 ### Phase 1: Characterization and new model
 
-- [ ] 1.1 Pin every column mapping, trait, and format with golden tables ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Add the frozen ColumnSpec model, dialect vocabulary, and column helpers ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 Add the table-driven CanonicalTypeRegistry ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.1 Pin every column mapping, trait, and format with golden tables ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Add the frozen ColumnSpec model, dialect vocabulary, and column helpers ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.3 Add the table-driven CanonicalTypeRegistry ([tasks/1.3.md](tasks/1.3.md))
 
 ### Phase 2: Cutover
 
-- [ ] 1.4 Cut every column call site over to ColumnSpec and the registry and delete the column subclasses ([tasks/1.4.md](tasks/1.4.md))
+- [x] 1.4 Cut every column call site over to ColumnSpec and the registry and delete the column subclasses ([tasks/1.4.md](tasks/1.4.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `canonical_column_model_and_type_registry_20261024`, `planned`.
+- **Flow / lifecycle**: `canonical_column_model_and_type_registry_20261024`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `1.4`.
 - **Decisions**: one `ColumnSpec` type with a `dialect` field and unchanged attribute and trait-method names; dialect vocabularies and trait tables live in `column_spec.py`, mapping rules in `type_registry.py`; `src/goe/offload/schema/__init__.py` holds only a docstring (importers use the submodules); golden tables are captured from the current classes and never edited by later tasks; the cutover is one task because the column type is shared by every layer and a partial swap cannot keep the suite green.
-- **Discoveries**: none yet.
-- **Blockers**: Master PRDs 5, 6, 7, and 8 must complete first (`goe.typing.FrozenBaseStruct`, `GOEError`, `tools/verify_architecture.py`, and the importer moves listed in §2).
-- **Next exact step**: execute task `1.1` (`canonical_column_model_and_type_registry_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: All 9 legacy column modules deleted and all production/test call sites migrated to `ColumnSpec`, `ColumnPartitionSpec`, and `TYPE_REGISTRY` with 100% golden parity.
+- **Blockers**: none.
+- **Next exact step**: Proceed to Chapter 9.2 (`backend_capabilities_and_cached_catalog_20261024`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 4`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/architecture/type-mapping.md`, `.agents/bundles/knowledge/patterns/offload-and-typing.md`, `.agents/bundles/knowledge/standards/python.md`, `.agents/bundles/knowledge/standards/testing.md`.

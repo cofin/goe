@@ -9,7 +9,11 @@ processing and verification of integration tests.
 
 import logging
 
-from goe.offload.column_metadata import (
+from goe.offload.hadoop.hadoop_backend_api import (
+    hive_enable_dynamic_partitions_for_insert_sqls,
+)
+from goe.offload.offload_messages import NORMAL, VVERBOSE
+from goe.offload.schema.column_spec import (
     GOE_TYPE_BINARY,
     GOE_TYPE_BOOLEAN,
     GOE_TYPE_DATE,
@@ -30,12 +34,6 @@ from goe.offload.column_metadata import (
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
     GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-)
-from goe.offload.hadoop.hadoop_backend_api import (
-    hive_enable_dynamic_partitions_for_insert_sqls,
-)
-from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_BINARY,
     HADOOP_TYPE_BOOLEAN,
@@ -48,9 +46,9 @@ from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_STRING,
     HADOOP_TYPE_TIMESTAMP,
     HADOOP_TYPE_TINYINT,
-    HadoopColumn,
+    ColumnDialect,
+    ColumnSpec,
 )
-from goe.offload.offload_messages import NORMAL, VVERBOSE
 from tests.testlib.test_framework.hadoop.hadoop_backend_testing_api import (
     BackendHadoopTestingApi,
     BackendTestingApiException,
@@ -120,15 +118,19 @@ class BackendHiveTestingApi(BackendHadoopTestingApi):
         all_columns.update(
             {
                 name(HADOOP_TYPE_BINARY): {
-                    "column": HadoopColumn(name(HADOOP_TYPE_BINARY), HADOOP_TYPE_BINARY),
-                    "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_BINARY), GOE_TYPE_BINARY),
+                    "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_BINARY), HADOOP_TYPE_BINARY),
+                    "expected_canonical_column": ColumnSpec(
+                        ColumnDialect.CANONICAL, name(HADOOP_TYPE_BINARY), GOE_TYPE_BINARY
+                    ),
                 },
                 name(HADOOP_TYPE_BINARY, GOE_TYPE_LARGE_BINARY): {
-                    "column": HadoopColumn(
+                    "column": ColumnSpec(
+                        ColumnDialect.HADOOP,
                         name(HADOOP_TYPE_BINARY, GOE_TYPE_LARGE_BINARY),
                         HADOOP_TYPE_BINARY,
                     ),
-                    "expected_canonical_column": CanonicalColumn(
+                    "expected_canonical_column": ColumnSpec(
+                        ColumnDialect.CANONICAL,
                         name(HADOOP_TYPE_BINARY, GOE_TYPE_LARGE_BINARY),
                         GOE_TYPE_LARGE_BINARY,
                     ),

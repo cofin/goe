@@ -16,7 +16,7 @@ from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
 )
-from goe.offload.staging.parquet.parquet_column import PARQUET_TYPE_INT64, PARQUET_TYPE_STRING, StagingParquetColumn
+from goe.offload.schema.column_spec import PARQUET_TYPE_INT64, PARQUET_TYPE_STRING, ColumnDialect, ColumnSpec
 from goe.offload.transport.constants import TRANSPORT_CXT_BYTES, TRANSPORT_CXT_ROWS
 from goe.offload.transport.duckdb import DuckDBSessionConfig
 from goe.offload.transport.duckdb_transport import OffloadTransportDuckDB
@@ -138,12 +138,13 @@ def test_batch_failure_raises_transport_exception_and_cleans_up(tmp_path: Path) 
     assert list(Path(transport._duckdb_temp_root).iterdir()) == []
 
 
-def _staging_columns() -> list[StagingParquetColumn]:
+def _staging_columns() -> list[ColumnSpec]:
     """Return staged ID/NAME columns with staging file names assigned."""
-    columns = [StagingParquetColumn("ID", PARQUET_TYPE_INT64), StagingParquetColumn("NAME", PARQUET_TYPE_STRING)]
-    for position, column in enumerate(columns):
-        column.set_simplified_staging_column_name(position)
-    return columns
+    columns = [
+        ColumnSpec(ColumnDialect.PARQUET, "ID", PARQUET_TYPE_INT64),
+        ColumnSpec(ColumnDialect.PARQUET, "NAME", PARQUET_TYPE_STRING),
+    ]
+    return [column.with_simplified_staging_column_name(position) for position, column in enumerate(columns)]
 
 
 def _transport(tmp_path: Path, split_type: str = TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD, dry_run: bool = False):

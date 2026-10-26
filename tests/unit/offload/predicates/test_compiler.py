@@ -8,31 +8,6 @@ from decimal import Decimal
 import numpy as np
 from sqlglot import exp
 
-from goe.offload.bigquery.bigquery_column import (
-    BIGQUERY_TYPE_BIGNUMERIC,
-    BIGQUERY_TYPE_DATETIME,
-    BigQueryColumn,
-)
-from goe.offload.hadoop.hadoop_column import (
-    HADOOP_TYPE_DECIMAL,
-    HADOOP_TYPE_INT,
-    HADOOP_TYPE_STRING,
-    HADOOP_TYPE_TIMESTAMP,
-    HadoopColumn,
-)
-from goe.offload.microsoft.synapse_column import (
-    SYNAPSE_TYPE_BIGINT,
-    SYNAPSE_TYPE_DATETIME2,
-    SYNAPSE_TYPE_DECIMAL,
-    SYNAPSE_TYPE_VARCHAR,
-    SynapseColumn,
-)
-from goe.offload.oracle.oracle_column import (
-    ORACLE_TYPE_DATE,
-    ORACLE_TYPE_NUMBER,
-    ORACLE_TYPE_TIMESTAMP,
-    OracleColumn,
-)
 from goe.offload.predicates.compiler import (
     PredicateCompiler,
     render_predicate,
@@ -41,20 +16,34 @@ from goe.offload.predicates.parser import (
     parse_predicate_dsl,
     resolve_predicate_types,
 )
-from goe.offload.snowflake.snowflake_column import (
+from goe.offload.schema.column_spec import (
+    BIGQUERY_TYPE_BIGNUMERIC,
+    BIGQUERY_TYPE_DATETIME,
+    HADOOP_TYPE_DECIMAL,
+    HADOOP_TYPE_INT,
+    HADOOP_TYPE_STRING,
+    HADOOP_TYPE_TIMESTAMP,
+    ORACLE_TYPE_DATE,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_TIMESTAMP,
     SNOWFLAKE_TYPE_NUMBER,
     SNOWFLAKE_TYPE_TEXT,
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
-    SnowflakeColumn,
+    SYNAPSE_TYPE_BIGINT,
+    SYNAPSE_TYPE_DATETIME2,
+    SYNAPSE_TYPE_DECIMAL,
+    SYNAPSE_TYPE_VARCHAR,
+    ColumnDialect,
+    ColumnSpec,
 )
 
 
 def test_oracle_literal_and_bind_compilation() -> None:
     """Verify Oracle literal and bind compilation for NUMBER, DATE, and TIMESTAMP(9) columns."""
     ora_cols = [
-        OracleColumn("PROD_ID", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0),
-        OracleColumn("TIME_ID", ORACLE_TYPE_DATE),
-        OracleColumn("EVENT_TS", ORACLE_TYPE_TIMESTAMP, data_scale=9),
+        ColumnSpec(ColumnDialect.ORACLE, "PROD_ID", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0),
+        ColumnSpec(ColumnDialect.ORACLE, "TIME_ID", ORACLE_TYPE_DATE),
+        ColumnSpec(ColumnDialect.ORACLE, "EVENT_TS", ORACLE_TYPE_TIMESTAMP, data_scale=9),
     ]
     dsl = "(column(SH.PROD_ID) = numeric(42)) AND (column(SH.TIME_ID) >= datetime(2024-01-15 08:30:00))"
     resolved = resolve_predicate_types(parse_predicate_dsl(dsl), ora_cols)
@@ -84,8 +73,8 @@ def test_oracle_literal_and_bind_compilation() -> None:
 def test_bigquery_literal_and_bind_compilation_with_38_digit_bignumeric() -> None:
     """Verify BigQuery literal and bind compilation preserves 38-digit BIGNUMERIC precision."""
     bq_cols = [
-        BigQueryColumn("AMOUNT", BIGQUERY_TYPE_BIGNUMERIC, data_precision=38, data_scale=9),
-        BigQueryColumn("CREATED_AT", BIGQUERY_TYPE_DATETIME),
+        ColumnSpec(ColumnDialect.BIGQUERY, "AMOUNT", BIGQUERY_TYPE_BIGNUMERIC, data_precision=38, data_scale=9),
+        ColumnSpec(ColumnDialect.BIGQUERY, "CREATED_AT", BIGQUERY_TYPE_DATETIME),
     ]
     dsl = (
         "(column(AMOUNT) >= numeric(123456789012345678901234567890.12345678)) "
@@ -111,10 +100,10 @@ def test_bigquery_literal_and_bind_compilation_with_38_digit_bignumeric() -> Non
 def test_snowflake_tsql_hive_spark_and_duckdb_compilation() -> None:
     """Verify Snowflake, T-SQL, Hive, Spark, and DuckDB literal and bind compilation."""
     sf_cols = [
-        SnowflakeColumn("COL_INT", SNOWFLAKE_TYPE_NUMBER, data_precision=10, data_scale=0),
-        SnowflakeColumn("COL_DEC", SNOWFLAKE_TYPE_NUMBER, data_precision=10, data_scale=2),
-        SnowflakeColumn("COL_STR", SNOWFLAKE_TYPE_TEXT),
-        SnowflakeColumn("COL_DT", SNOWFLAKE_TYPE_TIMESTAMP_NTZ),
+        ColumnSpec(ColumnDialect.SNOWFLAKE, "COL_INT", SNOWFLAKE_TYPE_NUMBER, data_precision=10, data_scale=0),
+        ColumnSpec(ColumnDialect.SNOWFLAKE, "COL_DEC", SNOWFLAKE_TYPE_NUMBER, data_precision=10, data_scale=2),
+        ColumnSpec(ColumnDialect.SNOWFLAKE, "COL_STR", SNOWFLAKE_TYPE_TEXT),
+        ColumnSpec(ColumnDialect.SNOWFLAKE, "COL_DT", SNOWFLAKE_TYPE_TIMESTAMP_NTZ),
     ]
     sf_dsl = (
         "(column(COL_DEC) = numeric(2.2)) AND (column(COL_DT) = datetime(1970-01-01 12:13:14)) "
@@ -130,10 +119,10 @@ def test_snowflake_tsql_hive_spark_and_duckdb_compilation() -> None:
     assert sf_bind.params["bind_0"] == Decimal("2.2")
 
     tsql_cols = [
-        SynapseColumn("COL_INT", SYNAPSE_TYPE_BIGINT),
-        SynapseColumn("COL_DEC", SYNAPSE_TYPE_DECIMAL, data_precision=10, data_scale=2),
-        SynapseColumn("COL_STR", SYNAPSE_TYPE_VARCHAR),
-        SynapseColumn("COL_DT", SYNAPSE_TYPE_DATETIME2),
+        ColumnSpec(ColumnDialect.SYNAPSE, "COL_INT", SYNAPSE_TYPE_BIGINT),
+        ColumnSpec(ColumnDialect.SYNAPSE, "COL_DEC", SYNAPSE_TYPE_DECIMAL, data_precision=10, data_scale=2),
+        ColumnSpec(ColumnDialect.SYNAPSE, "COL_STR", SYNAPSE_TYPE_VARCHAR),
+        ColumnSpec(ColumnDialect.SYNAPSE, "COL_DT", SYNAPSE_TYPE_DATETIME2),
     ]
     tsql_resolved = resolve_predicate_types(
         parse_predicate_dsl("(column(COL_DEC) = numeric(2.2)) AND (column(COL_DT) = datetime(1970-01-01 12:13:14))"),
@@ -145,10 +134,10 @@ def test_snowflake_tsql_hive_spark_and_duckdb_compilation() -> None:
     assert tsql_bind.params == {"bind_0": Decimal("2.2"), "bind_1": "1970-01-01 12:13:14"}
 
     hadoop_cols = [
-        HadoopColumn("COL_INT", HADOOP_TYPE_INT),
-        HadoopColumn("COL_DEC", HADOOP_TYPE_DECIMAL, data_precision=10, data_scale=2),
-        HadoopColumn("COL_STR", HADOOP_TYPE_STRING),
-        HadoopColumn("COL_DT", HADOOP_TYPE_TIMESTAMP),
+        ColumnSpec(ColumnDialect.HADOOP, "COL_INT", HADOOP_TYPE_INT),
+        ColumnSpec(ColumnDialect.HADOOP, "COL_DEC", HADOOP_TYPE_DECIMAL, data_precision=10, data_scale=2),
+        ColumnSpec(ColumnDialect.HADOOP, "COL_STR", HADOOP_TYPE_STRING),
+        ColumnSpec(ColumnDialect.HADOOP, "COL_DT", HADOOP_TYPE_TIMESTAMP),
     ]
     hadoop_resolved = resolve_predicate_types(
         parse_predicate_dsl("(column(COL_DEC) = numeric(2.2)) AND (column(COL_DT) = datetime(2010-01-01))"),

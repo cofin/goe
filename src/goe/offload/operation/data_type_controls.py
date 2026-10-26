@@ -7,7 +7,14 @@
 
 from typing import Any
 
-from goe.offload.column_metadata import (
+from goe.offload.offload_constants import (
+    INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT,
+)
+from goe.offload.offload_functions import expand_columns_csv
+from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessages
+from goe.offload.offload_source_table import DATA_SAMPLE_SIZE_AUTO
+from goe.offload.operation.not_null_columns import apply_not_null_columns_csv
+from goe.offload.schema.column_spec import (
     CANONICAL_CHAR_SEMANTICS_UNICODE,
     CANONICAL_TYPE_OPTION_NAMES,
     GOE_TYPE_DECIMAL,
@@ -18,17 +25,11 @@ from goe.offload.column_metadata import (
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
     GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
+    ColumnDialect,
+    ColumnSpec,
     get_column_names,
     match_table_column,
 )
-from goe.offload.offload_constants import (
-    INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT,
-)
-from goe.offload.offload_functions import expand_columns_csv
-from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessages
-from goe.offload.offload_source_table import DATA_SAMPLE_SIZE_AUTO
-from goe.offload.operation.not_null_columns import apply_not_null_columns_csv
 
 
 class OffloadDataTypeControlsException(Exception):
@@ -60,7 +61,7 @@ def canonical_columns_from_columns_csv(
     precision=None,
     scale=None,
 ):
-    """Return a list of CanonicalColumn objects based on an incoming data type and CSV of column names"""
+    """Return a list of ColumnSpec objects based on an incoming data type and CSV of column names"""
     if not column_list_csv:
         return []
     column_list = expand_columns_csv(column_list_csv, reference_columns)
@@ -75,7 +76,9 @@ def canonical_columns_from_columns_csv(
             )
         )
     canonical_list = [
-        CanonicalColumn(_, data_type, data_precision=precision, data_scale=scale, from_override=True)
+        ColumnSpec(
+            ColumnDialect.CANONICAL, _, data_type, data_precision=precision, data_scale=scale, from_override=True
+        )
         for _ in column_list
     ]
     if "*" in column_list_csv and not canonical_list:
@@ -220,8 +223,10 @@ def offload_source_to_canonical_mappings(
     for col_name, char_semantics in char_semantics_override_map(
         offload_operation.unicode_string_columns_csv, offload_source_table.columns
     ).items():
-        canonical_mappings[col_name].char_semantics = char_semantics
-        canonical_mappings[col_name].from_override = True
+        canonical_mappings[col_name] = canonical_mappings[col_name].replace(
+            char_semantics=char_semantics,
+            from_override=True,
+        )
 
     canonical_columns = [canonical_mappings[_.name] for _ in offload_source_table.columns]
 

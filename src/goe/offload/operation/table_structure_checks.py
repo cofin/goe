@@ -4,11 +4,8 @@
 from typing import TYPE_CHECKING
 
 from goe.exceptions import OffloadException
-from goe.offload.column_metadata import (
-    get_column_names,
-    match_table_column,
-)
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.schema.column_spec import get_column_names, match_table_column
 from goe.util.string_utils import format_list_for_logging
 
 if TYPE_CHECKING:

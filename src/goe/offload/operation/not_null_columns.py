@@ -13,8 +13,8 @@ from goe.offload.offload_messages import VVERBOSE
 from goe.util.string_utils import case_insensitive_in
 
 if TYPE_CHECKING:
-    from goe.offload.column_metadata import ColumnMetadataInterface
     from goe.offload.offload_messages import OffloadMessages
+    from goe.offload.schema.column_spec import ColumnSpec
 
 
 class OffloadNotNullControlsException(Exception):
@@ -30,7 +30,7 @@ def apply_not_null_columns_csv(
     not_null_propagation: str,
     rdbms_column_names: list,
     messages: "OffloadMessages",
-) -> "list[ColumnMetadataInterface]":
+) -> "list[ColumnSpec]":
     """Applies --not-null-columns to a list of canonical columns and returns a new list, does not mutate original.
 
     Set nullable to True on all columns and then set it to False for specified list.
@@ -41,17 +41,15 @@ def apply_not_null_columns_csv(
         new_columns = []
         not_null_names = not_null_columns_csv_to_not_null_columns(not_null_columns_csv, rdbms_column_names)
         for column in canonical_columns:
-            new_column = column.clone(nullable=True)
-            if case_insensitive_in(column.name, not_null_names):
-                new_column.nullable = False
-            new_columns.append(new_column)
+            is_not_null = bool(case_insensitive_in(column.name, not_null_names))
+            new_columns.append(column.replace(nullable=not is_not_null))
         return new_columns
     if not_null_propagation == NOT_NULL_PROPAGATION_NONE:
         messages.log(
             f"Setting all columns nullable=True due to not_null_columns: {NOT_NULL_PROPAGATION_NONE}",
             detail=VVERBOSE,
         )
-        return [_.clone(nullable=True) for _ in canonical_columns]
+        return [_.replace(nullable=True) for _ in canonical_columns]
     return canonical_columns
 
 

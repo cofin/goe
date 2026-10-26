@@ -11,7 +11,6 @@ This module enforces an interface with common, high level, methods for implement
 by each supported backend system, e.g. Impala, Hive, Google BigQuery
 """
 
-import collections
 import inspect
 import logging
 from abc import ABCMeta, abstractmethod
@@ -20,21 +19,11 @@ from typing import TYPE_CHECKING, Any
 
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.offload.backend_api import VALID_REMOTE_DB_TYPES
-from goe.offload.column_metadata import (
-    CANONICAL_CHAR_SEMANTICS_UNICODE,
-    ColumnMetadataInterface,
-    ColumnPartitionInfo,
-    get_column_names,
-    get_partition_columns,
-    invalid_column_list_message,
-    match_table_column,
-    regex_real_column_from_part_column,
-    str_list_of_columns,
-    valid_column_list,
+from goe.offload.backend_load import (
+    FinalTableMerger,
+    StagingLoadService,
 )
-from goe.offload.hadoop.hadoop_column import HADOOP_TYPE_STRING
 from goe.offload.offload_constants import (
-    DBTYPE_IMPALA,
     INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT,
     PART_COL_DATE_GRANULARITIES,
     PART_COL_GRANULARITY_DAY,
@@ -42,12 +31,21 @@ from goe.offload.offload_constants import (
     PART_COL_GRANULARITY_YEAR,
 )
 from goe.offload.offload_functions import (
-    get_hybrid_threshold_clauses,
-    hvs_to_backend_sql_literals,
     load_db_name,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.registry import create_backend_api
+from goe.offload.schema.column_spec import (
+    CANONICAL_CHAR_SEMANTICS_UNICODE,
+    ColumnPartitionSpec,
+    ColumnSpec,
+    get_column_names,
+    get_partition_columns,
+    invalid_column_list_message,
+    match_table_column,
+    regex_real_column_from_part_column,
+    valid_column_list,
+)
 from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
 from goe.orchestration import command_steps
 from goe.util.string_utils import csv_split
@@ -71,11 +69,6 @@ TYPICAL_DATE_GRANULARITY_TERMS = {
 }
 
 BACKEND_DB_COMMENT_TEMPLATE = "{db_name_type} {db_name_label} for GOE"
-CAST_VALIDATION_EXCEPTION_TEXT = "Data type conversion issue in load data"
-DATA_VALIDATION_SCALE_EXCEPTION_TEXT = "Include --allow-decimal-scale-rounding option to proceed with the offload"
-DATA_VALIDATION_NOT_NULL_EXCEPTION_TEXT = "NOT NULL column has NULL values"
-NULL_BACKEND_PARTITION_VALUE_WARNING_TEXT = "Backend partition column has NULL values"
-OFFLOAD_CHUNK_COLUMN_MESSAGE_PATTERN = "Identified %s sub-chunks"
 PARTITION_KEY_OUT_OF_RANGE = "Value(s) for {column} exceed configured range ({start} - {end})"
 PARTITION_FUNCTION_ARG_COUNT_EXCEPTION_TEXT = "must only have 1 input parameter"
 PARTITION_FUNCTION_DOES_NOT_EXIST_EXCEPTION_TEXT = "Partition function does not exist"
@@ -222,6 +215,8 @@ class BackendTableInterface(metaclass=ABCMeta):
             self._user_requested_storage_format = None
 
         self._bucket_hash_col = None
+        self._staging_service = StagingLoadService()
+        self._final_merger = FinalTableMerger()
         self.refresh_operational_settings(
             offload_operation=orchestration_operation,
         )
@@ -323,11 +318,11 @@ class BackendTableInterface(metaclass=ABCMeta):
                         new_synthetic_columns.append(
                             self._gen_synthetic_partition_column_object(synthetic_name, canonical_column)
                         )
-                    backend_column.partition_info = None
+                    backend_column = backend_column.replace(partition_info=None)
                 else:
                     if backend_column.is_number_based():
                         self._check_partition_info_range_start_end(canonical_column, backend_column)
-                    backend_column.partition_info = canonical_column.partition_info
+                    backend_column = backend_column.replace(partition_info=canonical_column.partition_info)
             new_backend_columns.append(backend_column)
 
         self._log("Converted backend columns:", detail=VVERBOSE)
@@ -431,7 +426,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         if isinstance(backend_column, str):
             column = self.get_column(backend_column)
         else:
-            assert isinstance(backend_column, ColumnMetadataInterface)
+            assert isinstance(backend_column, ColumnSpec)
             column = backend_column
         return self._db_api.detect_column_has_fractional_seconds(self.db_name, self.table_name, column)
 
@@ -553,8 +548,7 @@ class BackendTableInterface(metaclass=ABCMeta):
                 part_cols = self._db_api.get_partition_columns(self.db_name, self.table_name)
             new_columns = []
             for column in columns:
-                column.partition_info = self._derive_partition_info(column, part_cols)
-                new_columns.append(column)
+                new_columns.append(column.replace(partition_info=self._derive_partition_info(column, part_cols)))
             self._columns = new_columns
         return self._columns
 
@@ -581,7 +575,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         """
         assert column
         assert self._final_table_casts, "set_final_table_casts() has not been called to prepare casts"
-        if isinstance(column, ColumnMetadataInterface):
+        if isinstance(column, ColumnSpec):
             column_name = column.name.upper()
         else:
             column_name = column.upper()
@@ -662,7 +656,7 @@ class BackendTableInterface(metaclass=ABCMeta):
         """
         assert column
         assert self._final_table_casts, "set_final_table_casts() has not been called to prepare casts"
-        if isinstance(column, ColumnMetadataInterface):
+        if isinstance(column, ColumnSpec):
             column_name = column.name.upper()
         else:
             column_name = column.upper()
@@ -822,9 +816,7 @@ class BackendTableInterface(metaclass=ABCMeta):
             return bool(column.has_time_element() and column.data_scale is None)
 
         assert backend_column
-        assert isinstance(backend_column, ColumnMetadataInterface), (
-            "%s is not an instance of ColumnMetadataInterface" % type(backend_column)
-        )
+        assert isinstance(backend_column, ColumnSpec), "%s is not an instance of ColumnSpec" % type(backend_column)
         if canonical_overrides:
             assert valid_column_list(canonical_overrides)
 
@@ -849,12 +841,11 @@ class BackendTableInterface(metaclass=ABCMeta):
                 "Padded length %s to %s" % (str(longest_string), str(safe_length)),
                 detail=VVERBOSE,
             )
-            detect_col = backend_column.clone(data_length=safe_length, char_length=safe_length)
+            detect_col = backend_column.replace(data_length=safe_length, char_length=safe_length)
             new_col = self.to_canonical_column(detect_col)
         elif detect_sizes and datetime_column_has_unbound_scale(backend_column):
-            detect_col = backend_column.clone()
             if self.detect_column_has_fractional_seconds(backend_column):
-                detect_col.data_scale = max_rdbms_time_scale or 9
+                detect_col = backend_column.replace(data_scale=max_rdbms_time_scale or 9)
                 self._log(
                     "Detected fractional seconds, using data_scale=%s" % str(detect_col.data_scale),
                     detail=VVERBOSE,
@@ -864,7 +855,7 @@ class BackendTableInterface(metaclass=ABCMeta):
                     "No fractional seconds detected, using data_scale=0",
                     detail=VVERBOSE,
                 )
-                detect_col.data_scale = 0
+                detect_col = backend_column.replace(data_scale=0)
             new_col = self.to_canonical_column(detect_col)
         else:
             new_col = self.to_canonical_column(backend_column)
@@ -1255,7 +1246,7 @@ class BackendTableInterface(metaclass=ABCMeta):
             return None, None, None
 
         assert column
-        column_name = column.name if isinstance(column, ColumnMetadataInterface) else column
+        column_name = column.name if isinstance(column, ColumnSpec) else column
         self._debug("Deriving partition info for %s.%s.%s" % (self.db_name, self.table_name, column_name))
         partition_info = None
         if not partition_columns:
@@ -1280,9 +1271,13 @@ class BackendTableInterface(metaclass=ABCMeta):
                     self.db_name, self.table_name, column_name, position
                 )
                 if partition_info:
-                    _, partition_info.source_column_name, _ = decode_synthetic_part_col(column_name)
+                    _, source_column_name, _ = decode_synthetic_part_col(column_name)
+                    partition_info = partition_info.replace(
+                        source_column_name=source_column_name,
+                        function=part_fn_name,
+                    )
                 else:
-                    if isinstance(column, ColumnMetadataInterface):
+                    if isinstance(column, ColumnSpec):
                         backend_column = column
                     else:
                         backend_column = self._db_api.get_column(self.db_name, self.table_name, column_name)
@@ -1290,14 +1285,14 @@ class BackendTableInterface(metaclass=ABCMeta):
 
                     if digits and not backend_column.is_string_based():
                         digits = None
-                    partition_info = ColumnPartitionInfo(
+                    partition_info = ColumnPartitionSpec(
                         position=position,
                         granularity=granularity,
                         digits=digits,
                         source_column_name=source_column_name,
+                        function=part_fn_name,
                     )
 
-                partition_info.function = part_fn_name
                 self._log(
                     "Derived synthetic partition info for %s: %s" % (column_name, partition_info),
                     detail=VVERBOSE,
@@ -1316,6 +1311,8 @@ class BackendTableInterface(metaclass=ABCMeta):
         """Drop state"""
         self._columns = None
         self._partition_columns = None
+        if getattr(self._db_api, "catalog", None) is not None:
+            self._db_api.catalog.invalidate_table(self.db_name, self.table_name)
         self._db_api.drop_state()
 
     def _execute_query_fetch_all(
@@ -1380,7 +1377,7 @@ class BackendTableInterface(metaclass=ABCMeta):
 
     def _format_staging_column_name(self, column):
         """For most backends this is the same as enclosure rules, some backends may override."""
-        if isinstance(column, ColumnMetadataInterface):
+        if isinstance(column, ColumnSpec):
             column_name = column.staging_file_column_name or column.name
         else:
             column_name = column
@@ -1404,34 +1401,20 @@ class BackendTableInterface(metaclass=ABCMeta):
         It returns SQL statements in a list and a dict of pre-insert session options.
         Currently this applies to all backends, this may change in future.
         """
-        query_options = self._final_insert_query_options()
         chunk_filter_clauses = None
         if self._user_requested_offload_chunk_column:
             chunk_filter_clauses = self._gen_final_insert_subchunk_expressions()
-
-        threshold_clauses = threshold_clauses or []
-        sqls = []
-        if chunk_filter_clauses:
-            self._debug("Subchunk clauses: %s" % str(chunk_filter_clauses))
-            for chunk_clause in chunk_filter_clauses:
-                sqls.append(
-                    self._final_insert_format_sql(
-                        select_expr_tuples,
-                        threshold_clauses + [chunk_clause],
-                        sort_expr_list,
-                        for_materialized_join=for_materialized_join,
-                    )
-                )
-        else:
-            sqls.append(
-                self._final_insert_format_sql(
-                    select_expr_tuples,
-                    threshold_clauses,
-                    sort_expr_list,
-                    for_materialized_join=for_materialized_join,
-                )
-            )
-        return sqls, query_options
+        plan = self._final_merger.build_final_insert_plan(
+            select_expr_tuples,
+            threshold_clauses=threshold_clauses,
+            sort_expr_list=sort_expr_list,
+            for_materialized_join=for_materialized_join,
+            subchunk_clauses=chunk_filter_clauses,
+            query_options=self._final_insert_query_options(),
+            format_insert_sql=self._final_insert_format_sql,
+            debug_fn=self._debug,
+        )
+        return list(plan.sql_statements), plan.query_options
 
     def _gen_final_insert_subchunk_expressions(self):
         """This is hidden functionality. If we have an offload that fails due to memory consumption that we cannot
@@ -1448,41 +1431,20 @@ class BackendTableInterface(metaclass=ABCMeta):
         Can't order by COUNT(*) in Hive, we could alias and order by but then we need to check for column name clashes
         This is a hidden option so let's not over complicate things
         """
-        chunk_cols = [
-            _
-            for _ in self.get_partition_columns()
-            if _.partition_info
-            and _.partition_info.source_column_name.upper() == self._user_requested_offload_chunk_column
-        ]
-        chunk_col = chunk_cols[0] if chunk_cols else None
-        if not chunk_col:
-            self._messages.warning(
-                "Unknown partition column, ignoring --offload-chunk-column: %s"
-                % self._user_requested_offload_chunk_column
-            )
-            return None
-
-        subchunk_expr = self.get_final_table_cast(chunk_col)
-        self._debug("Subchunk expression: %s" % subchunk_expr)
-        order_by = "\nORDER BY COUNT(*) DESC" if self._backend_type == DBTYPE_IMPALA else ""
-        subchunk_sql = "SELECT %s, COUNT(*)\nFROM %s.%s\nGROUP BY %s%s" % (
-            subchunk_expr,
-            self.enclose_identifier(self._load_db_name),
-            self.enclose_identifier(self._load_table_name),
-            subchunk_expr,
-            order_by,
+        return self._final_merger.build_subchunk_filter_clauses(
+            requested_chunk_column=self._user_requested_offload_chunk_column,
+            partition_columns=self.get_partition_columns(),
+            get_final_table_cast=self.get_final_table_cast,
+            enclose_identifier=self.enclose_identifier,
+            load_db_name=self._load_db_name,
+            load_table_name=self._load_table_name,
+            backend_type=self._backend_type,
+            dry_run=self._dry_run,
+            execute_query_fetch_all=self._execute_query_fetch_all,
+            log_fn=self._log,
+            warning_fn=self._messages.warning,
+            debug_fn=self._debug,
         )
-        self._log(subchunk_sql, detail=VERBOSE)
-        if not self._dry_run:
-            subchunks = self._execute_query_fetch_all(subchunk_sql, log_level=VERBOSE, not_when_dry_running=True)
-            self._log(OFFLOAD_CHUNK_COLUMN_MESSAGE_PATTERN % len(subchunks), detail=VERBOSE)
-        else:
-            subchunks = [("?", -1)]
-        subchunk_filter_clauses = []
-        for subchunk_id, _ in subchunks:
-            subchunk_id = ("'%s'" % subchunk_id) if chunk_col.data_type == HADOOP_TYPE_STRING else subchunk_id
-            subchunk_filter_clauses.append("%s = %s" % (subchunk_expr, str(subchunk_id)))
-        return subchunk_filter_clauses
 
     def _gen_final_table_casts(self, rdbms_columns: Any, staging_columns: Any) -> dict:
         """Return a dict defining casts required when copying data from staging table to final table.
@@ -1492,39 +1454,16 @@ class BackendTableInterface(metaclass=ABCMeta):
         Use RDBMS column as source for columns because the backend table may not yet exist
         For partition columns rdbms_col needs to be from the source column so the cast is correct
         """
-        if not rdbms_columns or not staging_columns:
-            return {}
-        final_table_casts = {}
-        backend_columns = self.get_columns()
-        for backend_col in backend_columns:
-            source_backend_col = backend_col
-            if backend_col.partition_info and self.is_synthetic_partition_column(backend_col):
-                self._log(
-                    "Picking up source column for partition column %s: %s"
-                    % (backend_col.name, backend_col.partition_info.source_column_name),
-                    detail=VVERBOSE,
-                )
-                source_backend_col = self.get_column(backend_col.partition_info.source_column_name)
-
-            rdbms_col = match_table_column(source_backend_col.name, rdbms_columns)
-            staging_col = match_table_column(source_backend_col.name, staging_columns)
-            cast_expr, cast_type, vcast_expr = self._staging_to_backend_cast(rdbms_col, source_backend_col, staging_col)
-
-            if backend_col.partition_info and self.is_synthetic_partition_column(backend_col):
-                partition_expr = self._gen_synthetic_sql_cast(backend_col, cast_expr)
-                partition_vexpr = self._gen_synthetic_sql_cast(backend_col, vcast_expr)
-                final_table_casts[backend_col.name.upper()] = {
-                    "cast": partition_expr,
-                    "cast_type": backend_col.data_type,
-                    "verify_cast": partition_vexpr,
-                }
-            else:
-                final_table_casts[backend_col.name.upper()] = {
-                    "cast": cast_expr,
-                    "cast_type": cast_type,
-                    "verify_cast": vcast_expr,
-                }
-        return final_table_casts
+        return self._staging_service.build_final_table_casts(
+            self.get_columns(),
+            rdbms_columns,
+            staging_columns,
+            is_synthetic_partition_column=self.is_synthetic_partition_column,
+            get_column=self.get_column,
+            staging_to_backend_cast=self._staging_to_backend_cast,
+            gen_synthetic_sql_cast=self._gen_synthetic_sql_cast,
+            log_fn=self._log,
+        )
 
     def _gen_mat_join_insert_sqls(
         self,
@@ -1543,58 +1482,25 @@ class BackendTableInterface(metaclass=ABCMeta):
 
         We only insert by high value or predicate, not both at the same time
         """
-
-        def get_threshold_where_clauses(threshold_cols, lt_threshold_vals, gte_threshold_vals):
-            threshold_clauses = []
-            if threshold_cols and lt_threshold_vals:
-                lt_threshold_vals = hvs_to_backend_sql_literals(
-                    threshold_cols,
-                    lt_threshold_vals,
-                    self._ipa_predicate_type,
-                    self.to_backend_literal,
-                )
-                lt_threshold_clause, _ = get_hybrid_threshold_clauses(
-                    threshold_cols,
-                    threshold_cols,
-                    self._ipa_predicate_type,
-                    lt_threshold_vals,
-                    col_enclosure_fn=self.enclose_identifier,
-                )
-                threshold_clauses.append(lt_threshold_clause)
-                if gte_threshold_vals:
-                    gte_threshold_vals = hvs_to_backend_sql_literals(
-                        threshold_cols,
-                        gte_threshold_vals,
-                        self._ipa_predicate_type,
-                        self.to_backend_literal,
-                    )
-                    _, gte_threshold_clause = get_hybrid_threshold_clauses(
-                        threshold_cols,
-                        threshold_cols,
-                        self._ipa_predicate_type,
-                        gte_threshold_vals,
-                        col_enclosure_fn=self.enclose_identifier,
-                    )
-                    threshold_clauses.append(gte_threshold_clause)
-            return threshold_clauses
-
-        if threshold_cols:
-            assert valid_column_list(threshold_cols)
-
-        if insert_predicates:
-            threshold_clauses = insert_predicates
-        else:
-            self._debug("Incremental insert columns: %s" % str_list_of_columns(threshold_cols))
-            self._debug("Incremental insert lt: %s" % str(lt_threshold_vals))
-            self._debug("Incremental insert gte: %s" % str(gte_threshold_vals))
-            threshold_clauses = get_threshold_where_clauses(threshold_cols, lt_threshold_vals, gte_threshold_vals)
-
-        return self._gen_final_insert_sqls(
+        chunk_filter_clauses = None
+        if self._user_requested_offload_chunk_column:
+            chunk_filter_clauses = self._gen_final_insert_subchunk_expressions()
+        plan = self._final_merger.build_materialized_join_plan(
             select_expr_tuples,
-            threshold_clauses=threshold_clauses,
+            threshold_cols=threshold_cols,
+            gte_threshold_vals=gte_threshold_vals,
+            lt_threshold_vals=lt_threshold_vals,
+            insert_predicates=insert_predicates,
             sort_expr_list=sort_expr_list,
-            for_materialized_join=True,
+            ipa_predicate_type=self._ipa_predicate_type,
+            to_backend_literal=self.to_backend_literal,
+            enclose_identifier=self.enclose_identifier,
+            subchunk_clauses=chunk_filter_clauses,
+            query_options=self._final_insert_query_options(),
+            format_insert_sql=self._final_insert_format_sql,
+            debug_fn=self._debug,
         )
+        return list(plan.sql_statements), plan.query_options
 
     def _gen_synthetic_part_date_truncated_sql_expr(self, date_value, granularity, synthetic_name, source_column_cast):
         """Generates a SQL expression used to insert date synthetic partition key data into a date
@@ -1628,24 +1534,12 @@ class BackendTableInterface(metaclass=ABCMeta):
 
         Compare to None because Unix epoch is False in datetime64
         """
-        assert granularity in PART_COL_DATE_GRANULARITIES, "Unexpected granularity: %s" % granularity
-        assert source_column_cast
-
-        if date_value is None:
-            return None
-
-        assert isinstance(date_value, str), "%s if not of type (str, unicode)" % type(date_value)
-        component_fn_list: list[tuple[str, int]] = [("YEAR", 4), ("MONTH", 2), ("DAY", 2)]
-
-        partition_expr = []
-        for component_fn, size_or_literal in component_fn_list:
-            assert source_column_cast
-            partition_expr.append(
-                self._gen_synthetic_partition_date_as_string_sql_expr(component_fn, size_or_literal, source_column_cast)
-            )
-            if granularity == component_fn[0]:
-                break
-        return "CONCAT(%s)" % ",'-',".join(partition_expr)
+        return self._db_api._ddl_compiler.build_synthetic_date_as_string_sql(
+            date_value,
+            granularity,
+            source_column_cast,
+            self._gen_synthetic_partition_date_as_string_sql_expr,
+        )
 
     def _gen_synthetic_part_number_sql_expr(self, number_value, backend_col, granularity, synthetic_partition_digits):
         """Generates a SQL expression used to insert numeric synthetic partition key data in SQL, e.g.
@@ -1675,13 +1569,15 @@ class BackendTableInterface(metaclass=ABCMeta):
         We cannot use Python logic to provide synthetic value conversion because we're using a backend UDF.
         partition_fn needs to be a call to the backend.
         """
-        assert isinstance(partition_column, ColumnMetadataInterface)
-        if partition_column.partition_info.function:
+        assert isinstance(partition_column, ColumnSpec)
+        assert partition_column.partition_info is not None
+        part_info = partition_column.partition_info
+        if part_info.function:
 
             def partition_fn(source_value):
-                source_column = self.get_column(partition_column.partition_info.source_column_name)
+                source_column = self.get_column(part_info.source_column_name)
                 sql_literal = self._db_api.to_backend_literal(source_value, data_type=source_column.data_type)
-                sql = f"SELECT {self._partition_function_sql_expression(partition_column.partition_info, sql_literal)}"
+                sql = f"SELECT {self._partition_function_sql_expression(part_info, sql_literal)}"
                 row = self._db_api.execute_query_fetch_one(sql)
                 return row[0] if row else None
 
@@ -1697,34 +1593,19 @@ class BackendTableInterface(metaclass=ABCMeta):
             timestamp'2011-01-01 12:12:12' -> '2011-01'
         """
         source_column_name = partition_column.partition_info.source_column_name
-        digits = partition_column.partition_info.digits
-        granularity = partition_column.partition_info.granularity
         source_column = self.get_column(source_column_name)
-        partition_expr = None
-        if partition_column.partition_info.function:
-            partition_expr = self._partition_function_sql_expression(
-                partition_column.partition_info, source_column_cast
-            )
-        elif source_column.is_date_based() and partition_column.is_date_based():
-            partition_expr = self._gen_synthetic_part_date_truncated_sql_expr(
-                source_column_name,
-                granularity,
-                partition_column.name,
-                source_column_cast,
-            )
-        elif source_column.is_date_based() and partition_column.is_string_based():
-            partition_expr = self._gen_synthetic_part_date_as_string_sql_expr(
-                source_column_name, granularity, source_column_cast
-            )
-        elif source_column.is_string_based():
-            partition_expr = self._gen_synthetic_part_string_sql_expr(source_column_name, int(granularity))
-        elif source_column.is_number_based():
-            partition_expr = self._gen_synthetic_part_number_sql_expr(
-                source_column_cast, source_column, int(granularity), digits
-            )
-        else:
-            raise NotImplementedError("Unsupported synthetic partition column data type: %s" % source_column.data_type)
-        return partition_expr
+        return self._db_api._ddl_compiler.build_synthetic_sql_cast(
+            partition_column,
+            source_column,
+            source_column_cast,
+            partition_function_sql=self._partition_function_sql_expression,
+            date_truncated_sql=lambda synth_name, col_name, gran, src_cast: (
+                self._gen_synthetic_part_date_truncated_sql_expr(col_name, gran, synth_name, src_cast)
+            ),
+            date_as_string_sql=self._gen_synthetic_part_date_as_string_sql_expr,
+            string_granularity_sql=self._gen_synthetic_part_string_sql_expr,
+            number_granularity_sql=self._gen_synthetic_part_number_sql_expr,
+        )
 
     def _get_dfs_client(self):
         if self._dfs_client is None:
@@ -1844,12 +1725,11 @@ class BackendTableInterface(metaclass=ABCMeta):
         """Verification SQL to display when final table casts have failed.
         Common to most backends but can be overridden if required.
         """
-        limit_clause = ("\nLIMIT %s" % limit) if limit else ""
-        return """SELECT %s\nFROM   %s\nWHERE  %s%s""" % (
-            "\n,      ".join(projection_list),
+        return self._staging_service.build_cast_verification_sql(
             self._format_staging_object_name(),
-            "\nOR     ".join(predicate_or_list),
-            limit_clause,
+            projection_list,
+            predicate_or_list,
+            limit=limit,
         )
 
     def _validate_final_table_casts(self, staging_columns: list, log_profile: Any = None) -> None:
@@ -1862,49 +1742,17 @@ class BackendTableInterface(metaclass=ABCMeta):
 
         This query uses more resources than a simple COUNT(*) so only run it when the COUNT(*) identifies issues
         """
-        cast_validation_cols = self._cast_validation_columns(staging_columns)
-        if not cast_validation_cols:
-            return
-
-        cast_check_preds = [
-            "(%s AND %s IS NULL)" % (self._staging_column_is_not_null_sql_expr(cname), ccast)
-            for cname, ccast in cast_validation_cols
-        ]
-        verify_cast_sql = self._validate_final_table_casts_verification_sql(["COUNT(*)"], cast_check_preds)
-        verify_cast_set = self._execute_query_fetch_one(
-            verify_cast_sql,
+        self._staging_service.validate_final_table_casts(
+            self._cast_validation_columns(staging_columns),
+            staging_object_name=self._format_staging_object_name(),
+            staging_col_is_not_null_expr=self._staging_column_is_not_null_sql_expr,
+            format_staging_col_name=self._format_staging_column_name,
+            execute_query_fetch_one=self._execute_query_fetch_one,
             query_options=self._cast_verification_query_options(),
-            log_level=VERBOSE,
-            not_when_dry_running=True,
-            profile=log_profile,
+            log_fn=self._log,
+            exc_factory=DataValidationException,
+            log_profile=log_profile,
         )
-
-        if verify_cast_set and verify_cast_set[0] > 0:
-            cast_check_cols = [self._format_staging_column_name(cname) for cname, _ in cast_validation_cols]
-            identify_projection = [
-                "MAX(CASE WHEN %s THEN %s END)" % (pred, i) for i, pred in enumerate(cast_check_preds)
-            ]
-            identify_cast_sql = self._validate_final_table_casts_verification_sql(identify_projection, cast_check_preds)
-            identify_cast_set = self._execute_query_fetch_one(
-                identify_cast_sql, query_options=self._cast_verification_query_options()
-            )
-            failing_casts = [cast_check_preds[col_number] for col_number in identify_cast_set if col_number is not None]
-            failing_cols = [cast_check_cols[col_number] for col_number in identify_cast_set if col_number is not None]
-            self._log(
-                "CAST() of load data will cause data loss due to lack of precision in target data type in %s rows"
-                % verify_cast_set[0],
-                ansi_code="red",
-            )
-            self._log("Failing casts are:\n%s" % "\n".join(failing_casts), ansi_code="red")
-            if failing_casts:
-                limit_sample_row_count = 50
-                suggest_sql = self._validate_final_table_casts_verification_sql(
-                    failing_cols,
-                    failing_casts,
-                    min(verify_cast_set[0], limit_sample_row_count),
-                )
-                self._log("The SQL below will assist identification of problem data:\n%s" % suggest_sql)
-            raise DataValidationException(CAST_VALIDATION_EXCEPTION_TEXT)
 
     def _validate_staged_data_rules(self, rdbms_part_cols, rdbms_columns, staging_columns):
         """Rules to be used in validate_staged_data().
@@ -1912,193 +1760,29 @@ class BackendTableInterface(metaclass=ABCMeta):
 
         pred_list contains tuples of validations to made on the load data, tuple structure named below
         """
-        Validation = collections.namedtuple("Validation", "column_name expression fatal message")
-
-        def validation_rules_for_decimal_scale(pred_list):
-            """We can only validate scale when the data is staged to string"""
-            for scale_check_col in [_ for _ in self.get_non_synthetic_columns() if _.is_number_based()]:
-                staging_col = match_table_column(scale_check_col.name, staging_columns)
-                assert staging_col is not None
-                if not staging_col.is_string_based():
-                    continue
-                rdbms_col = match_table_column(scale_check_col.name, rdbms_columns)
-                assert rdbms_col is not None
-                if rdbms_col.data_scale == 0:
-                    self._debug("RDBMS column has integral data so no need to check data")
-                    continue
-                backend_scale = scale_check_col.data_scale
-                if backend_scale is None:
-                    backend_scale = self.max_decimal_scale(scale_check_col.data_type)
-                if rdbms_col.data_scale and rdbms_col.data_scale > 0 and rdbms_col.data_scale < backend_scale:
-                    self._debug(
-                        "RDBMS column scale is safely below the backend so no need to check it: %s < %s"
-                        % (rdbms_col.data_scale, backend_scale)
-                    )
-                    continue
-                is_invalid_scale_expr = self._db_api.decimal_scale_validation_expression(
-                    column_name=self._format_staging_column_name(staging_col),
-                    column_scale=backend_scale,
-                )
-                pred_list.append(
-                    Validation(
-                        column_name=scale_check_col.name.upper(),
-                        expression=is_invalid_scale_expr,
-                        fatal=True,
-                        message="Scale for column %s exceeds column maximum: %s\n%s"
-                        % (
-                            scale_check_col.name.upper(),
-                            backend_scale,
-                            DATA_VALIDATION_SCALE_EXCEPTION_TEXT,
-                        ),
-                    )
-                )
-
-        def validation_rules_for_not_null_cols(pred_list, meta_op_filter):
-            """Partitions with a single partition column containing a NULL will not be offloaded as they'll be in
-
-            the MAXVALUE partition.
-            If we change offload to include MAXVALUE partitions then the len() restriction above should be removed
-            """
-            cols_already_checked = []
-            upper_fn = lambda x: x.upper()
-
-            if self.not_null_column_supported():
-                nn_columns = get_column_names([_ for _ in self.get_columns() if _.nullable == False], upper_fn)
-                for col_name in nn_columns:
-                    staging_col = match_table_column(col_name, staging_columns)
-                    pred_list.append(
-                        Validation(
-                            column_name=col_name,
-                            expression="%s IS NULL%s"
-                            % (
-                                self._format_staging_column_name(staging_col),
-                                meta_op_filter,
-                            ),
-                            fatal=True,
-                            message=f"{DATA_VALIDATION_NOT_NULL_EXCEPTION_TEXT}: {col_name}",
-                        )
-                    )
-                cols_already_checked.extend(nn_columns)
-
-            if rdbms_part_cols and len(rdbms_part_cols) > 1:
-                extra_cols = set(get_column_names(rdbms_part_cols, upper_fn)).difference(cols_already_checked)
-                for col_name in extra_cols:
-                    staging_col = match_table_column(col_name, staging_columns)
-                    pred_list.append(
-                        Validation(
-                            column_name=col_name,
-                            expression="%s IS NULL%s"
-                            % (
-                                self._format_staging_column_name(staging_col),
-                                meta_op_filter,
-                            ),
-                            fatal=False,
-                            message=f"Source RDBMS partition key {col_name} has NULL values",
-                        )
-                    )
-                cols_already_checked.extend(extra_cols)
-
-            if self.get_partition_columns():
-                source_column_names = [
-                    _.partition_info.source_column_name.upper()
-                    for _ in self.get_partition_columns()
-                    if _.partition_info
-                ]
-                extra_cols = set(source_column_names).difference(cols_already_checked)
-                for col_name in extra_cols:
-                    staging_col = match_table_column(col_name, staging_columns)
-                    pred_list.append(
-                        Validation(
-                            column_name=col_name.upper(),
-                            expression="%s IS NULL%s"
-                            % (
-                                self._format_staging_column_name(staging_col),
-                                meta_op_filter,
-                            ),
-                            fatal=False,
-                            message="%s: %s" % (NULL_BACKEND_PARTITION_VALUE_WARNING_TEXT, col_name),
-                        )
-                    )
-
-        def validation_rules_for_synthetic_part_cols(pred_list):
-            """Check partition digits for synthetic partition columns
-
-            Native partition column, check range start/end
-            """
-            for partition_col in self.get_partition_columns():
-                if (
-                    self._is_synthetic_partition_column(partition_col.name)
-                    and partition_col.is_string_based()
-                    and partition_col.partition_info
-                    and not partition_col.partition_info.function
-                ):
-                    source_backend_col = self.get_column(partition_col.partition_info.source_column_name)
-                    if source_backend_col.is_number_based():
-                        granularity_expr = self._gen_synthetic_part_number_granularity_sql_expr(
-                            self.get_verification_cast(source_backend_col.name.upper()),
-                            source_backend_col,
-                            partition_col.partition_info.granularity,
-                            partition_col.partition_info.digits,
-                            with_padding=False,
-                        )
-                        length_expr = self._db_api.length_sql_expression(granularity_expr)
-                        pred_list.append(
-                            Validation(
-                                column_name=partition_col.partition_info.source_column_name.upper(),
-                                expression="%s > %s" % (length_expr, partition_col.partition_info.digits),
-                                fatal=True,
-                                message="Synthetic value for %s exceeds digits %s, re-offload with larger value for --partition-digits"
-                                % (
-                                    partition_col.partition_info.source_column_name.upper(),
-                                    partition_col.partition_info.digits,
-                                ),
-                            )
-                        )
-                elif not self._is_synthetic_partition_column(partition_col.name):
-                    if (
-                        partition_col.partition_info.range_start is not None
-                        and partition_col.partition_info.range_end is not None
-                    ):
-                        pred_list.append(
-                            Validation(
-                                column_name=partition_col.name.upper(),
-                                expression="%s < %s OR %s > %s"
-                                % (
-                                    self.get_verification_cast(partition_col.name),
-                                    partition_col.partition_info.range_start,
-                                    self.get_verification_cast(partition_col.name),
-                                    partition_col.partition_info.range_end,
-                                ),
-                                fatal=False,
-                                message=self._partition_key_out_of_range_message(partition_col),
-                            )
-                        )
-
-        pred_list: list[Any] = []
-        meta_op_filter = ""
-
-        validation_rules_for_not_null_cols(pred_list, meta_op_filter)
-
-        nan_capable_column_names = [col.name for col in rdbms_columns if col.is_nan_capable()]
-        if nan_capable_column_names and self._db_api.nan_supported():
-            nan_message = 'Column "%s" has NaN values, RDBMS and %s predicate comparisons may not be consistent'
-            for n in nan_capable_column_names:
-                staging_col = match_table_column(n, staging_columns)
-                pred_list.append(
-                    Validation(
-                        column_name=n.upper(),
-                        expression=self._db_api.is_nan_sql_expression(self._format_staging_column_name(staging_col)),
-                        fatal=False,
-                        message=nan_message % (n.upper(), self.backend_db_name()),
-                    )
-                )
-
-        if not self._user_requested_allow_decimal_scale_rounding:
-            validation_rules_for_decimal_scale(pred_list)
-
-        validation_rules_for_synthetic_part_cols(pred_list)
-
-        return pred_list
+        return self._staging_service.build_staged_validation_rules(
+            backend_columns=self.get_columns(),
+            non_synthetic_columns=self.get_non_synthetic_columns(),
+            partition_columns=self.get_partition_columns(),
+            rdbms_part_cols=rdbms_part_cols,
+            rdbms_columns=rdbms_columns,
+            staging_columns=staging_columns,
+            not_null_supported=self.not_null_column_supported(),
+            nan_supported=self._db_api.nan_supported(),
+            allow_decimal_scale_rounding=bool(self._user_requested_allow_decimal_scale_rounding),
+            backend_display_name=self.backend_db_name(),
+            format_staging_col_name=self._format_staging_column_name,
+            max_decimal_scale=self.max_decimal_scale,
+            decimal_scale_validation_expr=self._db_api.decimal_scale_validation_expression,
+            is_nan_sql_expr=self._db_api.is_nan_sql_expression,
+            is_synthetic_partition_column=self._is_synthetic_partition_column,
+            get_column=self.get_column,
+            get_verification_cast=self.get_verification_cast,
+            gen_synthetic_part_number_granularity_sql_expr=self._gen_synthetic_part_number_granularity_sql_expr,
+            length_sql_expr=self._db_api.length_sql_expression,
+            partition_key_out_of_range_message=self._partition_key_out_of_range_message,
+            debug_fn=self._debug,
+        )
 
     def _validate_staged_data(
         self,
@@ -2112,52 +1796,18 @@ class BackendTableInterface(metaclass=ABCMeta):
         Most tests produce warnings only, however some are coded to raise an exception (fatal=True)
         The most important test is that COUNT(*) of the staged data matches what we thought we transferred
         """
-        pred_list = self._validate_staged_data_rules(rdbms_part_cols, rdbms_columns, staging_columns)
-        projection = ["MAX(CASE WHEN %s THEN %s END)" % (_.expression, i) for i, _ in enumerate(pred_list)] + [
-            "COUNT(*)"
-        ]
-        pred_messages = "\n,      ".join(projection)
-        sql = """SELECT %s\nFROM   %s""" % (
-            pred_messages,
-            self._format_staging_object_name(),
-        )
-        validation_set = self._execute_query_fetch_one(
-            sql,
+        rules = self._validate_staged_data_rules(rdbms_part_cols, rdbms_columns, staging_columns)
+        self._staging_service.validate_staged_data(
+            rules,
+            staging_object_name=self._format_staging_object_name(),
+            expected_rows=expected_rows,
+            execute_query_fetch_one=self._execute_query_fetch_one,
             query_options=self._validate_staged_data_query_options(),
-            log_level=VERBOSE,
-            not_when_dry_running=True,
-            profile=log_profile,
+            log_fn=self._log,
+            warning_fn=self._messages.warning,
+            exc_factory=DataValidationException,
+            log_profile=log_profile,
         )
-        if validation_set:
-            validation_set = list(validation_set)
-            count_star = validation_set.pop()
-            if expected_rows is None:
-                self._log("Load table row count: %s" % count_star, detail=VERBOSE)
-            elif expected_rows == count_star:
-                self._log(
-                    "Offload row count matches load table row count (%s == %s)" % (expected_rows, count_star),
-                    detail=VERBOSE,
-                )
-            else:
-                self._log(
-                    "Offload row count != load table row count (%s != %s)" % (expected_rows, count_star),
-                    detail=VVERBOSE,
-                )
-                raise DataValidationException(
-                    "Offload row count does not match load table row count (%s != %s)" % (expected_rows, count_star)
-                )
-
-            warnings = [pred_list[msg_code].message for msg_code in validation_set if msg_code is not None]
-            [self._messages.warning(msg, ansi_code="red") for msg in warnings]
-            errors = [
-                pred_list[msg_code].message
-                for msg_code in validation_set
-                if msg_code is not None and pred_list[msg_code].fatal
-            ]
-            if errors:
-                raise DataValidationException("\n".join(errors))
-        else:
-            self._log("Staged data validation returned an empty set", detail=VERBOSE)
 
     def _validate_staged_data_query_options(self):
         """Default to no query options for load table validation, Hive has an override."""

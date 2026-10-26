@@ -12,21 +12,7 @@ from sqlglot import exp
 from sqlspec.core import NamespacedCache
 
 from goe.exceptions import OptionValueError
-from goe.offload.bigquery.bigquery_column import (
-    BIGQUERY_TYPE_BIGNUMERIC,
-    BIGQUERY_TYPE_NUMERIC,
-)
 from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
-from goe.offload.column_metadata import ColumnMetadataInterface
-from goe.offload.microsoft.synapse_column import (
-    SYNAPSE_TYPE_NCHAR,
-    SYNAPSE_TYPE_NVARCHAR,
-)
-from goe.offload.oracle.oracle_column import (
-    ORACLE_TYPE_DATE,
-    ORACLE_TYPE_TIMESTAMP,
-    ORACLE_TYPE_TIMESTAMP_TZ,
-)
 from goe.offload.predicates.ast import (
     BinaryComparison,
     ColumnRef,
@@ -44,11 +30,19 @@ from goe.offload.predicates.parser import (
     parse_safe_sql_predicate,
     resolve_predicate_types,
 )
-from goe.offload.snowflake.snowflake_column import (
+from goe.offload.schema.column_spec import (
+    BIGQUERY_TYPE_BIGNUMERIC,
+    BIGQUERY_TYPE_NUMERIC,
+    ORACLE_TYPE_DATE,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_TIMESTAMP_TZ,
     SNOWFLAKE_TYPE_DATE,
     SNOWFLAKE_TYPE_TIME,
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
     SNOWFLAKE_TYPE_TIMESTAMP_TZ,
+    SYNAPSE_TYPE_NCHAR,
+    SYNAPSE_TYPE_NVARCHAR,
+    ColumnSpec,
 )
 from goe.offload.sql_engine import PredicateDialectEngineProtocol, RenderedSQL
 
@@ -153,7 +147,7 @@ class PredicateSqlEngine(PredicateDialectEngineProtocol):
     def render_literal_sql(
         self,
         typed_tree: Any,
-        columns: Sequence[ColumnMetadataInterface],
+        columns: Sequence[ColumnSpec],
     ) -> str:
         """Render a predicate expression into a SQL WHERE clause with inline literals."""
         expr = _ensure_resolved(typed_tree, columns)
@@ -167,7 +161,7 @@ class PredicateSqlEngine(PredicateDialectEngineProtocol):
     def render_bind_sql(
         self,
         typed_tree: Any,
-        columns: Sequence[ColumnMetadataInterface],
+        columns: Sequence[ColumnSpec],
     ) -> RenderedSQL:
         """Render a predicate expression into a SQL WHERE clause with named bind parameters."""
         expr = _ensure_resolved(typed_tree, columns)
@@ -383,7 +377,7 @@ class _DialectAstBuilder:
 
 def _ensure_resolved(
     expr: PredicateExpr,
-    columns: Sequence[ColumnMetadataInterface],
+    columns: Sequence[ColumnSpec],
 ) -> PredicateExpr:
     """Resolve column types on ``expr`` if any comparison literal lacks ``data_type``."""
     if not columns or not _needs_resolution(expr):

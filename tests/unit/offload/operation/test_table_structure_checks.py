@@ -6,14 +6,27 @@ from unittest import mock
 
 import pytest
 
-from goe.offload.bigquery import bigquery_column
-from goe.offload.column_metadata import (
-    GOE_TYPE_INTEGER_1,
-    CanonicalColumn,
-)
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.operation import table_structure_checks as module_under_test
-from goe.offload.oracle import oracle_column
+from goe.offload.schema.column_spec import (
+    BIGQUERY_TYPE_BIGNUMERIC,
+    BIGQUERY_TYPE_DATE,
+    BIGQUERY_TYPE_DATETIME,
+    BIGQUERY_TYPE_INT64,
+    BIGQUERY_TYPE_NUMERIC,
+    BIGQUERY_TYPE_STRING,
+    BIGQUERY_TYPE_TIME,
+    BIGQUERY_TYPE_TIMESTAMP,
+    GOE_TYPE_INTEGER_1,
+    ORACLE_TYPE_CLOB,
+    ORACLE_TYPE_DATE,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_NVARCHAR2,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_VARCHAR2,
+    ColumnDialect,
+    ColumnSpec,
+)
 from tests.unit.test_functions import (
     FAKE_ORACLE_BQ_ENV,
     build_fake_backend_table,
@@ -51,12 +64,12 @@ def oracle_table(ora_bq_config, messages):
         # Happy path, no expected mismatches.
         (
             [
-                CanonicalColumn("col_1", GOE_TYPE_INTEGER_1),
-                CanonicalColumn("col_2", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_1", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_2", GOE_TYPE_INTEGER_1),
             ],
             [
-                CanonicalColumn("col_1", GOE_TYPE_INTEGER_1),
-                CanonicalColumn("col_2", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_1", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_2", GOE_TYPE_INTEGER_1),
             ],
             [],
             [],
@@ -64,12 +77,12 @@ def oracle_table(ora_bq_config, messages):
         # Happy path with different case, no expected mismatches.
         (
             [
-                CanonicalColumn("Col_1", GOE_TYPE_INTEGER_1),
-                CanonicalColumn("COL_2", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "Col_1", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "COL_2", GOE_TYPE_INTEGER_1),
             ],
             [
-                CanonicalColumn("col_1", GOE_TYPE_INTEGER_1),
-                CanonicalColumn("cOl_2", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_1", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "cOl_2", GOE_TYPE_INTEGER_1),
             ],
             [],
             [],
@@ -77,11 +90,11 @@ def oracle_table(ora_bq_config, messages):
         # Missing backend column.
         (
             [
-                CanonicalColumn("col_1", GOE_TYPE_INTEGER_1),
-                CanonicalColumn("col_2", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_1", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_2", GOE_TYPE_INTEGER_1),
             ],
             [
-                CanonicalColumn("col_1", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_1", GOE_TYPE_INTEGER_1),
             ],
             ["COL_2"],
             [],
@@ -89,11 +102,11 @@ def oracle_table(ora_bq_config, messages):
         # Missing frontend column.
         (
             [
-                CanonicalColumn("col_1", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_1", GOE_TYPE_INTEGER_1),
             ],
             [
-                CanonicalColumn("col_1", GOE_TYPE_INTEGER_1),
-                CanonicalColumn("col_2", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_1", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_2", GOE_TYPE_INTEGER_1),
             ],
             [],
             ["COL_2"],
@@ -101,12 +114,12 @@ def oracle_table(ora_bq_config, messages):
         # Missing backend columns.
         (
             [
-                CanonicalColumn("col_1", GOE_TYPE_INTEGER_1),
-                CanonicalColumn("col_2", GOE_TYPE_INTEGER_1),
-                CanonicalColumn("col_3", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_1", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_2", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_3", GOE_TYPE_INTEGER_1),
             ],
             [
-                CanonicalColumn("col_1", GOE_TYPE_INTEGER_1),
+                ColumnSpec(ColumnDialect.CANONICAL, "col_1", GOE_TYPE_INTEGER_1),
             ],
             ["COL_2", "COL_3"],
             [],
@@ -165,116 +178,116 @@ def test_check_table_columns_by_name_logging(extra_frontend_names: list, missing
         # Happy path, no expected mismatches.
         (
             [
-                oracle_column.OracleColumn("COL_N1", oracle_column.ORACLE_TYPE_NUMBER),
-                oracle_column.OracleColumn("COL_N2", oracle_column.ORACLE_TYPE_NUMBER),
-                oracle_column.OracleColumn("COL_S1", oracle_column.ORACLE_TYPE_VARCHAR2),
-                oracle_column.OracleColumn("COL_D1", oracle_column.ORACLE_TYPE_DATE),
-                oracle_column.OracleColumn("COL_D2", oracle_column.ORACLE_TYPE_DATE),
-                oracle_column.OracleColumn("COL_D3", oracle_column.ORACLE_TYPE_DATE),
-                oracle_column.OracleColumn("COL_T1", oracle_column.ORACLE_TYPE_TIMESTAMP),
-                oracle_column.OracleColumn("COL_T2", oracle_column.ORACLE_TYPE_TIMESTAMP),
-                oracle_column.OracleColumn("COL_T3", oracle_column.ORACLE_TYPE_TIMESTAMP),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_N1", ORACLE_TYPE_NUMBER),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_N2", ORACLE_TYPE_NUMBER),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_S1", ORACLE_TYPE_VARCHAR2),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_D1", ORACLE_TYPE_DATE),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_D2", ORACLE_TYPE_DATE),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_D3", ORACLE_TYPE_DATE),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_T1", ORACLE_TYPE_TIMESTAMP),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_T2", ORACLE_TYPE_TIMESTAMP),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_T3", ORACLE_TYPE_TIMESTAMP),
             ],
             [
-                bigquery_column.BigQueryColumn("COL_N1", bigquery_column.BIGQUERY_TYPE_NUMERIC),
-                bigquery_column.BigQueryColumn("COL_N2", bigquery_column.BIGQUERY_TYPE_INT64),
-                bigquery_column.BigQueryColumn("COL_S1", bigquery_column.BIGQUERY_TYPE_STRING),
-                bigquery_column.BigQueryColumn("COL_D1", bigquery_column.BIGQUERY_TYPE_DATE),
-                bigquery_column.BigQueryColumn("COL_D2", bigquery_column.BIGQUERY_TYPE_DATETIME),
-                bigquery_column.BigQueryColumn("COL_D3", bigquery_column.BIGQUERY_TYPE_TIMESTAMP),
-                bigquery_column.BigQueryColumn("COL_T1", bigquery_column.BIGQUERY_TYPE_DATE),
-                bigquery_column.BigQueryColumn("COL_T2", bigquery_column.BIGQUERY_TYPE_DATETIME),
-                bigquery_column.BigQueryColumn("COL_T3", bigquery_column.BIGQUERY_TYPE_TIMESTAMP),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_N1", BIGQUERY_TYPE_NUMERIC),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_N2", BIGQUERY_TYPE_INT64),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_S1", BIGQUERY_TYPE_STRING),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_D1", BIGQUERY_TYPE_DATE),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_D2", BIGQUERY_TYPE_DATETIME),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_D3", BIGQUERY_TYPE_TIMESTAMP),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_T1", BIGQUERY_TYPE_DATE),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_T2", BIGQUERY_TYPE_DATETIME),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_T3", BIGQUERY_TYPE_TIMESTAMP),
             ],
             {},
         ),
         # Dates to strings.
         (
             [
-                oracle_column.OracleColumn("COL_D1", oracle_column.ORACLE_TYPE_DATE),
-                oracle_column.OracleColumn("COL_T1", oracle_column.ORACLE_TYPE_TIMESTAMP),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_D1", ORACLE_TYPE_DATE),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_T1", ORACLE_TYPE_TIMESTAMP),
             ],
             [
-                bigquery_column.BigQueryColumn("COL_D1", bigquery_column.BIGQUERY_TYPE_STRING),
-                bigquery_column.BigQueryColumn("COL_T1", bigquery_column.BIGQUERY_TYPE_STRING),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_D1", BIGQUERY_TYPE_STRING),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_T1", BIGQUERY_TYPE_STRING),
             ],
             {},
         ),
         # Numbers to strings is not currently supported.
         (
             [
-                oracle_column.OracleColumn("COL_N1", oracle_column.ORACLE_TYPE_NUMBER),
-                oracle_column.OracleColumn("COL_N2", oracle_column.ORACLE_TYPE_NUMBER),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_N1", ORACLE_TYPE_NUMBER),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_N2", ORACLE_TYPE_NUMBER),
             ],
             [
-                bigquery_column.BigQueryColumn("COL_N1", bigquery_column.BIGQUERY_TYPE_NUMERIC),
-                bigquery_column.BigQueryColumn("COL_N2", bigquery_column.BIGQUERY_TYPE_STRING),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_N1", BIGQUERY_TYPE_NUMERIC),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_N2", BIGQUERY_TYPE_STRING),
             ],
             {
-                "COL_N2": bigquery_column.BIGQUERY_TYPE_STRING,
+                "COL_N2": BIGQUERY_TYPE_STRING,
             },
         ),
         # Strings to numbers is not currently supported.
         (
             [
-                oracle_column.OracleColumn("COL_S1", oracle_column.ORACLE_TYPE_VARCHAR2),
-                oracle_column.OracleColumn("COL_S2", oracle_column.ORACLE_TYPE_VARCHAR2),
-                oracle_column.OracleColumn("COL_S3", oracle_column.ORACLE_TYPE_NVARCHAR2),
-                oracle_column.OracleColumn("COL_S4", oracle_column.ORACLE_TYPE_CLOB),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_S1", ORACLE_TYPE_VARCHAR2),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_S2", ORACLE_TYPE_VARCHAR2),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_S3", ORACLE_TYPE_NVARCHAR2),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_S4", ORACLE_TYPE_CLOB),
             ],
             [
-                bigquery_column.BigQueryColumn("COL_S1", bigquery_column.BIGQUERY_TYPE_STRING),
-                bigquery_column.BigQueryColumn("COL_S2", bigquery_column.BIGQUERY_TYPE_NUMERIC),
-                bigquery_column.BigQueryColumn("COL_S3", bigquery_column.BIGQUERY_TYPE_BIGNUMERIC),
-                bigquery_column.BigQueryColumn("COL_S4", bigquery_column.BIGQUERY_TYPE_NUMERIC),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_S1", BIGQUERY_TYPE_STRING),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_S2", BIGQUERY_TYPE_NUMERIC),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_S3", BIGQUERY_TYPE_BIGNUMERIC),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_S4", BIGQUERY_TYPE_NUMERIC),
             ],
             {
-                "COL_S2": bigquery_column.BIGQUERY_TYPE_NUMERIC,
-                "COL_S3": bigquery_column.BIGQUERY_TYPE_BIGNUMERIC,
-                "COL_S4": bigquery_column.BIGQUERY_TYPE_NUMERIC,
+                "COL_S2": BIGQUERY_TYPE_NUMERIC,
+                "COL_S3": BIGQUERY_TYPE_BIGNUMERIC,
+                "COL_S4": BIGQUERY_TYPE_NUMERIC,
             },
         ),
         # Strings to dates is not currently supported.
         (
             [
-                oracle_column.OracleColumn("COL_S1", oracle_column.ORACLE_TYPE_VARCHAR2),
-                oracle_column.OracleColumn("COL_S2", oracle_column.ORACLE_TYPE_VARCHAR2),
-                oracle_column.OracleColumn("COL_S3", oracle_column.ORACLE_TYPE_NVARCHAR2),
-                oracle_column.OracleColumn("COL_S4", oracle_column.ORACLE_TYPE_CLOB),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_S1", ORACLE_TYPE_VARCHAR2),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_S2", ORACLE_TYPE_VARCHAR2),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_S3", ORACLE_TYPE_NVARCHAR2),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_S4", ORACLE_TYPE_CLOB),
             ],
             [
-                bigquery_column.BigQueryColumn("COL_S1", bigquery_column.BIGQUERY_TYPE_STRING),
-                bigquery_column.BigQueryColumn("COL_S2", bigquery_column.BIGQUERY_TYPE_DATE),
-                bigquery_column.BigQueryColumn("COL_S3", bigquery_column.BIGQUERY_TYPE_DATETIME),
-                bigquery_column.BigQueryColumn("COL_S4", bigquery_column.BIGQUERY_TYPE_TIMESTAMP),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_S1", BIGQUERY_TYPE_STRING),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_S2", BIGQUERY_TYPE_DATE),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_S3", BIGQUERY_TYPE_DATETIME),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_S4", BIGQUERY_TYPE_TIMESTAMP),
             ],
             {
-                "COL_S2": bigquery_column.BIGQUERY_TYPE_DATE,
-                "COL_S3": bigquery_column.BIGQUERY_TYPE_DATETIME,
-                "COL_S4": bigquery_column.BIGQUERY_TYPE_TIMESTAMP,
+                "COL_S2": BIGQUERY_TYPE_DATE,
+                "COL_S3": BIGQUERY_TYPE_DATETIME,
+                "COL_S4": BIGQUERY_TYPE_TIMESTAMP,
             },
         ),
         # Backend TIME is not supported.
         (
             [
-                oracle_column.OracleColumn("COL_N1", oracle_column.ORACLE_TYPE_NUMBER),
-                oracle_column.OracleColumn("COL_N2", oracle_column.ORACLE_TYPE_NUMBER),
-                oracle_column.OracleColumn("COL_S1", oracle_column.ORACLE_TYPE_VARCHAR2),
-                oracle_column.OracleColumn("COL_D1", oracle_column.ORACLE_TYPE_DATE),
-                oracle_column.OracleColumn("COL_T1", oracle_column.ORACLE_TYPE_TIMESTAMP),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_N1", ORACLE_TYPE_NUMBER),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_N2", ORACLE_TYPE_NUMBER),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_S1", ORACLE_TYPE_VARCHAR2),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_D1", ORACLE_TYPE_DATE),
+                ColumnSpec(ColumnDialect.ORACLE, "COL_T1", ORACLE_TYPE_TIMESTAMP),
             ],
             [
-                bigquery_column.BigQueryColumn("COL_N1", bigquery_column.BIGQUERY_TYPE_NUMERIC),
-                bigquery_column.BigQueryColumn("COL_N2", bigquery_column.BIGQUERY_TYPE_TIME),
-                bigquery_column.BigQueryColumn("COL_S1", bigquery_column.BIGQUERY_TYPE_TIME),
-                bigquery_column.BigQueryColumn("COL_D1", bigquery_column.BIGQUERY_TYPE_TIME),
-                bigquery_column.BigQueryColumn("COL_T1", bigquery_column.BIGQUERY_TYPE_TIME),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_N1", BIGQUERY_TYPE_NUMERIC),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_N2", BIGQUERY_TYPE_TIME),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_S1", BIGQUERY_TYPE_TIME),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_D1", BIGQUERY_TYPE_TIME),
+                ColumnSpec(ColumnDialect.BIGQUERY, "COL_T1", BIGQUERY_TYPE_TIME),
             ],
             {
-                "COL_N2": bigquery_column.BIGQUERY_TYPE_TIME,
-                "COL_S1": bigquery_column.BIGQUERY_TYPE_TIME,
-                "COL_D1": bigquery_column.BIGQUERY_TYPE_TIME,
-                "COL_T1": bigquery_column.BIGQUERY_TYPE_TIME,
+                "COL_N2": BIGQUERY_TYPE_TIME,
+                "COL_S1": BIGQUERY_TYPE_TIME,
+                "COL_D1": BIGQUERY_TYPE_TIME,
+                "COL_T1": BIGQUERY_TYPE_TIME,
             },
         ),
     ],
@@ -298,10 +311,10 @@ def test_check_table_columns_by_type_oracle_to_bigquery(
     [
         {},
         {
-            "COL_N2": bigquery_column.BIGQUERY_TYPE_TIME,
-            "COL_S1": bigquery_column.BIGQUERY_TYPE_TIME,
-            "COL_D1": bigquery_column.BIGQUERY_TYPE_TIME,
-            "COL_T1": bigquery_column.BIGQUERY_TYPE_TIME,
+            "COL_N2": BIGQUERY_TYPE_TIME,
+            "COL_S1": BIGQUERY_TYPE_TIME,
+            "COL_D1": BIGQUERY_TYPE_TIME,
+            "COL_T1": BIGQUERY_TYPE_TIME,
         },
     ],
 )
@@ -309,5 +322,5 @@ def test_check_table_columns_by_type_logging(invalid_combinations: dict, message
     fake_table = mock.MagicMock()
     fake_table.frontend_db_name = lambda: "System A"
     fake_table.backend_db_name = lambda: "System B"
-    fake_table.get_column = lambda x: CanonicalColumn("COL-NAME", GOE_TYPE_INTEGER_1)
+    fake_table.get_column = lambda x: ColumnSpec(ColumnDialect.CANONICAL, "COL-NAME", GOE_TYPE_INTEGER_1)
     module_under_test.check_table_columns_by_type_logging(fake_table, fake_table, invalid_combinations, messages)

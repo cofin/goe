@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from goe.offload.oracle.oracle_column import ORACLE_TYPE_NUMBER, ORACLE_TYPE_RAW, ORACLE_TYPE_VARCHAR2
+from goe.offload.schema.column_spec import ORACLE_TYPE_NUMBER, ORACLE_TYPE_RAW, ORACLE_TYPE_VARCHAR2
 from goe.offload.transport.duckdb_availability import duckdb_unavailable_reason, is_duckdb_available
 from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, build_mock_options
 

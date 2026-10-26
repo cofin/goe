@@ -66,7 +66,7 @@ class ColumnDetail(BaseStruct, kw_only=True):
 
     @classmethod
     def from_orm(cls, column: Any) -> "ColumnDetail":
-        """Construct ``ColumnDetail`` from an ``OracleColumn`` instance."""
+        """Construct ``ColumnDetail`` from a ``ColumnSpec`` instance."""
         return cls(
             column_name=column.name,
             data_type=column.data_type,

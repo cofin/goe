@@ -11,7 +11,7 @@ from datetime import date
 from numpy import datetime64
 
 from goe.offload.format_literal import FormatLiteralInterface
-from goe.offload.oracle.oracle_column import (
+from goe.offload.schema.column_spec import (
     ORACLE_TIMESTAMP_RE,
     ORACLE_TYPE_DATE,
     ORACLE_TYPE_TIMESTAMP,

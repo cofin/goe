@@ -6,11 +6,6 @@
 import re
 
 from goe.exceptions import OptionValueError
-from goe.offload.column_metadata import (
-    ColumnPartitionInfo,
-    is_synthetic_partition_column,
-    match_table_column,
-)
 from goe.offload.offload_constants import PART_COL_GRANULARITY_DAY
 from goe.offload.offload_functions import expand_columns_csv
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
@@ -18,9 +13,12 @@ from goe.offload.offload_source_table import (
     OFFLOAD_PARTITION_TYPE_HASH,
     OFFLOAD_PARTITION_TYPE_LIST,
 )
-from goe.offload.oracle.oracle_column import (
+from goe.offload.schema.column_spec import (
     ORACLE_TYPE_INTERVAL_DS,
     ORACLE_TYPE_INTERVAL_YM,
+    ColumnPartitionSpec,
+    is_synthetic_partition_column,
+    match_table_column,
 )
 from goe.util.string_utils import case_insensitive_in, csv_split
 
@@ -166,7 +164,7 @@ def offload_options_to_partition_info(
             digits = synthetic_partition_digits
         granularity = offload_partition_granularity[position] if offload_partition_granularity else None
         partition_function = offload_partition_functions[position] if offload_partition_functions else None
-        partition_info = ColumnPartitionInfo(
+        partition_info = ColumnPartitionSpec(
             position=position,
             source_column_name=rdbms_column.name,
             granularity=granularity,

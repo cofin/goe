@@ -13,10 +13,10 @@ from goe.offload.transport.arrow_extractor import ArrowExtractionConfig, OracleA
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
-    from goe.offload.column_metadata import ColumnMetadataInterface
     from goe.offload.offload_messages import OffloadMessages
     from goe.offload.offload_source_data import OffloadSourcePartitions
     from goe.offload.offload_source_table import OffloadSourceTableInterface
+    from goe.offload.schema.column_spec import ColumnSpec
 
 
 class OffloadTransportRdbmsApiException(Exception):
@@ -74,9 +74,7 @@ class OffloadTransportRdbmsApiInterface(metaclass=ABCMeta):
         """Generate a unique(ish) string that can be used to track an RDBMS session"""
 
     @abstractmethod
-    def get_id_column_for_range_splitting(
-        self, rdbms_table: "OffloadSourceTableInterface"
-    ) -> "ColumnMetadataInterface":
+    def get_id_column_for_range_splitting(self, rdbms_table: "OffloadSourceTableInterface") -> "ColumnSpec":
         pass
 
     @abstractmethod

@@ -10,7 +10,7 @@ from goe.offload.offload_metadata_functions import (
     gen_offload_metadata,
     incremental_hv_list_from_csv,
 )
-from goe.offload.oracle.oracle_column import OracleColumn
+from goe.offload.schema.column_spec import ColumnDialect, ColumnSpec
 from goe.orchestration.execution_id import ExecutionId
 
 
@@ -42,7 +42,7 @@ def test_gen_offload_metadata_rpa():
     fake_repo_client = None
     partition_key = "TIME_ID"
     inc_cols = [
-        OracleColumn(partition_key, "DATE"),
+        ColumnSpec(ColumnDialect.ORACLE, partition_key, "DATE"),
     ]
 
     # First offload

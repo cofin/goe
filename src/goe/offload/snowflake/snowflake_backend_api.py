@@ -14,7 +14,9 @@ import time
 import traceback
 from datetime import datetime
 from textwrap import dedent
+from typing import ClassVar
 
+import msgspec
 import snowflake.connector
 from numpy import datetime64
 
@@ -35,36 +37,7 @@ from goe.offload.backend_api import (
     BackendApiException,
     BackendApiInterface,
     UdfDetails,
-)
-from goe.offload.column_metadata import (
-    ALL_CANONICAL_TYPES,
-    CANONICAL_CHAR_SEMANTICS_CHAR,
-    DATE_CANONICAL_TYPES,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_BOOLEAN,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-    NUMERIC_CANONICAL_TYPES,
-    STRING_CANONICAL_TYPES,
-    CanonicalColumn,
-    is_safe_mapping,
-    valid_column_list,
+    UdfParameter,
 )
 from goe.offload.offload_constants import (
     DBTYPE_SNOWFLAKE,
@@ -76,9 +49,8 @@ from goe.offload.offload_constants import (
     SNOWFLAKE_BACKEND_CAPABILITIES,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.snowflake.snowflake_column import (
+from goe.offload.schema.column_spec import (
     SNOWFLAKE_TYPE_BINARY,
-    SNOWFLAKE_TYPE_BOOLEAN,
     SNOWFLAKE_TYPE_DATE,
     SNOWFLAKE_TYPE_FLOAT,
     SNOWFLAKE_TYPE_INTEGER,
@@ -87,8 +59,11 @@ from goe.offload.snowflake.snowflake_column import (
     SNOWFLAKE_TYPE_TIME,
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
     SNOWFLAKE_TYPE_TIMESTAMP_TZ,
-    SnowflakeColumn,
+    ColumnDialect,
+    ColumnSpec,
+    valid_column_list,
 )
+from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
 from goe.offload.snowflake.snowflake_literal import SnowflakeLiteral
 from goe.util.string_utils import (
     backtick_sandwich,
@@ -105,6 +80,8 @@ SNOWFLAKE_CONNECTION_IDENTIFIER = "GOE"
 
 
 class BackendSnowflakeApi(BackendApiInterface):
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.SNOWFLAKE
+
     def __init__(
         self,
         connection_options,
@@ -489,7 +466,7 @@ class BackendSnowflakeApi(BackendApiInterface):
 
     def detect_column_has_fractional_seconds(self, db_name, table_name, column):
         assert db_name and table_name
-        assert isinstance(column, SnowflakeColumn)
+        assert isinstance(column, ColumnSpec) and column.dialect is ColumnDialect.SNOWFLAKE
         if column.data_type not in [
             SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
             SNOWFLAKE_TYPE_TIMESTAMP_TZ,
@@ -632,7 +609,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         return "?"
 
     def gen_column_object(self, column_name, **kwargs):
-        return SnowflakeColumn(column_name, **kwargs)
+        return ColumnSpec(ColumnDialect.SNOWFLAKE, column_name, **kwargs)
 
     def gen_copy_into_sql_text(
         self,
@@ -715,17 +692,12 @@ class BackendSnowflakeApi(BackendApiInterface):
         return sql
 
     def gen_default_numeric_column(self, column_name, data_scale=18):
-        """Return a default best-fit numeric column for generic usage.
-        Used when we can't really know or influence a type, e.g. AVG() output in AAPD.
-        data_scale=0 can be used if the outcome is known to be integral.
-        """
-        return SnowflakeColumn(
+        """Return a default best-fit numeric column for generic usage."""
+        return TYPE_REGISTRY.default_numeric_column(
             column_name,
-            data_type=SNOWFLAKE_TYPE_NUMBER,
-            data_precision=self.max_decimal_precision(),
+            self.type_mapping_target,
+            self.type_mapping_context(),
             data_scale=data_scale,
-            nullable=True,
-            safe_mapping=False,
         )
 
     def gen_insert_select_sql_text(
@@ -867,7 +839,8 @@ class BackendSnowflakeApi(BackendApiInterface):
                 self._debug("Overriding byte_length for column %s with: %s" % (col_name, binary_byte_lengths[col_name]))
                 char_length = byte_length = binary_byte_lengths[col_name]
             backend_columns.append(
-                SnowflakeColumn(
+                ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     col_name,
                     data_type,
                     data_length=byte_length,
@@ -1444,7 +1417,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         return SNOWFLAKE_TYPE_TEXT
 
     def transform_null_cast(self, backend_column):
-        assert isinstance(backend_column, SnowflakeColumn)
+        assert isinstance(backend_column, ColumnSpec) and backend_column.dialect is ColumnDialect.SNOWFLAKE
         return "CAST(NULL AS %s)" % (backend_column.format_data_type())
 
     def transform_tokenize_data_type(self):
@@ -1487,39 +1460,17 @@ class BackendSnowflakeApi(BackendApiInterface):
             if row and row[1]:
                 arg_strings = re.findall(r"[A-Z0-9_]+ [A-Z0-9_]+", row[1])
                 if arg_strings:
-                    parameters = [tuple(_.split()) for _ in arg_strings]
+                    parameters = [UdfParameter(*_.split()) for _ in arg_strings]
             udfs.append(UdfDetails(db_name, udf_name, return_type, parameters))
         return udfs
 
     def valid_canonical_override(self, column, canonical_override):
-        """Snowflake FLOAT is always stored as DOUBLE therefore no canonical FLOAT below"""
-        assert isinstance(column, SnowflakeColumn)
-        if isinstance(canonical_override, CanonicalColumn):
-            target_type = canonical_override.data_type
-        else:
-            target_type = canonical_override
-        if column.is_number_based():
-            if column.data_type == SNOWFLAKE_TYPE_FLOAT:
-                return bool(target_type in [GOE_TYPE_DECIMAL, GOE_TYPE_DOUBLE])
-            return target_type in NUMERIC_CANONICAL_TYPES
-        if column.is_date_based():
-            return bool(target_type in DATE_CANONICAL_TYPES)
-        if column.is_string_based():
-            return bool(
-                target_type in STRING_CANONICAL_TYPES
-                or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
-                or target_type in [GOE_TYPE_INTERVAL_DS, GOE_TYPE_INTERVAL_YM]
-            )
-        if target_type not in ALL_CANONICAL_TYPES:
-            self._log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
-            return False
-        if column.data_type not in self.supported_backend_data_types():
-            return False
-        if column.data_type == SNOWFLAKE_TYPE_BINARY:
-            return bool(target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
-        if column.data_type == SNOWFLAKE_TYPE_TIME:
-            return bool(target_type == GOE_TYPE_TIME)
-        return False
+        target_type = canonical_override.data_type if isinstance(canonical_override, ColumnSpec) else canonical_override
+        return TYPE_REGISTRY.valid_canonical_override(
+            column,
+            target_type,
+            self.type_mapping_context(),
+        )
 
     def valid_staging_formats(self):
         return [FILE_STORAGE_FORMAT_AVRO, FILE_STORAGE_FORMAT_PARQUET]
@@ -1550,178 +1501,13 @@ class BackendSnowflakeApi(BackendApiInterface):
         return False
 
     def to_canonical_column(self, column):
-        """Translate a Snowflake column to an internal GOE column"""
-
-        def new_column(col, data_type, data_precision=None, data_scale=None, safe_mapping=None):
-            """Wrapper that carries name forward but applies other attributes as specified"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return CanonicalColumn(
-                name=col.name,
-                data_type=data_type,
-                data_length=col.data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                char_length=col.char_length,
-                char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
-            )
-
-        assert column
-        assert isinstance(column, SnowflakeColumn)
-
-        if column.data_type == SNOWFLAKE_TYPE_BOOLEAN:
-            return new_column(column, GOE_TYPE_BOOLEAN)
-        if column.data_type == SNOWFLAKE_TYPE_BINARY:
-            return new_column(column, GOE_TYPE_BINARY)
-        if column.data_type == SNOWFLAKE_TYPE_DATE:
-            return new_column(column, GOE_TYPE_DATE)
-        if column.data_type == SNOWFLAKE_TYPE_FLOAT:
-            return new_column(column, GOE_TYPE_DOUBLE)
-        if column.data_type == SNOWFLAKE_TYPE_INTEGER:
-            return new_column(column, GOE_TYPE_INTEGER_38)
-        if column.data_type == SNOWFLAKE_TYPE_NUMBER:
-            if column.data_scale == 0:
-                if 1 <= column.data_precision <= 2:
-                    integral_type = GOE_TYPE_INTEGER_1
-                elif 3 <= column.data_precision <= 4:
-                    integral_type = GOE_TYPE_INTEGER_2
-                elif 5 <= column.data_precision <= 9:
-                    integral_type = GOE_TYPE_INTEGER_4
-                elif 10 <= column.data_precision <= 18:
-                    integral_type = GOE_TYPE_INTEGER_8
-                else:
-                    integral_type = GOE_TYPE_INTEGER_38
-                return new_column(column, integral_type)
-            return new_column(
-                column,
-                GOE_TYPE_DECIMAL,
-                data_precision=column.data_precision,
-                data_scale=column.data_scale,
-            )
-        if column.data_type == SNOWFLAKE_TYPE_TEXT:
-            return new_column(column, GOE_TYPE_VARIABLE_STRING)
-        if column.data_type == SNOWFLAKE_TYPE_TIME:
-            return new_column(column, GOE_TYPE_TIME)
-        if column.data_type == SNOWFLAKE_TYPE_TIMESTAMP_NTZ:
-            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=self.max_datetime_scale())
-        if column.data_type == SNOWFLAKE_TYPE_TIMESTAMP_TZ:
-            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=self.max_datetime_scale())
-        raise NotImplementedError("Unsupported backend data type: %s" % column.data_type)
+        """Translate a Snowflake column to an internal GOE column."""
+        return TYPE_REGISTRY.to_canonical(column, self.type_mapping_context())
 
     def from_canonical_column(self, column, decimal_padding_digits=0):
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            char_length=None,
-            safe_mapping=None,
-        ):
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return SnowflakeColumn(
-                col.name,
-                data_type=data_type,
-                data_length=data_length,
-                char_length=char_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-            )
-
-        assert column
-        assert isinstance(column, CanonicalColumn), "%s is not instance of CanonicalColumn" % type(column)
-
-        if column.data_type == GOE_TYPE_BOOLEAN:
-            return new_column(column, SNOWFLAKE_TYPE_BOOLEAN, safe_mapping=True)
-        if column.data_type in (
-            GOE_TYPE_FIXED_STRING,
-            GOE_TYPE_LARGE_STRING,
-            GOE_TYPE_VARIABLE_STRING,
-        ):
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_TEXT,
-                char_length=column.char_length or column.data_length,
-                safe_mapping=True,
-            )
-        if column.data_type in (GOE_TYPE_LARGE_BINARY, GOE_TYPE_BINARY):
-            return new_column(column, SNOWFLAKE_TYPE_BINARY, data_length=column.data_length)
-        if column.data_type == GOE_TYPE_DATE:
-            return new_column(column, SNOWFLAKE_TYPE_DATE, safe_mapping=True)
-        if column.data_type in (GOE_TYPE_FLOAT, GOE_TYPE_DOUBLE):
-            return new_column(column, SNOWFLAKE_TYPE_FLOAT, safe_mapping=True)
-        if column.data_type == GOE_TYPE_INTEGER_1:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=3,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_INTEGER_2:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=5,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_INTEGER_4:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=10,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_INTEGER_8:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=19,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_INTEGER_38:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=38,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_DECIMAL:
-            if column.data_precision is None and column.data_scale is None:
-                return self.gen_default_numeric_column(column.name)
-            data_precision = column.data_precision or self.max_decimal_precision()
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=data_precision,
-                data_scale=column.data_scale,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_TIME:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_TIME,
-                data_scale=column.data_scale,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_TIMESTAMP:
-            return new_column(column, SNOWFLAKE_TYPE_TIMESTAMP_NTZ, data_scale=column.data_scale)
-        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            return new_column(column, SNOWFLAKE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale)
-        if column.data_type == GOE_TYPE_INTERVAL_DS:
-            return new_column(column, SNOWFLAKE_TYPE_TEXT, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTERVAL_YM:
-            return new_column(column, SNOWFLAKE_TYPE_TEXT, safe_mapping=False)
-        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
+        """Translate an internal GOE column to a Snowflake column."""
+        context = msgspec.structs.replace(self.type_mapping_context(), decimal_padding_digits=decimal_padding_digits)
+        return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, context)
 
     def _backend_capabilities(self):
         return SNOWFLAKE_BACKEND_CAPABILITIES

@@ -10,14 +10,15 @@ from unittest.mock import MagicMock, patch
 import duckdb
 import pytest
 
-from goe.offload.staging.parquet.parquet_column import (
+from goe.offload.schema.column_spec import (
     PARQUET_TYPE_BINARY,
     PARQUET_TYPE_BOOLEAN,
     PARQUET_TYPE_DOUBLE,
     PARQUET_TYPE_INT32,
     PARQUET_TYPE_INT64,
     PARQUET_TYPE_STRING,
-    StagingParquetColumn,
+    ColumnDialect,
+    ColumnSpec,
 )
 from goe.offload.transport.duckdb import (
     CloudStorageSecretSpec,
@@ -227,8 +228,7 @@ def test_cast_projection_and_scn_invariant(tmp_path: Path) -> None:
     verify_duckdb_version("2.0.0")
 
 
-def _column(name: str, data_type: str, position: int) -> StagingParquetColumn:
+def _column(name: str, data_type: str, position: int) -> ColumnSpec:
     """Return a staging column with its staging file name assigned."""
-    column = StagingParquetColumn(name, data_type)
-    column.set_simplified_staging_column_name(position)
-    return column
+    column = ColumnSpec(ColumnDialect.PARQUET, name, data_type)
+    return column.with_simplified_staging_column_name(position)

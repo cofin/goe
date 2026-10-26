@@ -21,8 +21,15 @@ from goe.offload.offload_source_data import (
     IPA_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT,
     NO_MATCHING_PARTITION_EXCEPTION_TEXT,
 )
-from goe.offload.oracle import oracle_column
 from goe.offload.registry import create_repository_client
+from goe.offload.schema.column_spec import (
+    ORACLE_TYPE_CHAR,
+    ORACLE_TYPE_DATE,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_NVARCHAR2,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_VARCHAR2,
+)
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
@@ -262,7 +269,7 @@ def test_offload_lpa_num(config, schema, data_db):
             frontend_sqls=gen_list_multi_part_value_create_ddl(
                 schema,
                 LPA_NUM_PART_KEY_TABLE,
-                oracle_column.ORACLE_TYPE_NUMBER,
+                ORACLE_TYPE_NUMBER,
                 [LPA_PART1_KEY1, LPA_PART1_KEY2, LPA_PART2_KEY1],
             ),
             python_fns=[
@@ -332,7 +339,7 @@ def test_offload_lpa_vc2(config, schema, data_db):
             frontend_sqls=gen_list_multi_part_value_create_ddl(
                 schema,
                 LPA_VC2_PART_KEY_TABLE,
-                oracle_column.ORACLE_TYPE_VARCHAR2,
+                ORACLE_TYPE_VARCHAR2,
                 [LPA_PART1_KEY1, LPA_PART1_KEY2, LPA_PART2_KEY1],
             ),
             python_fns=[
@@ -400,7 +407,7 @@ def test_offload_lpa_char(config, schema, data_db):
             frontend_sqls=gen_list_multi_part_value_create_ddl(
                 schema,
                 LPA_CHR_PART_KEY_TABLE,
-                oracle_column.ORACLE_TYPE_CHAR,
+                ORACLE_TYPE_CHAR,
                 [LPA_PART1_KEY1, LPA_PART1_KEY2, LPA_PART2_KEY1],
             ),
             python_fns=[
@@ -468,7 +475,7 @@ def test_offload_lpa_date(config, schema, data_db):
             frontend_sqls=gen_list_multi_part_value_create_ddl(
                 schema,
                 LPA_DT_PART_KEY_TABLE,
-                oracle_column.ORACLE_TYPE_DATE,
+                ORACLE_TYPE_DATE,
                 [LPA_DT_PART1_KEY1, LPA_DT_PART1_KEY2, LPA_DT_PART2_KEY1],
             ),
             python_fns=[
@@ -536,7 +543,7 @@ def test_offload_lpa_ts(config, schema, data_db):
             frontend_sqls=gen_list_multi_part_value_create_ddl(
                 schema,
                 LPA_TS_PART_KEY_TABLE,
-                oracle_column.ORACLE_TYPE_TIMESTAMP,
+                ORACLE_TYPE_TIMESTAMP,
                 [LPA_DT_PART1_KEY1, LPA_DT_PART1_KEY2, LPA_DT_PART2_KEY1],
             ),
             python_fns=[
@@ -608,7 +615,7 @@ def test_offload_lpa_unicode(config, schema, data_db):
             frontend_sqls=gen_list_multi_part_value_create_ddl(
                 schema,
                 LPA_UNICODE_FACT_TABLE,
-                oracle_column.ORACLE_TYPE_NVARCHAR2,
+                ORACLE_TYPE_NVARCHAR2,
                 [
                     LPA_UNICODE_PART1_KEY1,
                     LPA_UNICODE_PART1_KEY2,
@@ -941,7 +948,7 @@ def test_offload_lpa_part_fn(config, schema, data_db):
             frontend_sqls=gen_list_multi_part_value_create_ddl(
                 schema,
                 LPA_NUM_PART_FUNC_TABLE,
-                oracle_column.ORACLE_TYPE_NUMBER,
+                ORACLE_TYPE_NUMBER,
                 [LPA_PART1_KEY1, LPA_PART1_KEY2, LPA_PART2_KEY1],
             ),
             python_fns=[

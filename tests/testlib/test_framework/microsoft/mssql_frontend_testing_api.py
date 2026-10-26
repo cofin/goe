@@ -9,16 +9,17 @@ processing and verification of integration tests.
 
 import logging
 
-from goe.offload.microsoft.mssql_column import (
+from goe.offload.offload_messages import VERBOSE
+from goe.offload.schema.column_spec import (
     MSSQL_TYPE_BIGINT,
     MSSQL_TYPE_DATE,
     MSSQL_TYPE_DATETIME2,
     MSSQL_TYPE_DECIMAL,
     MSSQL_TYPE_NUMERIC,
     MSSQL_TYPE_VARCHAR,
-    MSSQLColumn,
+    ColumnDialect,
+    ColumnSpec,
 )
-from goe.offload.offload_messages import VERBOSE
 from tests.testlib.test_framework.frontend_testing_api import (
     FrontendTestingApiInterface,
 )
@@ -76,7 +77,7 @@ class MSSQLFrontendTestingApi(FrontendTestingApiInterface):
         )
 
     def _data_type_supports_precision_and_scale(self, column_or_type):
-        if isinstance(column_or_type, MSSQLColumn):
+        if isinstance(column_or_type, ColumnSpec) and column_or_type.dialect is ColumnDialect.MSSQL:
             data_type = column_or_type.data_type
         else:
             data_type = column_or_type

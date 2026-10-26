@@ -15,14 +15,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from goe.offload.schema.column_spec import PARQUET_TYPE_INT64, PARQUET_TYPE_STRING, ColumnDialect, ColumnSpec
 from goe.offload.staging.arrow_writers import (
     ArrowAvroStagingWriter,
     ArrowParquetStagingWriter,
-)
-from goe.offload.staging.parquet.parquet_column import (
-    PARQUET_TYPE_INT64,
-    PARQUET_TYPE_STRING,
-    StagingParquetColumn,
 )
 from goe.offload.transport.duckdb import (
     DuckDBEngine,
@@ -46,8 +42,8 @@ def test_arrow_parquet_staging_writer_streams_reader_and_unregisters_view_on_suc
     engine.open()
     try:
         cols = [
-            StagingParquetColumn("ID", PARQUET_TYPE_INT64),
-            StagingParquetColumn("NAME", PARQUET_TYPE_STRING),
+            ColumnSpec(ColumnDialect.PARQUET, "ID", PARQUET_TYPE_INT64),
+            ColumnSpec(ColumnDialect.PARQUET, "NAME", PARQUET_TYPE_STRING),
         ]
         schema = pa.schema([("ID", pa.int64()), ("NAME", pa.string())])
         batches = [

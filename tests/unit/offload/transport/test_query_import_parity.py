@@ -12,7 +12,13 @@ import avro.datafile
 import avro.io
 import pyarrow.parquet as pq
 
-from goe.offload.oracle.oracle_column import (
+from goe.offload.schema.column_spec import (
+    AVRO_TYPE_BYTES,
+    AVRO_TYPE_DOUBLE,
+    AVRO_TYPE_FLOAT,
+    AVRO_TYPE_INT,
+    AVRO_TYPE_LONG,
+    AVRO_TYPE_STRING,
     ORACLE_TYPE_BINARY_DOUBLE,
     ORACLE_TYPE_BINARY_FLOAT,
     ORACLE_TYPE_BLOB,
@@ -31,29 +37,18 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP_TZ,
     ORACLE_TYPE_VARCHAR2,
     ORACLE_TYPE_XMLTYPE,
-    OracleColumn,
-)
-from goe.offload.staging.arrow_writers import (
-    ArrowAvroStagingWriter,
-    ArrowParquetStagingWriter,
-)
-from goe.offload.staging.avro.avro_column import (
-    AVRO_TYPE_BYTES,
-    AVRO_TYPE_DOUBLE,
-    AVRO_TYPE_FLOAT,
-    AVRO_TYPE_INT,
-    AVRO_TYPE_LONG,
-    AVRO_TYPE_STRING,
-    StagingAvroColumn,
-)
-from goe.offload.staging.parquet.parquet_column import (
     PARQUET_TYPE_BINARY,
     PARQUET_TYPE_DOUBLE,
     PARQUET_TYPE_FLOAT,
     PARQUET_TYPE_INT32,
     PARQUET_TYPE_INT64,
     PARQUET_TYPE_STRING,
-    StagingParquetColumn,
+    ColumnDialect,
+    ColumnSpec,
+)
+from goe.offload.staging.arrow_writers import (
+    ArrowAvroStagingWriter,
+    ArrowParquetStagingWriter,
 )
 from goe.offload.transport.arrow_extractor import (
     ArrowExtractionConfig,
@@ -199,9 +194,7 @@ def build_arrow_parity_manifest(work_dir: Path) -> dict[str, Any]:
         engine.close()
 
 
-def _build_19_type_columns_and_schemas() -> tuple[
-    list[OracleColumn], list[StagingParquetColumn], list[StagingAvroColumn], dict[str, Any]
-]:
+def _build_19_type_columns_and_schemas() -> tuple[list[ColumnSpec], list[ColumnSpec], list[ColumnSpec], dict[str, Any]]:
     """Construct the 19 Oracle type family definitions and their Parquet and Avro staging counterparts."""
     spec = [
         ("COL_NUM_4_0", ORACLE_TYPE_NUMBER, 4, 0, None, PARQUET_TYPE_INT32, AVRO_TYPE_INT, "int"),
@@ -236,14 +229,15 @@ def _build_19_type_columns_and_schemas() -> tuple[
         ("COL_INT_DS", ORACLE_TYPE_INTERVAL_DS, 5, 6, None, PARQUET_TYPE_STRING, AVRO_TYPE_STRING, "string"),
         ("COL_XMLTYPE", ORACLE_TYPE_XMLTYPE, None, None, None, PARQUET_TYPE_STRING, AVRO_TYPE_STRING, "string"),
     ]
-    source_cols: list[OracleColumn] = []
-    parquet_cols: list[StagingParquetColumn] = []
-    avro_cols: list[StagingAvroColumn] = []
+    source_cols: list[ColumnSpec] = []
+    parquet_cols: list[ColumnSpec] = []
+    avro_cols: list[ColumnSpec] = []
     avro_fields: list[dict[str, Any]] = []
 
     for name, ora_type, prec, scale, length, pq_type, av_type, av_prim in spec:
         source_cols.append(
-            OracleColumn(
+            ColumnSpec(
+                ColumnDialect.ORACLE,
                 name,
                 ora_type,
                 data_length=length,
@@ -252,12 +246,10 @@ def _build_19_type_columns_and_schemas() -> tuple[
                 nullable=True,
             )
         )
-        pq_col = StagingParquetColumn(name, pq_type, nullable=True)
-        pq_col.staging_file_column_name = name
+        pq_col = ColumnSpec(ColumnDialect.PARQUET, name, pq_type, nullable=True, staging_file_column_name=name)
         parquet_cols.append(pq_col)
 
-        av_col = StagingAvroColumn(name, av_type, nullable=True)
-        av_col.staging_file_column_name = name
+        av_col = ColumnSpec(ColumnDialect.AVRO, name, av_type, nullable=True, staging_file_column_name=name)
         avro_cols.append(av_col)
 
         avro_fields.append({"name": name, "type": ["null", av_prim]})

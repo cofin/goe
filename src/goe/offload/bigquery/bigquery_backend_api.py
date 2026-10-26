@@ -14,8 +14,9 @@ import traceback
 from datetime import datetime
 from math import ceil
 from textwrap import dedent
-from typing import Any
+from typing import Any, ClassVar
 
+import msgspec
 from google.api_core.client_info import ClientInfo
 from google.cloud import bigquery, kms
 from google.cloud.exceptions import NotFound
@@ -40,55 +41,7 @@ from goe.offload.backend_api import (
     UdfDetails,
     UdfParameter,
 )
-from goe.offload.bigquery.bigquery_column import (
-    BIGQUERY_TYPE_BIGNUMERIC,
-    BIGQUERY_TYPE_BOOLEAN,
-    BIGQUERY_TYPE_BYTES,
-    BIGQUERY_TYPE_DATE,
-    BIGQUERY_TYPE_DATETIME,
-    BIGQUERY_TYPE_FLOAT64,
-    BIGQUERY_TYPE_INT64,
-    BIGQUERY_TYPE_NUMERIC,
-    BIGQUERY_TYPE_STRING,
-    BIGQUERY_TYPE_TIME,
-    BIGQUERY_TYPE_TIMESTAMP,
-    BigQueryColumn,
-)
 from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
-from goe.offload.column_metadata import (
-    ALL_CANONICAL_TYPES,
-    CANONICAL_CHAR_SEMANTICS_CHAR,
-    DATE_CANONICAL_TYPES,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_BOOLEAN,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-    NUMERIC_CANONICAL_TYPES,
-    STRING_CANONICAL_TYPES,
-    CanonicalColumn,
-    ColumnMetadataInterface,
-    ColumnPartitionInfo,
-    is_safe_mapping,
-    match_table_column,
-    str_list_of_columns,
-    valid_column_list,
-)
 from goe.offload.offload_constants import (
     BIGQUERY_BACKEND_CAPABILITIES,
     EMPTY_BACKEND_COLUMN_STATS_DICT,
@@ -102,6 +55,26 @@ from goe.offload.offload_constants import (
     PART_COL_GRANULARITY_YEAR,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
+    BIGQUERY_TYPE_BIGNUMERIC,
+    BIGQUERY_TYPE_BOOLEAN,
+    BIGQUERY_TYPE_BYTES,
+    BIGQUERY_TYPE_DATE,
+    BIGQUERY_TYPE_DATETIME,
+    BIGQUERY_TYPE_FLOAT64,
+    BIGQUERY_TYPE_INT64,
+    BIGQUERY_TYPE_NUMERIC,
+    BIGQUERY_TYPE_STRING,
+    BIGQUERY_TYPE_TIME,
+    BIGQUERY_TYPE_TIMESTAMP,
+    ColumnDialect,
+    ColumnPartitionSpec,
+    ColumnSpec,
+    match_table_column,
+    str_list_of_columns,
+    valid_column_list,
+)
+from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
 from goe.offload.sql_ast.dialect_engine import TableRef, get_dialect_engine
 from goe.util.string_utils import backtick_sandwich, format_list_for_logging
 
@@ -132,6 +105,8 @@ logger.addHandler(logging.NullHandler())
 
 class BackendBigQueryApi(BackendApiInterface):
     """BigQuery backend implementation"""
+
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.BIGQUERY
 
     def __init__(
         self,
@@ -538,7 +513,7 @@ class BackendBigQueryApi(BackendApiInterface):
         return None
 
     def derive_native_partition_info(self, db_name, table_name, column, position):
-        """Return a ColumnPartitionInfo object (or None) based on native partition settings.
+        """Return a ColumnPartitionSpec object (or None) based on native partition settings.
         BigQuery only allows a single partition column so we could, in theory, ignore
         both column and position parameters. We don't do this though and use column as a
         sanity check and position because then we're behaving like other backends.
@@ -547,7 +522,7 @@ class BackendBigQueryApi(BackendApiInterface):
         """
         assert db_name and table_name
         assert column
-        column_name = column.name if isinstance(column, ColumnMetadataInterface) else column
+        column_name = column.name if isinstance(column, ColumnSpec) else column
         table = self._get_bq_table(db_name, table_name)
 
         if not self._table_is_partitioned(db_name, table_name):
@@ -560,7 +535,7 @@ class BackendBigQueryApi(BackendApiInterface):
                     "Partition columns do not match: %s != %s"
                     % (table.time_partitioning.field.upper(), column_name.upper())
                 )
-            return ColumnPartitionInfo(
+            return ColumnPartitionSpec(
                 position=position,
                 granularity=granularity,
                 digits=1,
@@ -578,7 +553,7 @@ class BackendBigQueryApi(BackendApiInterface):
                     range_start = int(table_json["rangePartitioning"]["range"]["start"])
                     range_end = int(table_json["rangePartitioning"]["range"]["end"])
                     range_interval = int(table_json["rangePartitioning"]["range"]["interval"])
-                    return ColumnPartitionInfo(
+                    return ColumnPartitionSpec(
                         position=position,
                         source_column_name=column_name,
                         granularity=range_interval,
@@ -594,7 +569,7 @@ class BackendBigQueryApi(BackendApiInterface):
     def detect_column_has_fractional_seconds(self, db_name, table_name, column):
         """BigQuery EXTRACT() only goes to MICROSECOND granularity"""
         assert db_name and table_name
-        assert isinstance(column, BigQueryColumn)
+        assert isinstance(column, ColumnSpec) and column.dialect is ColumnDialect.BIGQUERY
         if column.data_type not in [BIGQUERY_TYPE_DATETIME, BIGQUERY_TYPE_TIMESTAMP]:
             return False
         sql = """SELECT %(col)s
@@ -722,7 +697,7 @@ LIMIT 1""" % {
         return f"@{param_name}"
 
     def gen_column_object(self, column_name, **kwargs):
-        return BigQueryColumn(column_name, **kwargs)
+        return ColumnSpec(ColumnDialect.BIGQUERY, column_name, **kwargs)
 
     def gen_copy_into_sql_text(
         self,
@@ -735,35 +710,12 @@ LIMIT 1""" % {
         raise NotImplementedError("COPY INTO does not exist in BigQuery SQL")
 
     def gen_default_numeric_column(self, column_name, data_scale=None):
-        """Return a default best-fit numeric column for generic usage.
-        Used when we can't really know or influence a type, e.g. AVG() output in AAPD.
-        data_scale=0 can be used if the outcome is known to be integral.
-        On BigQuery data_scale=0 means use BIGQUERY_TYPE_INT64, otherwise data_scale influences whether
-        we use NUMERIC or BIGNUMERIC.
-        """
-        if data_scale == 0:
-            return BigQueryColumn(
-                column_name,
-                data_type=BIGQUERY_TYPE_INT64,
-                nullable=True,
-                safe_mapping=False,
-            )
-        if data_scale and data_scale <= 9:
-            return BigQueryColumn(
-                column_name,
-                data_type=BIGQUERY_TYPE_NUMERIC,
-                data_precision=38,
-                data_scale=9,
-                nullable=True,
-                safe_mapping=False,
-            )
-        return BigQueryColumn(
+        """Return a default best-fit numeric column for generic usage."""
+        return TYPE_REGISTRY.default_numeric_column(
             column_name,
-            data_type=BIGQUERY_TYPE_BIGNUMERIC,
-            data_precision=self.max_decimal_precision(),
-            data_scale=self.max_decimal_scale(),
-            nullable=True,
-            safe_mapping=False,
+            self.type_mapping_target,
+            self.type_mapping_context(),
+            data_scale=data_scale,
         )
 
     def gen_ctas_sql_text(
@@ -870,10 +822,11 @@ LIMIT 1""" % {
         backend_columns = []
         for col in table.schema:
             backend_columns.append(
-                BigQueryColumn(
+                ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     str(col.name),
                     data_type=str(col.field_type),
-                    nullable=str(col.is_nullable),
+                    nullable=col.is_nullable,
                 )
             )
         return backend_columns
@@ -1424,7 +1377,7 @@ LIMIT 1""" % {
         return BIGQUERY_TYPE_STRING
 
     def transform_null_cast(self, backend_column):
-        assert isinstance(backend_column, BigQueryColumn)
+        assert isinstance(backend_column, ColumnSpec) and backend_column.dialect is ColumnDialect.BIGQUERY
         return "CAST(NULL AS %s)" % (backend_column.format_data_type())
 
     def transform_tokenize_data_type(self):
@@ -1489,35 +1442,12 @@ LIMIT 1""" % {
             return False
 
     def valid_canonical_override(self, column, canonical_override):
-        assert isinstance(column, BigQueryColumn)
-        if isinstance(canonical_override, CanonicalColumn):
-            target_type = canonical_override.data_type
-        else:
-            target_type = canonical_override
-        if column.is_number_based():
-            if column.data_type == BIGQUERY_TYPE_FLOAT64:
-                return bool(target_type in [GOE_TYPE_DECIMAL, GOE_TYPE_DOUBLE])
-            return target_type in NUMERIC_CANONICAL_TYPES
-        if column.is_date_based():
-            return bool(target_type in DATE_CANONICAL_TYPES)
-        if column.is_string_based():
-            return bool(
-                target_type in STRING_CANONICAL_TYPES
-                or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
-                or target_type in [GOE_TYPE_INTERVAL_DS, GOE_TYPE_INTERVAL_YM]
-            )
-        if target_type not in ALL_CANONICAL_TYPES:
-            self._log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
-            return False
-        if column.data_type not in self.supported_backend_data_types():
-            return False
-        if column.data_type == BIGQUERY_TYPE_BOOLEAN:
-            return bool(target_type == GOE_TYPE_BOOLEAN)
-        if column.data_type == BIGQUERY_TYPE_BYTES:
-            return bool(target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
-        if column.data_type == BIGQUERY_TYPE_TIME:
-            return bool(target_type == GOE_TYPE_TIME)
-        return False
+        target_type = canonical_override.data_type if isinstance(canonical_override, ColumnSpec) else canonical_override
+        return TYPE_REGISTRY.valid_canonical_override(
+            column,
+            target_type,
+            self.type_mapping_context(),
+        )
 
     def valid_staging_formats(self):
         return [FILE_STORAGE_FORMAT_AVRO, FILE_STORAGE_FORMAT_PARQUET]
@@ -1525,217 +1455,14 @@ LIMIT 1""" % {
     def view_exists(self, db_name, view_name):
         return self._object_exists(db_name, view_name, table_type="VIEW")
 
-    def to_canonical_column(self, column: BigQueryColumn) -> CanonicalColumn:
-        """Translate a BigQuery column to an internal GOE column"""
+    def to_canonical_column(self, column: ColumnSpec) -> ColumnSpec:
+        """Translate a BigQuery column to an internal GOE column."""
+        return TYPE_REGISTRY.to_canonical(column, self.type_mapping_context())
 
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name..."""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return CanonicalColumn(
-                name=col.name,
-                data_type=data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                char_length=data_length,
-                char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
-            )
-
-        assert column
-        assert isinstance(column, BigQueryColumn)
-
-        if column.data_type == BIGQUERY_TYPE_BOOLEAN:
-            return new_column(column, GOE_TYPE_BOOLEAN)
-        if column.data_type == BIGQUERY_TYPE_STRING:
-            return new_column(column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length)
-        if column.data_type == BIGQUERY_TYPE_BYTES:
-            return new_column(column, GOE_TYPE_BINARY)
-        if column.data_type == BIGQUERY_TYPE_INT64:
-            return new_column(column, GOE_TYPE_INTEGER_8)
-        if column.data_type == BIGQUERY_TYPE_NUMERIC:
-            data_precision = column.data_precision if column.data_precision is not None else 38
-            data_scale = column.data_scale if column.data_scale is not None else 9
-            return new_column(
-                column,
-                GOE_TYPE_DECIMAL,
-                data_precision=data_precision,
-                data_scale=data_scale,
-            )
-        if column.data_type == BIGQUERY_TYPE_BIGNUMERIC:
-            if column.data_precision is not None:
-                data_precision = column.data_precision
-            else:
-                data_precision = self.max_decimal_precision()
-            data_scale = column.data_scale if column.data_scale is not None else self.max_decimal_scale()
-            return new_column(
-                column,
-                GOE_TYPE_DECIMAL,
-                data_precision=data_precision,
-                data_scale=data_scale,
-            )
-        if column.data_type == BIGQUERY_TYPE_FLOAT64:
-            return new_column(column, GOE_TYPE_DOUBLE)
-        if column.data_type == BIGQUERY_TYPE_DATE:
-            return new_column(column, GOE_TYPE_DATE, data_scale=0)
-        if column.data_type == BIGQUERY_TYPE_DATETIME:
-            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=self.max_datetime_scale())
-        if column.data_type == BIGQUERY_TYPE_TIME:
-            return new_column(column, GOE_TYPE_TIME)
-        if column.data_type == BIGQUERY_TYPE_TIMESTAMP:
-            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=self.max_datetime_scale())
-        raise NotImplementedError("Unsupported backend data type: %s" % column.data_type)
-
-    def from_canonical_column(self, column: CanonicalColumn, decimal_padding_digits: int = 0) -> BigQueryColumn:
-        """Translate an internal GOE column to a BigQuery column.
-
-        On BigQuery all 4 native integer types map to BIGINT
-        On BigQuery there is no integral type > INT64 but BIGNUMERIC can hold 38 integral digits
-        We should round an unsafe mapping up to the max for NUMERIC.
-        We can do this by removing the precision and scale settings.
-        We should round an unsafe mapping up to the max for BIGNUMERIC.
-        """
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            char_length=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable & data_default forward from RDBMS"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return BigQueryColumn(
-                col.name,
-                data_type=data_type,
-                data_length=data_length,
-                char_length=char_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-            )
-
-        assert column
-        assert isinstance(column, CanonicalColumn), "%s is not instance of CanonicalColumn" % type(column)
-
-        if column.data_type == GOE_TYPE_BOOLEAN:
-            return new_column(column, BIGQUERY_TYPE_BOOLEAN, safe_mapping=True)
-        if column.data_type in (
-            GOE_TYPE_FIXED_STRING,
-            GOE_TYPE_LARGE_STRING,
-            GOE_TYPE_VARIABLE_STRING,
-        ):
-            return new_column(
-                column,
-                BIGQUERY_TYPE_STRING,
-                char_length=column.char_length or column.data_length,
-                safe_mapping=True,
-            )
-        if column.data_type in (GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY):
-            return new_column(
-                column,
-                BIGQUERY_TYPE_BYTES,
-                data_length=column.data_length,
-                safe_mapping=True,
-            )
-        if column.data_type in (
-            GOE_TYPE_INTEGER_1,
-            GOE_TYPE_INTEGER_2,
-            GOE_TYPE_INTEGER_4,
-            GOE_TYPE_INTEGER_8,
-        ):
-            return new_column(column, BIGQUERY_TYPE_INT64, safe_mapping=True)
-        if column.data_type == GOE_TYPE_INTEGER_38:
-            if column.data_precision and column.data_precision <= 29:
-                return new_column(
-                    column,
-                    BIGQUERY_TYPE_NUMERIC,
-                    data_precision=column.data_precision,
-                    data_scale=0,
-                    safe_mapping=True,
-                )
-            return new_column(
-                column,
-                BIGQUERY_TYPE_BIGNUMERIC,
-                data_precision=38,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_DECIMAL:
-            if column.data_precision is not None:
-                integral_magnitude = column.data_precision - (column.data_scale or 0)
-            else:
-                integral_magnitude = None
-            if integral_magnitude and integral_magnitude <= 29 and (column.data_scale or 0) <= 9:
-                self._debug(
-                    "Integral magnitude/scale is valid for NUMERIC: %s/%s" % (integral_magnitude, column.data_scale)
-                )
-                new_data_type = BIGQUERY_TYPE_NUMERIC
-                new_precision = column.data_precision
-                new_scale = column.data_scale
-                if not column.safe_mapping:
-                    self._log(
-                        f"Switching unsafe NUMERIC mapping to BIGNUMERIC: {column.name}",
-                        detail=VVERBOSE,
-                    )
-                    new_data_type = BIGQUERY_TYPE_BIGNUMERIC
-                    new_precision = None
-                    new_scale = None
-                return new_column(
-                    column,
-                    new_data_type,
-                    data_precision=new_precision,
-                    data_scale=new_scale,
-                    safe_mapping=True,
-                )
-            new_precision = column.data_precision
-            new_scale = column.data_scale
-            if not column.safe_mapping:
-                self._log(
-                    f"Removing precision/scale decorators for unsafe BIGNUMERIC mapping: {column.name}",
-                    detail=VVERBOSE,
-                )
-                new_precision = None
-                new_scale = None
-            return new_column(
-                column,
-                BIGQUERY_TYPE_BIGNUMERIC,
-                data_precision=new_precision,
-                data_scale=new_scale,
-                safe_mapping=False,
-            )
-        if column.data_type in (GOE_TYPE_FLOAT, GOE_TYPE_DOUBLE):
-            return new_column(column, BIGQUERY_TYPE_FLOAT64, safe_mapping=True)
-        if column.data_type == GOE_TYPE_DATE and not self.canonical_date_supported():
-            return new_column(column, BIGQUERY_TYPE_TIMESTAMP)
-        if column.data_type == GOE_TYPE_DATE:
-            return new_column(column, BIGQUERY_TYPE_DATE)
-        if column.data_type == GOE_TYPE_TIME:
-            safe_mapping = bool(column.data_scale is None or column.data_scale <= self.max_datetime_scale())
-            return new_column(column, BIGQUERY_TYPE_TIME, safe_mapping=safe_mapping)
-        if column.data_type == GOE_TYPE_TIMESTAMP:
-            safe_mapping = bool(column.data_scale is None or column.data_scale <= self.max_datetime_scale())
-            return new_column(column, BIGQUERY_TYPE_DATETIME, safe_mapping=safe_mapping)
-        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            return new_column(column, BIGQUERY_TYPE_TIMESTAMP, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTERVAL_DS:
-            return new_column(column, BIGQUERY_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTERVAL_YM:
-            return new_column(column, BIGQUERY_TYPE_STRING, safe_mapping=False)
-        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
+    def from_canonical_column(self, column: ColumnSpec, decimal_padding_digits: int = 0) -> ColumnSpec:
+        """Translate an internal GOE column to a BigQuery column."""
+        context = msgspec.structs.replace(self.type_mapping_context(), decimal_padding_digits=decimal_padding_digits)
+        return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, context)
 
     def _add_kms_key_to_job_config(self, job_config):
         """Add kms key details (if set) to job config"""

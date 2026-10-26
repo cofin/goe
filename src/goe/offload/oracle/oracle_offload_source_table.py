@@ -7,41 +7,11 @@ import logging
 import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, ClassVar
 
 from numpy import datetime64
 
 from goe.offload import offload_constants
-from goe.offload.column_metadata import (
-    ALL_CANONICAL_TYPES,
-    CANONICAL_CHAR_SEMANTICS_CHAR,
-    CANONICAL_CHAR_SEMANTICS_UNICODE,
-    DATE_CANONICAL_TYPES,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-    NUMERIC_CANONICAL_TYPES,
-    STRING_CANONICAL_TYPES,
-    CanonicalColumn,
-    get_partition_columns,
-    is_safe_mapping,
-)
 from goe.offload.frontend_api import QueryParameter
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_source_table import (
@@ -59,7 +29,12 @@ from goe.offload.oracle.catalog import (
     OracleTableSnapshot,
     parse_single_high_value_token,
 )
-from goe.offload.oracle.oracle_column import (
+from goe.offload.oracle.oracle_frontend_api import oracle_column_from_dictionary_row
+from goe.offload.oracle.oracle_partition import (
+    rdbms_partitions_from_snapshot,
+    rdbms_subpartitions_from_snapshot,
+)
+from goe.offload.schema.column_spec import (
     ORACLE_TIMESTAMP_RE,
     ORACLE_TYPE_BINARY_DOUBLE,
     ORACLE_TYPE_BINARY_FLOAT,
@@ -70,8 +45,6 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_FLOAT,
     ORACLE_TYPE_INTERVAL_DS,
     ORACLE_TYPE_INTERVAL_YM,
-    ORACLE_TYPE_LONG,
-    ORACLE_TYPE_LONG_RAW,
     ORACLE_TYPE_NCHAR,
     ORACLE_TYPE_NCLOB,
     ORACLE_TYPE_NUMBER,
@@ -83,12 +56,11 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_VARCHAR,
     ORACLE_TYPE_VARCHAR2,
     ORACLE_TYPE_XMLTYPE,
-    OracleColumn,
+    ColumnDialect,
+    ColumnSpec,
+    get_partition_columns,
 )
-from goe.offload.oracle.oracle_partition import (
-    rdbms_partitions_from_snapshot,
-    rdbms_subpartitions_from_snapshot,
-)
+from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
 from goe.util import GOEVersion
 
 logger = logging.getLogger(__name__)
@@ -141,6 +113,8 @@ def oracle_version_is_smart_scan_unsafe(db_version: str) -> bool:
 
 class OracleSourceTable(OffloadSourceTableInterface):
     """Oracle source table details and methods"""
+
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.ORACLE
 
     def __init__(
         self,
@@ -341,7 +315,8 @@ class OracleSourceTable(OffloadSourceTableInterface):
         char_semantics=None,
         char_length=None,
     ):
-        return OracleColumn(
+        return ColumnSpec(
+            ColumnDialect.ORACLE,
             name,
             data_type,
             data_length=data_length,
@@ -635,310 +610,26 @@ class OracleSourceTable(OffloadSourceTableInterface):
         return subs_by_hwm
 
     def to_canonical_column(self, column):
-        """Translate an Oracle column to an internal GOE column"""
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable, data_default and usually char_semantics forward from RDBMS
-            Not carrying partition information forward to the canonical column because that will
-            be defined by operational logic.
-            """
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            char_semantics = (
-                CANONICAL_CHAR_SEMANTICS_UNICODE
-                if (
-                    column.data_type == ORACLE_TYPE_NCHAR
-                    or column.data_type == ORACLE_TYPE_NVARCHAR2
-                    or column.data_type == ORACLE_TYPE_NCLOB
-                )
-                else col.char_semantics
-            )
-            return CanonicalColumn(
-                col.name,
-                data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                partition_info=None,
-                char_length=col.char_length,
-                char_semantics=char_semantics,
-            )
-
-        assert column
-        assert isinstance(column, OracleColumn)
-
-        if column.data_type in (ORACLE_TYPE_CHAR, ORACLE_TYPE_NCHAR):
-            return new_column(
-                column,
-                GOE_TYPE_FIXED_STRING,
-                data_length=column.data_length,
-                safe_mapping=True,
-            )
-        if column.data_type in (
-            ORACLE_TYPE_CLOB,
-            ORACLE_TYPE_NCLOB,
-            ORACLE_TYPE_LONG,
-        ):
-            return new_column(column, GOE_TYPE_LARGE_STRING)
-        if column.data_type in (ORACLE_TYPE_VARCHAR2, ORACLE_TYPE_NVARCHAR2):
-            return new_column(column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length)
-        if column.data_type == ORACLE_TYPE_RAW:
-            return new_column(column, GOE_TYPE_BINARY, data_length=column.data_length)
-        if column.data_type in (ORACLE_TYPE_BLOB, ORACLE_TYPE_LONG_RAW):
-            return new_column(column, GOE_TYPE_LARGE_BINARY)
-        if column.data_type == ORACLE_TYPE_FLOAT:
-            return new_column(column, GOE_TYPE_DECIMAL, data_precision=None, safe_mapping=False)
-        if column.data_type == ORACLE_TYPE_NUMBER:
-            data_precision = column.data_precision
-            data_scale = column.data_scale
-            if data_precision is not None and data_scale is not None:
-                if data_scale > data_precision:
-                    data_precision = data_scale
-                elif data_scale < 0:
-                    data_scale = 0
-
-            integral_type = self._frontend_decimal_to_integral_type(
-                data_precision, data_scale, safe_mapping=column.safe_mapping
-            )
-            if integral_type:
-                return new_column(column, integral_type, data_precision=data_precision, data_scale=0)
-            safe_mapping = False if data_precision is None and data_scale is None else None
-            return new_column(
-                column,
-                GOE_TYPE_DECIMAL,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                safe_mapping=safe_mapping,
-            )
-        if column.data_type == ORACLE_TYPE_BINARY_FLOAT:
-            return new_column(column, GOE_TYPE_FLOAT)
-        if column.data_type == ORACLE_TYPE_BINARY_DOUBLE:
-            return new_column(column, GOE_TYPE_DOUBLE)
-        if column.data_type == ORACLE_TYPE_DATE:
-            return new_column(column, GOE_TYPE_TIMESTAMP)
-        if column.data_type == ORACLE_TYPE_TIMESTAMP:
-            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=column.data_scale)
-        if column.data_type == ORACLE_TYPE_TIMESTAMP_TZ:
-            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale)
-        if column.data_type == ORACLE_TYPE_TIMESTAMP_LOCAL_TZ:
-            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale)
-        if column.data_type == ORACLE_TYPE_INTERVAL_DS:
-            return new_column(
-                column,
-                GOE_TYPE_INTERVAL_DS,
-                data_precision=column.data_precision,
-                data_scale=column.data_scale,
-            )
-        if column.data_type == ORACLE_TYPE_INTERVAL_YM:
-            return new_column(
-                column,
-                GOE_TYPE_INTERVAL_YM,
-                data_precision=column.data_precision,
-                data_scale=column.data_scale,
-            )
-        if column.data_type == ORACLE_TYPE_XMLTYPE:
-            return new_column(column, GOE_TYPE_LARGE_STRING, data_scale=column.data_scale)
-        raise NotImplementedError("Unsupported Oracle data type: %s" % column.data_type)
+        """Translate an Oracle column to an internal GOE column."""
+        return TYPE_REGISTRY.to_canonical(column, self.type_mapping_context())
 
     def from_canonical_column(self, column):
-        """Translate an internal GOE column to an Oracle column"""
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            char_length=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable, data_default and char_semantics forward from canonical"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return OracleColumn(
-                col.name.upper(),
-                data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                char_length=char_length,
-                char_semantics=col.char_semantics,
-            )
-
-        def nchar_or_char(data_type, char_semantics):
-            if data_type == ORACLE_TYPE_CHAR and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE:
-                return ORACLE_TYPE_NCHAR
-            if data_type == ORACLE_TYPE_CLOB and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE:
-                return ORACLE_TYPE_NCLOB
-            if data_type == ORACLE_TYPE_VARCHAR2 and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE:
-                return ORACLE_TYPE_NVARCHAR2
-            return data_type
-
-        assert column
-        assert isinstance(column, CanonicalColumn)
-
-        if column.data_type == GOE_TYPE_FIXED_STRING:
-            max_length = 1000 if column.char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE else 2000
-            if column.data_length or column.char_length:
-                data_length = column.data_length
-                char_length = column.char_length or data_length
-            else:
-                data_length = char_length = max_length
-            if (
-                char_length
-                if column.char_semantics in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
-                else data_length
-            ) > max_length:
-                return new_column(column, nchar_or_char(ORACLE_TYPE_CLOB, column.char_semantics))
-            return new_column(
-                column,
-                nchar_or_char(ORACLE_TYPE_CHAR, column.char_semantics),
-                data_length=data_length,
-                char_length=char_length,
-            )
-        if column.data_type == GOE_TYPE_LARGE_STRING:
-            return new_column(column, nchar_or_char(ORACLE_TYPE_CLOB, column.char_semantics))
-        if column.data_type == GOE_TYPE_VARIABLE_STRING:
-            max_length = 2000 if column.char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE else 4000
-            if column.data_length or column.char_length:
-                data_length = column.data_length
-                char_length = column.char_length or data_length
-            else:
-                data_length = char_length = max_length
-            if (
-                char_length
-                if column.char_semantics in [CANONICAL_CHAR_SEMANTICS_CHAR, CANONICAL_CHAR_SEMANTICS_UNICODE]
-                else data_length
-            ) > max_length:
-                return new_column(column, nchar_or_char(ORACLE_TYPE_CLOB, column.char_semantics))
-            return new_column(
-                column,
-                nchar_or_char(ORACLE_TYPE_VARCHAR2, column.char_semantics),
-                data_length=data_length,
-                char_length=char_length,
-            )
-        if column.data_type == GOE_TYPE_BINARY:
-            data_length = column.data_length or 2000
-            if data_length > 2000:
-                return new_column(column, ORACLE_TYPE_BLOB)
-            return new_column(column, ORACLE_TYPE_RAW, data_length=data_length)
-        if column.data_type == GOE_TYPE_LARGE_BINARY:
-            return new_column(column, ORACLE_TYPE_BLOB)
-        if column.data_type in (
-            GOE_TYPE_INTEGER_1,
-            GOE_TYPE_INTEGER_2,
-            GOE_TYPE_INTEGER_4,
-            GOE_TYPE_INTEGER_8,
-            GOE_TYPE_INTEGER_38,
-        ):
-            data_length = column.data_length or 22
-            data_scale: int | None = 0
-            return new_column(
-                column,
-                ORACLE_TYPE_NUMBER,
-                data_precision=column.data_precision,
-                data_scale=data_scale,
-                data_length=data_length,
-            )
-        if column.data_type == GOE_TYPE_DECIMAL:
-            data_length = column.data_length or 22
-            data_precision, data_scale = column.data_precision, column.data_scale
-            if column.data_precision and column.data_precision > 38:
-                data_precision, data_scale = None, None
-            return new_column(
-                column,
-                ORACLE_TYPE_NUMBER,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                data_length=data_length,
-            )
-        if column.data_type == GOE_TYPE_FLOAT:
-            return new_column(column, ORACLE_TYPE_BINARY_FLOAT, data_length=4)
-        if column.data_type == GOE_TYPE_DOUBLE:
-            return new_column(column, ORACLE_TYPE_BINARY_DOUBLE, data_length=8)
-        if column.data_type == GOE_TYPE_DATE:
-            return new_column(column, ORACLE_TYPE_DATE, data_length=7)
-        if column.data_type == GOE_TYPE_TIME:
-            return new_column(column, ORACLE_TYPE_VARCHAR2, data_length=18)
-        if column.data_type == GOE_TYPE_TIMESTAMP:
-            data_scale = column.data_scale if column.data_scale is not None else self.max_datetime_scale()
-            if data_scale == 0:
-                return new_column(column, ORACLE_TYPE_DATE, data_length=7)
-            return new_column(column, ORACLE_TYPE_TIMESTAMP, data_scale=data_scale, data_length=11)
-        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            data_scale = column.data_scale if column.data_scale is not None else self.max_datetime_scale()
-            return new_column(column, ORACLE_TYPE_TIMESTAMP_TZ, data_scale=data_scale, data_length=13)
-        if column.data_type == GOE_TYPE_INTERVAL_DS:
-            return new_column(
-                column,
-                ORACLE_TYPE_INTERVAL_DS,
-                data_precision=column.data_precision,
-                data_scale=column.data_scale,
-            )
-        if column.data_type == GOE_TYPE_INTERVAL_YM:
-            return new_column(
-                column,
-                ORACLE_TYPE_INTERVAL_YM,
-                data_precision=column.data_precision,
-                data_scale=column.data_scale,
-            )
-        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
+        """Translate an internal GOE column to an Oracle column."""
+        return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, self.type_mapping_context())
 
     def valid_canonical_override(self, column, canonical_override):
-        assert isinstance(column, OracleColumn)
-        if isinstance(canonical_override, CanonicalColumn):
-            target_type = canonical_override.data_type
-        else:
-            target_type = canonical_override
-        if column.data_type in [ORACLE_TYPE_CHAR, ORACLE_TYPE_NCHAR]:
-            return bool(target_type == GOE_TYPE_FIXED_STRING)
-        if column.data_type in [ORACLE_TYPE_CLOB, ORACLE_TYPE_NCLOB]:
-            return bool(target_type == GOE_TYPE_LARGE_STRING)
-        if column.data_type in [
-            ORACLE_TYPE_VARCHAR,
-            ORACLE_TYPE_VARCHAR2,
-            ORACLE_TYPE_NVARCHAR2,
-        ]:
-            return bool(target_type == GOE_TYPE_VARIABLE_STRING)
-        if column.data_type == ORACLE_TYPE_RAW:
-            return bool(target_type == GOE_TYPE_BINARY)
-        if column.data_type == ORACLE_TYPE_BLOB:
-            return bool(target_type == GOE_TYPE_LARGE_BINARY)
-        if column.data_type == ORACLE_TYPE_BINARY_FLOAT:
-            return bool(target_type in [GOE_TYPE_FLOAT, GOE_TYPE_DOUBLE])
-        if column.data_type == ORACLE_TYPE_BINARY_DOUBLE:
-            return bool(target_type == GOE_TYPE_DOUBLE)
-        if column.is_number_based():
-            return target_type in NUMERIC_CANONICAL_TYPES
-        if column.is_date_based() and column.is_time_zone_based():
-            return bool(target_type == GOE_TYPE_TIMESTAMP_TZ)
-        if column.is_date_based():
-            return bool(target_type in DATE_CANONICAL_TYPES or target_type in STRING_CANONICAL_TYPES)
-        if column.data_type == ORACLE_TYPE_INTERVAL_DS:
-            return bool(target_type == GOE_TYPE_INTERVAL_DS)
-        if column.data_type == ORACLE_TYPE_INTERVAL_YM:
-            return bool(target_type == GOE_TYPE_INTERVAL_YM)
-        if target_type not in ALL_CANONICAL_TYPES:
-            self._messages.log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
-            return False
-        return False
+        target_type = canonical_override.data_type if isinstance(canonical_override, ColumnSpec) else canonical_override
+        return TYPE_REGISTRY.valid_canonical_override(
+            column,
+            target_type,
+            self.type_mapping_context(),
+        )
 
     def transform_encrypt_data_type(self):
         return ORACLE_TYPE_VARCHAR2
 
     def transform_null_cast(self, rdbms_column):
-        assert isinstance(rdbms_column, OracleColumn)
+        assert isinstance(rdbms_column, ColumnSpec) and rdbms_column.dialect is ColumnDialect.ORACLE
         return "CAST(NULL AS %s)" % (rdbms_column.format_data_type())
 
     def transform_tokenize_data_type(self):
@@ -1023,7 +714,7 @@ class OracleSourceTable(OffloadSourceTableInterface):
             self._primary_key_columns = list(snap.primary_key_columns)
             self._hash_bucket_candidate = None
             cols = [
-                OracleColumn.from_oracle(
+                oracle_column_from_dictionary_row(
                     (
                         col.name,
                         col.column_id,
@@ -1719,10 +1410,11 @@ class OracleSourceTable(OffloadSourceTableInterface):
         )
 
     def _sample_data_types_date_as_string_column(self, column_name):
-        return OracleColumn(column_name, self._db_api.generic_string_data_type(), data_length=128)
+        return ColumnSpec(ColumnDialect.ORACLE, column_name, self._db_api.generic_string_data_type(), data_length=128)
 
     def _sample_data_types_decimal_column(self, column, data_precision, data_scale):
-        return OracleColumn(
+        return ColumnSpec(
+            ColumnDialect.ORACLE,
             column.name,
             ORACLE_TYPE_NUMBER,
             data_precision=data_precision,

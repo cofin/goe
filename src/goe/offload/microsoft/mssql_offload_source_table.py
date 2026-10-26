@@ -4,37 +4,16 @@
 """MSSQLSourceTable: Library for logic/interaction with MSSQL source of an offload."""
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
-from goe.offload.column_metadata import (
-    ALL_CANONICAL_TYPES,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_BOOLEAN,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-    NUMERIC_CANONICAL_TYPES,
-    STRING_CANONICAL_TYPES,
-    CanonicalColumn,
-    is_safe_mapping,
-)
 from goe.offload.frontend_api import QueryParameter
-from goe.offload.microsoft.mssql_column import (
+from goe.offload.offload_source_table import OffloadSourceTableInterface
+from goe.offload.predicate_offload import (
+    get_predicate_dialect_engine,
+    resolve_predicate_types,
+)
+from goe.offload.schema.column_spec import (
     MSSQL_TYPE_BIGINT,
-    MSSQL_TYPE_BINARY,
     MSSQL_TYPE_BIT,
     MSSQL_TYPE_CHAR,
     MSSQL_TYPE_DATE,
@@ -43,30 +22,23 @@ from goe.offload.microsoft.mssql_column import (
     MSSQL_TYPE_DATETIMEOFFSET,
     MSSQL_TYPE_DECIMAL,
     MSSQL_TYPE_FLOAT,
-    MSSQL_TYPE_IMAGE,
     MSSQL_TYPE_INT,
     MSSQL_TYPE_MONEY,
     MSSQL_TYPE_NCHAR,
-    MSSQL_TYPE_NTEXT,
     MSSQL_TYPE_NUMERIC,
     MSSQL_TYPE_NVARCHAR,
     MSSQL_TYPE_REAL,
     MSSQL_TYPE_SMALLDATETIME,
     MSSQL_TYPE_SMALLINT,
     MSSQL_TYPE_SMALLMONEY,
-    MSSQL_TYPE_TEXT,
     MSSQL_TYPE_TIME,
     MSSQL_TYPE_TINYINT,
     MSSQL_TYPE_UNIQUEIDENTIFIER,
-    MSSQL_TYPE_VARBINARY,
     MSSQL_TYPE_VARCHAR,
-    MSSQLColumn,
+    ColumnDialect,
+    ColumnSpec,
 )
-from goe.offload.offload_source_table import OffloadSourceTableInterface
-from goe.offload.predicate_offload import (
-    get_predicate_dialect_engine,
-    resolve_predicate_types,
-)
+from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -74,6 +46,8 @@ logger.addHandler(logging.NullHandler())
 
 class MSSQLSourceTable(OffloadSourceTableInterface):
     """Microsoft SQL Server source table details and methods."""
+
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.MSSQL
 
     def __init__(
         self,
@@ -288,159 +262,22 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         query_params = [QueryParameter(param_name=k, param_value=v) for k, v in rendered.params.items()]
         return rendered.sql, query_params
 
-    def valid_canonical_override(self, column: MSSQLColumn, canonical_override: CanonicalColumn | str) -> bool:
+    def valid_canonical_override(self, column: ColumnSpec, canonical_override: ColumnSpec | str) -> bool:
         """Return True when canonical_override is a supported target type for column."""
-        assert isinstance(column, MSSQLColumn)
-        if isinstance(canonical_override, CanonicalColumn):
-            target_type = canonical_override.data_type
-        else:
-            target_type = canonical_override
-        if column.data_type == MSSQL_TYPE_BIT:
-            return bool(target_type == GOE_TYPE_BOOLEAN)
-        if column.data_type in [MSSQL_TYPE_CHAR, MSSQL_TYPE_NCHAR]:
-            return bool(target_type == GOE_TYPE_FIXED_STRING)
-        if column.data_type in [MSSQL_TYPE_TEXT, MSSQL_TYPE_NTEXT]:
-            return bool(target_type == GOE_TYPE_LARGE_STRING)
-        if column.data_type in [
-            MSSQL_TYPE_VARCHAR,
-            MSSQL_TYPE_NVARCHAR,
-            MSSQL_TYPE_UNIQUEIDENTIFIER,
-        ]:
-            return bool(target_type == GOE_TYPE_VARIABLE_STRING)
-        if column.data_type in [
-            MSSQL_TYPE_BINARY,
-            MSSQL_TYPE_VARBINARY,
-            MSSQL_TYPE_IMAGE,
-        ]:
-            return bool(target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
-        if column.data_type == MSSQL_TYPE_FLOAT:
-            return bool(target_type == GOE_TYPE_DOUBLE)
-        if column.data_type == MSSQL_TYPE_REAL:
-            return bool(target_type == GOE_TYPE_FLOAT)
-        if column.is_number_based():
-            return target_type in NUMERIC_CANONICAL_TYPES
-        if column.is_date_based() and column.is_time_zone_based():
-            return bool(target_type == GOE_TYPE_TIMESTAMP_TZ)
-        if column.is_date_based():
-            return bool(target_type in [GOE_TYPE_DATE, GOE_TYPE_TIMESTAMP] or target_type in STRING_CANONICAL_TYPES)
-        if column.data_type == MSSQL_TYPE_TIME:
-            return bool(target_type == GOE_TYPE_TIME)
-        if target_type not in ALL_CANONICAL_TYPES:
-            return False
-        return False
+        target_type = canonical_override.data_type if isinstance(canonical_override, ColumnSpec) else canonical_override
+        return TYPE_REGISTRY.valid_canonical_override(
+            column,
+            target_type,
+            self.type_mapping_context(),
+        )
 
-    def to_canonical_column(self, column: MSSQLColumn) -> CanonicalColumn:
-        """Translate an MSSQL column to an internal GOE CanonicalColumn."""
+    def to_canonical_column(self, column: ColumnSpec) -> ColumnSpec:
+        """Translate an MSSQL column to an internal GOE ColumnSpec."""
+        return TYPE_REGISTRY.to_canonical(column, self.type_mapping_context())
 
-        def new_column(
-            col: MSSQLColumn,
-            data_type: str,
-            data_length: int | None = None,
-            data_precision: int | None = None,
-            data_scale: int | None = None,
-            safe_mapping: bool | None = None,
-        ) -> CanonicalColumn:
-            """Construct a CanonicalColumn preserving source column nullability and defaults."""
-            resolved_safe = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return CanonicalColumn(
-                col.name,
-                data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=resolved_safe,
-                partition_info=None,
-            )
-
-        assert column
-        assert isinstance(column, MSSQLColumn)
-
-        if column.data_type == MSSQL_TYPE_BIT:
-            return new_column(column, GOE_TYPE_BOOLEAN)
-        if column.data_type in (MSSQL_TYPE_CHAR, MSSQL_TYPE_NCHAR):
-            return new_column(
-                column,
-                GOE_TYPE_FIXED_STRING,
-                data_length=column.data_length,
-                safe_mapping=True,
-            )
-        if column.data_type in (MSSQL_TYPE_TEXT, MSSQL_TYPE_NTEXT):
-            return new_column(column, GOE_TYPE_LARGE_STRING)
-        if column.data_type in (
-            MSSQL_TYPE_VARCHAR,
-            MSSQL_TYPE_NVARCHAR,
-            MSSQL_TYPE_UNIQUEIDENTIFIER,
-        ):
-            return new_column(column, GOE_TYPE_VARIABLE_STRING, data_length=column.data_length)
-        if column.data_type in (
-            MSSQL_TYPE_BINARY,
-            MSSQL_TYPE_VARBINARY,
-            MSSQL_TYPE_IMAGE,
-        ):
-            return new_column(column, GOE_TYPE_BINARY, data_length=column.data_length)
-        if column.data_type in (MSSQL_TYPE_TINYINT, MSSQL_TYPE_SMALLINT):
-            return new_column(column, GOE_TYPE_INTEGER_2)
-        if column.data_type == MSSQL_TYPE_INT:
-            return new_column(column, GOE_TYPE_INTEGER_4)
-        if column.data_type == MSSQL_TYPE_BIGINT:
-            return new_column(column, GOE_TYPE_INTEGER_8)
-        if column.data_type == MSSQL_TYPE_FLOAT:
-            return new_column(column, GOE_TYPE_DOUBLE)
-        if column.data_type == MSSQL_TYPE_REAL:
-            return new_column(column, GOE_TYPE_FLOAT)
-        if column.data_type in (
-            MSSQL_TYPE_DECIMAL,
-            MSSQL_TYPE_NUMERIC,
-            MSSQL_TYPE_MONEY,
-            MSSQL_TYPE_SMALLMONEY,
-        ):
-            data_precision = column.data_precision
-            data_scale = column.data_scale
-            if data_precision is not None and data_scale is not None:
-                if data_scale > data_precision:
-                    data_precision = data_scale
-                elif data_scale < 0:
-                    data_scale = 0
-            if data_scale == 0 and data_precision is not None:
-                if 1 <= data_precision <= 2:
-                    integral_type = GOE_TYPE_INTEGER_1
-                elif 3 <= data_precision <= 4:
-                    integral_type = GOE_TYPE_INTEGER_2
-                elif 5 <= data_precision <= 9:
-                    integral_type = GOE_TYPE_INTEGER_4
-                elif 10 <= data_precision <= 18:
-                    integral_type = GOE_TYPE_INTEGER_8
-                elif 19 <= data_precision <= 38:
-                    integral_type = GOE_TYPE_INTEGER_38
-                else:
-                    integral_type = GOE_TYPE_DECIMAL
-                return new_column(column, integral_type, data_precision=data_precision, data_scale=0)
-            safe_mapping = False if data_precision is None and data_scale is None else None
-            return new_column(
-                column,
-                GOE_TYPE_DECIMAL,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                safe_mapping=safe_mapping,
-            )
-        if column.data_type == MSSQL_TYPE_DATE:
-            return new_column(column, GOE_TYPE_DATE)
-        if column.data_type == MSSQL_TYPE_TIME:
-            return new_column(column, GOE_TYPE_TIME)
-        if column.data_type in (
-            MSSQL_TYPE_SMALLDATETIME,
-            MSSQL_TYPE_DATETIME,
-            MSSQL_TYPE_DATETIME2,
-        ):
-            return new_column(column, GOE_TYPE_TIMESTAMP)
-        if column.data_type == MSSQL_TYPE_DATETIMEOFFSET:
-            return new_column(column, GOE_TYPE_TIMESTAMP_TZ)
-        raise NotImplementedError(f"Unsupported MSSQL data type: {column.data_type}")
-
-    def from_canonical_column(self, column: CanonicalColumn) -> MSSQLColumn:
-        raise NotImplementedError("MSSQL from_canonical_column() not implemented.")
+    def from_canonical_column(self, column: ColumnSpec) -> ColumnSpec:
+        """Translate an internal GOE ColumnSpec to an MSSQL ColumnSpec."""
+        return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, self.type_mapping_context())
 
     def gen_column(
         self,
@@ -449,13 +286,14 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
         data_length: int | None = None,
         data_precision: int | None = None,
         data_scale: int | None = None,
-        nullable: bool | str | None = None,
+        nullable: Any = None,
         data_default: Any = None,
         hidden: bool | None = None,
         char_semantics: str | None = None,
         char_length: int | None = None,
-    ) -> MSSQLColumn:
-        return MSSQLColumn(
+    ) -> ColumnSpec:
+        return ColumnSpec(
+            ColumnDialect.MSSQL,
             name,
             data_type,
             data_length=data_length,
@@ -468,17 +306,17 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
             char_length=char_length,
         )
 
-    def gen_default_numeric_column(self, column_name: str) -> MSSQLColumn:
+    def gen_default_numeric_column(self, column_name: str) -> ColumnSpec:
         return self.gen_column(column_name, MSSQL_TYPE_NUMERIC)
 
-    def gen_default_date_column(self, column_name: str) -> MSSQLColumn:
+    def gen_default_date_column(self, column_name: str) -> ColumnSpec:
         return self.gen_column(column_name, MSSQL_TYPE_DATE)
 
     def transform_encrypt_data_type(self) -> str:
         return MSSQL_TYPE_VARCHAR
 
-    def transform_null_cast(self, rdbms_column: MSSQLColumn) -> str:
-        assert isinstance(rdbms_column, MSSQLColumn)
+    def transform_null_cast(self, rdbms_column: ColumnSpec) -> str:
+        assert isinstance(rdbms_column, ColumnSpec) and rdbms_column.dialect is ColumnDialect.MSSQL
         return f"CAST(NULL AS {rdbms_column.format_data_type()})"
 
     def transform_tokenize_data_type(self) -> str:
@@ -576,16 +414,17 @@ class MSSQLSourceTable(OffloadSourceTableInterface):
     def _sample_data_types_data_sample_pct(self, data_sample_pct: Any) -> float:
         raise NotImplementedError("MSSQL _sample_data_types_data_sample_pct not implemented.")
 
-    def _sample_data_types_date_as_string_column(self, column_name: str) -> MSSQLColumn:
+    def _sample_data_types_date_as_string_column(self, column_name: str) -> ColumnSpec:
         raise NotImplementedError("MSSQL _sample_data_types_date_as_string_column not implemented.")
 
     def _sample_data_types_decimal_column(
         self,
-        column: MSSQLColumn,
+        column: ColumnSpec,
         data_precision: int,
         data_scale: int,
-    ) -> MSSQLColumn:
-        return MSSQLColumn(
+    ) -> ColumnSpec:
+        return ColumnSpec(
+            ColumnDialect.MSSQL,
             column.name,
             MSSQL_TYPE_NUMERIC,
             data_precision=data_precision,

@@ -16,7 +16,7 @@ from goe.offload.offload_metadata_functions import (
     incremental_hv_list_from_csv,
 )
 from goe.offload.offload_source_table import OffloadSourceTableInterface
-from goe.offload.oracle.oracle_column import OracleColumn
+from goe.offload.schema.column_spec import ColumnDialect, ColumnSpec
 from goe.orchestration import orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.models import OffloadMetadata
@@ -31,7 +31,7 @@ def test_gen_offload_metadata_and_save_persists_via_repository_service() -> None
     messages = OffloadMessages(execution_id=execution_id, command_type=orchestration_constants.COMMAND_OFFLOAD)
     messages.setup_offload_step(repo_client=repo_client, command_type=orchestration_constants.COMMAND_OFFLOAD)
     config = build_mock_options(FAKE_ORACLE_BQ_ENV)
-    inc_cols = [OracleColumn("TIME_ID", "DATE")]
+    inc_cols = [ColumnSpec(ColumnDialect.ORACLE, "TIME_ID", "DATE")]
     inc_hv = "TO_DATE(' 2012-03-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')"
 
     operation = SimpleNamespace(

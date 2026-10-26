@@ -11,6 +11,7 @@ See BackendHadoopApi for better+impyla justification.
 import logging
 import re
 from copy import copy
+from typing import ClassVar
 
 from numpy import datetime64
 
@@ -19,34 +20,9 @@ from goe.offload.backend_api import (
     UdfDetails,
     UdfParameter,
 )
-from goe.offload.column_metadata import (
-    GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
-    is_safe_mapping,
-    match_table_column,
-    str_list_of_columns,
-    valid_column_list,
-)
 from goe.offload.hadoop.better_impyla import from_impala_size
 from goe.offload.hadoop.hadoop_backend_api import (
     BackendHadoopApi,
-)
-from goe.offload.hadoop.hadoop_column import (
-    HADOOP_TYPE_BIGINT,
-    HADOOP_TYPE_BOOLEAN,
-    HADOOP_TYPE_CHAR,
-    HADOOP_TYPE_DATE,
-    HADOOP_TYPE_DECIMAL,
-    HADOOP_TYPE_DOUBLE,
-    HADOOP_TYPE_FLOAT,
-    HADOOP_TYPE_INT,
-    HADOOP_TYPE_REAL,
-    HADOOP_TYPE_SMALLINT,
-    HADOOP_TYPE_STRING,
-    HADOOP_TYPE_TIMESTAMP,
-    HADOOP_TYPE_TINYINT,
-    HADOOP_TYPE_VARCHAR,
-    HadoopColumn,
 )
 from goe.offload.hadoop.impala_literal import ImpalaLiteral
 from goe.offload.offload_constants import (
@@ -63,6 +39,26 @@ from goe.offload.offload_constants import (
     IMPALA_BACKEND_CAPABILITIES,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
+    HADOOP_TYPE_BIGINT,
+    HADOOP_TYPE_BOOLEAN,
+    HADOOP_TYPE_CHAR,
+    HADOOP_TYPE_DATE,
+    HADOOP_TYPE_DECIMAL,
+    HADOOP_TYPE_DOUBLE,
+    HADOOP_TYPE_FLOAT,
+    HADOOP_TYPE_INT,
+    HADOOP_TYPE_REAL,
+    HADOOP_TYPE_SMALLINT,
+    HADOOP_TYPE_STRING,
+    HADOOP_TYPE_TIMESTAMP,
+    HADOOP_TYPE_TINYINT,
+    HADOOP_TYPE_VARCHAR,
+    match_table_column,
+    str_list_of_columns,
+    valid_column_list,
+)
+from goe.offload.schema.type_registry import MappingTarget
 from goe.util import GOEVersion
 
 logger = logging.getLogger(__name__)
@@ -71,6 +67,8 @@ logger.addHandler(logging.NullHandler())
 
 class BackendImpalaApi(BackendHadoopApi):
     """Impala implementation."""
+
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.IMPALA
 
     def __init__(
         self,
@@ -324,40 +322,6 @@ class BackendImpalaApi(BackendHadoopApi):
         if self.is_capability_supported(CAPABILITY_FS_SCHEME_S3A):
             return bool(GOEVersion(self.target_version()) >= GOEVersion("2.6.0"))
         return False
-
-    def from_canonical_column(self, column, decimal_padding_digits=0):
-        """Translate an internal GOE column to an Impala column.
-
-        Impala has a different outcome to Hive for GOE_TYPE_BINARY and GOE_TYPE_LARGE_BINARY
-        We deal with them here and then fall back into the parent code
-        """
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable & data_default forward from RDBMS."""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return HadoopColumn(
-                col.name,
-                data_type=data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-            )
-
-        if column.data_type == GOE_TYPE_BINARY:
-            return new_column(column, HADOOP_TYPE_STRING)
-        if column.data_type == GOE_TYPE_LARGE_BINARY:
-            return new_column(column, HADOOP_TYPE_STRING)
-        return super().from_canonical_column(column, decimal_padding_digits=decimal_padding_digits)
 
     def gen_insert_select_sql_text(
         self,

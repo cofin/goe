@@ -9,7 +9,7 @@ processing and verification of integration tests.
 
 import logging
 
-from goe.offload.column_metadata import (
+from goe.offload.schema.column_spec import (
     CANONICAL_CHAR_SEMANTICS_CHAR,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
     GOE_TYPE_BINARY,
@@ -32,9 +32,6 @@ from goe.offload.column_metadata import (
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
     GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-)
-from goe.offload.snowflake.snowflake_column import (
     SNOWFLAKE_TYPE_BINARY,
     SNOWFLAKE_TYPE_BOOLEAN,
     SNOWFLAKE_TYPE_DATE,
@@ -44,7 +41,8 @@ from goe.offload.snowflake.snowflake_column import (
     SNOWFLAKE_TYPE_TIME,
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
     SNOWFLAKE_TYPE_TIMESTAMP_TZ,
-    SnowflakeColumn,
+    ColumnDialect,
+    ColumnSpec,
 )
 from tests.testlib.test_framework.backend_testing_api import (
     STORY_TEST_BACKEND_BLOB_COL,
@@ -127,20 +125,25 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
 
         all_columns = {
             name(SNOWFLAKE_TYPE_BINARY, "2000"): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_BINARY, "2000"),
                     SNOWFLAKE_TYPE_BINARY,
                     data_length=2000,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_BINARY, "2000"), GOE_TYPE_BINARY),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_BINARY, "2000"), GOE_TYPE_BINARY
+                ),
             },
             name(SNOWFLAKE_TYPE_BINARY, "2000", GOE_TYPE_LARGE_BINARY): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_BINARY, "2000", GOE_TYPE_LARGE_BINARY),
                     SNOWFLAKE_TYPE_BINARY,
                     data_length=2000,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_BINARY, "2000", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
@@ -149,53 +152,63 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SNOWFLAKE_TYPE_BINARY, "2001"): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_BINARY, "2001"),
                     SNOWFLAKE_TYPE_BINARY,
                     data_length=2001,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_BINARY, "2001"), GOE_TYPE_LARGE_BINARY
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_BINARY, "2001"), GOE_TYPE_LARGE_BINARY
                 ),
             },
             name(SNOWFLAKE_TYPE_BINARY, "2001", GOE_TYPE_BINARY): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_BINARY, "2001", GOE_TYPE_BINARY),
                     SNOWFLAKE_TYPE_BINARY,
                     data_length=2001,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_BINARY, "2001", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
                 "present_options": {"binary_columns_csv": name(SNOWFLAKE_TYPE_BINARY, "2001", GOE_TYPE_BINARY)},
             },
             name(SNOWFLAKE_TYPE_DATE): {
-                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_DATE), SNOWFLAKE_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_DATE), GOE_TYPE_DATE),
+                "column": ColumnSpec(ColumnDialect.SNOWFLAKE, name(SNOWFLAKE_TYPE_DATE), SNOWFLAKE_TYPE_DATE),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_DATE), GOE_TYPE_DATE
+                ),
             },
             name(SNOWFLAKE_TYPE_DATE, GOE_TYPE_TIMESTAMP): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_DATE, GOE_TYPE_TIMESTAMP),
                     SNOWFLAKE_TYPE_DATE,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_DATE, GOE_TYPE_TIMESTAMP),
                     GOE_TYPE_TIMESTAMP,
                 ),
                 "present_options": {"timestamp_columns_csv": name(SNOWFLAKE_TYPE_DATE, GOE_TYPE_TIMESTAMP)},
             },
             name(SNOWFLAKE_TYPE_FLOAT): {
-                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_FLOAT), SNOWFLAKE_TYPE_FLOAT),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_FLOAT), GOE_TYPE_DOUBLE),
+                "column": ColumnSpec(ColumnDialect.SNOWFLAKE, name(SNOWFLAKE_TYPE_FLOAT), SNOWFLAKE_TYPE_FLOAT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_FLOAT), GOE_TYPE_DOUBLE
+                ),
             },
             name(SNOWFLAKE_TYPE_FLOAT, GOE_TYPE_DECIMAL): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_FLOAT, GOE_TYPE_DECIMAL),
                     SNOWFLAKE_TYPE_FLOAT,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_FLOAT, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_FLOAT, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
                 ),
                 "present_options": {
                     "decimal_columns_csv_list": [name(SNOWFLAKE_TYPE_FLOAT, GOE_TYPE_DECIMAL)],
@@ -203,124 +216,148 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SNOWFLAKE_TYPE_NUMBER): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=38,
                     data_scale=18,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_NUMBER), GOE_TYPE_DECIMAL),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_NUMBER), GOE_TYPE_DECIMAL
+                ),
             },
             name(SNOWFLAKE_TYPE_NUMBER, "2", "0"): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER, "2", "0"),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_NUMBER, "2", "0"), GOE_TYPE_INTEGER_1),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_NUMBER, "2", "0"), GOE_TYPE_INTEGER_1
+                ),
             },
             name(SNOWFLAKE_TYPE_NUMBER, "4", "0"): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER, "4", "0"),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_NUMBER, "4", "0"), GOE_TYPE_INTEGER_2),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_NUMBER, "4", "0"), GOE_TYPE_INTEGER_2
+                ),
             },
             name(SNOWFLAKE_TYPE_NUMBER, "9", "0"): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER, "9", "0"),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_NUMBER, "9", "0"), GOE_TYPE_INTEGER_4),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_NUMBER, "9", "0"), GOE_TYPE_INTEGER_4
+                ),
             },
             name(SNOWFLAKE_TYPE_NUMBER, "18", "0"): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER, "18", "0"),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_NUMBER, "18", "0"), GOE_TYPE_INTEGER_8
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_NUMBER, "18", "0"), GOE_TYPE_INTEGER_8
                 ),
             },
             # Trimmed down to NUMBER(36) because cx_Oracle has issues beyond that
             name(SNOWFLAKE_TYPE_NUMBER, "36", "0"): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER, "36", "0"),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=36,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_NUMBER, "36", "0"), GOE_TYPE_INTEGER_38
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_NUMBER, "36", "0"), GOE_TYPE_INTEGER_38
                 ),
             },
             name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_1): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_1),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=38,
                     data_scale=18,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_1_columns_csv": name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_1)},
             },
             name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_2): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_2),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=38,
                     data_scale=18,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
                 "present_options": {"integer_2_columns_csv": name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_2)},
             },
             name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_4): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_4),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=38,
                     data_scale=18,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_4_columns_csv": name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_4)},
             },
             name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_8): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_8),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=38,
                     data_scale=18,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_8_columns_csv": name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_8)},
             },
             name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_38): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_38),
                     SNOWFLAKE_TYPE_NUMBER,
                     data_precision=38,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_NUMBER, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_1,
                 ),
@@ -332,55 +369,65 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
             #   support at present but will need to be reviewed for correctness.
             # name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_FIXED_STRING):
             # {'column':
-            # SnowflakeColumn(name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_FIXED_STRING),
+            # ColumnSpec(ColumnDialect.SNOWFLAKE, name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_FIXED_STRING),
             # SNOWFLAKE_TYPE_TEXT),
             # 'expected_canonical_column':
-            # CanonicalColumn(name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_FIXED_STRING), GOE_TYPE_FIXED_STRING),
+            # ColumnSpec(ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_FIXED_STRING), GOE_TYPE_FIXED_STRING),
             # 'present_options': {'fixed_string_columns_csv': name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_FIXED_STRING)}},
             name(SNOWFLAKE_TYPE_TEXT, "4000"): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TEXT, "4000"),
                     SNOWFLAKE_TYPE_TEXT,
                     char_length=4000,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_TEXT, "4000"), GOE_TYPE_VARIABLE_STRING
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_TEXT, "4000"), GOE_TYPE_VARIABLE_STRING
                 ),
             },
             name(SNOWFLAKE_TYPE_TEXT, "4001"): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TEXT, "4001"),
                     SNOWFLAKE_TYPE_TEXT,
                     char_length=4001,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_TEXT, "4001"), GOE_TYPE_LARGE_STRING),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_TEXT, "4001"), GOE_TYPE_LARGE_STRING
+                ),
             },
             name(SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING),
                     SNOWFLAKE_TYPE_TEXT,
                     char_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
                 "present_options": {"large_string_columns_csv": name(SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING)},
             },
             name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY): {
-                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY), SNOWFLAKE_TYPE_TEXT),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY), GOE_TYPE_BINARY
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE, name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY), SNOWFLAKE_TYPE_TEXT
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY), GOE_TYPE_BINARY
                 ),
                 "present_options": {"binary_columns_csv": name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_BINARY)},
             },
             name(SNOWFLAKE_TYPE_TEXT, "2000", UNICODE_NAME_TOKEN): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TEXT, "2000", UNICODE_NAME_TOKEN),
                     SNOWFLAKE_TYPE_TEXT,
                     char_length=2000,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_TEXT, "2000", UNICODE_NAME_TOKEN),
                     GOE_TYPE_LARGE_STRING,
                     char_length=2000,
@@ -391,12 +438,14 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SNOWFLAKE_TYPE_TEXT, "2001", UNICODE_NAME_TOKEN): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TEXT, "2001", UNICODE_NAME_TOKEN),
                     SNOWFLAKE_TYPE_TEXT,
                     char_length=2001,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_TEXT, "2001", UNICODE_NAME_TOKEN),
                     GOE_TYPE_LARGE_STRING,
                     char_length=2001,
@@ -407,7 +456,8 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SNOWFLAKE_TYPE_TEXT, "30", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(
                         SNOWFLAKE_TYPE_TEXT,
                         "30",
@@ -417,7 +467,8 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                     SNOWFLAKE_TYPE_TEXT,
                     char_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(
                         SNOWFLAKE_TYPE_TEXT,
                         "30",
@@ -443,78 +494,100 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_LARGE_BINARY): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_LARGE_BINARY),
                     SNOWFLAKE_TYPE_TEXT,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
                 "present_options": {"large_binary_columns_csv": name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_LARGE_BINARY)},
             },
             name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_DS): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_DS),
                     SNOWFLAKE_TYPE_TEXT,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_DS),
                     GOE_TYPE_INTERVAL_DS,
                 ),
                 "present_options": {"interval_ds_columns_csv": name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_DS)},
             },
             name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_YM): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_YM),
                     SNOWFLAKE_TYPE_TEXT,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_YM),
                     GOE_TYPE_INTERVAL_YM,
                 ),
                 "present_options": {"interval_ym_columns_csv": name(SNOWFLAKE_TYPE_TEXT, GOE_TYPE_INTERVAL_YM)},
             },
             name(SNOWFLAKE_TYPE_TIME): {
-                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_TIME), SNOWFLAKE_TYPE_TIME),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_TIME), GOE_TYPE_TIME),
+                "column": ColumnSpec(ColumnDialect.SNOWFLAKE, name(SNOWFLAKE_TYPE_TIME), SNOWFLAKE_TYPE_TIME),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_TIME), GOE_TYPE_TIME
+                ),
             },
             name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ): {
-                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ), SNOWFLAKE_TYPE_TIMESTAMP_NTZ),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ), GOE_TYPE_TIMESTAMP),
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE, name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ), SNOWFLAKE_TYPE_TIMESTAMP_NTZ
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ), GOE_TYPE_TIMESTAMP
+                ),
             },
             name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ, GOE_TYPE_DATE): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ, GOE_TYPE_DATE),
                     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ, GOE_TYPE_DATE),
                     GOE_TYPE_DATE,
                 ),
                 "present_options": {"date_columns_csv": name(SNOWFLAKE_TYPE_TIMESTAMP_NTZ, GOE_TYPE_DATE)},
             },
             name(SNOWFLAKE_TYPE_TIMESTAMP_TZ): {
-                "column": SnowflakeColumn(name(SNOWFLAKE_TYPE_TIMESTAMP_TZ), SNOWFLAKE_TYPE_TIMESTAMP_TZ),
-                "expected_canonical_column": CanonicalColumn(name(SNOWFLAKE_TYPE_TIMESTAMP_TZ), GOE_TYPE_TIMESTAMP_TZ),
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE, name(SNOWFLAKE_TYPE_TIMESTAMP_TZ), SNOWFLAKE_TYPE_TIMESTAMP_TZ
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SNOWFLAKE_TYPE_TIMESTAMP_TZ), GOE_TYPE_TIMESTAMP_TZ
+                ),
             },
             name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_DATE): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_DATE),
                     SNOWFLAKE_TYPE_TIMESTAMP_TZ,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_DATE),
                     GOE_TYPE_DATE,
                 ),
                 "present_options": {"date_columns_csv": name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_DATE)},
             },
             name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_TIMESTAMP): {
-                "column": SnowflakeColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
                     name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_TIMESTAMP),
                     SNOWFLAKE_TYPE_TIMESTAMP_TZ,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SNOWFLAKE_TYPE_TIMESTAMP_TZ, GOE_TYPE_TIMESTAMP),
                     GOE_TYPE_TIMESTAMP,
                 ),
@@ -615,13 +688,14 @@ class BackendSnowflakeTestingApi(BackendTestingApiInterface):
             canonical_column, decimal_padding_digits=decimal_padding_digits
         )
         if expected_precision_scale:
-            return SnowflakeColumn(
+            return ColumnSpec(
+                ColumnDialect.SNOWFLAKE,
                 canonical_column.name,
                 expected_data_type,
                 data_precision=expected_precision_scale[0],
                 data_scale=expected_precision_scale[1],
             )
-        return SnowflakeColumn(canonical_column.name, expected_data_type)
+        return ColumnSpec(ColumnDialect.SNOWFLAKE, canonical_column.name, expected_data_type)
 
     def expected_backend_precision_scale(self, canonical_column, decimal_padding_digits=None):
         if canonical_column.data_type == GOE_TYPE_DECIMAL:

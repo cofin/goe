@@ -11,26 +11,22 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from string import Template
 from textwrap import dedent
-from typing import Any
+from typing import Any, ClassVar
 
 from numpy import datetime64
 
-from goe.offload.column_metadata import (
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    ColumnMetadataInterface,
-    ColumnPartitionInfo,
+from goe.offload.offload_constants import INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.registry import create_frontend_api
+from goe.offload.schema.column_spec import (
+    ColumnPartitionSpec,
+    ColumnSpec,
     get_column_names,
     get_partition_columns,
     match_table_column,
     valid_column_list,
 )
-from goe.offload.offload_constants import INVALID_DATA_TYPE_CONVERSION_EXCEPTION_TEXT
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.registry import create_frontend_api
+from goe.offload.schema.type_registry import MappingContext, MappingTarget, TypeMappingLimits
 from goe.util.string_utils import get_integral_part_magnitude
 
 
@@ -154,6 +150,8 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
     Attributes such as columns/size_in_bytes/etc are defined as methods so they can be enforced in
     subclasses, the subclasses should use @property to allow simplified usage of these
     """
+
+    type_mapping_target: ClassVar[MappingTarget]
 
     def __init__(
         self,
@@ -288,8 +286,8 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         column can be a column object or column_name.
         Optional partition_name to select from.
         """
-        assert isinstance(column, (ColumnMetadataInterface, str))
-        column_name = column.name if isinstance(column, ColumnMetadataInterface) else column
+        assert isinstance(column, (ColumnSpec, str))
+        column_name = column.name if isinstance(column, ColumnSpec) else column
         return self._db_api.get_distinct_column_values(
             self.owner, self.table_name, column_name, partition_name=partition_name
         )
@@ -420,7 +418,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         allow_decimal_scale_rounding,
     ):
         """Sample data for a list of columns and return a list of new RDBMS columns based on the results.
-            columns_to_sample: A list of OracleColumn objects
+            columns_to_sample: A list of ColumnSpec objects
             data_sample_pct: % of data in the source table to sample
             data_sample_parallelism: degree of parallelism for sample query. 0 = no parallel
             backend_min_possible_date: The minimum date that the backend can handle
@@ -620,7 +618,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         assert isinstance(columns_to_sample, list)
         if not columns_to_sample:
             return None
-        assert isinstance(columns_to_sample[0], ColumnMetadataInterface)
+        assert isinstance(columns_to_sample[0], ColumnSpec)
 
         local_data_sample_pct = self._sample_data_types_data_sample_pct(data_sample_pct)
         local_data_sample_parallelism = self._sample_data_types_data_sample_parallelism(data_sample_parallelism)
@@ -859,9 +857,7 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         auto_detect_dates: Can be set to false to ignore default rules and go for a default data type.
         """
         assert rdbms_column
-        assert isinstance(rdbms_column, ColumnMetadataInterface), (
-            "%s is not an instance of ColumnMetadataInterface" % type(rdbms_column)
-        )
+        assert isinstance(rdbms_column, ColumnSpec), "%s is not an instance of ColumnSpec" % type(rdbms_column)
         if canonical_overrides:
             assert valid_column_list(canonical_overrides)
 
@@ -878,14 +874,12 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
                         new_col.data_type,
                     )
                 )
-            new_col.nullable = rdbms_column.nullable
+            new_col = new_col.replace(nullable=rdbms_column.nullable)
         elif rdbms_column.is_number_based() and not auto_detect_num:
-            tmp_col = self.gen_default_numeric_column(rdbms_column.name)
-            tmp_col.nullable = rdbms_column.nullable
+            tmp_col = self.gen_default_numeric_column(rdbms_column.name).replace(nullable=rdbms_column.nullable)
             new_col = self.to_canonical_column(tmp_col)
         elif rdbms_column.is_date_based() and not auto_detect_dates:
-            tmp_col = self.gen_default_date_column(rdbms_column.name)
-            tmp_col.nullable = rdbms_column.nullable
+            tmp_col = self.gen_default_date_column(rdbms_column.name).replace(nullable=rdbms_column.nullable)
             new_col = self.to_canonical_column(tmp_col)
         else:
             new_col = self.to_canonical_column(rdbms_column)
@@ -930,6 +924,13 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         column: the source RDBMS column object.
         canonical_override: either a canonical column object or a GOE_TYPE_... data type.
         """
+
+    def type_mapping_context(self) -> MappingContext:
+        """Build the immutable MappingContext from the source table's active limits."""
+        return MappingContext(
+            limits=TypeMappingLimits(max_datetime_scale=self.max_datetime_scale()),
+            log=self._log_type_mapping,
+        )
 
     def goe_offload_status_report_supported(self):
         return self._db_api.goe_offload_status_report_supported()
@@ -979,25 +980,8 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         """
         return True
 
-    def _frontend_decimal_to_integral_type(self, data_precision, data_scale, safe_mapping=True):
-        if data_scale == 0:
-            if 1 <= (data_precision or 0) <= 2:
-                return GOE_TYPE_INTEGER_1
-            if 3 <= (data_precision or 0) <= 4:
-                return GOE_TYPE_INTEGER_2
-            if 5 <= (data_precision or 0) <= 9:
-                return GOE_TYPE_INTEGER_4
-            if (17 <= (data_precision or 0) <= 18) and not safe_mapping:
-                self._log(
-                    f"Switching unsafe INT8({data_precision}) mapping to INT38",
-                    detail=VVERBOSE,
-                )
-                return GOE_TYPE_INTEGER_38
-            if 10 <= (data_precision or 0) <= 18:
-                return GOE_TYPE_INTEGER_8
-            if 19 <= (data_precision or 0) <= 38:
-                return GOE_TYPE_INTEGER_38
-        return None
+    def _log_type_mapping(self, message: str, detail: int) -> None:
+        self._log(message, detail=detail)
 
     def _get_column_details(self):
         logger.debug("_get_column_details: %s, %s" % (self.owner, self.table_name))
@@ -1018,10 +1002,11 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
             logger.debug("Found part_cols: %s" % str(part_cols))
         new_columns = []
         for col in self._columns or []:
-            new_col = col.clone()
             if part_cols and col.name in part_cols:
-                part_col_position = part_cols.index(new_col.name)
-                new_col.partition_info = ColumnPartitionInfo(position=part_col_position)
+                part_col_position = part_cols.index(col.name)
+                new_col = col.replace(partition_info=ColumnPartitionSpec(position=part_col_position))
+            else:
+                new_col = col.replace()
             new_columns.append(new_col)
         return new_columns
 

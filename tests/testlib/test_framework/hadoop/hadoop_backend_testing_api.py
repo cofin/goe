@@ -15,7 +15,8 @@ from goe.filesystem.goe_dfs import (
     OFFLOAD_FS_SCHEME_HDFS,
     get_scheme_from_location_uri,
 )
-from goe.offload.column_metadata import (
+from goe.offload.offload_messages import VERBOSE
+from goe.offload.schema.column_spec import (
     CANONICAL_CHAR_SEMANTICS_UNICODE,
     GOE_TYPE_BINARY,
     GOE_TYPE_DATE,
@@ -34,9 +35,6 @@ from goe.offload.column_metadata import (
     GOE_TYPE_LARGE_STRING,
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-)
-from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_CHAR,
     HADOOP_TYPE_DATE,
@@ -49,9 +47,9 @@ from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_TIMESTAMP,
     HADOOP_TYPE_TINYINT,
     HADOOP_TYPE_VARCHAR,
-    HadoopColumn,
+    ColumnDialect,
+    ColumnSpec,
 )
-from goe.offload.offload_messages import VERBOSE
 from tests.testlib.test_framework.backend_testing_api import (
     STORY_TEST_BACKEND_DATE_COL,
     STORY_TEST_BACKEND_DECIMAL_DEF_COL,
@@ -157,143 +155,182 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
 
         all_columns = {
             name(HADOOP_TYPE_BIGINT): {
-                "column": HadoopColumn(name(HADOOP_TYPE_BIGINT), HADOOP_TYPE_BIGINT),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_BIGINT), GOE_TYPE_INTEGER_8),
+                "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_BIGINT), HADOOP_TYPE_BIGINT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_BIGINT), GOE_TYPE_INTEGER_8
+                ),
             },
             name(HADOOP_TYPE_CHAR, "3"): {
-                "column": HadoopColumn(name(HADOOP_TYPE_CHAR, "3"), HADOOP_TYPE_CHAR, data_length=3),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_CHAR, "3"), GOE_TYPE_FIXED_STRING),
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP, name(HADOOP_TYPE_CHAR, "3"), HADOOP_TYPE_CHAR, data_length=3
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_CHAR, "3"), GOE_TYPE_FIXED_STRING
+                ),
             },
             name(HADOOP_TYPE_CHAR, "3", UNICODE_NAME_TOKEN): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_CHAR, "3", UNICODE_NAME_TOKEN),
                     HADOOP_TYPE_CHAR,
                     data_length=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_CHAR, "3", UNICODE_NAME_TOKEN),
                     GOE_TYPE_FIXED_STRING,
                 ),
                 "present_options": {"unicode_string_columns_csv": name(HADOOP_TYPE_CHAR, "3", UNICODE_NAME_TOKEN)},
             },
             name(HADOOP_TYPE_DECIMAL, "2", "0"): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_DECIMAL, "2", "0"),
                     HADOOP_TYPE_DECIMAL,
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_DECIMAL, "2", "0"), GOE_TYPE_INTEGER_1),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_DECIMAL, "2", "0"), GOE_TYPE_INTEGER_1
+                ),
             },
             name(HADOOP_TYPE_DECIMAL, "4", "0"): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_DECIMAL, "4", "0"),
                     HADOOP_TYPE_DECIMAL,
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_DECIMAL, "4", "0"), GOE_TYPE_INTEGER_2),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_DECIMAL, "4", "0"), GOE_TYPE_INTEGER_2
+                ),
             },
             name(HADOOP_TYPE_DECIMAL, "9", "0"): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_DECIMAL, "9", "0"),
                     HADOOP_TYPE_DECIMAL,
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_DECIMAL, "9", "0"), GOE_TYPE_INTEGER_4),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_DECIMAL, "9", "0"), GOE_TYPE_INTEGER_4
+                ),
             },
             name(HADOOP_TYPE_DECIMAL, "18", "0"): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_DECIMAL, "18", "0"),
                     HADOOP_TYPE_DECIMAL,
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_DECIMAL, "18", "0"), GOE_TYPE_INTEGER_8),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_DECIMAL, "18", "0"), GOE_TYPE_INTEGER_8
+                ),
             },
             # Trimmed down to DECIMAL(36) because cx_Oracle has issues beyond that
             name(HADOOP_TYPE_DECIMAL, "36", "0"): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_DECIMAL, "36", "0"),
                     HADOOP_TYPE_DECIMAL,
                     data_precision=36,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_DECIMAL, "36", "0"), GOE_TYPE_INTEGER_38),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_DECIMAL, "36", "0"), GOE_TYPE_INTEGER_38
+                ),
             },
             name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_1): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_1),
                     HADOOP_TYPE_DECIMAL,
                     data_precision=2,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_1_columns_csv": name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_1)},
             },
             name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_2): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_2),
                     HADOOP_TYPE_DECIMAL,
                     data_precision=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
                 "present_options": {"integer_2_columns_csv": name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_2)},
             },
             name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_4): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_4),
                     HADOOP_TYPE_DECIMAL,
                     data_precision=9,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_4,
                 ),
                 "present_options": {"integer_4_columns_csv": name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_4)},
             },
             name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_8): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_8),
                     HADOOP_TYPE_DECIMAL,
                     data_precision=18,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_8,
                 ),
                 "present_options": {"integer_8_columns_csv": name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_8)},
             },
             name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_38): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_38),
                     HADOOP_TYPE_DECIMAL,
                     data_precision=38,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_38,
                 ),
                 "present_options": {"integer_38_columns_csv": name(HADOOP_TYPE_DECIMAL, GOE_TYPE_INTEGER_38)},
             },
             name(HADOOP_TYPE_DECIMAL): {
-                "column": HadoopColumn(name(HADOOP_TYPE_DECIMAL), HADOOP_TYPE_DECIMAL),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_DECIMAL), GOE_TYPE_DECIMAL),
+                "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_DECIMAL), HADOOP_TYPE_DECIMAL),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_DECIMAL), GOE_TYPE_DECIMAL
+                ),
             },
             name(HADOOP_TYPE_DOUBLE): {
-                "column": HadoopColumn(name(HADOOP_TYPE_DOUBLE), HADOOP_TYPE_DOUBLE),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_DOUBLE), GOE_TYPE_DOUBLE),
+                "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_DOUBLE), HADOOP_TYPE_DOUBLE),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_DOUBLE), GOE_TYPE_DOUBLE
+                ),
             },
             name(HADOOP_TYPE_DOUBLE, GOE_TYPE_DECIMAL): {
-                "column": HadoopColumn(name(HADOOP_TYPE_DOUBLE, GOE_TYPE_DECIMAL), HADOOP_TYPE_DOUBLE),
-                "expected_canonical_column": CanonicalColumn(
-                    name(HADOOP_TYPE_DOUBLE, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP, name(HADOOP_TYPE_DOUBLE, GOE_TYPE_DECIMAL), HADOOP_TYPE_DOUBLE
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_DOUBLE, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
                 ),
                 "present_options": {
                     "decimal_columns_csv_list": [name(HADOOP_TYPE_DOUBLE, GOE_TYPE_DECIMAL)],
@@ -301,13 +338,17 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
                 },
             },
             name(HADOOP_TYPE_FLOAT): {
-                "column": HadoopColumn(name(HADOOP_TYPE_FLOAT), HADOOP_TYPE_FLOAT),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_FLOAT), GOE_TYPE_FLOAT),
+                "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_FLOAT), HADOOP_TYPE_FLOAT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_FLOAT), GOE_TYPE_FLOAT
+                ),
             },
             name(HADOOP_TYPE_FLOAT, GOE_TYPE_DECIMAL): {
-                "column": HadoopColumn(name(HADOOP_TYPE_FLOAT, GOE_TYPE_DECIMAL), HADOOP_TYPE_FLOAT),
-                "expected_canonical_column": CanonicalColumn(
-                    name(HADOOP_TYPE_FLOAT, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP, name(HADOOP_TYPE_FLOAT, GOE_TYPE_DECIMAL), HADOOP_TYPE_FLOAT
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_FLOAT, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
                 ),
                 "present_options": {
                     "decimal_columns_csv_list": [name(HADOOP_TYPE_FLOAT, GOE_TYPE_DECIMAL)],
@@ -315,34 +356,44 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
                 },
             },
             name(HADOOP_TYPE_INT): {
-                "column": HadoopColumn(name(HADOOP_TYPE_INT), HADOOP_TYPE_INT),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_INT), GOE_TYPE_INTEGER_4),
+                "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_INT), HADOOP_TYPE_INT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_INT), GOE_TYPE_INTEGER_4
+                ),
             },
             name(HADOOP_TYPE_SMALLINT): {
-                "column": HadoopColumn(name(HADOOP_TYPE_SMALLINT), HADOOP_TYPE_SMALLINT),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_SMALLINT), GOE_TYPE_INTEGER_2),
+                "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_SMALLINT), HADOOP_TYPE_SMALLINT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_SMALLINT), GOE_TYPE_INTEGER_2
+                ),
             },
             name(HADOOP_TYPE_STRING): {
-                "column": HadoopColumn(name(HADOOP_TYPE_STRING), HADOOP_TYPE_STRING),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_STRING), GOE_TYPE_VARIABLE_STRING),
+                "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_STRING), HADOOP_TYPE_STRING),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_STRING), GOE_TYPE_VARIABLE_STRING
+                ),
             },
             name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_STRING): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_STRING),
                     HADOOP_TYPE_STRING,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
                 "present_options": {"large_string_columns_csv": name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_STRING)},
             },
             name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN),
                     HADOOP_TYPE_STRING,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN),
                     GOE_TYPE_LARGE_STRING,
                 ),
@@ -352,48 +403,59 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
                 },
             },
             name(HADOOP_TYPE_STRING, GOE_TYPE_BINARY): {
-                "column": HadoopColumn(name(HADOOP_TYPE_STRING, GOE_TYPE_BINARY), HADOOP_TYPE_STRING),
-                "expected_canonical_column": CanonicalColumn(
-                    name(HADOOP_TYPE_STRING, GOE_TYPE_BINARY), GOE_TYPE_BINARY
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP, name(HADOOP_TYPE_STRING, GOE_TYPE_BINARY), HADOOP_TYPE_STRING
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_STRING, GOE_TYPE_BINARY), GOE_TYPE_BINARY
                 ),
                 "present_options": {"binary_columns_csv": name(HADOOP_TYPE_STRING, GOE_TYPE_BINARY)},
             },
             name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_BINARY): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_BINARY),
                     HADOOP_TYPE_STRING,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
                 "present_options": {"large_binary_columns_csv": name(HADOOP_TYPE_STRING, GOE_TYPE_LARGE_BINARY)},
             },
             name(HADOOP_TYPE_STRING, GOE_TYPE_INTERVAL_DS): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_STRING, GOE_TYPE_INTERVAL_DS),
                     HADOOP_TYPE_STRING,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_STRING, GOE_TYPE_INTERVAL_DS),
                     GOE_TYPE_INTERVAL_DS,
                 ),
                 "present_options": {"interval_ds_columns_csv": name(HADOOP_TYPE_STRING, GOE_TYPE_INTERVAL_DS)},
             },
             name(HADOOP_TYPE_STRING, GOE_TYPE_INTERVAL_YM): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_STRING, GOE_TYPE_INTERVAL_YM),
                     HADOOP_TYPE_STRING,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_STRING, GOE_TYPE_INTERVAL_YM),
                     GOE_TYPE_INTERVAL_YM,
                 ),
                 "present_options": {"interval_ym_columns_csv": name(HADOOP_TYPE_STRING, GOE_TYPE_INTERVAL_YM)},
             },
             name(HADOOP_TYPE_STRING, UNICODE_NAME_TOKEN): {
-                "column": HadoopColumn(name(HADOOP_TYPE_STRING, UNICODE_NAME_TOKEN), HADOOP_TYPE_STRING),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP, name(HADOOP_TYPE_STRING, UNICODE_NAME_TOKEN), HADOOP_TYPE_STRING
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_STRING, UNICODE_NAME_TOKEN),
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -401,79 +463,99 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
                 "present_options": {"unicode_string_columns_csv": name(HADOOP_TYPE_STRING, UNICODE_NAME_TOKEN)},
             },
             name(HADOOP_TYPE_TIMESTAMP): {
-                "column": HadoopColumn(name(HADOOP_TYPE_TIMESTAMP), HADOOP_TYPE_TIMESTAMP),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_TIMESTAMP), GOE_TYPE_TIMESTAMP),
+                "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_TIMESTAMP), HADOOP_TYPE_TIMESTAMP),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_TIMESTAMP), GOE_TYPE_TIMESTAMP
+                ),
             },
             name(HADOOP_TYPE_TIMESTAMP, GOE_TYPE_DATE): {
-                "column": HadoopColumn(name(HADOOP_TYPE_TIMESTAMP, GOE_TYPE_DATE), HADOOP_TYPE_TIMESTAMP),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_TIMESTAMP, GOE_TYPE_DATE), GOE_TYPE_DATE),
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP, name(HADOOP_TYPE_TIMESTAMP, GOE_TYPE_DATE), HADOOP_TYPE_TIMESTAMP
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_TIMESTAMP, GOE_TYPE_DATE), GOE_TYPE_DATE
+                ),
                 "present_options": {"date_columns_csv": name(HADOOP_TYPE_TIMESTAMP, GOE_TYPE_DATE)},
             },
             name(HADOOP_TYPE_TINYINT): {
-                "column": HadoopColumn(name(HADOOP_TYPE_TINYINT), HADOOP_TYPE_TINYINT),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_TINYINT), GOE_TYPE_INTEGER_1),
+                "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_TINYINT), HADOOP_TYPE_TINYINT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_TINYINT), GOE_TYPE_INTEGER_1
+                ),
             },
             name(HADOOP_TYPE_VARCHAR, "4000"): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_VARCHAR, "4000"),
                     HADOOP_TYPE_VARCHAR,
                     data_length=4000,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(HADOOP_TYPE_VARCHAR, "4001"), GOE_TYPE_VARIABLE_STRING
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_VARCHAR, "4001"), GOE_TYPE_VARIABLE_STRING
                 ),
             },
             name(HADOOP_TYPE_VARCHAR, "4001"): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_VARCHAR, "4001"),
                     HADOOP_TYPE_VARCHAR,
                     data_length=4001,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_VARCHAR, "4001"), GOE_TYPE_LARGE_STRING),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(HADOOP_TYPE_VARCHAR, "4001"), GOE_TYPE_LARGE_STRING
+                ),
             },
             name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_BINARY): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_BINARY),
                     HADOOP_TYPE_VARCHAR,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
                 "present_options": {"binary_columns_csv": name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_BINARY)},
             },
             name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_BINARY): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_BINARY),
                     HADOOP_TYPE_VARCHAR,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
                 "present_options": {"large_binary_columns_csv": name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_BINARY)},
             },
             name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING),
                     HADOOP_TYPE_VARCHAR,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
                 "present_options": {"large_string_columns_csv": name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING)},
             },
             name(HADOOP_TYPE_VARCHAR, "2000", UNICODE_NAME_TOKEN): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_VARCHAR, "2000", UNICODE_NAME_TOKEN),
                     HADOOP_TYPE_VARCHAR,
                     data_length=2000,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_VARCHAR, "2000", UNICODE_NAME_TOKEN),
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -483,12 +565,14 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
                 },
             },
             name(HADOOP_TYPE_VARCHAR, "2001", UNICODE_NAME_TOKEN): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(HADOOP_TYPE_VARCHAR, "2001", UNICODE_NAME_TOKEN),
                     HADOOP_TYPE_VARCHAR,
                     data_length=2001,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(HADOOP_TYPE_VARCHAR, "2001", UNICODE_NAME_TOKEN),
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -498,7 +582,8 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
                 },
             },
             name(HADOOP_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
-                "column": HadoopColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.HADOOP,
                     name(
                         HADOOP_TYPE_VARCHAR,
                         "30",
@@ -508,7 +593,8 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
                     HADOOP_TYPE_VARCHAR,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(
                         HADOOP_TYPE_VARCHAR,
                         "30",
@@ -537,15 +623,19 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
             all_columns.update(
                 {
                     name(HADOOP_TYPE_DATE): {
-                        "column": HadoopColumn(name(HADOOP_TYPE_DATE), HADOOP_TYPE_DATE),
-                        "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_DATE), GOE_TYPE_DATE),
+                        "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_DATE), HADOOP_TYPE_DATE),
+                        "expected_canonical_column": ColumnSpec(
+                            ColumnDialect.CANONICAL, name(HADOOP_TYPE_DATE), GOE_TYPE_DATE
+                        ),
                     },
                     name(HADOOP_TYPE_DATE, GOE_TYPE_TIMESTAMP): {
-                        "column": HadoopColumn(
+                        "column": ColumnSpec(
+                            ColumnDialect.HADOOP,
                             name(HADOOP_TYPE_DATE, GOE_TYPE_TIMESTAMP),
                             HADOOP_TYPE_DATE,
                         ),
-                        "expected_canonical_column": CanonicalColumn(
+                        "expected_canonical_column": ColumnSpec(
+                            ColumnDialect.CANONICAL,
                             name(HADOOP_TYPE_DATE, GOE_TYPE_TIMESTAMP),
                             GOE_TYPE_TIMESTAMP,
                         ),
@@ -658,13 +748,14 @@ class BackendHadoopTestingApi(BackendTestingApiInterface):
             canonical_column, decimal_padding_digits=decimal_padding_digits
         )
         if expected_precision_scale:
-            return HadoopColumn(
+            return ColumnSpec(
+                ColumnDialect.HADOOP,
                 canonical_column.name,
                 expected_data_type,
                 data_precision=expected_precision_scale[0],
                 data_scale=expected_precision_scale[1],
             )
-        return HadoopColumn(canonical_column.name, expected_data_type)
+        return ColumnSpec(ColumnDialect.HADOOP, canonical_column.name, expected_data_type)
 
     def expected_backend_precision_scale(self, canonical_column, decimal_padding_digits=None):
         if canonical_column.data_type == GOE_TYPE_DECIMAL:

@@ -8,8 +8,8 @@ Initially used to move functions out of goe.py to make them sharable, in the fut
 to be a class
 """
 
-from goe.offload.column_metadata import ColumnMetadataInterface
 from goe.offload.offload_messages import VVERBOSE
+from goe.offload.schema.column_spec import ColumnSpec
 
 TRANSFORMATION_ACTION_OFFLOAD = "offload"
 TRANSFORMATION_ACTION_PRESENT = "present"
@@ -23,7 +23,7 @@ def apply_transformation(column_transformations, column, db_api, messages):
             The object must offer the correct transformation methods, which is checked via assertion
     Returns a SQL expression implementing the transformation
     """
-    assert isinstance(column, ColumnMetadataInterface)
+    assert isinstance(column, ColumnSpec)
     assert hasattr(db_api, "transform_null_cast")
     assert hasattr(db_api, "transform_encrypt_data_type")
     assert hasattr(db_api, "transform_tokenize_data_type")

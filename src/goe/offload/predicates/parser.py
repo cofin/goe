@@ -14,12 +14,6 @@ from sqlglot import exp
 from sqlglot.errors import SqlglotError
 
 from goe.exceptions import OptionValueError
-from goe.offload.column_metadata import (
-    ColumnMetadataInterface,
-    get_partition_columns,
-    is_synthetic_partition_column,
-    match_partition_column_by_source,
-)
 from goe.offload.predicates.ast import (
     BinaryComparison,
     ColumnRef,
@@ -33,6 +27,12 @@ from goe.offload.predicates.ast import (
     NullCheckPredicate,
     PredicateExpr,
     TypedValue,
+)
+from goe.offload.schema.column_spec import (
+    ColumnSpec,
+    get_partition_columns,
+    is_synthetic_partition_column,
+    match_partition_column_by_source,
 )
 from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
 
@@ -129,7 +129,7 @@ def parse_predicate_dsl(dsl_str: str) -> PredicateExpr:
 
 def resolve_predicate_types(
     expr: PredicateExpr,
-    columns: Sequence[ColumnMetadataInterface],
+    columns: Sequence[ColumnSpec],
     *,
     include_synthetic: bool = True,
 ) -> PredicateExpr:
@@ -408,9 +408,9 @@ class _DslParser:
 
 def _resolve_node(
     expr: PredicateExpr,
-    col_map: dict[str, ColumnMetadataInterface],
-    col_list: list[ColumnMetadataInterface],
-    partition_cols: list[ColumnMetadataInterface],
+    col_map: dict[str, ColumnSpec],
+    col_list: list[ColumnSpec],
+    partition_cols: list[ColumnSpec],
     *,
     include_synthetic: bool,
 ) -> PredicateExpr:
@@ -478,9 +478,9 @@ def _resolve_node(
 
 def _lookup_and_validate_column(
     col_ref: ColumnRef,
-    col_map: dict[str, ColumnMetadataInterface],
+    col_map: dict[str, ColumnSpec],
     literals: Sequence[LiteralValue],
-) -> ColumnMetadataInterface:
+) -> ColumnSpec:
     """Resolve ``col_ref`` against ``col_map`` and verify compatibility with ``literals``."""
     col = col_map.get(col_ref.name.upper())
     if col is None:
@@ -503,7 +503,7 @@ def _lookup_and_validate_column(
 
 
 def _synthetic_value_to_kind_and_text(
-    synth_col: ColumnMetadataInterface,
+    synth_col: ColumnSpec,
     synth_val: object,
 ) -> tuple[LiteralKind, str]:
     """Convert a synthetic partition literal value into a ``(LiteralKind, text)`` pair."""

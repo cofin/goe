@@ -12,13 +12,14 @@ from unittest.mock import MagicMock
 
 import pyarrow as pa
 
-from goe.offload.oracle.oracle_column import ORACLE_TYPE_TIMESTAMP_LOCAL_TZ
-from goe.offload.staging.parquet.parquet_column import (
+from goe.offload.schema.column_spec import (
+    ORACLE_TYPE_TIMESTAMP_LOCAL_TZ,
     PARQUET_TYPE_BINARY,
     PARQUET_TYPE_DOUBLE,
     PARQUET_TYPE_INT64,
     PARQUET_TYPE_STRING,
-    StagingParquetColumn,
+    ColumnDialect,
+    ColumnSpec,
 )
 from goe.offload.transport.arrow_extractor import (
     ArrowExtractionConfig,
@@ -55,8 +56,8 @@ def test_arrow_extractor_streams_batches_lazily_without_eager_materialization() 
     conn = MagicMock()
     conn.fetch_df_batches.return_value = df_generator()
     staging_cols = [
-        StagingParquetColumn("ID", PARQUET_TYPE_INT64),
-        StagingParquetColumn("NAME", PARQUET_TYPE_STRING),
+        ColumnSpec(ColumnDialect.PARQUET, "ID", PARQUET_TYPE_INT64),
+        ColumnSpec(ColumnDialect.PARQUET, "NAME", PARQUET_TYPE_STRING),
     ]
     extractor = OracleArrowStreamExtractor(ArrowExtractionConfig(batch_size=2))
     reader = extractor.extract_record_batch_reader(conn, "SELECT id, name FROM t", None, staging_cols)
@@ -113,17 +114,17 @@ def test_arrow_extractor_preserves_decimal128_intervals_timestamptz_lobs_and_nan
         schema=raw_schema,
     )
     staging_cols = [
-        StagingParquetColumn("DEC38", PARQUET_TYPE_STRING),
-        StagingParquetColumn("UNBOUNDED_NUM", PARQUET_TYPE_STRING),
-        StagingParquetColumn("INT_YM", PARQUET_TYPE_STRING),
-        StagingParquetColumn("INT_DS", PARQUET_TYPE_STRING),
-        StagingParquetColumn("TS_TZ", PARQUET_TYPE_STRING),
-        StagingParquetColumn("TS_LTZ", PARQUET_TYPE_STRING),
-        StagingParquetColumn("TS_NANO", PARQUET_TYPE_STRING),
-        StagingParquetColumn("CLOB_COL", PARQUET_TYPE_STRING),
-        StagingParquetColumn("BLOB_COL", PARQUET_TYPE_BINARY),
-        StagingParquetColumn("RAW_B64", PARQUET_TYPE_BINARY),
-        StagingParquetColumn("DBL_COL", PARQUET_TYPE_DOUBLE),
+        ColumnSpec(ColumnDialect.PARQUET, "DEC38", PARQUET_TYPE_STRING),
+        ColumnSpec(ColumnDialect.PARQUET, "UNBOUNDED_NUM", PARQUET_TYPE_STRING),
+        ColumnSpec(ColumnDialect.PARQUET, "INT_YM", PARQUET_TYPE_STRING),
+        ColumnSpec(ColumnDialect.PARQUET, "INT_DS", PARQUET_TYPE_STRING),
+        ColumnSpec(ColumnDialect.PARQUET, "TS_TZ", PARQUET_TYPE_STRING),
+        ColumnSpec(ColumnDialect.PARQUET, "TS_LTZ", PARQUET_TYPE_STRING),
+        ColumnSpec(ColumnDialect.PARQUET, "TS_NANO", PARQUET_TYPE_STRING),
+        ColumnSpec(ColumnDialect.PARQUET, "CLOB_COL", PARQUET_TYPE_STRING),
+        ColumnSpec(ColumnDialect.PARQUET, "BLOB_COL", PARQUET_TYPE_BINARY),
+        ColumnSpec(ColumnDialect.PARQUET, "RAW_B64", PARQUET_TYPE_BINARY),
+        ColumnSpec(ColumnDialect.PARQUET, "DBL_COL", PARQUET_TYPE_DOUBLE),
     ]
     source_cols = [
         SimpleNamespace(name=col.name, data_type=(ORACLE_TYPE_TIMESTAMP_LOCAL_TZ if col.name == "TS_LTZ" else "OTHER"))
@@ -165,8 +166,8 @@ def test_arrow_extractor_returns_typed_empty_reader_for_zero_rows() -> None:
     conn = MagicMock()
     conn.fetch_df_batches.return_value = []
     staging_cols = [
-        StagingParquetColumn("ID", PARQUET_TYPE_INT64),
-        StagingParquetColumn("NAME", PARQUET_TYPE_STRING),
+        ColumnSpec(ColumnDialect.PARQUET, "ID", PARQUET_TYPE_INT64),
+        ColumnSpec(ColumnDialect.PARQUET, "NAME", PARQUET_TYPE_STRING),
     ]
     extractor = OracleArrowStreamExtractor()
     reader = extractor.extract_record_batch_reader(conn, "SELECT id, name FROM t WHERE 1=0", None, staging_cols)

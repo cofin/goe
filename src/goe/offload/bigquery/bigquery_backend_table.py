@@ -21,7 +21,10 @@ from goe.offload.backend_table import (
     BackendTableInterface,
 )
 from goe.offload.bigquery import bigquery_predicate
-from goe.offload.bigquery.bigquery_column import (
+from goe.offload.bigquery.bigquery_load_job import build_staging_load_job_config
+from goe.offload.offload_constants import BIGQUERY_LOAD_TABLE_MODE_NATIVE
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
     BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_DATE,
     BIGQUERY_TYPE_DATETIME,
@@ -29,17 +32,14 @@ from goe.offload.bigquery.bigquery_column import (
     BIGQUERY_TYPE_INT64,
     BIGQUERY_TYPE_NUMERIC,
     BIGQUERY_TYPE_TIME,
-    BigQueryColumn,
-)
-from goe.offload.bigquery.bigquery_load_job import build_staging_load_job_config
-from goe.offload.column_metadata import ColumnMetadataInterface, get_column_names
-from goe.offload.offload_constants import BIGQUERY_LOAD_TABLE_MODE_NATIVE
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.staging.avro.avro_staging_file import AVRO_TYPE_DOUBLE, AVRO_TYPE_LONG
-from goe.offload.staging.parquet.parquet_column import (
     PARQUET_TYPE_DOUBLE,
     PARQUET_TYPE_INT64,
+    ColumnDialect,
+    ColumnSpec,
+    get_column_names,
 )
+from goe.offload.schema.type_registry import TYPE_REGISTRY
+from goe.offload.staging.avro.avro_staging_file import AVRO_TYPE_DOUBLE, AVRO_TYPE_LONG
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -336,22 +336,10 @@ class BackendBigQueryTable(BackendTableInterface):
             }
         return None
 
-    def _gen_synthetic_partition_column_object(self, synthetic_name, canonical_column):
+    def _gen_synthetic_partition_column_object(self, synthetic_name: str, canonical_column: ColumnSpec) -> ColumnSpec:
         """Return BigQuery column object for synthetic partition column"""
-        if canonical_column.is_date_based():
-            return self._db_api.gen_column_object(
-                synthetic_name,
-                data_type=BIGQUERY_TYPE_DATE,
-                partition_info=canonical_column.partition_info,
-            )
-        if canonical_column.is_number_based():
-            return self._db_api.gen_column_object(
-                synthetic_name,
-                data_type=BIGQUERY_TYPE_INT64,
-                partition_info=canonical_column.partition_info,
-            )
-        raise NotImplementedError(
-            "BigQuery synthetic partitioning not implemented for column type: %s" % canonical_column.data_type
+        return TYPE_REGISTRY.synthetic_partition_column(
+            canonical_column, synthetic_name, self._db_api.type_mapping_target
         )
 
     def _gen_synthetic_partition_date_as_string_sql_expr(self, extract_name, pad_size, source_column_cast):
@@ -472,17 +460,19 @@ class BackendBigQueryTable(BackendTableInterface):
             )
 
         assert backend_column
-        assert isinstance(backend_column, BigQueryColumn)
+        assert isinstance(backend_column, ColumnSpec) and backend_column.dialect is ColumnDialect.BIGQUERY
         assert rdbms_column, "RDBMS column missing for backend column: %s" % backend_column.name
-        assert isinstance(rdbms_column, ColumnMetadataInterface)
+        assert isinstance(rdbms_column, ColumnSpec)
         assert staging_column
-        assert isinstance(staging_column, ColumnMetadataInterface)
+        assert isinstance(staging_column, ColumnSpec)
 
         return_cast = None
         return_vcast = None
         return_type = backend_column.format_data_type().upper()
 
-        if isinstance(staging_column, BigQueryColumn) and staging_column.data_type == backend_column.data_type:
+        if (
+            isinstance(staging_column, ColumnSpec) and staging_column.dialect is ColumnDialect.BIGQUERY
+        ) and staging_column.data_type == backend_column.data_type:
             self._log(
                 "No cast of %s required for matching load data type: %s"
                 % (backend_column.name, staging_column.data_type),

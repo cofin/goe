@@ -20,16 +20,7 @@ from goe.offload.backend_table import (
     TYPICAL_DATE_GRANULARITY_TERMS,
     BackendTableInterface,
 )
-from goe.offload.column_metadata import ColumnMetadataInterface, get_column_names
 from goe.offload.hadoop import hadoop_predicate
-from goe.offload.hadoop.hadoop_column import (
-    HADOOP_TYPE_BIGINT,
-    HADOOP_TYPE_DATE,
-    HADOOP_TYPE_DOUBLE,
-    HADOOP_TYPE_FLOAT,
-    HADOOP_TYPE_INT,
-    HADOOP_TYPE_STRING,
-)
 from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_AVRO,
     OFFLOAD_STATS_METHOD_HISTORY,
@@ -37,17 +28,25 @@ from goe.offload.offload_constants import (
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_functions import load_db_hdfs_path, schema_path
+from goe.offload.schema.column_spec import (
+    HADOOP_TYPE_BIGINT,
+    HADOOP_TYPE_DATE,
+    HADOOP_TYPE_DOUBLE,
+    HADOOP_TYPE_FLOAT,
+    HADOOP_TYPE_INT,
+    PARQUET_TYPE_DOUBLE,
+    PARQUET_TYPE_FLOAT,
+    PARQUET_TYPE_INT32,
+    PARQUET_TYPE_INT64,
+    ColumnSpec,
+    get_column_names,
+)
+from goe.offload.schema.type_registry import TYPE_REGISTRY
 from goe.offload.staging.avro.avro_staging_file import (
     AVRO_TYPE_DOUBLE,
     AVRO_TYPE_FLOAT,
     AVRO_TYPE_INT,
     AVRO_TYPE_LONG,
-)
-from goe.offload.staging.parquet.parquet_column import (
-    PARQUET_TYPE_DOUBLE,
-    PARQUET_TYPE_FLOAT,
-    PARQUET_TYPE_INT32,
-    PARQUET_TYPE_INT64,
 )
 from goe.offload.staging.staging_file import OffloadStagingFileInterface
 
@@ -515,12 +514,10 @@ FROM %s.%s""" % (
             "_gen_synthetic_part_number_granularity_sql_expr() is not implemented for common Hadoop class"
         )
 
-    def _gen_synthetic_partition_column_object(self, synthetic_name, canonical_column):
+    def _gen_synthetic_partition_column_object(self, synthetic_name: str, canonical_column: ColumnSpec) -> ColumnSpec:
         """On Hadoop all synthetic columns are STRING"""
-        return self._db_api.gen_column_object(
-            synthetic_name,
-            data_type=HADOOP_TYPE_STRING,
-            partition_info=canonical_column.partition_info,
+        return TYPE_REGISTRY.synthetic_partition_column(
+            canonical_column, synthetic_name, self._db_api.type_mapping_target
         )
 
     def _gen_synthetic_partition_date_as_string_sql_expr(self, extract_name, pad_size, source_column_cast):
@@ -646,11 +643,11 @@ FROM %s.%s""" % (
             )
 
         assert backend_column
-        assert isinstance(backend_column, ColumnMetadataInterface)
+        assert isinstance(backend_column, ColumnSpec)
         assert rdbms_column, "RDBMS column missing for backend column: %s" % backend_column.name
-        assert isinstance(rdbms_column, ColumnMetadataInterface)
+        assert isinstance(rdbms_column, ColumnSpec)
         assert staging_column
-        assert isinstance(staging_column, ColumnMetadataInterface)
+        assert isinstance(staging_column, ColumnSpec)
 
         return_cast = None
         return_type = backend_column.format_data_type().upper()

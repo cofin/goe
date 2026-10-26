@@ -10,7 +10,8 @@ processing and verification of integration tests.
 import logging
 
 from goe.filesystem.goe_dfs import OFFLOAD_FS_SCHEME_GS, get_scheme_from_location_uri
-from goe.offload.bigquery.bigquery_column import (
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
     BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_BOOLEAN,
     BIGQUERY_TYPE_BYTES,
@@ -22,9 +23,6 @@ from goe.offload.bigquery.bigquery_column import (
     BIGQUERY_TYPE_STRING,
     BIGQUERY_TYPE_TIME,
     BIGQUERY_TYPE_TIMESTAMP,
-    BigQueryColumn,
-)
-from goe.offload.column_metadata import (
     CANONICAL_CHAR_SEMANTICS_CHAR,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
     GOE_TYPE_BINARY,
@@ -47,11 +45,11 @@ from goe.offload.column_metadata import (
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
     GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-    ColumnPartitionInfo,
+    ColumnDialect,
+    ColumnPartitionSpec,
+    ColumnSpec,
     match_table_column,
 )
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from tests.testlib.test_framework.backend_testing_api import (
     STORY_TEST_BACKEND_BLOB_COL,
     STORY_TEST_BACKEND_DATE_COL,
@@ -149,26 +147,32 @@ class BackendBigQueryTestingApi(BackendTestingApiInterface):
 
         all_columns = {
             name(BIGQUERY_TYPE_BIGNUMERIC): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_BIGNUMERIC), BIGQUERY_TYPE_BIGNUMERIC),
-                "expected_canonical_column": CanonicalColumn(name(BIGQUERY_TYPE_BIGNUMERIC), GOE_TYPE_DECIMAL),
+                "column": ColumnSpec(ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_BIGNUMERIC), BIGQUERY_TYPE_BIGNUMERIC),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_BIGNUMERIC), GOE_TYPE_DECIMAL
+                ),
             },
             name(BIGQUERY_TYPE_BIGNUMERIC, GOE_TYPE_INTEGER_8): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_BIGNUMERIC, GOE_TYPE_INTEGER_8),
                     BIGQUERY_TYPE_BIGNUMERIC,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_BIGNUMERIC, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_8,
                 ),
                 "present_options": {"integer_8_columns_csv": name(BIGQUERY_TYPE_BIGNUMERIC, GOE_TYPE_INTEGER_8)},
             },
             name(BIGQUERY_TYPE_BIGNUMERIC, GOE_TYPE_DECIMAL, "38", "18"): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_BIGNUMERIC, GOE_TYPE_DECIMAL, "38", "18"),
                     BIGQUERY_TYPE_BIGNUMERIC,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_BIGNUMERIC, GOE_TYPE_DECIMAL, "38", "18"),
                     GOE_TYPE_DECIMAL,
                 ),
@@ -178,56 +182,72 @@ class BackendBigQueryTestingApi(BackendTestingApiInterface):
                 },
             },
             name(BIGQUERY_TYPE_BYTES): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_BYTES), BIGQUERY_TYPE_BYTES),
-                "expected_canonical_column": CanonicalColumn(name(BIGQUERY_TYPE_BYTES), GOE_TYPE_BINARY),
+                "column": ColumnSpec(ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_BYTES), BIGQUERY_TYPE_BYTES),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_BYTES), GOE_TYPE_BINARY
+                ),
             },
             name(BIGQUERY_TYPE_BYTES, GOE_TYPE_LARGE_BINARY): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_BYTES, GOE_TYPE_LARGE_BINARY),
                     BIGQUERY_TYPE_BYTES,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_BYTES, GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
                 "present_options": {"large_binary_columns_csv": name(BIGQUERY_TYPE_BYTES, GOE_TYPE_LARGE_BINARY)},
             },
             name(BIGQUERY_TYPE_DATE): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_DATE), BIGQUERY_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(name(BIGQUERY_TYPE_DATE), GOE_TYPE_DATE),
+                "column": ColumnSpec(ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_DATE), BIGQUERY_TYPE_DATE),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_DATE), GOE_TYPE_DATE
+                ),
             },
             name(BIGQUERY_TYPE_DATE, GOE_TYPE_TIMESTAMP): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_DATE, GOE_TYPE_TIMESTAMP), BIGQUERY_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_DATE, GOE_TYPE_TIMESTAMP), BIGQUERY_TYPE_DATE
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_DATE, GOE_TYPE_TIMESTAMP),
                     GOE_TYPE_TIMESTAMP,
                 ),
                 "present_options": {"timestamp_columns_csv": name(BIGQUERY_TYPE_DATE, GOE_TYPE_TIMESTAMP)},
             },
             name(BIGQUERY_TYPE_DATETIME): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_DATETIME), BIGQUERY_TYPE_DATETIME),
-                "expected_canonical_column": CanonicalColumn(name(BIGQUERY_TYPE_DATETIME), GOE_TYPE_TIMESTAMP),
+                "column": ColumnSpec(ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_DATETIME), BIGQUERY_TYPE_DATETIME),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_DATETIME), GOE_TYPE_TIMESTAMP
+                ),
             },
             name(BIGQUERY_TYPE_DATETIME, GOE_TYPE_DATE): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_DATETIME, GOE_TYPE_DATE),
                     BIGQUERY_TYPE_DATETIME,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(BIGQUERY_TYPE_DATETIME, GOE_TYPE_DATE), GOE_TYPE_DATE
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_DATETIME, GOE_TYPE_DATE), GOE_TYPE_DATE
                 ),
                 "present_options": {"date_columns_csv": name(BIGQUERY_TYPE_DATETIME, GOE_TYPE_DATE)},
             },
             name(BIGQUERY_TYPE_FLOAT64): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_FLOAT64), BIGQUERY_TYPE_FLOAT64),
-                "expected_canonical_column": CanonicalColumn(name(BIGQUERY_TYPE_FLOAT64), GOE_TYPE_DOUBLE),
+                "column": ColumnSpec(ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_FLOAT64), BIGQUERY_TYPE_FLOAT64),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_FLOAT64), GOE_TYPE_DOUBLE
+                ),
             },
             name(BIGQUERY_TYPE_FLOAT64, GOE_TYPE_DECIMAL, "38", "9"): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_FLOAT64, GOE_TYPE_DECIMAL, "38", "9"),
                     BIGQUERY_TYPE_FLOAT64,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_FLOAT64, GOE_TYPE_DECIMAL, "38", "9"),
                     GOE_TYPE_DECIMAL,
                 ),
@@ -237,74 +257,90 @@ class BackendBigQueryTestingApi(BackendTestingApiInterface):
                 },
             },
             name(BIGQUERY_TYPE_INT64): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_INT64), BIGQUERY_TYPE_INT64),
-                "expected_canonical_column": CanonicalColumn(name(BIGQUERY_TYPE_INT64), GOE_TYPE_INTEGER_8),
+                "column": ColumnSpec(ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_INT64), BIGQUERY_TYPE_INT64),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_INT64), GOE_TYPE_INTEGER_8
+                ),
             },
             name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_1): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_1),
                     BIGQUERY_TYPE_NUMERIC,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_1_columns_csv": name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_1)},
             },
             name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_2): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_2),
                     BIGQUERY_TYPE_NUMERIC,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
                 "present_options": {"integer_2_columns_csv": name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_2)},
             },
             name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_4): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_4),
                     BIGQUERY_TYPE_NUMERIC,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_4,
                 ),
                 "present_options": {"integer_4_columns_csv": name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_4)},
             },
             name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_8): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_8),
                     BIGQUERY_TYPE_NUMERIC,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_8,
                 ),
                 "present_options": {"integer_8_columns_csv": name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_8)},
             },
             name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_38): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_38),
                     BIGQUERY_TYPE_NUMERIC,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_38,
                 ),
                 "present_options": {"integer_38_columns_csv": name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_INTEGER_38)},
             },
             name(BIGQUERY_TYPE_NUMERIC): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_NUMERIC), BIGQUERY_TYPE_NUMERIC),
-                "expected_canonical_column": CanonicalColumn(name(BIGQUERY_TYPE_NUMERIC), GOE_TYPE_DECIMAL),
+                "column": ColumnSpec(ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_NUMERIC), BIGQUERY_TYPE_NUMERIC),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_NUMERIC), GOE_TYPE_DECIMAL
+                ),
             },
             name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_DECIMAL, "38", "18"): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_DECIMAL, "38", "18"),
                     BIGQUERY_TYPE_NUMERIC,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_NUMERIC, GOE_TYPE_DECIMAL, "38", "18"),
                     GOE_TYPE_DECIMAL,
                 ),
@@ -314,26 +350,30 @@ class BackendBigQueryTestingApi(BackendTestingApiInterface):
                 },
             },
             name(BIGQUERY_TYPE_STRING): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_STRING), BIGQUERY_TYPE_STRING),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_STRING), BIGQUERY_TYPE_STRING),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_STRING),
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
                 ),
             },
             name(BIGQUERY_TYPE_STRING, GOE_TYPE_LARGE_STRING): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_STRING, GOE_TYPE_LARGE_STRING),
                     BIGQUERY_TYPE_STRING,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_STRING, GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
                 "present_options": {"large_string_columns_csv": name(BIGQUERY_TYPE_STRING, GOE_TYPE_LARGE_STRING)},
             },
             name(BIGQUERY_TYPE_STRING, GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(
                         BIGQUERY_TYPE_STRING,
                         GOE_TYPE_LARGE_STRING,
@@ -341,7 +381,8 @@ class BackendBigQueryTestingApi(BackendTestingApiInterface):
                     ),
                     BIGQUERY_TYPE_STRING,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(
                         BIGQUERY_TYPE_STRING,
                         GOE_TYPE_LARGE_STRING,
@@ -363,48 +404,59 @@ class BackendBigQueryTestingApi(BackendTestingApiInterface):
                 },
             },
             name(BIGQUERY_TYPE_STRING, GOE_TYPE_BINARY): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_STRING, GOE_TYPE_BINARY), BIGQUERY_TYPE_STRING),
-                "expected_canonical_column": CanonicalColumn(
-                    name(BIGQUERY_TYPE_STRING, GOE_TYPE_BINARY), GOE_TYPE_BINARY
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_STRING, GOE_TYPE_BINARY), BIGQUERY_TYPE_STRING
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_STRING, GOE_TYPE_BINARY), GOE_TYPE_BINARY
                 ),
                 "present_options": {"binary_columns_csv": name(BIGQUERY_TYPE_STRING, GOE_TYPE_BINARY)},
             },
             name(BIGQUERY_TYPE_STRING, GOE_TYPE_LARGE_BINARY): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_STRING, GOE_TYPE_LARGE_BINARY),
                     BIGQUERY_TYPE_STRING,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_STRING, GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
                 "present_options": {"large_binary_columns_csv": name(BIGQUERY_TYPE_STRING, GOE_TYPE_LARGE_BINARY)},
             },
             name(BIGQUERY_TYPE_STRING, GOE_TYPE_INTERVAL_DS): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_STRING, GOE_TYPE_INTERVAL_DS),
                     BIGQUERY_TYPE_STRING,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_STRING, GOE_TYPE_INTERVAL_DS),
                     GOE_TYPE_INTERVAL_DS,
                 ),
                 "present_options": {"interval_ds_columns_csv": name(BIGQUERY_TYPE_STRING, GOE_TYPE_INTERVAL_DS)},
             },
             name(BIGQUERY_TYPE_STRING, GOE_TYPE_INTERVAL_YM): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_STRING, GOE_TYPE_INTERVAL_YM),
                     BIGQUERY_TYPE_STRING,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_STRING, GOE_TYPE_INTERVAL_YM),
                     GOE_TYPE_INTERVAL_YM,
                 ),
                 "present_options": {"interval_ym_columns_csv": name(BIGQUERY_TYPE_STRING, GOE_TYPE_INTERVAL_YM)},
             },
             name(BIGQUERY_TYPE_STRING, UNICODE_NAME_TOKEN): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_STRING, UNICODE_NAME_TOKEN), BIGQUERY_TYPE_STRING),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_STRING, UNICODE_NAME_TOKEN), BIGQUERY_TYPE_STRING
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_STRING, UNICODE_NAME_TOKEN),
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -412,29 +464,36 @@ class BackendBigQueryTestingApi(BackendTestingApiInterface):
                 "present_options": {"unicode_string_columns_csv": name(BIGQUERY_TYPE_STRING, UNICODE_NAME_TOKEN)},
             },
             name(BIGQUERY_TYPE_TIME): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_TIME), BIGQUERY_TYPE_TIME),
-                "expected_canonical_column": CanonicalColumn(name(BIGQUERY_TYPE_TIME), GOE_TYPE_TIME),
+                "column": ColumnSpec(ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_TIME), BIGQUERY_TYPE_TIME),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_TIME), GOE_TYPE_TIME
+                ),
             },
             name(BIGQUERY_TYPE_TIMESTAMP): {
-                "column": BigQueryColumn(name(BIGQUERY_TYPE_TIMESTAMP), BIGQUERY_TYPE_TIMESTAMP),
-                "expected_canonical_column": CanonicalColumn(name(BIGQUERY_TYPE_TIMESTAMP), GOE_TYPE_TIMESTAMP_TZ),
+                "column": ColumnSpec(ColumnDialect.BIGQUERY, name(BIGQUERY_TYPE_TIMESTAMP), BIGQUERY_TYPE_TIMESTAMP),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_TIMESTAMP), GOE_TYPE_TIMESTAMP_TZ
+                ),
             },
             name(BIGQUERY_TYPE_TIMESTAMP, GOE_TYPE_DATE): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_TIMESTAMP, GOE_TYPE_DATE),
                     BIGQUERY_TYPE_TIMESTAMP,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(BIGQUERY_TYPE_TIMESTAMP, GOE_TYPE_DATE), GOE_TYPE_DATE
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(BIGQUERY_TYPE_TIMESTAMP, GOE_TYPE_DATE), GOE_TYPE_DATE
                 ),
                 "present_options": {"date_columns_csv": name(BIGQUERY_TYPE_TIMESTAMP, GOE_TYPE_DATE)},
             },
             name(BIGQUERY_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP): {
-                "column": BigQueryColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.BIGQUERY,
                     name(BIGQUERY_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP),
                     BIGQUERY_TYPE_TIMESTAMP,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(BIGQUERY_TYPE_TIMESTAMP, GOE_TYPE_TIMESTAMP),
                     GOE_TYPE_TIMESTAMP,
                 ),
@@ -494,7 +553,7 @@ class BackendBigQueryTestingApi(BackendTestingApiInterface):
         """
         create_cols = self._db_api.get_columns(db_name, source_table_name)
         insert_col_tuples = [(_.name, _.name) for _ in create_cols]
-        partition_info = ColumnPartitionInfo(
+        partition_info = ColumnPartitionSpec(
             position=0,
             source_column_name="YEARMON",
             granularity=100,
@@ -604,7 +663,7 @@ FROM %(db_table)s""" % {
         if is_bigquery_numeric(canonical_column):
             expected_data_type = BIGQUERY_TYPE_NUMERIC
 
-        return BigQueryColumn(canonical_column.name, expected_data_type)
+        return ColumnSpec(ColumnDialect.BIGQUERY, canonical_column.name, expected_data_type)
 
     def expected_backend_precision_scale(self, canonical_column, decimal_padding_digits=None):
         """All decimals (NUMERIC) on BigQuery have no controllable precision or scale"""

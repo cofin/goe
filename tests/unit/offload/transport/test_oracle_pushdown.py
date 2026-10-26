@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from goe.offload.oracle.oracle_column import (
+from goe.offload.schema.column_spec import (
     ORACLE_TYPE_BFILE,
     ORACLE_TYPE_BLOB,
     ORACLE_TYPE_CLOB,
@@ -24,8 +24,11 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP_TZ,
     ORACLE_TYPE_VARCHAR2,
     ORACLE_TYPE_XMLTYPE,
+    PARQUET_TYPE_INT64,
+    PARQUET_TYPE_STRING,
+    ColumnDialect,
+    ColumnSpec,
 )
-from goe.offload.staging.parquet.parquet_column import PARQUET_TYPE_INT64, PARQUET_TYPE_STRING, StagingParquetColumn
 from goe.offload.transport.duckdb import (
     DuckDBEngine,
     DuckDBSessionConfig,
@@ -137,9 +140,11 @@ def test_oracle_extension_transport_shares_single_duckdb_engine_across_parallel_
     transport._compress_load_table = True
     transport._staging_table_location = "gs://bucket/goe/sales_load/orders"
     transport._staging_file = MagicMock()
-    cols = [StagingParquetColumn("ID", PARQUET_TYPE_INT64), StagingParquetColumn("NAME", PARQUET_TYPE_STRING)]
-    for idx, col in enumerate(cols):
-        col.set_simplified_staging_column_name(idx)
+    cols = [
+        ColumnSpec(ColumnDialect.PARQUET, "ID", PARQUET_TYPE_INT64),
+        ColumnSpec(ColumnDialect.PARQUET, "NAME", PARQUET_TYPE_STRING),
+    ]
+    cols = [col.with_simplified_staging_column_name(idx) for idx, col in enumerate(cols)]
     transport._staging_file.get_staging_columns.return_value = cols
     transport._rdbms_columns = [
         SimpleNamespace(name="ID", data_type=ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0),

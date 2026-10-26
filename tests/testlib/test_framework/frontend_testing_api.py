@@ -12,15 +12,15 @@ import time
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 
-from goe.offload.column_metadata import (
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.registry import create_frontend_api, create_source_table
+from goe.offload.schema.column_spec import (
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
     GOE_TYPE_INTEGER_8,
     GOE_TYPE_INTEGER_38,
 )
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.registry import create_frontend_api, create_source_table
 from tests.testlib.test_framework import test_constants
 
 
@@ -164,7 +164,7 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         """Returns a dict of dicts defining columns for GOE_TYPE_MAPPING test table.
         Supported dictionary keys:
             {'column': ColumnObject(...),                        # Column object used to create the frontend table
-             'expected_canonical_column': CanonicalColumn(...),  # Expected canonical column
+             'expected_canonical_column': ColumnSpec(ColumnDialect.CANONICAL, ...),  # Expected canonical column
              'offload_options': {...},                           # dict of offload options to force a mapping
              'ascii_only': bool,                                 # Ascii 7 only (Synapse forced this on us)
              'notnull': bool,                                    # Don't insert NULLs (Synapse forced this on us)
@@ -357,7 +357,7 @@ class FrontendTestingApiInterface(metaclass=ABCMeta):
         self, max_backend_precision, max_backend_scale, max_decimal_integral_magnitude
     ):
         """Return a list of tuples containing expected column/type mappings and any user override, e.g.:
-        [(column name, CanonicalColumn(...), {'integer_1_columns_csv': 'column name'}), ... ]
+        [(column name, ColumnSpec(ColumnDialect.CANONICAL, ...), {'integer_1_columns_csv': 'column name'}), ... ]
         """
         definitions = self._goe_type_mapping_column_definitions(
             max_backend_precision, max_backend_scale, max_decimal_integral_magnitude

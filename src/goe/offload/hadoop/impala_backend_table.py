@@ -11,17 +11,18 @@ be either:
 
 import logging
 
-from goe.offload.column_metadata import get_column_names, valid_column_list
 from goe.offload.hadoop.hadoop_backend_table import BackendHadoopTable
-from goe.offload.hadoop.hadoop_column import (
+from goe.offload.offload_constants import (
+    FILE_STORAGE_FORMAT_PARQUET,
+    FILE_STORAGE_FORMAT_PARQUET_IMPALA,
+)
+from goe.offload.schema.column_spec import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_INT,
     HADOOP_TYPE_SMALLINT,
     HADOOP_TYPE_TINYINT,
-)
-from goe.offload.offload_constants import (
-    FILE_STORAGE_FORMAT_PARQUET,
-    FILE_STORAGE_FORMAT_PARQUET_IMPALA,
+    get_column_names,
+    valid_column_list,
 )
 from goe.util import GOEVersion
 

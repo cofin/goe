@@ -12,8 +12,9 @@ import traceback
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from textwrap import dedent
-from typing import Any
+from typing import Any, ClassVar
 
+import msgspec
 import pyodbc
 from numpy import datetime64
 
@@ -33,46 +34,29 @@ from goe.offload.backend_api import (
     BackendApiException,
     BackendApiInterface,
 )
-from goe.offload.column_metadata import (
-    ALL_CANONICAL_TYPES,
-    CANONICAL_CHAR_SEMANTICS_BYTE,
-    CANONICAL_CHAR_SEMANTICS_CHAR,
-    CANONICAL_CHAR_SEMANTICS_UNICODE,
-    DATE_CANONICAL_TYPES,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_BOOLEAN,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-    NUMERIC_CANONICAL_TYPES,
-    STRING_CANONICAL_TYPES,
-    CanonicalColumn,
-    is_safe_mapping,
-    valid_column_list,
-)
 from goe.offload.hadoop.hive_table_stats import (
     parse_stats_into_tab_col,
     transform_stats_as_tuples,
 )
-from goe.offload.microsoft.synapse_column import (
+from goe.offload.microsoft.synapse_constants import (
+    SYNAPSE_AUTH_MECHANISM_AD_MSI,
+    SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL,
+    SYNAPSE_USER_PASS_AUTH_MECHANISMS,
+)
+from goe.offload.microsoft.synapse_literal import SynapseLiteral
+from goe.offload.offload_constants import (
+    DBTYPE_SYNAPSE,
+    EMPTY_BACKEND_COLUMN_STATS_DICT,
+    EMPTY_BACKEND_COLUMN_STATS_LIST,
+    EMPTY_BACKEND_TABLE_STATS_DICT,
+    EMPTY_BACKEND_TABLE_STATS_LIST,
+    FILE_STORAGE_FORMAT_PARQUET,
+    SYNAPSE_BACKEND_CAPABILITIES,
+)
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
     SYNAPSE_TYPE_BIGINT,
     SYNAPSE_TYPE_BINARY,
-    SYNAPSE_TYPE_BIT,
     SYNAPSE_TYPE_CHAR,
     SYNAPSE_TYPE_DATE,
     SYNAPSE_TYPE_DATETIME,
@@ -95,24 +79,11 @@ from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_UNIQUEIDENTIFIER,
     SYNAPSE_TYPE_VARBINARY,
     SYNAPSE_TYPE_VARCHAR,
-    SynapseColumn,
+    ColumnDialect,
+    ColumnSpec,
+    valid_column_list,
 )
-from goe.offload.microsoft.synapse_constants import (
-    SYNAPSE_AUTH_MECHANISM_AD_MSI,
-    SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL,
-    SYNAPSE_USER_PASS_AUTH_MECHANISMS,
-)
-from goe.offload.microsoft.synapse_literal import SynapseLiteral
-from goe.offload.offload_constants import (
-    DBTYPE_SYNAPSE,
-    EMPTY_BACKEND_COLUMN_STATS_DICT,
-    EMPTY_BACKEND_COLUMN_STATS_LIST,
-    EMPTY_BACKEND_TABLE_STATS_DICT,
-    EMPTY_BACKEND_TABLE_STATS_LIST,
-    FILE_STORAGE_FORMAT_PARQUET,
-    SYNAPSE_BACKEND_CAPABILITIES,
-)
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
 from goe.util.string_utils import (
     add_prefix_in_same_case,
     format_list_for_logging,
@@ -152,13 +123,15 @@ class dbcc_showstatistics_stat_header(Enum):
 
 
 def synapse_collation_clause(column_or_collation):
-    assert isinstance(column_or_collation, (SynapseColumn, str))
-    if isinstance(column_or_collation, SynapseColumn):
+    assert isinstance(column_or_collation, (ColumnSpec, str))
+    if isinstance(column_or_collation, ColumnSpec) and column_or_collation.dialect is ColumnDialect.SYNAPSE:
         return f" COLLATE {column_or_collation.collation}" if column_or_collation.collation else ""
     return f" COLLATE {column_or_collation}" if column_or_collation else ""
 
 
 class BackendSynapseApi(BackendApiInterface):
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.SYNAPSE
+
     def __init__(
         self,
         connection_options,
@@ -431,9 +404,7 @@ class BackendSynapseApi(BackendApiInterface):
 
         def add_colation(column):
             if column.is_string_based() and not external and self._connection_options.synapse_collation:
-                new_column = column.clone()
-                new_column.collation = self._connection_options.synapse_collation
-                return new_column
+                return column.replace(collation=self._connection_options.synapse_collation)
             return column
 
         column_list_with_collations = [add_colation(_) for _ in column_list]
@@ -518,7 +489,7 @@ class BackendSynapseApi(BackendApiInterface):
 
     def detect_column_has_fractional_seconds(self, db_name, table_name, column):
         assert db_name and table_name
-        assert isinstance(column, SynapseColumn)
+        assert isinstance(column, ColumnSpec) and column.dialect is ColumnDialect.SYNAPSE
         if not column.has_time_element():
             return False
         sql = dedent(
@@ -663,7 +634,7 @@ class BackendSynapseApi(BackendApiInterface):
         """
         assert isinstance(date_part, str)
         assert date_part.upper() in ("DAY", "MONTH", "YEAR")
-        assert isinstance(column, (str, SynapseColumn))
+        assert isinstance(column, (str, ColumnSpec))
         column_name = column if isinstance(column, str) else column.name
         return f"{date_part.upper()}({column_name})"
 
@@ -672,8 +643,8 @@ class BackendSynapseApi(BackendApiInterface):
 
         The columns are collation sensitive so ensure all comparisons are in SYNAPSE_COLLATION.
         """
-        assert isinstance(left_col, SynapseColumn)
-        assert isinstance(right_col, SynapseColumn)
+        assert isinstance(left_col, ColumnSpec) and left_col.dialect is ColumnDialect.SYNAPSE
+        assert isinstance(right_col, ColumnSpec) and right_col.dialect is ColumnDialect.SYNAPSE
         left_identifier = self.enclose_identifier(left_col.name)
         if left_alias:
             left_identifier = f"{self.enclose_identifier(left_alias)}.{left_identifier}"
@@ -689,7 +660,7 @@ class BackendSynapseApi(BackendApiInterface):
         return "?"
 
     def gen_column_object(self, column_name, **kwargs):
-        return SynapseColumn(column_name, **kwargs)
+        return ColumnSpec(ColumnDialect.SYNAPSE, column_name, **kwargs)
 
     def gen_copy_into_sql_text(
         self,
@@ -742,17 +713,12 @@ class BackendSynapseApi(BackendApiInterface):
         return sql
 
     def gen_default_numeric_column(self, column_name, data_scale=18):
-        """Return a default best-fit numeric column for generic usage.
-        Used when we can't really know or influence a type, e.g. AVG() output in AAPD.
-        data_scale=0 can be used if the outcome is known to be integral.
-        """
-        return SynapseColumn(
+        """Return a default best-fit numeric column for generic usage."""
+        return TYPE_REGISTRY.default_numeric_column(
             column_name,
-            data_type=SYNAPSE_TYPE_NUMERIC,
-            data_precision=self.max_decimal_precision(),
+            self.type_mapping_target,
+            self.type_mapping_context(),
             data_scale=data_scale,
-            nullable=True,
-            safe_mapping=False,
         )
 
     def gen_insert_select_sql_text(
@@ -864,7 +830,8 @@ FROM   %(from_db_table)s%(where)s""" % {
             if byte_length == -1:
                 byte_length = None
             backend_columns.append(
-                SynapseColumn(
+                ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     col_name,
                     data_type,
                     data_length=byte_length,
@@ -1548,7 +1515,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         return SYNAPSE_TYPE_VARCHAR
 
     def transform_null_cast(self, backend_column):
-        assert isinstance(backend_column, SynapseColumn)
+        assert isinstance(backend_column, ColumnSpec) and backend_column.dialect is ColumnDialect.SYNAPSE
         return "CONVERT(%s, NULL)" % (backend_column.format_data_type())
 
     def transform_tokenize_data_type(self):
@@ -1566,37 +1533,12 @@ FROM   %(from_db_table)s%(where)s""" % {
         )
 
     def valid_canonical_override(self, column, canonical_override):
-        assert isinstance(column, SynapseColumn)
-        if isinstance(canonical_override, CanonicalColumn):
-            target_type = canonical_override.data_type
-        else:
-            target_type = canonical_override
-        if column.is_number_based():
-            if column.data_type in [SYNAPSE_TYPE_REAL, SYNAPSE_TYPE_FLOAT]:
-                return bool(target_type in [GOE_TYPE_DECIMAL, GOE_TYPE_DOUBLE, GOE_TYPE_FLOAT])
-            return target_type in NUMERIC_CANONICAL_TYPES
-        if column.is_date_based():
-            return bool(target_type in DATE_CANONICAL_TYPES)
-        if column.is_string_based():
-            if column.data_type in [SYNAPSE_TYPE_CHAR, SYNAPSE_TYPE_NCHAR]:
-                return bool(
-                    target_type in STRING_CANONICAL_TYPES or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
-                )
-            return bool(
-                target_type in STRING_CANONICAL_TYPES
-                or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
-                or target_type in [GOE_TYPE_INTERVAL_DS, GOE_TYPE_INTERVAL_YM]
-            )
-        if target_type not in ALL_CANONICAL_TYPES:
-            self._log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
-            return False
-        if column.data_type not in self.supported_backend_data_types():
-            return False
-        if column.data_type in [SYNAPSE_TYPE_BINARY, SYNAPSE_TYPE_VARBINARY]:
-            return bool(target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
-        if column.data_type == SYNAPSE_TYPE_TIME:
-            return bool(target_type == GOE_TYPE_TIME)
-        return False
+        target_type = canonical_override.data_type if isinstance(canonical_override, ColumnSpec) else canonical_override
+        return TYPE_REGISTRY.valid_canonical_override(
+            column,
+            target_type,
+            self.type_mapping_context(),
+        )
 
     def valid_staging_formats(self):
         return [FILE_STORAGE_FORMAT_PARQUET]
@@ -1619,291 +1561,13 @@ FROM   %(from_db_table)s%(where)s""" % {
         return bool(row)
 
     def to_canonical_column(self, column):
-        """Translate a Synapse SQL column to an internal GOE column
-
-        GOE_TYPE_INTEGER_1 does not fit in TINYINT but TINYINT *does* fit in GOE_TYPE_INTEGER_1
-        Process a couple of edge cases
-        e.g. NUMBER(3,5) scale > precision
-        e.g. NUMBER(10,-5)
-        Integral numbers
-        The precision overflows our canonical integral types so store as a decimal.
-        If precision & scale are None then this is unsafe, otherwise leave it None to let
-        new_column() logic take over.
-        This mapping was initially BINARY(16) but Hybrid Query required switch to CHAR(36) because:
-        "JDBC driver gives us a string for a uniqueidentifier and not the underlying bytes"
-        """
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-            char_length=None,
-            char_semantics=None,
-        ):
-            """Wrapper that carries name, nullable & data_default forward from RDBMS
-            Not carrying partition information forward to the canonical column because that will
-            be defined by operational logic.
-            """
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return CanonicalColumn(
-                col.name,
-                data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                char_length=char_length,
-                partition_info=None,
-                char_semantics=char_semantics,
-            )
-
-        assert column
-        assert isinstance(column, SynapseColumn)
-
-        if column.data_type == SYNAPSE_TYPE_CHAR:
-            return new_column(
-                column,
-                GOE_TYPE_FIXED_STRING,
-                data_length=column.data_length,
-                char_length=column.char_length,
-                char_semantics=CANONICAL_CHAR_SEMANTICS_BYTE,
-                safe_mapping=True,
-            )
-        if column.data_type == SYNAPSE_TYPE_NCHAR:
-            return new_column(
-                column,
-                GOE_TYPE_FIXED_STRING,
-                data_length=column.data_length,
-                char_length=column.char_length,
-                char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
-                safe_mapping=True,
-            )
-        if column.data_type == SYNAPSE_TYPE_VARCHAR:
-            return new_column(
-                column,
-                GOE_TYPE_VARIABLE_STRING,
-                data_length=column.data_length,
-                char_length=column.char_length,
-                char_semantics=CANONICAL_CHAR_SEMANTICS_BYTE,
-            )
-        if column.data_type == SYNAPSE_TYPE_NVARCHAR:
-            return new_column(
-                column,
-                GOE_TYPE_VARIABLE_STRING,
-                data_length=column.data_length,
-                char_length=column.char_length,
-                char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
-            )
-        if column.data_type in (SYNAPSE_TYPE_BINARY, SYNAPSE_TYPE_VARBINARY):
-            return new_column(column, GOE_TYPE_BINARY, data_length=column.data_length)
-        if column.data_type == SYNAPSE_TYPE_TINYINT:
-            return new_column(column, GOE_TYPE_INTEGER_1)
-        if column.data_type == SYNAPSE_TYPE_SMALLINT:
-            return new_column(column, GOE_TYPE_INTEGER_2)
-        if column.data_type == SYNAPSE_TYPE_INT:
-            return new_column(column, GOE_TYPE_INTEGER_4)
-        if column.data_type == SYNAPSE_TYPE_BIGINT:
-            return new_column(column, GOE_TYPE_INTEGER_8)
-        if column.data_type == SYNAPSE_TYPE_FLOAT:
-            return new_column(column, GOE_TYPE_DOUBLE)
-        if column.data_type == SYNAPSE_TYPE_REAL:
-            return new_column(column, GOE_TYPE_FLOAT)
-        if column.data_type == SYNAPSE_TYPE_MONEY:
-            return new_column(
-                column,
-                GOE_TYPE_DECIMAL,
-                data_precision=column.data_precision or 19,
-                data_scale=column.data_scale or 4,
-            )
-        if column.data_type == SYNAPSE_TYPE_SMALLMONEY:
-            return new_column(
-                column,
-                GOE_TYPE_DECIMAL,
-                data_precision=column.data_precision or 10,
-                data_scale=column.data_scale or 4,
-            )
-        if column.data_type in (SYNAPSE_TYPE_DECIMAL, SYNAPSE_TYPE_NUMERIC):
-            data_precision = column.data_precision
-            data_scale = column.data_scale
-            if data_precision is not None and data_scale is not None:
-                if data_scale > data_precision:
-                    data_precision = data_scale
-                elif data_scale < 0:
-                    data_scale = 0
-            if data_scale == 0:
-                if data_precision >= 1 and data_precision <= 2:
-                    integral_type = GOE_TYPE_INTEGER_1
-                elif data_precision >= 3 and data_precision <= 4:
-                    integral_type = GOE_TYPE_INTEGER_2
-                elif data_precision >= 5 and data_precision <= 9:
-                    integral_type = GOE_TYPE_INTEGER_4
-                elif data_precision >= 10 and data_precision <= 18:
-                    integral_type = GOE_TYPE_INTEGER_8
-                elif data_precision >= 19 and data_precision <= 38:
-                    integral_type = GOE_TYPE_INTEGER_38
-                else:
-                    integral_type = GOE_TYPE_DECIMAL
-                return new_column(column, integral_type, data_precision=data_precision, data_scale=0)
-            safe_mapping = False if data_precision is None and data_scale is None else None
-            return new_column(
-                column,
-                GOE_TYPE_DECIMAL,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                safe_mapping=safe_mapping,
-            )
-        if column.data_type == SYNAPSE_TYPE_DATE:
-            return new_column(column, GOE_TYPE_DATE)
-        if column.data_type == SYNAPSE_TYPE_TIME:
-            return new_column(column, GOE_TYPE_TIME, data_scale=column.data_scale)
-        if column.data_type in (SYNAPSE_TYPE_DATETIME, SYNAPSE_TYPE_DATETIME2):
-            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=column.data_scale)
-        if column.data_type == SYNAPSE_TYPE_SMALLDATETIME:
-            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=0)
-        if column.data_type == SYNAPSE_TYPE_DATETIMEOFFSET:
-            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale)
-        if column.data_type == SYNAPSE_TYPE_UNIQUEIDENTIFIER:
-            return new_column(column, GOE_TYPE_FIXED_STRING, data_length=36)
-        raise NotImplementedError("Unsupported Synapse SQL data type: %s" % column.data_type)
+        """Translate a Synapse SQL column to an internal GOE column."""
+        return TYPE_REGISTRY.to_canonical(column, self.type_mapping_context())
 
     def from_canonical_column(self, column, decimal_padding_digits=0):
-        """Synapse tinyint is unsigned, so cannot cater for all INTEGER_1 values; map to smallint"""
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            char_length=None,
-            safe_mapping=None,
-        ):
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return SynapseColumn(
-                col.name,
-                data_type=data_type,
-                data_length=data_length,
-                char_length=char_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                char_semantics=col.char_semantics,
-                safe_mapping=safe_mapping,
-            )
-
-        def nchar_or_char(data_type, char_semantics):
-            if data_type == SYNAPSE_TYPE_CHAR and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE:
-                return SYNAPSE_TYPE_NCHAR
-            if data_type == SYNAPSE_TYPE_VARCHAR and char_semantics == CANONICAL_CHAR_SEMANTICS_UNICODE:
-                return SYNAPSE_TYPE_NVARCHAR
-            return data_type
-
-        assert column
-        assert isinstance(column, CanonicalColumn), "%s is not instance of CanonicalColumn" % type(column)
-
-        if column.data_type == GOE_TYPE_FIXED_STRING:
-            return new_column(
-                column,
-                nchar_or_char(SYNAPSE_TYPE_CHAR, column.char_semantics),
-                data_length=column.data_length,
-                char_length=column.char_length,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_LARGE_STRING:
-            return new_column(
-                column,
-                nchar_or_char(SYNAPSE_TYPE_VARCHAR, column.char_semantics),
-                data_length=None,
-            )
-        if column.data_type == GOE_TYPE_VARIABLE_STRING:
-            return new_column(
-                column,
-                nchar_or_char(SYNAPSE_TYPE_VARCHAR, column.char_semantics),
-                data_length=column.data_length,
-                char_length=column.char_length,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_BINARY:
-            return new_column(column, SYNAPSE_TYPE_VARBINARY, data_length=column.data_length)
-        if column.data_type == GOE_TYPE_LARGE_BINARY:
-            return new_column(column, SYNAPSE_TYPE_VARBINARY, data_length=None)
-        if column.data_type in (GOE_TYPE_INTEGER_1, GOE_TYPE_INTEGER_2):
-            return new_column(column, SYNAPSE_TYPE_SMALLINT, safe_mapping=True)
-        if column.data_type == GOE_TYPE_INTEGER_4:
-            return new_column(column, SYNAPSE_TYPE_INT, safe_mapping=True)
-        if column.data_type == GOE_TYPE_INTEGER_8:
-            return new_column(column, SYNAPSE_TYPE_BIGINT, safe_mapping=True)
-        if column.data_type == GOE_TYPE_INTEGER_38:
-            return new_column(
-                column,
-                SYNAPSE_TYPE_NUMERIC,
-                data_precision=38,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_DECIMAL:
-            if column.data_precision is None and column.data_scale is None:
-                return self.gen_default_numeric_column(column.name)
-            data_precision = column.data_precision or self.max_decimal_precision()
-            return new_column(
-                column,
-                SYNAPSE_TYPE_NUMERIC,
-                data_precision=data_precision,
-                data_scale=column.data_scale,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_DATE:
-            return new_column(column, SYNAPSE_TYPE_DATE, safe_mapping=True)
-        if column.data_type == GOE_TYPE_FLOAT:
-            return new_column(column, SYNAPSE_TYPE_REAL)
-        if column.data_type == GOE_TYPE_DOUBLE:
-            return new_column(column, SYNAPSE_TYPE_FLOAT)
-        if column.data_type == GOE_TYPE_TIME:
-            safe_mapping = bool(column.data_scale is None or column.data_scale <= self.max_datetime_scale())
-            data_scale = (
-                column.data_scale if (column.data_scale or 0) < self.max_datetime_scale() else self.max_datetime_scale()
-            )
-            return new_column(
-                column,
-                SYNAPSE_TYPE_TIME,
-                data_scale=data_scale,
-                safe_mapping=safe_mapping,
-            )
-        if column.data_type == GOE_TYPE_TIMESTAMP:
-            safe_mapping = bool(column.data_scale is None or column.data_scale <= self.max_datetime_scale())
-            data_scale = (
-                column.data_scale if (column.data_scale or 0) < self.max_datetime_scale() else self.max_datetime_scale()
-            )
-            return new_column(
-                column,
-                SYNAPSE_TYPE_DATETIME2,
-                data_scale=data_scale,
-                safe_mapping=safe_mapping,
-            )
-        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            safe_mapping = bool(column.data_scale is None or column.data_scale <= self.max_datetime_scale())
-            data_scale = (
-                column.data_scale if (column.data_scale or 0) < self.max_datetime_scale() else self.max_datetime_scale()
-            )
-            return new_column(
-                column,
-                SYNAPSE_TYPE_DATETIMEOFFSET,
-                data_scale=data_scale,
-                safe_mapping=safe_mapping,
-            )
-        if column.data_type == GOE_TYPE_INTERVAL_DS:
-            return new_column(column, SYNAPSE_TYPE_VARCHAR, data_length=100)
-        if column.data_type == GOE_TYPE_INTERVAL_YM:
-            return new_column(column, SYNAPSE_TYPE_VARCHAR, data_length=100)
-        if column.data_type == GOE_TYPE_BOOLEAN:
-            return new_column(column, SYNAPSE_TYPE_BIT)
-        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
+        """Translate an internal GOE column to a Synapse SQL column."""
+        context = msgspec.structs.replace(self.type_mapping_context(), decimal_padding_digits=decimal_padding_digits)
+        return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, context)
 
     def alter_sort_columns(self, db_name, table_name, sort_column_names, sync=None):
         raise NotImplementedError("alter_sort_columns not supported for Synapse")

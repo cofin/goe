@@ -15,14 +15,6 @@ from datetime import datetime
 from unittest import TestCase, main
 
 from goe.goe import OffloadOperation
-from goe.offload.column_metadata import (
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    CanonicalColumn,
-    ColumnMetadataInterface,
-    get_partition_columns,
-)
 from goe.offload.offload_constants import DBTYPE_IMPALA
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
@@ -30,6 +22,14 @@ from goe.offload.offload_functions import (
 )
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.registry import create_backend_table
+from goe.offload.schema.column_spec import (
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_INTEGER_4,
+    GOE_TYPE_INTEGER_8,
+    ColumnDialect,
+    ColumnSpec,
+    get_partition_columns,
+)
 from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
 from goe.orchestration import orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
@@ -343,7 +343,7 @@ class TestCurrentBackendTable(TestCase):
         cols = self.api.get_columns()
         self.assertTrue(cols)
         self.assertIsInstance(cols, list)
-        self.assertIsInstance(cols[0], ColumnMetadataInterface)
+        self.assertIsInstance(cols[0], ColumnSpec)
 
     def _test_get_default_location(self):
         try:
@@ -357,7 +357,7 @@ class TestCurrentBackendTable(TestCase):
         if self.api.partition_by_column_supported():
             self.assertTrue(cols)
             self.assertIsInstance(cols, list)
-            self.assertIsInstance(cols[0], ColumnMetadataInterface)
+            self.assertIsInstance(cols[0], ColumnSpec)
         else:
             self.assertFalse(cols)
 
@@ -390,7 +390,7 @@ class TestCurrentBackendTable(TestCase):
         if not self.api.synthetic_partitioning_supported():
             return
         max_precision = 9
-        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_INTEGER_4, from_override=True)
+        canonical_column = ColumnSpec(ColumnDialect.CANONICAL, "A_COLUMN", GOE_TYPE_INTEGER_4, from_override=True)
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 10, 512, 1234]:
             for num in partition_key_test_numbers(8, max_precision) + partition_key_test_numbers(
@@ -405,7 +405,7 @@ class TestCurrentBackendTable(TestCase):
         if not self.api.synthetic_partitioning_supported():
             return
         max_precision = 18
-        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_INTEGER_8)
+        canonical_column = ColumnSpec(ColumnDialect.CANONICAL, "A_COLUMN", GOE_TYPE_INTEGER_8)
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 10000, 8192, 1234]:
             for num in partition_key_test_numbers(15, max_precision, wiggle_room=10) + partition_key_test_numbers(
@@ -420,7 +420,9 @@ class TestCurrentBackendTable(TestCase):
         if not self.api.synthetic_partitioning_supported():
             return
         max_precision = min(self.api.max_decimal_precision(), 18)
-        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_DECIMAL, data_precision=max_precision, data_scale=0)
+        canonical_column = ColumnSpec(
+            ColumnDialect.CANONICAL, "A_COLUMN", GOE_TYPE_DECIMAL, data_precision=max_precision, data_scale=0
+        )
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 100000, 8192, 1234]:
             nums = partition_key_test_numbers(16, 18, wiggle_room=10)
@@ -438,7 +440,9 @@ class TestCurrentBackendTable(TestCase):
             # Only Hadoop currently copes with partition keys over BIGINT
             return
         max_precision = min(self.api.max_decimal_precision(), 38)
-        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_DECIMAL, data_precision=max_precision, data_scale=0)
+        canonical_column = ColumnSpec(
+            ColumnDialect.CANONICAL, "A_COLUMN", GOE_TYPE_DECIMAL, data_precision=max_precision, data_scale=0
+        )
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 100000, 16384, 1234]:
             for num in (
@@ -458,7 +462,9 @@ class TestCurrentBackendTable(TestCase):
         if not self.api.synthetic_partitioning_supported():
             return
         # 12399.6 truncates decimal places on CDH 5.15 and rounds on CDH 6.2 therefore a good test value.
-        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_DECIMAL, data_precision=18, data_scale=9)
+        canonical_column = ColumnSpec(
+            ColumnDialect.CANONICAL, "A_COLUMN", GOE_TYPE_DECIMAL, data_precision=18, data_scale=9
+        )
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 100, 8192, 1234]:
             for num in [
@@ -486,7 +492,9 @@ class TestCurrentBackendTable(TestCase):
             # Only Hadoop currently copes with partition keys over BIGINT
             return
         # 12399.6 truncates decimal places on CDH 5.15 and rounds on CDH 6.2 therefore a good test value.
-        canonical_column = CanonicalColumn("A_COLUMN", GOE_TYPE_DECIMAL, data_precision=38, data_scale=9)
+        canonical_column = ColumnSpec(
+            ColumnDialect.CANONICAL, "A_COLUMN", GOE_TYPE_DECIMAL, data_precision=38, data_scale=9
+        )
         num_column = self.api.from_canonical_column(canonical_column)
         for granularity in [1000, 100, 8192, 1234]:
             for num in [

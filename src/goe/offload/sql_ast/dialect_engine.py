@@ -13,21 +13,21 @@ from sqlglot.dialects.bigquery import BigQuery
 from sqlglot.tokenizer_core import TokenType
 
 from goe.exceptions import GOEError, ValidationError
-from goe.offload.bigquery.bigquery_column import (
-    BIGQUERY_TYPE_DATE,
-    BIGQUERY_TYPE_DATETIME,
-    BIGQUERY_TYPE_INT64,
-    BIGQUERY_TYPE_TIMESTAMP,
-)
 from goe.offload.offload_constants import (
     PART_COL_GRANULARITY_DAY,
     PART_COL_GRANULARITY_MONTH,
     PART_COL_GRANULARITY_YEAR,
 )
+from goe.offload.schema.column_spec import (
+    BIGQUERY_TYPE_DATE,
+    BIGQUERY_TYPE_DATETIME,
+    BIGQUERY_TYPE_INT64,
+    BIGQUERY_TYPE_TIMESTAMP,
+)
 from goe.typing import FrozenBaseStruct
 
 if TYPE_CHECKING:
-    from goe.offload.column_metadata import ColumnMetadataInterface
+    from goe.offload.schema.column_spec import ColumnSpec
 
 __all__ = (
     "DialectNotSupportedError",
@@ -354,7 +354,7 @@ class DialectSqlEngine:
         """Parse a SQL query and render back to SQL for this dialect."""
         return sqlglot.parse_one(sql, read=self._dialect).sql(self._dialect)
 
-    def partition_by_clause(self, partition_column: "ColumnMetadataInterface") -> str:
+    def partition_by_clause(self, partition_column: "ColumnSpec") -> str:
         """Render the BigQuery PARTITION BY expression for a partition column."""
         self._require("partition_by_clause", "bigquery")
         pinfo = partition_column.partition_info
@@ -416,7 +416,7 @@ class DialectSqlEngine:
         project: str | None,
         db_name: str,
         table_name: str,
-        columns: "Sequence[ColumnMetadataInterface]",
+        columns: "Sequence[ColumnSpec]",
         partition_expr_sql: str | None = None,
         cluster_cols: Sequence[str] | None = None,
         options: Mapping[str, Any] | None = None,
@@ -445,7 +445,7 @@ class DialectSqlEngine:
         project: str | None,
         db_name: str,
         table_name: str,
-        columns: "Sequence[ColumnMetadataInterface] | None" = None,
+        columns: "Sequence[ColumnSpec] | None" = None,
         storage_format: str = "PARQUET",
         uris: Sequence[str] = (),
         extra_options: Mapping[str, Any] | None = None,
@@ -955,7 +955,7 @@ class DialectSqlEngine:
         )
 
     @staticmethod
-    def _column_def(col: "ColumnMetadataInterface") -> exp.ColumnDef:
+    def _column_def(col: "ColumnSpec") -> exp.ColumnDef:
         """Build a BigQuery ColumnDef AST node from a GOE column metadata object."""
         constraints = [exp.ColumnConstraint(kind=exp.NotNullColumnConstraint())] if col.nullable is False else None
         return exp.ColumnDef(

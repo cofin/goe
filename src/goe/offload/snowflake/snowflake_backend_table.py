@@ -26,16 +26,17 @@ from goe.filesystem.goe_dfs import (
     azure_fq_container_name,
 )
 from goe.offload.backend_table import BackendTableException, BackendTableInterface
-from goe.offload.column_metadata import ColumnMetadataInterface, valid_column_list
 from goe.offload.offload_constants import FILE_STORAGE_FORMAT_AVRO
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.snowflake import snowflake_predicate
-from goe.offload.snowflake.snowflake_column import (
+from goe.offload.schema.column_spec import (
     SNOWFLAKE_TYPE_BINARY,
     SNOWFLAKE_TYPE_TIME,
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
-    SnowflakeColumn,
+    ColumnDialect,
+    ColumnSpec,
+    valid_column_list,
 )
+from goe.offload.snowflake import snowflake_predicate
 from goe.util.string_utils import add_suffix_in_same_case
 
 logger = logging.getLogger(__name__)
@@ -249,7 +250,7 @@ class BackendSnowflakeTable(BackendTableInterface):
               If we remove this overload then modify the description in the interface.
         """
         assert valid_column_list(new_columns)
-        cols = [_.clone(name=_.name.upper()) for _ in new_columns]
+        cols = [_.replace(name=_.name.upper()) for _ in new_columns]
         self._columns = cols
 
     def setup_result_cache_area(self):
@@ -360,7 +361,7 @@ class BackendSnowflakeTable(BackendTableInterface):
         )
 
     def _format_staging_column_name(self, column):
-        if isinstance(column, ColumnMetadataInterface):
+        if isinstance(column, ColumnSpec):
             column_name = column.staging_file_column_name or column.name
         else:
             column_name = column
@@ -507,17 +508,19 @@ class BackendSnowflakeTable(BackendTableInterface):
             return f"TO_{data_type}({expr})"
 
         assert backend_column
-        assert isinstance(backend_column, SnowflakeColumn)
+        assert isinstance(backend_column, ColumnSpec) and backend_column.dialect is ColumnDialect.SNOWFLAKE
         assert rdbms_column, "RDBMS column missing for backend column: %s" % backend_column.name
-        assert isinstance(rdbms_column, ColumnMetadataInterface)
+        assert isinstance(rdbms_column, ColumnSpec)
         assert staging_column
-        assert isinstance(staging_column, ColumnMetadataInterface)
+        assert isinstance(staging_column, ColumnSpec)
 
         return_cast = None
         return_vcast = None
         return_type = backend_column.format_data_type().upper()
 
-        if isinstance(staging_column, SnowflakeColumn) and staging_column.data_type == backend_column.data_type:
+        if (
+            isinstance(staging_column, ColumnSpec) and staging_column.dialect is ColumnDialect.SNOWFLAKE
+        ) and staging_column.data_type == backend_column.data_type:
             self._log(
                 "No cast of %s required for matching load data type: %s"
                 % (backend_column.name, staging_column.data_type),

@@ -8,10 +8,10 @@
 from typing import TYPE_CHECKING, Any
 
 from goe.offload import offload_constants
-from goe.offload.column_metadata import match_table_column
 from goe.offload.offload_functions import expand_columns_csv
 from goe.offload.offload_messages import VVERBOSE
 from goe.offload.offload_metadata_functions import offload_sort_columns_to_csv
+from goe.offload.schema.column_spec import match_table_column
 from goe.util.string_utils import csv_split
 
 if TYPE_CHECKING:

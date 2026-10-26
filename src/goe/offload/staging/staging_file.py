@@ -8,12 +8,12 @@
 import logging
 from abc import ABCMeta, abstractmethod
 
-from goe.offload.column_metadata import valid_column_list
 from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_AVRO,
     FILE_STORAGE_FORMAT_PARQUET,
 )
 from goe.offload.offload_messages import VVERBOSE
+from goe.offload.schema.column_spec import valid_column_list
 
 JAVA_PRIMITIVE_BOOLEAN = "Boolean"
 JAVA_PRIMITIVE_DOUBLE = "Double"
@@ -108,11 +108,8 @@ class OffloadStagingFileInterface(metaclass=ABCMeta):
         logger.debug(msg)
 
     def _map_from_canonical_columns(self):
-        staging_columns = []
-        for canonical_column in self._canonical_columns:
-            staging_columns.append(self.from_canonical_column(canonical_column))
-        for i, c in enumerate(staging_columns):
-            c.set_simplified_staging_column_name(i)
+        staging_columns = [self.from_canonical_column(canonical_column) for canonical_column in self._canonical_columns]
+        staging_columns = [c.with_simplified_staging_column_name(i) for i, c in enumerate(staging_columns)]
         self._log("Staging columns:", detail=VVERBOSE)
         [self._log(str(_), detail=VVERBOSE) for _ in staging_columns]
         return staging_columns

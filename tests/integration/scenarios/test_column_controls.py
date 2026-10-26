@@ -8,22 +8,10 @@ import pytest
 from numpy import datetime64
 
 from goe.offload import offload_constants
-from goe.offload.backend_table import (
+from goe.offload.backend_load import (
     CAST_VALIDATION_EXCEPTION_TEXT,
     DATA_VALIDATION_NOT_NULL_EXCEPTION_TEXT,
     DATA_VALIDATION_SCALE_EXCEPTION_TEXT,
-)
-from goe.offload.column_metadata import (
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_VARIABLE_STRING,
-    match_table_column,
 )
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
@@ -41,6 +29,18 @@ from goe.offload.operation.data_type_controls import (
 )
 from goe.offload.operation.not_null_columns import (
     UNKNOWN_NOT_NULL_COLUMN_EXCEPTION_TEXT,
+)
+from goe.offload.schema.column_spec import (
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_DOUBLE,
+    GOE_TYPE_FIXED_STRING,
+    GOE_TYPE_INTEGER_1,
+    GOE_TYPE_INTEGER_2,
+    GOE_TYPE_INTEGER_4,
+    GOE_TYPE_INTEGER_8,
+    GOE_TYPE_VARIABLE_STRING,
+    match_table_column,
 )
 from goe.offload.transport.constants import OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
 from tests.integration.scenarios.assertion_functions import (

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from pyarrow import parquet
 
-from goe.offload.column_metadata import SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE
 from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
     DBTYPE_ORACLE,
@@ -24,8 +23,8 @@ from goe.offload.offload_metadata_functions import (
 from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT,
 )
-from goe.offload.oracle.oracle_column import ORACLE_TYPE_TIMESTAMP
 from goe.offload.registry import create_backend_table
+from goe.offload.schema.column_spec import ORACLE_TYPE_TIMESTAMP, SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE
 from goe.offload.transport.constants import MISSING_ROWS_IMPORTED_WARNING
 from goe.util.string_utils import get_temp_path
 from tests.integration.scenarios.scenario_constants import (

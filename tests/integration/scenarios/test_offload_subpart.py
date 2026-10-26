@@ -13,8 +13,8 @@ from goe.offload.offload_metadata_functions import (
     OFFLOAD_TYPE_FULL,
     OFFLOAD_TYPE_INCREMENTAL,
 )
-from goe.offload.oracle.oracle_column import ORACLE_TYPE_NUMBER
 from goe.offload.registry import create_repository_client
+from goe.offload.schema.column_spec import ORACLE_TYPE_NUMBER
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import sales_based_fact_assertion
 from tests.integration.scenarios.scenario_runner import (

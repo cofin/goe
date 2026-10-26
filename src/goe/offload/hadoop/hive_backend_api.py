@@ -13,14 +13,18 @@ import logging
 from numpy import datetime64
 
 from goe.offload.backend_api import BackendApiException
-from goe.offload.column_metadata import (
-    match_table_column,
-    str_list_of_columns,
-    valid_column_list,
-)
 from goe.offload.hadoop.better_impyla import HDFS_NULL_PART_KEY_CONSTANT
 from goe.offload.hadoop.hadoop_backend_api import BackendHadoopApi
-from goe.offload.hadoop.hadoop_column import (
+from goe.offload.hadoop.hive_literal import HiveLiteral
+from goe.offload.offload_constants import (
+    DBTYPE_HIVE,
+    FILE_STORAGE_FORMAT_AVRO,
+    FILE_STORAGE_FORMAT_ORC,
+    FILE_STORAGE_FORMAT_PARQUET,
+    HIVE_BACKEND_CAPABILITIES,
+)
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_BINARY,
     HADOOP_TYPE_BOOLEAN,
@@ -39,16 +43,10 @@ from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_TIMESTAMP,
     HADOOP_TYPE_TINYINT,
     HADOOP_TYPE_VARCHAR,
+    match_table_column,
+    str_list_of_columns,
+    valid_column_list,
 )
-from goe.offload.hadoop.hive_literal import HiveLiteral
-from goe.offload.offload_constants import (
-    DBTYPE_HIVE,
-    FILE_STORAGE_FORMAT_AVRO,
-    FILE_STORAGE_FORMAT_ORC,
-    FILE_STORAGE_FORMAT_PARQUET,
-    HIVE_BACKEND_CAPABILITIES,
-)
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

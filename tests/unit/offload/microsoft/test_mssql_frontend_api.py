@@ -12,9 +12,9 @@ from unittest.mock import MagicMock
 from sqlspec.loader import SQLFileLoader
 
 from goe.offload.frontend_cache import FrontendCatalogCache
-from goe.offload.microsoft.mssql_column import MSSQLColumn
 from goe.offload.microsoft.mssql_frontend_api import MSSQLFrontendApi
 from goe.offload.offload_constants import DBTYPE_MSSQL
+from goe.offload.schema.column_spec import ColumnDialect, ColumnSpec
 
 
 class _FakeDriverSession:
@@ -157,7 +157,7 @@ def test_get_columns_and_table_size_use_named_catalog_sql_and_cache() -> None:
 
     columns = api.get_columns("sales", "orders")
     assert len(columns) == 2
-    assert all(isinstance(col, MSSQLColumn) for col in columns)
+    assert all((isinstance(col, ColumnSpec) and col.dialect is ColumnDialect.MSSQL) for col in columns)
     assert [col.name for col in columns] == ["order_id", "amount"]
 
     first_query_count = len(session.executed)

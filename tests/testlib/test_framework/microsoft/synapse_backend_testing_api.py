@@ -9,7 +9,7 @@ processing and verification of integration tests with a Synapse backend.
 
 import logging
 
-from goe.offload.column_metadata import (
+from goe.offload.schema.column_spec import (
     CANONICAL_CHAR_SEMANTICS_BYTE,
     CANONICAL_CHAR_SEMANTICS_CHAR,
     CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -32,10 +32,6 @@ from goe.offload.column_metadata import (
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
     GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-    ColumnPartitionInfo,
-)
-from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_BIGINT,
     SYNAPSE_TYPE_BINARY,
     SYNAPSE_TYPE_CHAR,
@@ -59,7 +55,9 @@ from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_UNIQUEIDENTIFIER,
     SYNAPSE_TYPE_VARBINARY,
     SYNAPSE_TYPE_VARCHAR,
-    SynapseColumn,
+    ColumnDialect,
+    ColumnPartitionSpec,
+    ColumnSpec,
 )
 from tests.testlib.test_framework.backend_testing_api import (
     STORY_TEST_BACKEND_BLOB_COL,
@@ -164,26 +162,30 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #   TestBackendSynapseDataTypeMappings.test_synapse_to_canonical()
             #   TestOracleDataTypeMappings.test_canonical_to_oracle()
             name(SYNAPSE_TYPE_CHAR, "3"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_CHAR, "3"),
                     SYNAPSE_TYPE_CHAR,
                     char_length=3,
                     data_length=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_CHAR, "3"),
                     GOE_TYPE_FIXED_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_BYTE,
                 ),
             },
             name(SYNAPSE_TYPE_CHAR, "3", UNICODE_NAME_TOKEN): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_CHAR, "3", UNICODE_NAME_TOKEN),
                     SYNAPSE_TYPE_CHAR,
                     char_length=3,
                     data_length=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_CHAR, "3", UNICODE_NAME_TOKEN),
                     GOE_TYPE_FIXED_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -191,20 +193,23 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 "present_options": {"unicode_string_columns_csv": name(SYNAPSE_TYPE_CHAR, "3", UNICODE_NAME_TOKEN)},
             },
             name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_STRING): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_STRING),
                     SYNAPSE_TYPE_CHAR,
                     char_length=3,
                     data_length=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
                 "present_options": {"large_string_columns_csv": name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_STRING)},
             },
             name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(
                         SYNAPSE_TYPE_CHAR,
                         "3",
@@ -215,7 +220,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     char_length=3,
                     data_length=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(
                         SYNAPSE_TYPE_CHAR,
                         "3",
@@ -241,25 +247,28 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_BINARY),
                     SYNAPSE_TYPE_CHAR,
                     char_length=3,
                     data_length=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_BINARY), GOE_TYPE_BINARY
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_BINARY), GOE_TYPE_BINARY
                 ),
                 "present_options": {"binary_columns_csv": name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_BINARY)},
             },
             name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_BINARY),
                     SYNAPSE_TYPE_CHAR,
                     char_length=3,
                     data_length=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_CHAR, "3", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
@@ -271,26 +280,30 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #   TestBackendSynapseDataTypeMappings.test_synapse_to_canonical()
             #   TestOracleDataTypeMappings.test_canonical_to_oracle()
             name(SYNAPSE_TYPE_NCHAR, "3"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NCHAR, "3"),
                     SYNAPSE_TYPE_NCHAR,
                     char_length=3,
                     data_length=6,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NCHAR, "3"),
                     GOE_TYPE_FIXED_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
                 ),
             },
             name(SYNAPSE_TYPE_NCHAR, "3", UNICODE_NAME_TOKEN): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NCHAR, "3", UNICODE_NAME_TOKEN),
                     SYNAPSE_TYPE_NCHAR,
                     char_length=3,
                     data_length=6,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NCHAR, "3", UNICODE_NAME_TOKEN),
                     GOE_TYPE_FIXED_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -298,20 +311,23 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 "present_options": {"unicode_string_columns_csv": name(SYNAPSE_TYPE_NCHAR, "3", UNICODE_NAME_TOKEN)},
             },
             name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_STRING): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_STRING),
                     SYNAPSE_TYPE_NCHAR,
                     char_length=3,
                     data_length=6,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
                 "present_options": {"large_string_columns_csv": name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_STRING)},
             },
             name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(
                         SYNAPSE_TYPE_NCHAR,
                         "3",
@@ -322,7 +338,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     char_length=3,
                     data_length=6,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(
                         SYNAPSE_TYPE_NCHAR,
                         "3",
@@ -347,26 +364,30 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_BINARY),
                     SYNAPSE_TYPE_NCHAR,
                     char_length=3,
                     data_length=6,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
                 "present_options": {"binary_columns_csv": name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_BINARY)},
             },
             name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_BINARY),
                     SYNAPSE_TYPE_NCHAR,
                     char_length=3,
                     data_length=6,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NCHAR, "3", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
@@ -378,26 +399,30 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #   TestBackendSynapseDataTypeMappings.test_synapse_to_canonical()
             #   TestOracleDataTypeMappings.test_canonical_to_oracle()
             name(SYNAPSE_TYPE_VARCHAR, "30"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_VARCHAR, "30"),
                     SYNAPSE_TYPE_VARCHAR,
                     char_length=30,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_VARCHAR, "30"),
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_BYTE,
                 ),
             },
             name(SYNAPSE_TYPE_VARCHAR, "30", UNICODE_NAME_TOKEN): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_VARCHAR, "30", UNICODE_NAME_TOKEN),
                     SYNAPSE_TYPE_VARCHAR,
                     char_length=30,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_VARCHAR, "30", UNICODE_NAME_TOKEN),
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -405,13 +430,15 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 "present_options": {"unicode_string_columns_csv": name(SYNAPSE_TYPE_VARCHAR, "30", UNICODE_NAME_TOKEN)},
             },
             name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING),
                     SYNAPSE_TYPE_VARCHAR,
                     char_length=30,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
@@ -420,7 +447,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_STRING, UNICODE_NAME_TOKEN): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(
                         SYNAPSE_TYPE_VARCHAR,
                         "30",
@@ -431,7 +459,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     char_length=30,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(
                         SYNAPSE_TYPE_VARCHAR,
                         "30",
@@ -457,26 +486,30 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_BINARY),
                     SYNAPSE_TYPE_VARCHAR,
                     char_length=30,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
                 "present_options": {"binary_columns_csv": name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_BINARY)},
             },
             name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_BINARY),
                     SYNAPSE_TYPE_VARCHAR,
                     char_length=30,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_VARCHAR, "30", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
@@ -489,7 +522,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 str(INTERVAL_DS_VC_LENGTH),
                 GOE_TYPE_INTERVAL_DS,
             ): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(
                         SYNAPSE_TYPE_VARCHAR,
                         str(INTERVAL_DS_VC_LENGTH),
@@ -499,7 +533,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     char_length=INTERVAL_DS_VC_LENGTH,
                     data_length=INTERVAL_DS_VC_LENGTH,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(
                         SYNAPSE_TYPE_VARCHAR,
                         str(INTERVAL_DS_VC_LENGTH),
@@ -520,7 +555,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 str(INTERVAL_YM_VC_LENGTH),
                 GOE_TYPE_INTERVAL_YM,
             ): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(
                         SYNAPSE_TYPE_VARCHAR,
                         str(INTERVAL_YM_VC_LENGTH),
@@ -530,7 +566,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     char_length=INTERVAL_YM_VC_LENGTH,
                     data_length=INTERVAL_YM_VC_LENGTH,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(
                         SYNAPSE_TYPE_VARCHAR,
                         str(INTERVAL_YM_VC_LENGTH),
@@ -552,26 +589,30 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #   TestBackendSynapseDataTypeMappings.test_synapse_to_canonical()
             #   TestOracleDataTypeMappings.test_canonical_to_oracle()
             name(SYNAPSE_TYPE_NVARCHAR, "30"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NVARCHAR, "30"),
                     SYNAPSE_TYPE_NVARCHAR,
                     char_length=30,
                     data_length=60,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NVARCHAR, "30"),
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
                 ),
             },
             name(SYNAPSE_TYPE_NVARCHAR, "30", UNICODE_NAME_TOKEN): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NVARCHAR, "30", UNICODE_NAME_TOKEN),
                     SYNAPSE_TYPE_NVARCHAR,
                     char_length=30,
                     data_length=60,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NVARCHAR, "30", UNICODE_NAME_TOKEN),
                     GOE_TYPE_VARIABLE_STRING,
                     char_semantics=CANONICAL_CHAR_SEMANTICS_UNICODE,
@@ -581,13 +622,15 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_STRING): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_STRING),
                     SYNAPSE_TYPE_NVARCHAR,
                     char_length=30,
                     data_length=60,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_STRING),
                     GOE_TYPE_LARGE_STRING,
                 ),
@@ -601,7 +644,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 GOE_TYPE_LARGE_STRING,
                 UNICODE_NAME_TOKEN,
             ): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(
                         SYNAPSE_TYPE_NVARCHAR,
                         "30",
@@ -612,7 +656,8 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                     char_length=30,
                     data_length=60,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(
                         SYNAPSE_TYPE_NVARCHAR,
                         "30",
@@ -638,26 +683,30 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
                 },
             },
             name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_BINARY),
                     SYNAPSE_TYPE_NVARCHAR,
                     char_length=30,
                     data_length=60,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
                 "present_options": {"binary_columns_csv": name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_BINARY)},
             },
             name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_BINARY),
                     SYNAPSE_TYPE_NVARCHAR,
                     char_length=30,
                     data_length=60,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NVARCHAR, "30", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
@@ -668,8 +717,11 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #
             # Synapse UNIQUEIDENTIFIER
             name(SYNAPSE_TYPE_UNIQUEIDENTIFIER): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_UNIQUEIDENTIFIER), SYNAPSE_TYPE_UNIQUEIDENTIFIER),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_UNIQUEIDENTIFIER), SYNAPSE_TYPE_UNIQUEIDENTIFIER
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_UNIQUEIDENTIFIER),
                     GOE_TYPE_FIXED_STRING,
                     data_length=36,
@@ -681,16 +733,22 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #   TestBackendSynapseDataTypeMappings.test_synapse_to_canonical()
             #   TestOracleDataTypeMappings.test_canonical_to_oracle()
             name(SYNAPSE_TYPE_BINARY, "10"): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_BINARY, "10"), SYNAPSE_TYPE_BINARY, data_length=10),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_BINARY, "10"), GOE_TYPE_BINARY),
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_BINARY, "10"), SYNAPSE_TYPE_BINARY, data_length=10
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_BINARY, "10"), GOE_TYPE_BINARY
+                ),
             },
             name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_LARGE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_LARGE_BINARY),
                     SYNAPSE_TYPE_BINARY,
                     data_length=10,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
@@ -701,12 +759,14 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             # Unfortunately BINARY is a padded type so even a short value in the column is 2001 which is too long
             # for RAW, so we just use a small length and rely on VARBINARY test.
             name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_BINARY),
                     SYNAPSE_TYPE_BINARY,
                     data_length=10,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_BINARY, "10", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
@@ -718,20 +778,25 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #   TestBackendSynapseDataTypeMappings.test_synapse_to_canonical()
             #   TestOracleDataTypeMappings.test_canonical_to_oracle()
             name(SYNAPSE_TYPE_VARBINARY, "30"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_VARBINARY, "30"),
                     SYNAPSE_TYPE_VARBINARY,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_VARBINARY, "30"), GOE_TYPE_BINARY),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_VARBINARY, "30"), GOE_TYPE_BINARY
+                ),
             },
             name(SYNAPSE_TYPE_VARBINARY, "30", GOE_TYPE_LARGE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_VARBINARY, "30", GOE_TYPE_LARGE_BINARY),
                     SYNAPSE_TYPE_VARBINARY,
                     data_length=30,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_VARBINARY, "30", GOE_TYPE_LARGE_BINARY),
                     GOE_TYPE_LARGE_BINARY,
                 ),
@@ -742,12 +807,14 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             # We need this test here to prove >2000 can be forced to smaller BINARY (and not end up as Oracle BLOB).
             # Not ideal to have Oracle thresholds in Synapse tests but we need this confirmation.
             name(SYNAPSE_TYPE_VARBINARY, "2001", GOE_TYPE_BINARY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_VARBINARY, "2001", GOE_TYPE_BINARY),
                     SYNAPSE_TYPE_VARBINARY,
                     data_length=2001,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_VARBINARY, "2001", GOE_TYPE_BINARY),
                     GOE_TYPE_BINARY,
                 ),
@@ -756,144 +823,177 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #
             # Synapse *INTs
             name(SYNAPSE_TYPE_TINYINT): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_TINYINT), SYNAPSE_TYPE_TINYINT),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_TINYINT), GOE_TYPE_INTEGER_2),
+                "column": ColumnSpec(ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_TINYINT), SYNAPSE_TYPE_TINYINT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_TINYINT), GOE_TYPE_INTEGER_2
+                ),
             },
             name(SYNAPSE_TYPE_SMALLINT): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_SMALLINT), SYNAPSE_TYPE_SMALLINT),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_SMALLINT), GOE_TYPE_INTEGER_2),
+                "column": ColumnSpec(ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_SMALLINT), SYNAPSE_TYPE_SMALLINT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_SMALLINT), GOE_TYPE_INTEGER_2
+                ),
             },
             name(SYNAPSE_TYPE_INT): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_INT), SYNAPSE_TYPE_INT),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_INT), GOE_TYPE_INTEGER_4),
+                "column": ColumnSpec(ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_INT), SYNAPSE_TYPE_INT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_INT), GOE_TYPE_INTEGER_4
+                ),
             },
             name(SYNAPSE_TYPE_BIGINT): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_BIGINT), SYNAPSE_TYPE_BIGINT),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_BIGINT), GOE_TYPE_INTEGER_8),
+                "column": ColumnSpec(ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_BIGINT), SYNAPSE_TYPE_BIGINT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_BIGINT), GOE_TYPE_INTEGER_8
+                ),
             },
             #
             # Synapse DECIMAL
             name(SYNAPSE_TYPE_DECIMAL, "2", "0"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, "2", "0"),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DECIMAL, "2", "0"), GOE_TYPE_INTEGER_1),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DECIMAL, "2", "0"), GOE_TYPE_INTEGER_1
+                ),
             },
             name(SYNAPSE_TYPE_DECIMAL, "4", "0"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, "4", "0"),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DECIMAL, "4", "0"), GOE_TYPE_INTEGER_2),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DECIMAL, "4", "0"), GOE_TYPE_INTEGER_2
+                ),
             },
             name(SYNAPSE_TYPE_DECIMAL, "9", "0"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, "9", "0"),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DECIMAL, "9", "0"), GOE_TYPE_INTEGER_4),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DECIMAL, "9", "0"), GOE_TYPE_INTEGER_4
+                ),
             },
             name(SYNAPSE_TYPE_DECIMAL, "18", "0"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, "18", "0"),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DECIMAL, "18", "0"), GOE_TYPE_INTEGER_8),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DECIMAL, "18", "0"), GOE_TYPE_INTEGER_8
+                ),
             },
             # Trimmed down to NUMBER(36) because cx_Oracle has issues beyond that
             name(SYNAPSE_TYPE_DECIMAL, "36", "0"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, "36", "0"),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=36,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DECIMAL, "36", "0"), GOE_TYPE_INTEGER_38
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DECIMAL, "36", "0"), GOE_TYPE_INTEGER_38
                 ),
             },
             name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_1): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_1),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_1_columns_csv": name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_1)},
             },
             name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_2): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_2),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
                 "present_options": {"integer_2_columns_csv": name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_2)},
             },
             name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_4): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_4),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_4_columns_csv": name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_4)},
             },
             name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_8): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_8),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_8_columns_csv": name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_8)},
             },
             name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_38): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_38),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=38,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_38_columns_csv": name(SYNAPSE_TYPE_DECIMAL, GOE_TYPE_INTEGER_38)},
             },
             name(SYNAPSE_TYPE_DECIMAL, "10", "3"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DECIMAL, "10", "3"),
                     SYNAPSE_TYPE_DECIMAL,
                     data_precision=10,
                     data_scale=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DECIMAL, "10", "3"),
                     GOE_TYPE_DECIMAL,
                     data_precision=10,
@@ -903,126 +1003,151 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #
             # Synapse NUMERIC
             name(SYNAPSE_TYPE_NUMERIC, "2", "0"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, "2", "0"),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_NUMERIC, "2", "0"), GOE_TYPE_INTEGER_1),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_NUMERIC, "2", "0"), GOE_TYPE_INTEGER_1
+                ),
             },
             name(SYNAPSE_TYPE_NUMERIC, "4", "0"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, "4", "0"),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_NUMERIC, "4", "0"), GOE_TYPE_INTEGER_2),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_NUMERIC, "4", "0"), GOE_TYPE_INTEGER_2
+                ),
             },
             name(SYNAPSE_TYPE_NUMERIC, "9", "0"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, "9", "0"),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_NUMERIC, "9", "0"), GOE_TYPE_INTEGER_4),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_NUMERIC, "9", "0"), GOE_TYPE_INTEGER_4
+                ),
             },
             name(SYNAPSE_TYPE_NUMERIC, "18", "0"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, "18", "0"),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_NUMERIC, "18", "0"), GOE_TYPE_INTEGER_8),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_NUMERIC, "18", "0"), GOE_TYPE_INTEGER_8
+                ),
             },
             # Trimmed down to NUMBER(36) because cx_Oracle has issues beyond that
             name(SYNAPSE_TYPE_NUMERIC, "36", "0"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, "36", "0"),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=36,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_NUMERIC, "36", "0"), GOE_TYPE_INTEGER_38
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_NUMERIC, "36", "0"), GOE_TYPE_INTEGER_38
                 ),
             },
             name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_1): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_1),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=2,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_1_columns_csv": name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_1)},
             },
             name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_2): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_2),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=4,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
                 "present_options": {"integer_2_columns_csv": name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_2)},
             },
             name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_4): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_4),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=9,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_4_columns_csv": name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_4)},
             },
             name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_8): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_8),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=18,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_8_columns_csv": name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_8)},
             },
             name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_38): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_38),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=38,
                     data_scale=0,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_38_columns_csv": name(SYNAPSE_TYPE_NUMERIC, GOE_TYPE_INTEGER_38)},
             },
             name(SYNAPSE_TYPE_NUMERIC, "10", "3"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_NUMERIC, "10", "3"),
                     SYNAPSE_TYPE_NUMERIC,
                     data_precision=10,
                     data_scale=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_NUMERIC, "10", "3"),
                     GOE_TYPE_DECIMAL,
                     data_precision=10,
@@ -1033,74 +1158,87 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             # Synapse *MONEY
             # Using precision 9 for MONEY because it cannot hold the full 19 digits due to being byte sized
             name(SYNAPSE_TYPE_SMALLMONEY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_SMALLMONEY),
                     SYNAPSE_TYPE_SMALLMONEY,
                     data_precision=9,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_SMALLMONEY), GOE_TYPE_DECIMAL),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_SMALLMONEY), GOE_TYPE_DECIMAL
+                ),
             },
             name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_1): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_1),
                     SYNAPSE_TYPE_SMALLMONEY,
                     data_precision=9,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_1_columns_csv": name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_1)},
             },
             name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_2): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_2),
                     SYNAPSE_TYPE_SMALLMONEY,
                     data_precision=9,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
                 "present_options": {"integer_2_columns_csv": name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_2)},
             },
             name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_4): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_4),
                     SYNAPSE_TYPE_SMALLMONEY,
                     data_precision=9,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_4_columns_csv": name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_4)},
             },
             name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_8): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_8),
                     SYNAPSE_TYPE_SMALLMONEY,
                     data_precision=9,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_8_columns_csv": name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_8)},
             },
             name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_38): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_38),
                     SYNAPSE_TYPE_SMALLMONEY,
                     data_precision=9,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_SMALLMONEY, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_1,
                 ),
@@ -1108,74 +1246,87 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             },
             # Using precision 18 for MONEY because it cannot hold the full 19 digits due to being byte sized
             name(SYNAPSE_TYPE_MONEY): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_MONEY),
                     SYNAPSE_TYPE_MONEY,
                     data_precision=18,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_MONEY), GOE_TYPE_DECIMAL),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_MONEY), GOE_TYPE_DECIMAL
+                ),
             },
             name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_1): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_1),
                     SYNAPSE_TYPE_MONEY,
                     data_precision=18,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_1),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_1_columns_csv": name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_1)},
             },
             name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_2): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_2),
                     SYNAPSE_TYPE_MONEY,
                     data_precision=18,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_2),
                     GOE_TYPE_INTEGER_2,
                 ),
                 "present_options": {"integer_2_columns_csv": name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_2)},
             },
             name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_4): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_4),
                     SYNAPSE_TYPE_MONEY,
                     data_precision=18,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_4),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_4_columns_csv": name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_4)},
             },
             name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_8): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_8),
                     SYNAPSE_TYPE_MONEY,
                     data_precision=18,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_8),
                     GOE_TYPE_INTEGER_1,
                 ),
                 "present_options": {"integer_8_columns_csv": name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_8)},
             },
             name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_38): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_38),
                     SYNAPSE_TYPE_MONEY,
                     data_precision=18,
                     data_scale=4,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_MONEY, GOE_TYPE_INTEGER_38),
                     GOE_TYPE_INTEGER_1,
                 ),
@@ -1184,13 +1335,17 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #
             # Synapse REAL
             name(SYNAPSE_TYPE_REAL): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_REAL), SYNAPSE_TYPE_REAL),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_REAL), GOE_TYPE_FLOAT),
+                "column": ColumnSpec(ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_REAL), SYNAPSE_TYPE_REAL),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_REAL), GOE_TYPE_FLOAT
+                ),
             },
             name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL), SYNAPSE_TYPE_REAL),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL), SYNAPSE_TYPE_REAL
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
                 ),
                 "present_options": {
                     "decimal_columns_csv_list": [name(SYNAPSE_TYPE_REAL, GOE_TYPE_DECIMAL)],
@@ -1200,13 +1355,17 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #
             # Synapse FLOAT
             name(SYNAPSE_TYPE_FLOAT): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_FLOAT), SYNAPSE_TYPE_FLOAT),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_FLOAT), GOE_TYPE_DOUBLE),
+                "column": ColumnSpec(ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_FLOAT), SYNAPSE_TYPE_FLOAT),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_FLOAT), GOE_TYPE_DOUBLE
+                ),
             },
             name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL), SYNAPSE_TYPE_FLOAT),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL), SYNAPSE_TYPE_FLOAT
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
                 ),
                 "present_options": {
                     "decimal_columns_csv_list": [name(SYNAPSE_TYPE_FLOAT, GOE_TYPE_DECIMAL)],
@@ -1216,12 +1375,17 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #
             # DATE
             name(SYNAPSE_TYPE_DATE): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_DATE), SYNAPSE_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DATE), GOE_TYPE_DATE),
+                "column": ColumnSpec(ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_DATE), SYNAPSE_TYPE_DATE),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DATE), GOE_TYPE_DATE
+                ),
             },
             name(SYNAPSE_TYPE_DATE, GOE_TYPE_TIMESTAMP): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_DATE, GOE_TYPE_TIMESTAMP), SYNAPSE_TYPE_DATE),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_DATE, GOE_TYPE_TIMESTAMP), SYNAPSE_TYPE_DATE
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DATE, GOE_TYPE_TIMESTAMP),
                     GOE_TYPE_TIMESTAMP,
                 ),
@@ -1230,93 +1394,118 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #
             # DATETIMEs
             name(SYNAPSE_TYPE_SMALLDATETIME): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_SMALLDATETIME), SYNAPSE_TYPE_SMALLDATETIME),
-                "expected_canonical_column": CanonicalColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_SMALLDATETIME), SYNAPSE_TYPE_SMALLDATETIME
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_SMALLDATETIME),
                     GOE_TYPE_TIMESTAMP,
                     data_scale=0,
                 ),
             },
             name(SYNAPSE_TYPE_SMALLDATETIME, GOE_TYPE_DATE): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_SMALLDATETIME, GOE_TYPE_DATE),
                     SYNAPSE_TYPE_SMALLDATETIME,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_SMALLDATETIME, GOE_TYPE_DATE), GOE_TYPE_DATE
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_SMALLDATETIME, GOE_TYPE_DATE), GOE_TYPE_DATE
                 ),
                 "present_options": {"date_columns_csv": name(SYNAPSE_TYPE_SMALLDATETIME, GOE_TYPE_DATE)},
             },
             name(SYNAPSE_TYPE_DATETIME): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_DATETIME), SYNAPSE_TYPE_DATETIME),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DATETIME), GOE_TYPE_TIMESTAMP),
+                "column": ColumnSpec(ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_DATETIME), SYNAPSE_TYPE_DATETIME),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DATETIME), GOE_TYPE_TIMESTAMP
+                ),
             },
             name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE), SYNAPSE_TYPE_DATETIME),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE), GOE_TYPE_DATE),
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE), SYNAPSE_TYPE_DATETIME
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE), GOE_TYPE_DATE
+                ),
                 "present_options": {"date_columns_csv": name(SYNAPSE_TYPE_DATETIME, GOE_TYPE_DATE)},
             },
             name(SYNAPSE_TYPE_DATETIME2): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_DATETIME2), SYNAPSE_TYPE_DATETIME2),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DATETIME2), GOE_TYPE_TIMESTAMP),
+                "column": ColumnSpec(ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_DATETIME2), SYNAPSE_TYPE_DATETIME2),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DATETIME2), GOE_TYPE_TIMESTAMP
+                ),
             },
             name(SYNAPSE_TYPE_DATETIME2, "3"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DATETIME2, "3"),
                     SYNAPSE_TYPE_DATETIME2,
                     data_scale=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DATETIME2, "3"),
                     GOE_TYPE_TIMESTAMP,
                     data_scale=3,
                 ),
             },
             name(SYNAPSE_TYPE_DATETIME2, GOE_TYPE_DATE): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DATETIME2, GOE_TYPE_DATE),
                     SYNAPSE_TYPE_DATETIME2,
                 ),
-                "expected_canonical_column": CanonicalColumn(
-                    name(SYNAPSE_TYPE_DATETIME2, GOE_TYPE_DATE), GOE_TYPE_DATE
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DATETIME2, GOE_TYPE_DATE), GOE_TYPE_DATE
                 ),
                 "present_options": {"date_columns_csv": name(SYNAPSE_TYPE_DATETIME2, GOE_TYPE_DATE)},
             },
             #
             # DATETIMEOFFSET
             name(SYNAPSE_TYPE_DATETIMEOFFSET): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_DATETIMEOFFSET), SYNAPSE_TYPE_DATETIMEOFFSET),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_DATETIMEOFFSET), GOE_TYPE_TIMESTAMP_TZ),
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_DATETIMEOFFSET), SYNAPSE_TYPE_DATETIMEOFFSET
+                ),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_DATETIMEOFFSET), GOE_TYPE_TIMESTAMP_TZ
+                ),
             },
             name(SYNAPSE_TYPE_DATETIMEOFFSET, "3"): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DATETIMEOFFSET, "3"),
                     SYNAPSE_TYPE_DATETIMEOFFSET,
                     data_scale=3,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DATETIMEOFFSET, "3"),
                     GOE_TYPE_TIMESTAMP_TZ,
                     data_scale=3,
                 ),
             },
             name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_DATE): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_DATE),
                     SYNAPSE_TYPE_DATETIMEOFFSET,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_DATE),
                     GOE_TYPE_DATE,
                 ),
                 "present_options": {"date_columns_csv": name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_DATE)},
             },
             name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_TIMESTAMP): {
-                "column": SynapseColumn(
+                "column": ColumnSpec(
+                    ColumnDialect.SYNAPSE,
                     name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_TIMESTAMP),
                     SYNAPSE_TYPE_DATETIMEOFFSET,
                 ),
-                "expected_canonical_column": CanonicalColumn(
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL,
                     name(SYNAPSE_TYPE_DATETIMEOFFSET, GOE_TYPE_TIMESTAMP),
                     GOE_TYPE_TIMESTAMP,
                 ),
@@ -1325,8 +1514,10 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             #
             # TIME
             name(SYNAPSE_TYPE_TIME): {
-                "column": SynapseColumn(name(SYNAPSE_TYPE_TIME), SYNAPSE_TYPE_TIME),
-                "expected_canonical_column": CanonicalColumn(name(SYNAPSE_TYPE_TIME), GOE_TYPE_TIME),
+                "column": ColumnSpec(ColumnDialect.SYNAPSE, name(SYNAPSE_TYPE_TIME), SYNAPSE_TYPE_TIME),
+                "expected_canonical_column": ColumnSpec(
+                    ColumnDialect.CANONICAL, name(SYNAPSE_TYPE_TIME), GOE_TYPE_TIME
+                ),
             },
         }
         if filter_column:
@@ -1383,7 +1574,7 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
         """Create partitioned Synapse test table, partitioned by YEARMON integral column."""
         create_cols = self._db_api.get_columns(db_name, source_table_name)
         insert_col_tuples = [(_.name, _.name) for _ in create_cols]
-        partition_info = ColumnPartitionInfo(
+        partition_info = ColumnPartitionSpec(
             position=0,
             source_column_name="YEARMON",
             granularity=100,
@@ -1486,13 +1677,14 @@ class BackendSynapseTestingApi(BackendTestingApiInterface):
             canonical_column, decimal_padding_digits=decimal_padding_digits
         )
         if expected_precision_scale:
-            return SynapseColumn(
+            return ColumnSpec(
+                ColumnDialect.SYNAPSE,
                 canonical_column.name,
                 expected_data_type,
                 data_precision=expected_precision_scale[0],
                 data_scale=expected_precision_scale[1],
             )
-        return SynapseColumn(canonical_column.name, expected_data_type)
+        return ColumnSpec(ColumnDialect.SYNAPSE, canonical_column.name, expected_data_type)
 
     def expected_backend_precision_scale(self, canonical_column, decimal_padding_digits=None):
         if canonical_column.data_type == GOE_TYPE_DECIMAL:

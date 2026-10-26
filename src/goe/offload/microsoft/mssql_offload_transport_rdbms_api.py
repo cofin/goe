@@ -7,11 +7,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from goe.offload.column_metadata import ColumnMetadataInterface
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
 from goe.offload.offload_source_data import OffloadSourcePartitions
 from goe.offload.offload_source_table import OffloadSourceTableInterface
 from goe.offload.offload_transport_rdbms_api import OffloadTransportRdbmsApiInterface
+from goe.offload.schema.column_spec import ColumnSpec
 from goe.util.string_utils import id_generator
 
 
@@ -44,7 +44,7 @@ class OffloadTransportMSSQLApi(OffloadTransportRdbmsApiInterface):
     def get_id_column_for_range_splitting(
         self,
         rdbms_table: OffloadSourceTableInterface,
-    ) -> ColumnMetadataInterface:
+    ) -> ColumnSpec:
         raise NotImplementedError("MSSQL get_id_column_for_range_splitting() pending implementation")
 
     def get_id_range(
