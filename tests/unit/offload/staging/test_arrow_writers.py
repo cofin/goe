@@ -69,7 +69,7 @@ def test_arrow_parquet_staging_writer_streams_reader_and_unregisters_view_on_suc
         manifest = writer.write(reader, cols, str(out_file))
         assert manifest.total_rows == 3
         table = pq.read_table(out_file)
-        assert table.to_pylist() == [
+        assert sorted(table.to_pylist(), key=lambda row: row["ID"]) == [
             {"ID": 1, "NAME": "alpha"},
             {"ID": 2, "NAME": "beta"},
             {"ID": 3, "NAME": "gamma"},

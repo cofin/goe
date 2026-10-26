@@ -4,10 +4,7 @@
 [raw-json]
 files = [
     "src/goe/listener/services/periodic_tasks.py",
-    "src/goe/offload/spark/dataproc_offload_transport.py",
-    "src/goe/offload/spark/livy_offload_transport.py",
     "src/goe/offload/staging/avro/avro_staging_file.py",
-    "src/goe/offload/transport/base.py",
     "tests/unit/cli/test_cli_root.py",
     "tests/unit/observability/test_log_correlation.py",
     "tests/unit/observability/test_sdk.py",
@@ -20,10 +17,7 @@ files = []
 files = []
 
 [nested-import]
-files = [
-    "src/goe/filesystem/goe_dfs_factory.py",
-    "src/goe/offload/transport/factory.py",
-]
+files = []
 
 [member-ordering]
 files = [
@@ -37,7 +31,6 @@ files = [
 [inline-comment]
 files = [
     "tests/unit/config/test_orchestration_config.py",
-    "tests/unit/filesystem/test_goe_dfs.py",
     "tests/unit/offload/operation/test_ddl_file.py",
     "tests/unit/offload/test_backend_api.py",
     "tests/unit/offload/test_column_metadata.py",
@@ -54,5 +47,4 @@ files = [
     "tests/unit/test_framework/test_test_value_generators.py",
     "tests/unit/util/test_hs2_connection.py",
     "tests/unit/util/test_misc_functions.py",
-    "tests/unit/util/test_polling_thread.py",
 ]

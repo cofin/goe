@@ -58,6 +58,7 @@ __all__ = [
     "create_source_table",
     "create_staging_file",
     "create_transport",
+    "create_transport_canary",
     "create_transport_rdbms_api",
     "staging_file_key",
 ]
@@ -203,27 +204,27 @@ ADAPTER_REGISTRY = AdapterRegistry(
         AdapterEntry(
             AdapterKind.TRANSPORT,
             OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
-            LazyTarget("goe.offload.transport.spark_thrift", "OffloadTransportSparkThrift"),
+            LazyTarget("goe.offload.transport.spark.spark_thrift", "OffloadTransportSparkThrift"),
         ),
         AdapterEntry(
             AdapterKind.TRANSPORT,
             OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
-            LazyTarget("goe.offload.transport.spark_submit", "OffloadTransportSparkSubmit"),
+            LazyTarget("goe.offload.transport.spark.spark_submit", "OffloadTransportSparkSubmit"),
         ),
         AdapterEntry(
             AdapterKind.TRANSPORT,
             OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
-            LazyTarget("goe.offload.spark.dataproc_offload_transport", "OffloadTransportSparkDataprocGcloud"),
+            LazyTarget("goe.offload.transport.spark.dataproc", "OffloadTransportSparkDataprocGcloud"),
         ),
         AdapterEntry(
             AdapterKind.TRANSPORT,
             OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
-            LazyTarget("goe.offload.spark.dataproc_offload_transport", "OffloadTransportSparkBatchesGcloud"),
+            LazyTarget("goe.offload.transport.spark.dataproc", "OffloadTransportSparkBatchesGcloud"),
         ),
         AdapterEntry(
             AdapterKind.TRANSPORT,
             OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
-            LazyTarget("goe.offload.spark.livy_offload_transport", "OffloadTransportSparkLivy"),
+            LazyTarget("goe.offload.transport.spark.spark_livy", "OffloadTransportSparkLivy"),
         ),
         AdapterEntry(
             AdapterKind.TRANSPORT,
@@ -441,6 +442,23 @@ def create_transport(
         offload_options,
         messages,
         dfs_client,
+    )
+
+
+def create_transport_canary(
+    offload_transport_method: str,
+    offload_options: Any = None,
+    messages: "OffloadMessages | None" = None,
+    probe_fn: Any = None,
+) -> Any:
+    """Construct a unified TransportCanaryProbe for offload_transport_method."""
+    ADAPTER_REGISTRY.resolve_dry_run(AdapterKind.TRANSPORT, offload_transport_method)
+    canary_cls = ensure_module("goe.offload.transport.canary").TransportCanaryProbe
+    return canary_cls(
+        offload_transport_method,
+        offload_options,
+        messages,
+        probe_fn=probe_fn,
     )
 
 

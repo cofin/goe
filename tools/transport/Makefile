@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 SPARK_TARGET_DIR=../../target/transport
-SPARK_VER=3.2.4
+SPARK_VER=3.5.3
 SPARK_HADOOP_VER=hadoop3.2
 SPARK_REL_DIR=spark-$(SPARK_VER)-bin-$(SPARK_HADOOP_VER)
 SPARK_TARBALL=$(SPARK_REL_DIR).tgz

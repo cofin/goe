@@ -22,7 +22,6 @@ from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_COLUMN,
 )
-from goe.offload.transport.base import OffloadTransport, OffloadTransportException, convert_nans_to_nulls
 from goe.offload.transport.constants import TRANSPORT_CXT_BYTES, TRANSPORT_CXT_ROWS
 from goe.offload.transport.duckdb.engine import (
     CloudStorageSecretSpec,
@@ -42,6 +41,8 @@ from goe.offload.transport.duckdb.parquet_writer import (
     ParquetWriteOptions,
 )
 from goe.offload.transport.duckdb_constants import DUCKDB_GCS_SCOPE, OFFLOAD_TRANSPORT_METHOD_DUCKDB
+from goe.offload.transport.protocol import OffloadTransportException
+from goe.offload.transport.spark.polling import OffloadTransport, convert_nans_to_nulls
 from goe.orchestration import command_steps
 
 if TYPE_CHECKING:

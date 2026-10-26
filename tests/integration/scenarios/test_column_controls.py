@@ -35,7 +35,6 @@ from goe.offload.offload_source_table import (
     DATA_SAMPLE_SIZE_AUTO,
     DATETIME_STATS_SAMPLING_OPT_ACTION_TEXT,
 )
-from goe.offload.offload_transport import OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
 from goe.offload.operation.data_type_controls import (
     CONFLICTING_DATA_TYPE_OPTIONS_EXCEPTION_TEXT,
     DECIMAL_COL_TYPE_SYNTAX_TEMPLATE,
@@ -43,6 +42,7 @@ from goe.offload.operation.data_type_controls import (
 from goe.offload.operation.not_null_columns import (
     UNKNOWN_NOT_NULL_COLUMN_EXCEPTION_TEXT,
 )
+from goe.offload.transport.constants import OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
     frontend_column_exists,

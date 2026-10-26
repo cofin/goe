@@ -48,9 +48,6 @@ from goe.offload.offload_source_table import (
     OFFLOAD_PARTITION_TYPE_RANGE,
     OffloadSourceTableInterface,
 )
-from goe.offload.offload_transport import (
-    validate_offload_transport_method,
-)
 from goe.offload.operation.data_type_controls import (
     DECIMAL_COL_TYPE_SYNTAX_TEMPLATE,
     canonical_columns_from_columns_csv,
@@ -75,6 +72,9 @@ from goe.offload.registry import (
     create_backend_api,
     create_frontend_api,
     create_repository_client,
+)
+from goe.offload.transport.selector import (
+    validate_offload_transport_method,
 )
 from goe.orchestration.constants import (
     NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE,

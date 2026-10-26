@@ -21,12 +21,12 @@ from goe.offload.offload_metadata_functions import (
     OFFLOAD_TYPE_FULL,
     OFFLOAD_TYPE_INCREMENTAL,
 )
-from goe.offload.offload_transport import MISSING_ROWS_IMPORTED_WARNING
 from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT,
 )
 from goe.offload.oracle.oracle_column import ORACLE_TYPE_TIMESTAMP
 from goe.offload.registry import create_backend_table
+from goe.offload.transport.constants import MISSING_ROWS_IMPORTED_WARNING
 from goe.util.string_utils import get_temp_path
 from tests.integration.scenarios.scenario_constants import (
     OFFLOAD_PATTERN_90_10,

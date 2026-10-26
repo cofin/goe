@@ -29,9 +29,9 @@ child_flows:
   - bigquery_ingest_strategies_20261024
   - snowflake_synapse_hadoop_backend_alignment_20261024
 research:
-  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/module-by-module-redesign.md
-  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/duckdb2-arrow-and-storage-dataplane.md
-  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
+  - .agents/bundles/specs/prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/research/module-by-module-redesign.md
+  - .agents/bundles/specs/prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/research/duckdb2-arrow-and-storage-dataplane.md
+  - .agents/bundles/specs/prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
 ---
 
 # Master PRD 9: Canonical Column Model, Composable Backends, Cached Backend Catalog, and Direct BigQuery Ingestion
@@ -40,7 +40,7 @@ research:
 
 ### 1. North Star
 
-The backend layer shrinks from roughly 23,800 LOC (including the Hadoop helpers relocated in PRD 5) to roughly 4,950 LOC while BigQuery ingestion drops from six jobs and three full staging scans per chunk to one load job ([module blueprint](../prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/module-by-module-redesign.md), [data plane research](../prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/duckdb2-arrow-and-storage-dataplane.md)):
+The backend layer shrinks from roughly 23,800 LOC (including the Hadoop helpers relocated in PRD 5) to roughly 4,950 LOC while BigQuery ingestion drops from six jobs and three full staging scans per chunk to one load job ([module blueprint](research/module-by-module-redesign.md), [data plane research](research/duckdb2-arrow-and-storage-dataplane.md)):
 
 1. **Canonical column model**: `ColumnSpec(FrozenBaseStruct)` and a table-driven `CanonicalTypeRegistry` (bidirectional canonical-to-physical mapping with precision, scale, and byte-length guards, plus synthetic partition transforms `GOE_PART_*`) replace the mutable `ColumnMetadataInterface` in `src/goe/offload/column_metadata.py` and the `*_column.py` subclasses for Oracle, MSSQL, BigQuery, Snowflake, Synapse, Hadoop, and the Parquet and Avro staging formats. Every current mapping result is preserved and pinned by characterization tests first.
 2. **Capabilities and cached catalog**: `BackendCapabilities(FrozenBaseStruct)` replaces the 34-key capability dictionaries and the 57 `NotImplementedError` stubs in `src/goe/offload/backend_api.py` (96 abstract methods, 1,800 LOC) and the 50 forwarders in `src/goe/offload/backend_table.py` (2,242 LOC); `CachedBackendCatalog` stores frozen `BackendTableSnapshot`s with TTL, write-through invalidation on every mutating backend call, and `warm_schema(db)` that loads a dataset in two `INFORMATION_SCHEMA` queries (15–17 metadata RPCs per incremental offload become 3; 400–600 per 100-table report become 2).

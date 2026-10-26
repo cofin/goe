@@ -34,10 +34,6 @@ from goe.offload.offload_source_data import (
 from goe.offload.offload_source_table import (
     OffloadSourceTableInterface,
 )
-from goe.offload.offload_transport import (
-    choose_offload_transport_method,
-    validate_offload_transport_method,
-)
 from goe.offload.offload_validation import (
     BackendCountValidator,
     CrossDbValidator,
@@ -54,6 +50,10 @@ from goe.offload.operation.transport import (
     offload_data_to_target,
 )
 from goe.offload.registry import create_backend_table, create_transport
+from goe.offload.transport.selector import (
+    choose_offload_transport_method,
+    validate_offload_transport_method,
+)
 from goe.orchestration import command_steps, logging_init
 from goe.orchestration.constants import (
     RETAINING_PARTITITON_FUNCTIONS_MESSAGE_TEXT,

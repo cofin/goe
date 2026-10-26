@@ -14,13 +14,8 @@ This directory contains specifications and task worksheets for active and planne
 
 ## Active & Planned Flows
 
-The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/goe-architecture-redesign.md)):
+The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/research/goe-architecture-redesign.md)):
 
-- **[Master PRD 8: DuckDB 2.0 Data Plane, QUERY_IMPORT Parity Replacement, Transport Decomposition, and SQLSpec Storage](prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/spec.md)** (`planned`):
-  - Chapter 8.1: DuckDB 2.0 Engine Hardening ([`duckdb2_engine_hardening_20261024`](duckdb2_engine_hardening_20261024/spec.md))
-  - Chapter 8.2: Arrow Extraction and `QUERY_IMPORT` Parity ([`arrow_extraction_and_query_import_parity_20261024`](arrow_extraction_and_query_import_parity_20261024/spec.md))
-  - Chapter 8.3: Transport Decomposition and Automatic Selection ([`transport_decomposition_and_auto_selection_20261024`](transport_decomposition_and_auto_selection_20261024/spec.md))
-  - Chapter 8.4: `sqlspec.storage` Filesystem Backends ([`sqlspec_storage_filesystem_backends_20261024`](sqlspec_storage_filesystem_backends_20261024/spec.md))
 - **[Master PRD 9: Canonical Column Model, Composable Backends, Cached Backend Catalog, and Direct BigQuery Ingestion](prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/spec.md)** (`planned`):
   - Chapter 9.1: Canonical Column Model and Type Registry ([`canonical_column_model_and_type_registry_20261024`](canonical_column_model_and_type_registry_20261024/spec.md))
   - Chapter 9.2: Backend Capabilities and Cached Catalog ([`backend_capabilities_and_cached_catalog_20261024`](backend_capabilities_and_cached_catalog_20261024/spec.md))
@@ -36,6 +31,13 @@ The GOE architecture redesign is planned as six sequenced Master PRDs (research:
 ## Archived Flows & Roadmaps
 
 All previous flows have completed full verification and code review gates and have been synthesized into `.agents/bundles/knowledge/`:
+
+- **Master PRD 8: DuckDB 2.0 Data Plane, QUERY_IMPORT Parity Replacement, Transport Decomposition, and SQLSpec Storage (`prd_08_duckdb2_transport_query_import_parity_and_storage_20261024`, 12 tasks)**:
+  - Chapter 8.1: DuckDB 2.0 Engine Hardening (`duckdb2_engine_hardening_20261024`, 3 tasks)
+  - Chapter 8.2: Arrow Extraction and `QUERY_IMPORT` Parity (`arrow_extraction_and_query_import_parity_20261024`, 3 tasks)
+  - Chapter 8.3: Transport Decomposition and Automatic Selection (`transport_decomposition_and_auto_selection_20261024`, 3 tasks)
+  - Chapter 8.4: `sqlspec.storage` Filesystem Backends (`sqlspec_storage_filesystem_backends_20261024`, 3 tasks)
+  - *Synthesized into*: [DuckDB Offload Transport](../knowledge/transport/duckdb.md), [Staging Serialization](../knowledge/transport/staging-serialization.md), [Dataproc & Spark Engines](../knowledge/transport/spark-dataproc.md), [Google Cloud Storage](../knowledge/storage/gcs.md), [Amazon S3](../knowledge/storage/s3.md), [Azure Blob Storage](../knowledge/storage/azure-blob.md), [HDFS](../knowledge/storage/hdfs.md), [Offload & Typing Gotchas](../knowledge/patterns/offload-and-typing.md).
 
 - **Master PRD 7: Native SQLGlot Dialect Engine, PredicateIR, Concurrent Validation, Schema Sync, and Status Report (`prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024`, 13 tasks)**:
   - Chapter 7.1: Native SQLGlot Dialect Engine (`native_sqlglot_dialect_engine_20261024`, 4 tasks)

@@ -3,9 +3,17 @@
 
 from typing import TYPE_CHECKING
 
-from goe.offload import offload_transport
 from goe.offload.offload_functions import convert_backend_identifier_case
 from goe.offload.offload_messages import VERBOSE
+from goe.offload.transport.constants import (
+    OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
+)
+from goe.offload.transport.selector import (
+    is_spark_submit_available,
+    is_spark_thrift_available,
+)
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -127,12 +135,12 @@ def get_sales_based_fact_partition_list(
 
 def no_query_import_transport_method(config: "OrchestrationConfig"):
     if not config:
-        return offload_transport.OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
-    if offload_transport.is_spark_thrift_available(config, None):
-        return offload_transport.OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT
-    if offload_transport.is_spark_submit_available(config, None):
-        return offload_transport.OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT
-    return offload_transport.OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
+        return OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
+    if is_spark_thrift_available(config, None):
+        return OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT
+    if is_spark_submit_available(config, None):
+        return OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT
+    return OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
 
 
 def sales_based_fact_partition_exists(schema, table_name, hv_string_list, frontend_api):

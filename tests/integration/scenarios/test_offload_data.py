@@ -12,8 +12,8 @@ from goe.offload.offload_functions import (
     data_db_name,
 )
 from goe.offload.offload_metadata_functions import INCREMENTAL_PREDICATE_TYPE_LIST
-from goe.offload.offload_transport import OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
 from goe.offload.registry import create_repository_client
+from goe.offload.transport.constants import OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import sales_based_fact_assertion
 from tests.integration.scenarios.scenario_runner import (

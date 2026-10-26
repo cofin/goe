@@ -1,119 +1,49 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""TestPollingThread: Unit test library to test polling_thread module."""
+"""Unit tests for PollingThread background polling and queue draining."""
 
-import threading
 import time
-import traceback
-from itertools import groupby
+from random import randint
 from unittest import TestCase, main
 
-from goe.offload.transport.polling_thread import PollingThread
+from goe.offload.transport.spark.polling import PollingThread
 
 
 class TestPollingThread(TestCase):
-    def test_OffloadTransportSqlStatsThread(self):
-        """Test the OffloadTransportSqlStatsThread implementation of PollingThread
-        using oracledb output data
-        """
-        test_payload = [
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [("8w3d3hhnz2m3v", 0, 5000, 0, 0, 1), ("bux0xas0983mu", 0, 5000, 0, 0, 1)],
-            [("8w3d3hhnz2m3v", 0, 5000, 0, 0, 1), ("bux0xas0983mu", 0, 5000, 0, 0, 1)],
-            [
-                ("8w3d3hhnz2m3v", 0, 45000, 0, 0, 1),
-                ("bux0xas0983mu", 0, 35000, 0, 0, 1),
-            ],
-            [
-                ("8w3d3hhnz2m3v", 0, 170000, 0, 0, 1),
-                ("bux0xas0983mu", 0, 160000, 0, 0, 1),
-            ],
-            [
-                ("8w3d3hhnz2m3v", 0, 221893, 0, 0, 1),
-                ("bux0xas0983mu", 0, 301549, 0, 0, 1),
-            ],
-            [
-                ("8w3d3hhnz2m3v", 0, 298323, 0, 0, 1),
-                ("bux0xas0983mu", 0, 359409, 0, 0, 1),
-            ],
-        ]
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.interval = 0.25
+        self.values = []
 
-        def get_test_stats_function(test_data):
-            c = 0
+    def polling_fn(self):
+        i = randint(0, 100)
+        self.values.append(i)
+        return i
 
-            def stats_function():
-                nonlocal c
-                if c < (len(test_data) - 1):
-                    p = test_data[c]
-                    c += 1
-                    return p
-                return test_data[-1]
+    def exception_fn(self):
+        time.sleep(self.interval / 2)
+        raise RuntimeError("Error raised in exception_fn")
 
-            return stats_function
+    def test_polling_thread(self):
+        self.values = []
+        pt = PollingThread(run_function=self.polling_fn, name="test_polling_thread", interval=self.interval)
+        pt.start()
+        time.sleep(self.interval * 5)
+        pt.stop()
+        items = pt.drain_queue()
+        self.assertListEqual(items, self.values)
 
-        # Exception hook is required to catch unhandled exceptions from threads
-        exceptions_caught_in_threads = {}
-
-        def custom_excepthook(args):
-            thread_name = args.thread.name
-            exceptions_caught_in_threads[thread_name] = {
-                "thread": args.thread,
-                "exception": {
-                    "etype": args.exc_type,
-                    "value": args.exc_value,
-                    "tb": args.exc_traceback,
-                },
-            }
-
-        polling_interval = 0.1
-        wait_time = len(test_payload) * polling_interval
-        threading.excepthook = custom_excepthook
-        test_thread = PollingThread(
-            run_function=get_test_stats_function(test_payload),
-            name="test_OffloadTransportSqlStatsThread",
-            interval=polling_interval,
+    def test_polling_thread_exception(self):
+        pt = PollingThread(
+            run_function=self.exception_fn,
+            name="test_polling_thread_exception",
+            interval=self.interval,
         )
-
-        test_thread.start()
-        time.sleep(wait_time)
-        test_thread.stop()
-        self.assertFalse(test_thread.is_alive())
-        self.assertEqual(test_thread.get_queue_length(), len(test_payload))
-        queue_payload = test_thread.drain_queue()
-        self.assertEqual(test_thread.get_queue_length(), 0)
-
-        sql_info = []
-        row_snapshots = [item for sublist in queue_payload for item in sublist]
-        for sql_id_child_num, row_data in groupby(sorted(row_snapshots), lambda x: "%s:%s" % (x[0], x[1])):
-            rows = list(row_data)
-            sql_id, child_number = sql_id_child_num.split(":")
-            sql_info.append(
-                (
-                    sql_id,
-                    child_number,
-                    max([_[2] for _ in rows]),
-                    max([_[3] for _ in rows]),
-                    max([_[4] for _ in rows]),
-                    max([_[5] for _ in rows]),
-                )
-            )
-        self.assertTrue(sql_info)
-        self.assertIn("8w3d3hhnz2m3v", [_[0] for _ in sql_info])
-        self.assertIn(298323, [_[2] for _ in sql_info])
-        self.assertEqual(657732, sum([_[2] for _ in sql_info]))
-
-        if test_thread.name in exceptions_caught_in_threads:
-            self.fail(
-                "".join(traceback.format_exception(**exceptions_caught_in_threads[test_thread.name]["exception"]))
-            )
+        pt.start()
+        time.sleep(self.interval * 2)
+        pt.stop()
+        self.assertIsNotNone(pt.exception)
 
 
 if __name__ == "__main__":

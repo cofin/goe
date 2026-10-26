@@ -25,10 +25,6 @@ from goe.offload.transport.arrow_extractor import (
     ArrowExtractionConfig,
     OracleArrowStreamExtractor,
 )
-from goe.offload.transport.base import (
-    OffloadTransport,
-    convert_nans_to_nulls,
-)
 from goe.offload.transport.constants import (
     OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
     TRANSPORT_CXT_BYTES,
@@ -39,6 +35,10 @@ from goe.offload.transport.duckdb import (
     DuckDBSessionConfig,
     ParquetWriteOptions,
     verify_batch_scn_invariant,
+)
+from goe.offload.transport.spark.polling import (
+    OffloadTransport,
+    convert_nans_to_nulls,
 )
 from goe.orchestration import command_steps
 

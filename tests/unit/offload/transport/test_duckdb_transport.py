@@ -17,10 +17,10 @@ from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
 )
 from goe.offload.staging.parquet.parquet_column import PARQUET_TYPE_INT64, PARQUET_TYPE_STRING, StagingParquetColumn
-from goe.offload.transport.base import OffloadTransportException
 from goe.offload.transport.constants import TRANSPORT_CXT_BYTES, TRANSPORT_CXT_ROWS
 from goe.offload.transport.duckdb import DuckDBSessionConfig
 from goe.offload.transport.duckdb_transport import OffloadTransportDuckDB
+from goe.offload.transport.protocol import OffloadTransportException
 
 MODULE = "goe.offload.transport.duckdb_transport"
 SCN = 555666777
