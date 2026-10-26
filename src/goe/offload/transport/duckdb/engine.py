@@ -174,35 +174,40 @@ class DuckDBEngine:
             connection_config={"database": database_uri, **conn_cfg},
         )
         conn = duckdb.connect(database_uri, config=conn_cfg)
-        conn.execute("LOAD parquet; LOAD httpfs;")
-        pragma_sql = (
-            "SET parquet_metadata_cache = true; "
-            "SET httpfs_connection_caching = true; "
-            "SET enable_http_metadata_cache = true; "
-            "SET http_keep_alive = true; "
-            "SET preserve_insertion_order = false; "
-            f"SET max_temp_directory_size = {sql_string_literal(self._config.max_temp_directory_size)};"
-        )
         try:
-            conn.execute(pragma_sql)
-        except duckdb.ParserException:
-            conn.execute(
+            conn.execute("LOAD parquet;")
+            httpfs_loaded = _try_load_httpfs(conn, install_if_missing=cloud_secret is not None)
+            pragma_sql = (
                 "SET parquet_metadata_cache = true; "
-                "SET httpfs_connection_caching = true; "
-                "SET enable_http_metadata_cache = true; "
-                "SET http_keep_alive = true; "
-                "SET preserve_insertion_order = false;"
+                "SET preserve_insertion_order = false; "
+                f"SET max_temp_directory_size = {sql_string_literal(self._config.max_temp_directory_size)};"
             )
-        if load_oracle:
-            load_oracle_extension(conn, self._config)
-            conn_limit = max(8, self._config.parallelism + 2)
-            conn.execute(
-                f"SET oracle_call_timeout_ms = {int(self._config.oracle_call_timeout_ms)}; "
-                f"SET oracle_array_size = {int(self._config.oracle_array_size)}; "
-                f"SET oracle_connection_limit = {conn_limit};"
-            )
-        if cloud_secret is not None:
-            self.configure_cloud_secret(cloud_secret, conn=conn)
+            try:
+                conn.execute(pragma_sql)
+            except duckdb.Error:
+                conn.execute("SET parquet_metadata_cache = true; SET preserve_insertion_order = false;")
+            if httpfs_loaded:
+                try:
+                    conn.execute(
+                        "SET httpfs_connection_caching = true; "
+                        "SET enable_http_metadata_cache = true; "
+                        "SET http_keep_alive = true;"
+                    )
+                except duckdb.Error:
+                    pass
+            if load_oracle:
+                load_oracle_extension(conn, self._config)
+                conn_limit = max(8, self._config.parallelism + 2)
+                conn.execute(
+                    f"SET oracle_call_timeout_ms = {int(self._config.oracle_call_timeout_ms)}; "
+                    f"SET oracle_array_size = {int(self._config.oracle_array_size)}; "
+                    f"SET oracle_connection_limit = {conn_limit};"
+                )
+            if cloud_secret is not None:
+                self.configure_cloud_secret(cloud_secret, conn=conn)
+        except Exception:
+            conn.close()
+            raise
         self._conn = conn
         return conn
 
@@ -350,3 +355,19 @@ def verify_batch_scn_invariant(batch_sql: str, consistent_read: bool, snapshot_s
     expected = f"AS OF SCN {snapshot_scn}"
     if consistent_read and snapshot_scn is not None and expected not in batch_sql.upper():
         raise ValueError(f"DuckDB transport SCN invariant violated: expected '{expected}' in batch SQL")
+
+
+def _try_load_httpfs(conn: duckdb.DuckDBPyConnection, *, install_if_missing: bool) -> bool:
+    """Load the DuckDB httpfs extension when pre-installed or install it when cloud secrets are requested."""
+    try:
+        conn.execute("LOAD httpfs;")
+        return True
+    except duckdb.Error:
+        if not install_if_missing:
+            return False
+        with _EXTENSION_INSTALL_LOCK:
+            try:
+                conn.execute("INSTALL httpfs; LOAD httpfs;")
+                return True
+            except duckdb.Error:
+                return False

@@ -121,7 +121,7 @@ def build_arrow_parity_manifest(work_dir: Path) -> dict[str, Any]:
 
     engine = DuckDBEngine(
         DuckDBSessionConfig(
-            execution_key="parity01",
+            execution_key=f"parity_{work_dir.name}",
             parallelism=1,
             threads_override=1,
             temp_directory=str(work_dir / "spill"),
