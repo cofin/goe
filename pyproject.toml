@@ -68,9 +68,6 @@ Homepage = "https://github.com/gluent/goe"
 Issues = "https://github.com/gluent/goe/issues"
 
 [project.optional-dependencies]
-avro = [
-    "fastavro>=1.9.7",
-]
 hadoop = [
     "hdfs",
     "impyla",
