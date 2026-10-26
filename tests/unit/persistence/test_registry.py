@@ -172,6 +172,8 @@ def test_session_tracing_only_on_admin_pool(settings: OracleConnectionSettings) 
     assert registry.app_config.driver_features.get("enable_session_tracing", False) is False
     assert registry.adm_config.statement_config.enable_sqlcommenter is False
     assert registry.app_config.statement_config.enable_sqlcommenter is False
+    assert registry.adm_config.driver_features["enable_uuid_binary"] is False
+    assert registry.app_config.driver_features["enable_uuid_binary"] is False
     assert registry.adm_config.driver_features["fetch_lobs"] is False
     assert registry.app_config.driver_features["fetch_lobs"] is False
 

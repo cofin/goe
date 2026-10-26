@@ -48,9 +48,14 @@ TRACEFILE_IDENTIFIER_SQL: Final = f'ALTER SESSION SET TRACEFILE_IDENTIFIER = "{F
 ADM_DRIVER_FEATURES: Final[dict[str, Any]] = {
     "enable_session_tracing": True,
     "enable_lowercase_column_names": True,
+    "enable_uuid_binary": False,
     "fetch_lobs": False,
 }
-APP_DRIVER_FEATURES: Final[dict[str, Any]] = {"enable_lowercase_column_names": True, "fetch_lobs": False}
+APP_DRIVER_FEATURES: Final[dict[str, Any]] = {
+    "enable_lowercase_column_names": True,
+    "enable_uuid_binary": False,
+    "fetch_lobs": False,
+}
 
 
 class OracleRegistryError(GOEError):
