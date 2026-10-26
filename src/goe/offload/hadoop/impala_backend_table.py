@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendImpalaTable: Library for logic/interaction with a table that will

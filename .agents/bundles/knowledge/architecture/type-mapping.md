@@ -1,25 +1,32 @@
 ---
 type: Architecture
 title: Canonical Type Mapping System
-description: Three-tier data type abstraction, adaptive sampling algorithms, and type conversion matrices
+description: Immutable ColumnSpec value model, table-driven CanonicalTypeRegistry, adaptive sampling algorithms, and type conversion matrices
 tags:
   - architecture
   - type-mapping
   - canonical-types
   - sampling
   - schema
+updated_at: "2026-10-26T22:40:00Z"
 ---
 
 # Canonical Type Mapping System
 
-GOE uses a 3-tier canonical typing system defined in `src/goe/offload/column_metadata.py` to ensure lossless conversions between disparate database dialects:
+GOE uses an immutable 3-tier canonical typing system defined in `src/goe/offload/schema/column_spec.py` (`ColumnSpec`, `ColumnDialect`, `ColumnPartitionSpec`) and `src/goe/offload/schema/type_registry.py` (`CanonicalTypeRegistry`, `TYPE_REGISTRY`, `MappingTarget`, `MappingContext`, `TypeMappingLimits`) to ensure lossless conversions between disparate database and staging dialects:
 
 ```
-[ Frontend Source Type ]  <--->  [ GOE Canonical Type ]  <--->  [ Target Backend Type ]
-   (OracleColumn /                  (CanonicalColumn)             (BigQueryColumn /
-    MSSQLColumn /                                                  SnowflakeColumn /
-    TeradataColumn)                                                SynapseColumn)
+[ Frontend Source Type ]  <--->  [ GOE Canonical Type ]  <--->  [ Target Backend / Staging Type ]
+ ColumnSpec(ColumnDialect.ORACLE  ColumnSpec(ColumnDialect.CANONICAL)  ColumnSpec(ColumnDialect.BIGQUERY |
+ | ColumnDialect.MSSQL)                     |                          SNOWFLAKE | SYNAPSE | HADOOP |
+                                            v                          AVRO | PARQUET)
+                                     TYPE_REGISTRY
 ```
+
+## Immutable `ColumnSpec` & `CanonicalTypeRegistry`
+
+- **`ColumnSpec(FrozenBaseStruct, frozen=True)` (`src/goe/offload/schema/column_spec.py`)**: Replaces the legacy `ColumnMetadataInterface` and 10 per-dialect `*_column.py` subclasses (`CanonicalColumn`, `OracleColumn`, `MSSQLColumn`, `BigQueryColumn`, `SnowflakeColumn`, `SynapseColumn`, `HadoopColumn`, `AvroColumn`, `ParquetColumn`) with a single slot-backed frozen struct parameterized by `ColumnDialect` (`CANONICAL`, `ORACLE`, `MSSQL`, `BIGQUERY`, `SNOWFLAKE`, `SYNAPSE`, `HADOOP`, `AVRO`, `PARQUET`).
+- **`CanonicalTypeRegistry` (`TYPE_REGISTRY` in `src/goe/offload/schema/type_registry.py`)**: Consolidates all RDBMS-to-canonical (`to_canonical`), canonical-to-target (`from_canonical`), canonical override validation (`valid_canonical_override`), synthetic partition column generation (`synthetic_partition_column`), and default numeric column creation (`default_numeric_column`) rules across `MappingTarget` (`ORACLE`, `MSSQL`, `BIGQUERY`, `SNOWFLAKE`, `SYNAPSE`, `HIVE`, `IMPALA`, `PARQUET`, `AVRO`, `AVRO_IMPALA`).
 
 ## Canonical Types Overview
 
@@ -34,8 +41,8 @@ GOE uses a 3-tier canonical typing system defined in `src/goe/offload/column_met
 | `GOE_TYPE_INTEGER_2` | Integer | 2-byte (-32768 to 32767) | `INT64` / `NUMBER(4,0)` / `smallint` |
 | `GOE_TYPE_INTEGER_4` | Integer | 4-byte (-2^31 to 2^31-1) | `INT64` / `NUMBER(9,0)` / `int` |
 | `GOE_TYPE_INTEGER_8` | Integer | 8-byte (-2^63 to 2^63-1) | `INT64` / `NUMBER(18,0)` / `bigint` |
-| `GOE_TYPE_INTEGER_38` | Integer | 38-digit integer | `NUMERIC(38,0)` / `NUMBER(38,0)` / `decimal(38,0)` |
-| `GOE_TYPE_DECIMAL` | Decimal | `data_precision`, `data_scale` | `NUMERIC(p,s)` / `NUMBER(p,s)` / `decimal(p,s)` |
+| `GOE_TYPE_INTEGER_38` | Integer | 38-digit integer | `NUMERIC(38,0)` / `NUMBER(38,0)` / `numeric(38,0)` |
+| `GOE_TYPE_DECIMAL` | Decimal | `data_precision`, `data_scale` | `NUMERIC(p,s)` or `BIGNUMERIC(p,s)` / `NUMBER(p,s)` / `numeric(p,s)` |
 | `GOE_TYPE_FLOAT` | Float | IEEE Float32 | `FLOAT64` / `FLOAT` / `real` |
 | `GOE_TYPE_DOUBLE` | Float | IEEE Float64 | `FLOAT64` / `FLOAT` / `float` |
 | `GOE_TYPE_DATE` | Date/Time | Pure date without time | `DATE` / `DATE` / `date` |
@@ -44,7 +51,7 @@ GOE uses a 3-tier canonical typing system defined in `src/goe/offload/column_met
 | `GOE_TYPE_TIMESTAMP_TZ`| Date/Time | Date with timezone | `TIMESTAMP` / `TIMESTAMP_TZ` / `datetimeoffset` |
 | `GOE_TYPE_INTERVAL_DS` | Interval | Day to Second | `STRING` / `TEXT` / `varchar(100)` |
 | `GOE_TYPE_INTERVAL_YM` | Interval | Year to Month | `STRING` / `TEXT` / `varchar(100)` |
-| `GOE_TYPE_BOOLEAN` | Boolean | True / False | `BOOLEAN` / `BOOLEAN` / `bit` |
+| `GOE_TYPE_BOOLEAN` | Boolean | True / False | `BOOL` / `BOOLEAN` / `bit` |
 
 ## Adaptive Sampling Engine
 

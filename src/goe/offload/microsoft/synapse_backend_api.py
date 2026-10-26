@@ -1,23 +1,23 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendSynapseApi: Library for logic/interaction with an Azure Synapse Sql Server backend."""
 
+from __future__ import annotations
+
 import logging
 import re
-import struct
+import time
 import traceback
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from enum import Enum
 from textwrap import dedent
 from typing import Any, ClassVar
 
 import msgspec
-import pyodbc
 from numpy import datetime64
 
+from goe.observability.db import build_db_observability_config
 from goe.offload.backend_api import (
     CONNECT_DETAIL,
     CONNECT_STATUS,
@@ -34,6 +34,8 @@ from goe.offload.backend_api import (
     BackendApiException,
     BackendApiInterface,
 )
+from goe.offload.backend_cache import BackendTableSnapshot, CachedBackendCatalog
+from goe.offload.backend_capabilities import BackendCapabilities
 from goe.offload.hadoop.hive_table_stats import (
     parse_stats_into_tab_col,
     transform_stats_as_tuples,
@@ -51,7 +53,6 @@ from goe.offload.offload_constants import (
     EMPTY_BACKEND_TABLE_STATS_DICT,
     EMPTY_BACKEND_TABLE_STATS_LIST,
     FILE_STORAGE_FORMAT_PARQUET,
-    SYNAPSE_BACKEND_CAPABILITIES,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.schema.column_spec import (
@@ -84,6 +85,8 @@ from goe.offload.schema.column_spec import (
     valid_column_list,
 )
 from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
+from goe.offload.sql_ast.dialect_engine import get_dialect_engine
+from goe.util.module_loader import ensure_module
 from goe.util.string_utils import (
     add_prefix_in_same_case,
     format_list_for_logging,
@@ -91,8 +94,21 @@ from goe.util.string_utils import (
     id_generator,
 )
 
+__all__ = [
+    "SYNAPSE_CAPABILITIES",
+    "SYNAPSE_COLUMN_STAT_PREFIX",
+    "SYNAPSE_INVALID_IDENTIFIER_CHARS_RE",
+    "BackendSynapseApi",
+    "build_synapse_mssql_config",
+    "dbcc_showstatistics_stat_header",
+    "sp_spaceused",
+    "synapse_collation_clause",
+]
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+
+SYNAPSE_CAPABILITIES = BackendCapabilities.for_synapse()
 
 SYNAPSE_INVALID_IDENTIFIER_CHARS_RE = re.compile(r'[\[\]"]', re.IGNORECASE)
 
@@ -129,6 +145,45 @@ def synapse_collation_clause(column_or_collation):
     return f" COLLATE {column_or_collation}" if column_or_collation else ""
 
 
+def build_synapse_mssql_config(
+    connection_options: Any,
+    password_decryptor: Any = None,
+) -> Any:
+    """Build a pooled SQLSpec MssqlPythonConfig for Azure Synapse connections."""
+    ensure_module("mssql_python", extra="sql_server")
+    mssql_adapter = ensure_module("sqlspec.adapters.mssql_python", extra="sql_server")
+    synapse_database = getattr(connection_options, "synapse_database", None)
+    auth_mechanism = getattr(connection_options, "synapse_auth_mechanism", None)
+    user = None
+    password = None
+    if auth_mechanism in SYNAPSE_USER_PASS_AUTH_MECHANISMS:
+        user = getattr(connection_options, "synapse_user", None)
+        raw_pass = getattr(connection_options, "synapse_pass", None)
+        if raw_pass:
+            password = password_decryptor(raw_pass) if password_decryptor else raw_pass
+    elif auth_mechanism == SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL:
+        user = getattr(connection_options, "synapse_service_principal_id", None)
+        password = getattr(connection_options, "synapse_service_principal_secret", None)
+    elif auth_mechanism == SYNAPSE_AUTH_MECHANISM_AD_MSI:
+        user = getattr(connection_options, "synapse_msi_client_id", None)
+    pool_params = mssql_adapter.MssqlPythonPoolParams(
+        server=getattr(connection_options, "synapse_server", None),
+        port=int(getattr(connection_options, "synapse_port", None) or 1433),
+        database=synapse_database,
+        user=user,
+        password=password,
+        authentication=auth_mechanism,
+        encrypt=True,
+        trust_server_certificate=False,
+        connection_timeout=30,
+        autocommit=True,
+    )
+    return mssql_adapter.MssqlPythonConfig(
+        connection_config=pool_params,
+        observability_config=build_db_observability_config(),
+    )
+
+
 class BackendSynapseApi(BackendApiInterface):
     type_mapping_target: ClassVar[MappingTarget] = MappingTarget.SYNAPSE
 
@@ -141,13 +196,7 @@ class BackendSynapseApi(BackendApiInterface):
         no_caching=False,
         do_not_connect=False,
     ):
-        """Some unit tests don't have all options hence the hasattr below
-
-        Uid and Pwd can come from different sources depending on the auth mechanism
-        Without autocommit DDL fails with: "Operation cannot be performed within a transaction"
-        Add output converter function for DATETIMEOFFSET
-        https://github.com/mkleehammer/pyodbc/wiki/Using-an-Output-Converter-function
-        """
+        """Construct BackendSynapseApi with SQLSpec MssqlPythonConfig and CachedBackendCatalog."""
         super().__init__(
             connection_options,
             backend_type,
@@ -157,27 +206,14 @@ class BackendSynapseApi(BackendApiInterface):
             do_not_connect=do_not_connect,
         )
 
-        def handle_datetimeoffset(dto_value):
-            """ref: https://github.com/mkleehammer/pyodbc/issues/134#issuecomment-281739794
-
-            e.g., (2017, 3, 16, 10, 35, 18, 500000000, -6, 0)
-            """
-            tup = struct.unpack("<6hI2h", dto_value)
-            return datetime(
-                tup[0],
-                tup[1],
-                tup[2],
-                tup[3],
-                tup[4],
-                tup[5],
-                tup[6] // 1000,
-                timezone(timedelta(hours=tup[7], minutes=tup[8])),
-            )
-
         logger.info("BackendSynapseApi")
         if dry_run:
             logger.info("* Dry run *")
 
+        self._capabilities = SYNAPSE_CAPABILITIES
+        self._sql_engine = get_dialect_engine("tsql")
+        self.catalog = CachedBackendCatalog(case_sensitive=False, no_caching=bool(no_caching))
+        self._mssql_config: Any = None
         self._client = None
         if hasattr(connection_options, "synapse_database") and connection_options.synapse_database:
             self._synapse_database = connection_options.synapse_database
@@ -185,39 +221,86 @@ class BackendSynapseApi(BackendApiInterface):
             self._synapse_database = None
 
         if not do_not_connect:
-            url = [
-                "Driver=" + "{%s}" % connection_options.backend_odbc_driver_name,
-                "Server=tcp:%s,%s" % (connection_options.synapse_server, connection_options.synapse_port),
-                "Database=" + self._synapse_database,
-            ]
-            if connection_options.synapse_auth_mechanism in SYNAPSE_USER_PASS_AUTH_MECHANISMS:
-                if connection_options.synapse_user:
-                    url.append("Uid=" + connection_options.synapse_user)
-                if connection_options.synapse_pass:
-                    synapse_pass = self._decrypt_password(connection_options.synapse_pass)
-                    url.append("Pwd=" + synapse_pass)
-            elif connection_options.synapse_auth_mechanism == SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL:
-                if connection_options.synapse_service_principal_id:
-                    url.append("Uid=" + connection_options.synapse_service_principal_id)
-                if connection_options.synapse_service_principal_secret:
-                    url.append("Pwd=" + connection_options.synapse_service_principal_secret)
-            elif connection_options.synapse_auth_mechanism == SYNAPSE_AUTH_MECHANISM_AD_MSI:
-                if connection_options.synapse_msi_client_id:
-                    url.append("Uid=" + connection_options.synapse_msi_client_id)
-            url.extend(
-                [
-                    "Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30",
-                    "Authentication=" + connection_options.synapse_auth_mechanism,
-                ]
+            self._mssql_config = build_synapse_mssql_config(
+                connection_options,
+                password_decryptor=self._decrypt_password,
             )
-            odbc_url = ";".join(url)
-            self._client = pyodbc.connect(odbc_url)
+            self._client = self._mssql_config.create_connection()
             self._client.autocommit = True
-            self._client.add_output_converter(-155, handle_datetimeoffset)
 
         self._cursor = None
         self._sql_engine_name = "Synapse"
         self._target_version = None
+
+    def warm_schema(self, db_name: str) -> int:
+        """Warm the backend catalog for all tables and columns in ``db_name`` using 2 queries."""
+        assert db_name
+        if self._dry_run:
+            return 0
+        tables_sql = dedent(
+            """\
+            SELECT table_name, table_type
+            FROM   INFORMATION_SCHEMA.TABLES
+            WHERE  table_catalog = ? AND table_schema = ?"""
+        )
+        cols_sql = dedent(
+            """\
+            SELECT table_name, column_name, data_type, is_nullable
+            ,      character_maximum_length, character_octet_length
+            ,      numeric_precision, numeric_scale, datetime_precision, collation_name
+            FROM   INFORMATION_SCHEMA.COLUMNS
+            WHERE  table_catalog = ? AND table_schema = ?
+            ORDER BY table_name, ordinal_position"""
+        )
+        params = [self._synapse_database, db_name]
+        table_rows = self.execute_query_fetch_all(tables_sql, log_level=VVERBOSE, query_params=params) or []
+        col_rows = self.execute_query_fetch_all(cols_sql, log_level=VVERBOSE, query_params=params) or []
+
+        cols_by_table: dict[str, list[ColumnSpec]] = {}
+        for col in col_rows:
+            (
+                tbl_name,
+                col_name,
+                data_type,
+                is_nullable,
+                char_length,
+                byte_length,
+                num_precision,
+                num_scale,
+                time_scale,
+                collation,
+            ) = col
+            data_scale = time_scale if (time_scale is not None and time_scale > 0) else num_scale
+            if byte_length == -1:
+                byte_length = None
+            cols_by_table.setdefault(tbl_name, []).append(
+                ColumnSpec(
+                    ColumnDialect.SYNAPSE,
+                    col_name,
+                    data_type,
+                    data_length=byte_length,
+                    char_length=char_length,
+                    data_precision=num_precision,
+                    data_scale=data_scale,
+                    nullable=is_nullable,
+                    collation=collation,
+                )
+            )
+
+        snapshots: dict[str, BackendTableSnapshot] = {}
+        now = time.monotonic()
+        for tbl_row in table_rows:
+            tbl_name, tbl_type = tbl_row[0], tbl_row[1]
+            is_view = bool(str(tbl_type).upper() == "VIEW")
+            snapshots[tbl_name] = BackendTableSnapshot(
+                db_name=db_name,
+                table_name=tbl_name,
+                exists=not is_view,
+                fetched_at=now,
+                is_view=is_view,
+                columns=tuple(cols_by_table.get(tbl_name, ())),
+            )
+        return self.catalog.warm_schema(db_name, snapshots.values())
 
     def add_columns(self, db_name, table_name, column_tuples, sync=None):
         """See interface spec for description"""
@@ -231,7 +314,9 @@ class BackendSynapseApi(BackendApiInterface):
         )
         sqls = ["ALTER TABLE %s ADD %s" % (self.enclose_object_reference(db_name, table_name), column_clause)]
         sqls.extend([self._create_statistics_sql(db_name, table_name, col_name) for col_name, _ in column_tuples])
-        return self.execute_ddl(sqls)
+        result = self.execute_ddl(sqls)
+        self.catalog.on_alter_table(db_name, table_name)
+        return result
 
     def backend_report_info(self):
         """Reporting information about the type of backend and how to display
@@ -401,13 +486,7 @@ class BackendSynapseApi(BackendApiInterface):
         """Create an Azure Synapse SQL table
         See abstract method for more description
         """
-
-        def add_colation(column):
-            if column.is_string_based() and not external and self._connection_options.synapse_collation:
-                return column.replace(collation=self._connection_options.synapse_collation)
-            return column
-
-        column_list_with_collations = [add_colation(_) for _ in column_list]
+        column_list_with_collations = [self._apply_default_collation(_, external=external) for _ in column_list]
         sql = self._create_table_sql_text(
             db_name,
             table_name,
@@ -420,7 +499,9 @@ class BackendSynapseApi(BackendApiInterface):
         )
         if with_terminator:
             sql += ";"
-        return self.execute_ddl(sql, sync=sync)
+        result = self.execute_ddl(sql, sync=sync)
+        self.catalog.on_create_table(db_name, table_name, columns=column_list_with_collations)
+        return result
 
     def create_view(
         self,
@@ -505,7 +586,7 @@ class BackendSynapseApi(BackendApiInterface):
         return True if row else False
 
     def drop_state(self):
-        pass
+        self.catalog.clear()
 
     def drop_table(self, db_name, table_name, purge=False, if_exists=True, sync=None):
         """Drop a table, purge parameter is ignored on Synapse.
@@ -518,7 +599,9 @@ class BackendSynapseApi(BackendApiInterface):
         if if_exists and not self.table_exists(db_name, table_name):
             return []
         drop_sql = "DROP TABLE %s" % self.enclose_object_reference(db_name, table_name)
-        return self.execute_ddl(drop_sql, sync=sync)
+        result = self.execute_ddl(drop_sql, sync=sync)
+        self.catalog.on_drop_table(db_name, table_name)
+        return result
 
     def drop_view(self, db_name, view_name, if_exists=True, sync=None):
         """Drop a view, purge parameter is ignored on Synapse.
@@ -790,59 +873,9 @@ FROM   %(from_db_table)s%(where)s""" % {
         return SYNAPSE_TYPE_VARCHAR
 
     def get_columns(self, db_name, table_name):
-        """Date is stored as 0
-
-        max is stored as -1
-        """
+        """Return cached or freshly queried column metadata for a Synapse table."""
         assert db_name and table_name
-
-        backend_columns = []
-
-        sql = dedent(
-            """\
-                    SELECT column_name, data_type, is_nullable, character_maximum_length, character_octet_length
-                    ,      numeric_precision, numeric_scale, datetime_precision, collation_name
-                    FROM   INFORMATION_SCHEMA.COLUMNS
-                    WHERE  table_catalog = ? AND table_schema = ? AND table_name = ?
-                    ORDER BY ordinal_position"""
-        )
-        col_rows = self.execute_query_fetch_all(
-            sql,
-            log_level=VVERBOSE,
-            query_params=[self._synapse_database, db_name, table_name],
-        )
-        for col in col_rows:
-            (
-                col_name,
-                data_type,
-                is_nullable,
-                char_length,
-                byte_length,
-                num_precision,
-                num_scale,
-                time_scale,
-                collation,
-            ) = col
-            if time_scale is not None and time_scale > 0:
-                data_scale = time_scale
-            else:
-                data_scale = num_scale
-            if byte_length == -1:
-                byte_length = None
-            backend_columns.append(
-                ColumnSpec(
-                    ColumnDialect.SYNAPSE,
-                    col_name,
-                    data_type,
-                    data_length=byte_length,
-                    char_length=char_length,
-                    data_precision=num_precision,
-                    data_scale=data_scale,
-                    nullable=is_nullable,
-                    collation=collation,
-                )
-            )
-        return backend_columns
+        return self.catalog.get_columns(db_name, table_name, self._fetch_columns)
 
     def get_column_statistics(self, db_name, table_name):
         """get a list of column name, statistics name and max length for a table"""
@@ -887,12 +920,14 @@ FROM   %(from_db_table)s%(where)s""" % {
         """Run SQL to get distinct values for a list of columns.
         See interface description for parameter details.
         """
-
-        def add_sql_cast(col):
-            return ("CONVERT(varchar, %s)" % col) if col in (columns_to_cast_to_string or []) else col
-
         assert column_name_list and isinstance(column_name_list, list)
-        expression_list = [add_sql_cast(self.enclose_identifier(_)) for _ in column_name_list]
+        cast_cols = set(columns_to_cast_to_string or [])
+        expression_list = [
+            f"CONVERT(varchar, {self.enclose_identifier(_)})"
+            if self.enclose_identifier(_) in cast_cols
+            else self.enclose_identifier(_)
+            for _ in column_name_list
+        ]
         return self.get_distinct_expressions(
             db_name,
             table_name,
@@ -940,44 +975,13 @@ FROM   %(from_db_table)s%(where)s""" % {
         the same code. The flaw is, if we change our code generator we'll get a different output from this code.
         This is not widely used (at the time of writing) so should be sufficient.
         """
-
-        def check_external():
-            sql = dedent(
-                """\
-                    SELECT  t.is_external
-                    FROM    sys.tables t
-                    WHERE   t.object_id = OBJECT_ID(?)"""
-            )
-            row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[f"{db_name}.{table_name}"])
-            return bool(row and row[0])
-
-        def get_external_table_options():
-            external_table_options = None
-            sql = dedent(
-                """\
-                    SELECT  ds.name, ff.name
-                    FROM    sys.external_tables t,
-                            sys.external_data_sources ds,
-                            sys.external_file_formats ff
-                    WHERE   t.data_source_id = ds.data_source_id
-                    AND     t.file_format_id = ff.file_format_id
-                    AND     t.object_id = OBJECT_ID(?)"""
-            )
-            row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[f"{db_name}.{table_name}"])
-            if row:
-                external_table_options = {
-                    "DATA_SOURCE": self.enclose_identifier(row[0]),
-                    "FILE_FORMAT": self.enclose_identifier(row[1]),
-                }
-            return external_table_options
-
         assert db_name and table_name
         self._log("Fetching table DDL: %s.%s" % (db_name, table_name), detail=VVERBOSE)
         column_list = self.get_columns(db_name, table_name)
-        is_external = check_external()
+        is_external = self._is_external_table(db_name, table_name)
         if is_external:
             external_table_location = self.get_table_location(db_name, table_name)
-            external_table_properties = get_external_table_options()
+            external_table_properties = self._get_external_table_options(db_name, table_name)
         else:
             external_table_location = None
             external_table_properties = None
@@ -1047,24 +1051,44 @@ FROM   %(from_db_table)s%(where)s""" % {
         return row_count
 
     def get_table_size(self, db_name, table_name, no_cache=False):
-        """no_cache is ignored on Synapse because we use SQL to get the size."""
+        """Return the size in bytes of the Synapse table."""
         assert db_name and table_name
+        if no_cache:
+            size_bytes, _ = self._fetch_table_size_and_row_count(db_name, table_name)
+            return size_bytes
         size_bytes, _ = self.get_table_size_and_row_count(db_name, table_name)
         return size_bytes
 
     def get_table_size_and_row_count(self, db_name, table_name):
+        """Return (size_bytes, row_count) using the cached backend catalog."""
         assert db_name and table_name
-        sql = "EXEC sp_spaceused ?"
-        row = self.execute_query_fetch_one(
-            sql,
-            query_params=[self.enclose_object_reference(db_name, table_name)],
-            log_level=VVERBOSE,
+        snap = self.catalog.get_snapshot(db_name, table_name)
+        if snap is not None and snap.size_calculated and snap.row_count_calculated:
+            return (snap.size_bytes, snap.row_count)
+        size_bytes, row_count = self._fetch_table_size_and_row_count(db_name, table_name)
+        now = time.monotonic()
+        updated = (
+            snap.replace(
+                size_bytes=size_bytes,
+                size_calculated=True,
+                row_count=row_count,
+                row_count_calculated=True,
+                fetched_at=now,
+            )
+            if snap is not None
+            else BackendTableSnapshot(
+                db_name=db_name,
+                table_name=table_name,
+                exists=size_bytes is not None or row_count is not None,
+                size_bytes=size_bytes,
+                size_calculated=True,
+                row_count=row_count,
+                row_count_calculated=True,
+                fetched_at=now,
+            )
         )
-        if row:
-            row_count = row[sp_spaceused.rows.value].strip()
-            table_size = human_size_to_bytes(row[sp_spaceused.reserved.value].strip().replace(" ", ""))
-            return (int(table_size or 0), int(row_count))
-        return (None, None)
+        self.catalog.put_snapshot(updated)
+        return (size_bytes, row_count)
 
     def get_table_sort_columns(self, db_name, table_name, as_csv=True):
         """Synapse can have
@@ -1282,13 +1306,13 @@ FROM   %(from_db_table)s%(where)s""" % {
         return [_[0] for _ in rows]
 
     def max_decimal_integral_magnitude(self):
-        return 38
+        return SYNAPSE_CAPABILITIES.max_decimal_integral_magnitude
 
     def max_decimal_precision(self):
-        return 38
+        return SYNAPSE_CAPABILITIES.max_decimal_precision
 
     def max_decimal_scale(self, data_type=None):
-        return 38
+        return SYNAPSE_CAPABILITIES.max_decimal_scale
 
     def max_datetime_value(self):
         return datetime64("9999-12-31")
@@ -1301,14 +1325,14 @@ FROM   %(from_db_table)s%(where)s""" % {
 
     def max_partition_columns(self):
         """Table partitioning not implemented at this stage on Synapse"""
-        return 0
+        return SYNAPSE_CAPABILITIES.max_partition_columns
 
     def max_sort_columns(self):
         """Returning SORT_COLUMNS_UNLIMITED as clustered columnstore indexes include all columns"""
         return SORT_COLUMNS_UNLIMITED
 
     def max_table_name_length(self):
-        return 128
+        return SYNAPSE_CAPABILITIES.max_table_name_length
 
     def min_datetime_value(self):
         """This is used to understand whether the minimum data we might offload can cause issues in Synapse.
@@ -1373,6 +1397,8 @@ FROM   %(from_db_table)s%(where)s""" % {
         rename_sql = f"RENAME OBJECT {self.enclose_object_reference(from_db_name, from_table_name)} TO {self.enclose_identifier(to_table_name)}"
 
         executed_sqls = self.execute_ddl(rename_sql, sync=sync)
+        self.catalog.on_drop_table(from_db_name, from_table_name)
+        self.catalog.invalidate_table(to_db_name, to_table_name)
         return executed_sqls
 
     def role_exists(self, role_name):
@@ -1471,21 +1497,8 @@ FROM   %(from_db_table)s%(where)s""" % {
         return row[0] if row else row
 
     def table_exists(self, db_name: str, table_name: str) -> bool:
-        sql = dedent(
-            """\
-                    SELECT table_name
-                    FROM   INFORMATION_SCHEMA.TABLES
-                    WHERE  table_type = 'BASE TABLE'
-                    AND    table_catalog = ?
-                    AND    table_schema = ?
-                    AND    table_name = ?"""
-        )
-        row = self.execute_query_fetch_one(
-            sql,
-            log_level=VVERBOSE,
-            query_params=[self._synapse_database, db_name, table_name],
-        )
-        return bool(row)
+        """Return True/False if a table exists using the cached backend catalog."""
+        return self.catalog.table_exists(db_name, table_name, self._fetch_table_exists)
 
     def table_has_rows(self, db_name: str, table_name: str) -> bool:
         """Return bool depending whether the table has rows or not."""
@@ -1614,7 +1627,122 @@ FROM   %(from_db_table)s%(where)s""" % {
         raise NotImplementedError("UDFs are not supported for Synapse")
 
     def _backend_capabilities(self):
-        return SYNAPSE_BACKEND_CAPABILITIES
+        return SYNAPSE_CAPABILITIES.to_capability_dict()
+
+    def _apply_default_collation(self, column: ColumnSpec, *, external: bool = False) -> ColumnSpec:
+        if column.is_string_based() and not external and self._connection_options.synapse_collation:
+            return column.replace(collation=self._connection_options.synapse_collation)
+        return column
+
+    def _fetch_table_exists(self, db_name: str, table_name: str) -> bool:
+        """Uncached check for whether a Synapse base table exists."""
+        sql = dedent(
+            """\
+                    SELECT table_name
+                    FROM   INFORMATION_SCHEMA.TABLES
+                    WHERE  table_type = 'BASE TABLE'
+                    AND    table_catalog = ?
+                    AND    table_schema = ?
+                    AND    table_name = ?"""
+        )
+        row = self.execute_query_fetch_one(
+            sql,
+            log_level=VVERBOSE,
+            query_params=[self._synapse_database, db_name, table_name],
+        )
+        return bool(row)
+
+    def _fetch_columns(self, db_name: str, table_name: str) -> list[ColumnSpec]:
+        """Uncached fetch of Synapse table columns from INFORMATION_SCHEMA.COLUMNS."""
+        backend_columns: list[ColumnSpec] = []
+        sql = dedent(
+            """\
+                    SELECT column_name, data_type, is_nullable, character_maximum_length, character_octet_length
+                    ,      numeric_precision, numeric_scale, datetime_precision, collation_name
+                    FROM   INFORMATION_SCHEMA.COLUMNS
+                    WHERE  table_catalog = ? AND table_schema = ? AND table_name = ?
+                    ORDER BY ordinal_position"""
+        )
+        col_rows = self.execute_query_fetch_all(
+            sql,
+            log_level=VVERBOSE,
+            query_params=[self._synapse_database, db_name, table_name],
+        )
+        for col in col_rows:
+            (
+                col_name,
+                data_type,
+                is_nullable,
+                char_length,
+                byte_length,
+                num_precision,
+                num_scale,
+                time_scale,
+                collation,
+            ) = col
+            if time_scale is not None and time_scale > 0:
+                data_scale = time_scale
+            else:
+                data_scale = num_scale
+            if byte_length == -1:
+                byte_length = None
+            backend_columns.append(
+                ColumnSpec(
+                    ColumnDialect.SYNAPSE,
+                    col_name,
+                    data_type,
+                    data_length=byte_length,
+                    char_length=char_length,
+                    data_precision=num_precision,
+                    data_scale=data_scale,
+                    nullable=is_nullable,
+                    collation=collation,
+                )
+            )
+        return backend_columns
+
+    def _fetch_table_size_and_row_count(self, db_name: str, table_name: str) -> tuple[int | None, int | None]:
+        """Uncached lookup of (size_bytes, row_count) via sp_spaceused."""
+        sql = "EXEC sp_spaceused ?"
+        row = self.execute_query_fetch_one(
+            sql,
+            query_params=[self.enclose_object_reference(db_name, table_name)],
+            log_level=VVERBOSE,
+        )
+        if row:
+            row_count = row[sp_spaceused.rows.value].strip()
+            table_size = human_size_to_bytes(row[sp_spaceused.reserved.value].strip().replace(" ", ""))
+            return (int(table_size or 0), int(row_count))
+        return (None, None)
+
+    def _is_external_table(self, db_name: str, table_name: str) -> bool:
+        sql = dedent(
+            """\
+                SELECT  t.is_external
+                FROM    sys.tables t
+                WHERE   t.object_id = OBJECT_ID(?)"""
+        )
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[f"{db_name}.{table_name}"])
+        return bool(row and row[0])
+
+    def _get_external_table_options(self, db_name: str, table_name: str) -> dict[str, str] | None:
+        sql = dedent(
+            """\
+                SELECT  ds.name, ff.name
+                FROM    sys.external_tables t,
+                        sys.external_data_sources ds,
+                        sys.external_file_formats ff
+                WHERE   t.data_source_id = ds.data_source_id
+                AND     t.file_format_id = ff.file_format_id
+                AND     t.object_id = OBJECT_ID(?)"""
+        )
+        row = self.execute_query_fetch_one(sql, log_level=VVERBOSE, query_params=[f"{db_name}.{table_name}"])
+        if row:
+            return {
+                "DATA_SOURCE": self.enclose_identifier(row[0]),
+                "FILE_FORMAT": self.enclose_identifier(row[1]),
+            }
+        return None
 
     def _close_cursor(self):
         """After a DDL/DML operation this is raising and logging:
@@ -1659,6 +1787,25 @@ FROM   %(from_db_table)s%(where)s""" % {
         col_template = f"%-{max_name}s %-{max_type}s %-{max_collate}s %s"
         return "    " + "\n,   ".join([col_template % (_[0], _[1], _[2], _[3]) for _ in sql_cols])
 
+    @staticmethod
+    def _cci_incompatible(column_list):
+        """Check if any columns cannot be part of a clustered columnstore index."""
+        return bool(
+            any(
+                SYNAPSE_TYPE_MAX_TOKEN in _
+                for _ in [
+                    col.format_data_type()
+                    for col in column_list
+                    if col.data_type
+                    in (
+                        SYNAPSE_TYPE_VARCHAR,
+                        SYNAPSE_TYPE_NVARCHAR,
+                        SYNAPSE_TYPE_VARBINARY,
+                    )
+                ]
+            )
+        )
+
     def _create_table_sql_text(
         self,
         db_name,
@@ -1673,25 +1820,6 @@ FROM   %(from_db_table)s%(where)s""" % {
         """Return SQL text to create a Synapse table.
         See abstract method create_table() for more description.
         """
-
-        def cci_incompatible(column_list):
-            """Check if any columns cannot be part of a clustered columnstore index"""
-            return bool(
-                any(
-                    SYNAPSE_TYPE_MAX_TOKEN in _
-                    for _ in [
-                        col.format_data_type()
-                        for col in column_list
-                        if col.data_type
-                        in (
-                            SYNAPSE_TYPE_VARCHAR,
-                            SYNAPSE_TYPE_NVARCHAR,
-                            SYNAPSE_TYPE_VARBINARY,
-                        )
-                    ]
-                )
-            )
-
         assert db_name
         assert table_name
         assert column_list
@@ -1711,7 +1839,7 @@ FROM   %(from_db_table)s%(where)s""" % {
 
         with_clauses = []
         if sort_column_names:
-            if cci_incompatible(column_list):
+            if self._cci_incompatible(column_list):
                 self._messages.notice(
                     "Ignoring sort columns due to the presence of datatype(s) with %s precision"
                     % SYNAPSE_TYPE_MAX_TOKEN
@@ -1726,7 +1854,7 @@ FROM   %(from_db_table)s%(where)s""" % {
             table_properties["LOCATION"] = self.to_backend_literal(location)
         else:
             external_clause = ""
-            if cci_incompatible(column_list):
+            if self._cci_incompatible(column_list):
                 with_clauses.append("HEAP")
                 if table_properties:
                     table_properties.pop("DISTRIBUTION", None)
@@ -1956,6 +2084,19 @@ FROM   %(from_db_table)s%(where)s""" % {
         assert isinstance(query_options, dict)
         return [f"SET {k} {v}" for k, v in query_options.items()]
 
+    def _add_max_sql_cast(self, col_name, columns_to_cast_to_string=None, col_expr=None, add_alias=False):
+        col_expr = col_expr or col_name
+        if col_name in (columns_to_cast_to_string or []):
+            cast_str = "CAST(%s AS %s)" % (
+                col_expr,
+                self.generic_string_data_type(),
+            )
+        else:
+            cast_str = col_expr
+        if add_alias:
+            cast_str += " AS %s" % col_name
+        return cast_str
+
     def _gen_max_column_values_sql(
         self,
         db_name,
@@ -1967,27 +2108,14 @@ FROM   %(from_db_table)s%(where)s""" % {
         """Produce a SQL statement that selects a MAX row from the underlying table.
         See docstring on BackendApi for more details.
         """
-
-        def add_sql_cast(col_name, col_expr=None, add_alias=False):
-            col_expr = col_expr or col_name
-            if col_name in (columns_to_cast_to_string or []):
-                cast_str = "CAST(%s AS %s)" % (
-                    col_expr,
-                    self.generic_string_data_type(),
-                )
-            else:
-                cast_str = col_expr
-            if add_alias:
-                cast_str += " AS %s" % col_name
-            return cast_str
-
         assert column_name_list and isinstance(column_name_list, list)
 
         self._debug("Generate max SQL for columns: %s" % column_name_list)
 
         if len(column_name_list) == 1:
-            proj_col = add_sql_cast(
+            proj_col = self._add_max_sql_cast(
                 column_name_list[0],
+                columns_to_cast_to_string=columns_to_cast_to_string,
                 col_expr="MAX(%s)" % self.enclose_identifier(column_name_list[0]),
             )
             sql = "SELECT %s FROM %s" % (
@@ -1998,7 +2126,12 @@ FROM   %(from_db_table)s%(where)s""" % {
                 sql += " WHERE " + filter_clause
         else:
             cols = ",".join(column_name_list)
-            proj_cols = ",".join([add_sql_cast(_, add_alias=True) for _ in column_name_list])
+            proj_cols = ",".join(
+                [
+                    self._add_max_sql_cast(_, columns_to_cast_to_string=columns_to_cast_to_string, add_alias=True)
+                    for _ in column_name_list
+                ]
+            )
             order_by = ",".join([_ + " DESC" for _ in column_name_list])
             where = (" WHERE " + filter_clause) if filter_clause else ""
             sql = "SELECT %s FROM (SELECT TOP(1) %s FROM %s%s GROUP BY %s ORDER BY %s) v" % (
@@ -2036,96 +2169,67 @@ FROM   %(from_db_table)s%(where)s""" % {
                 profile.append(label)
         return "\n".join(profile)
 
+    def _get_requests_information_by_label(self, label):
+        assert self._cursor is not None
+        sql = dedent(
+            """\
+                    SELECT TOP(1) *
+                    FROM   sys.dm_pdw_exec_requests
+                    WHERE  "label" = ?"""
+        )
+        self._cursor.execute(sql, [label])
+        return self._cursor.fetchone()
+
+    def _get_requests_information_by_request_id(self, request_id):
+        assert self._cursor is not None
+        sql = dedent(
+            """\
+                    SELECT TOP(1) *
+                    FROM   sys.dm_pdw_exec_requests
+                    WHERE  request_id = ?"""
+        )
+        self._cursor.execute(sql, [request_id])
+        return self._cursor.fetchone()
+
+    def _get_request_steps_information(self, request_id):
+        assert self._cursor is not None
+        sql = dedent(
+            """\
+                    SELECT operation_type
+                    ,      "status"
+                    ,      error_id
+                    ,      MIN(start_time)          AS min_start_time
+                    ,      MAX(end_time)            AS max_start_time
+                    ,      SUM(total_elapsed_time)  AS sum_total_elapsed_time
+                    ,      MIN(row_count)           AS min_row_count
+                    ,      MAX(row_count)           AS max_row_count
+                    FROM   sys.dm_pdw_request_steps
+                    WHERE  request_id = ?
+                    GROUP  BY
+                           operation_type
+                    ,      "status"
+                    ,      error_id
+                    ORDER  BY
+                           min(start_time)"""
+        )
+        self._cursor.execute(sql, [request_id])
+        return self._cursor.fetchall()
+
+    def _format_profile_rows_for_logging(self, rows):
+        assert self._cursor
+        stats: list[tuple[Any, Any]] = []
+        profile_keys = [_[0] for _ in self._cursor.description]
+        for row in rows:
+            stats.extend(zip(profile_keys, [(_ if isinstance(_, str) else str(_)) for _ in row]))
+        if stats:
+            stats.insert(0, ("Statistic", "Value"))
+            return format_list_for_logging(stats)
+        return ""
+
     def _get_query_profile_tuples(self, query_label=None, request_id=None):
         """We build up the profile information using separate calls to DMVs.
         Need one of either query_label or request_id.
         """
-
-        def get_requests_information_by_label(label):
-            assert self._cursor is not None
-            sql = dedent(
-                """\
-                        SELECT TOP(1) *
-                        FROM   sys.dm_pdw_exec_requests
-                        WHERE  "label" = ?"""
-            )
-            self._cursor.execute(sql, [label])
-            return self._cursor.fetchone()
-
-        def get_requests_information_by_request_id(request_id):
-            assert self._cursor is not None
-            sql = dedent(
-                """\
-                        SELECT TOP(1) *
-                        FROM   sys.dm_pdw_exec_requests
-                        WHERE  request_id = ?"""
-            )
-            self._cursor.execute(sql, [request_id])
-            return self._cursor.fetchone()
-
-        def get_request_steps_information(request_id):
-            assert self._cursor is not None
-            sql = dedent(
-                """\
-                        SELECT operation_type
-                        ,      "status"
-                        ,      error_id
-                        ,      MIN(start_time)          AS min_start_time
-                        ,      MAX(end_time)            AS max_start_time
-                        ,      SUM(total_elapsed_time)  AS sum_total_elapsed_time
-                        ,      MIN(row_count)           AS min_row_count
-                        ,      MAX(row_count)           AS max_row_count
-                        FROM   sys.dm_pdw_request_steps
-                        WHERE  request_id = ?
-                        GROUP  BY
-                               operation_type
-                        ,      "status"
-                        ,      error_id
-                        ORDER  BY
-                               min(start_time)"""
-            )
-            self._cursor.execute(sql, [request_id])
-            return self._cursor.fetchall()
-
-        def get_dms_information(request_id):
-            assert self._cursor is not None
-            sql = dedent(
-                """\
-                        SELECT type
-                        ,      "status"
-                        ,      error_id
-                        ,      min(start_time)          AS min_start_time
-                        ,      max(end_time)            AS max_start_time
-                        ,      SUM(bytes_processed)     AS sum_bytes_processed
-                        ,      SUM(rows_processed)      AS sum_rows_processed
-                        ,      SUM(total_elapsed_time)  AS sum_total_elapsed_time
-                        ,      SUM(cpu_time)            AS sum_cpu_time
-                        FROM   sys.dm_pdw_dms_workers
-                        WHERE  request_id = ?
-                        GROUP  BY
-                               type
-                        ,      "status"
-                        ,      error_id
-                        ORDER  BY
-                               min(start_time)"""
-            )
-            self._cursor.execute(sql, [request_id])
-            return self._cursor.fetchall()
-
-        def str_fn(x):
-            return x if isinstance(x, str) else str(x)
-
-        def list_for_logging(rows):
-            assert self._cursor
-            stats: list[tuple[Any, Any]] = []
-            profile_keys = [_[0] for _ in self._cursor.description]
-            for row in rows:
-                stats.extend(zip(profile_keys, [str_fn(_) for _ in row]))
-            if stats:
-                stats.insert(0, ("Statistic", "Value"))
-                return format_list_for_logging(stats)
-            return ""
-
         assert query_label or request_id
 
         profile = []
@@ -2133,24 +2237,24 @@ FROM   %(from_db_table)s%(where)s""" % {
         self._open_cursor()
         if query_label:
             self._log("Fetching query profile for label: %s" % query_label, detail=VVERBOSE)
-            requests_row = get_requests_information_by_label(query_label)
+            requests_row = self._get_requests_information_by_label(query_label)
         else:
             self._log("Fetching query profile for request: %s" % request_id, detail=VVERBOSE)
-            requests_row = get_requests_information_by_request_id(request_id)
+            requests_row = self._get_requests_information_by_request_id(request_id)
 
         if not requests_row:
             self._log("Request information not found", detail=VVERBOSE)
             return []
         request_id = requests_row.request_id
 
-        profile.append(("Request Information", list_for_logging([requests_row])))
+        profile.append(("Request Information", self._format_profile_rows_for_logging([requests_row])))
 
-        request_steps_rows = get_request_steps_information(request_id)
+        request_steps_rows = self._get_request_steps_information(request_id)
         if not request_steps_rows:
             self._log("Request Steps information not found", detail=VVERBOSE)
             profile.append(("Request Steps information not found", None))
         else:
-            profile.append(("Request Steps Information", list_for_logging(request_steps_rows)))
+            profile.append(("Request Steps Information", self._format_profile_rows_for_logging(request_steps_rows)))
 
         return profile
 

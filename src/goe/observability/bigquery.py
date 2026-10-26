@@ -17,6 +17,7 @@ __all__ = (
     "bigquery_trace_labels",
     "merge_trace_labels",
     "record_bigquery_job_metadata",
+    "record_bigquery_stream_metadata",
     "traced_bigquery_job",
 )
 
@@ -31,6 +32,7 @@ _JOB_ATTRIBUTES: tuple[str, ...] = (
     "num_dml_affected_rows",
     "output_rows",
     "output_bytes",
+    "stream_name",
 )
 
 
@@ -92,4 +94,26 @@ def record_bigquery_job_metadata(traced: TracedOperation, job: Any, operation: s
         str(values["project"]) if isinstance(values["project"], str) else "unknown",
         bytes_billed if isinstance(bytes_billed, int) else None,
         slot_millis if isinstance(slot_millis, int) else None,
+    )
+
+
+def record_bigquery_stream_metadata(
+    traced: TracedOperation,
+    project: str | None,
+    stream_name: str,
+    output_rows: int,
+    output_bytes: int,
+) -> None:
+    """Record Storage Write API stream telemetry onto the span and BigQuery metrics."""
+    if traced.span.is_recording():
+        traced.span.set_attribute("goe.bigquery.stream_name", stream_name)
+        traced.span.set_attribute("goe.bigquery.output_rows", output_rows)
+        traced.span.set_attribute("goe.bigquery.output_bytes", output_bytes)
+        if project:
+            traced.span.set_attribute("goe.bigquery.project", project)
+    get_observability_runtime().metrics.record_bigquery_job(
+        "storage_write",
+        project or "unknown",
+        output_bytes,
+        None,
     )

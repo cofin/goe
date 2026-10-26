@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BigQueryBackendApi: Library for logic/interaction with a remote BigQuery backend.
@@ -10,6 +8,7 @@ for each supported remote system, e.g. Impala, Hive, Google BigQuery.
 
 import logging
 import re
+import time
 import traceback
 from datetime import datetime
 from math import ceil
@@ -41,7 +40,15 @@ from goe.offload.backend_api import (
     UdfDetails,
     UdfParameter,
 )
+from goe.offload.backend_cache import BackendTableSnapshot
+from goe.offload.backend_capabilities import BackendCapabilities
 from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
+from goe.offload.bigquery.ingest_strategy import (
+    BigQueryIngestStrategyProtocol,
+    BigQueryLoadRequest,
+    BigQueryLoadResult,
+    select_bigquery_ingest_strategy,
+)
 from goe.offload.offload_constants import (
     BIGQUERY_BACKEND_CAPABILITIES,
     EMPTY_BACKEND_COLUMN_STATS_DICT,
@@ -142,7 +149,7 @@ class BackendBigQueryApi(BackendApiInterface):
 
         self._sql_engine_name = "BigQuery"
         self._log_query_id_tag = "BigQuery Job ID"
-        self._cached_bq_tables = {}
+        self._capabilities = BackendCapabilities.for_bigquery()
 
         if not do_not_connect:
             self._client = self._get_bq_client()
@@ -185,7 +192,7 @@ class BackendBigQueryApi(BackendApiInterface):
         )
         if not self._dry_run:
             self.execute_ddl(sql, sync=sync)
-        self._forget_bq_table(db_name, table_name)
+        self.catalog.on_alter_table(db_name, table_name)
         return [sql]
 
     def alter_sort_columns(self, db_name, table_name, sort_column_names, sync=None):
@@ -203,7 +210,7 @@ class BackendBigQueryApi(BackendApiInterface):
         if not self._dry_run:
             assert self._client is not None
             table = self._client.update_table(table, ["clustering_fields"])
-        self._forget_bq_table(db_name, table_name)
+        self.catalog.on_alter_table(db_name, table_name)
         return [log_cmd]
 
     def backend_report_info(self):
@@ -410,6 +417,7 @@ class BackendBigQueryApi(BackendApiInterface):
         if with_terminator:
             sql += ";"
         cmds = self.execute_ddl(sql, sync=sync)
+        self.catalog.on_create_table(db_name, table_name, columns=column_list)
 
         if self._kms_key_name and not self._dry_run:
             assert self._client is not None
@@ -584,7 +592,7 @@ LIMIT 1""" % {
 
     def drop_state(self):
         """Drop any cached state so values are refreshed on next request."""
-        self._cached_bq_tables = {}
+        self.catalog.clear()
 
     def drop_table(self, db_name, table_name, purge=False, if_exists=True, sync=None):
         """Drop a BigQuery table. purge and sync are not applicable."""
@@ -597,7 +605,7 @@ LIMIT 1""" % {
                 cmds = [sql]
         else:
             cmds = self.execute_ddl(sql, sync=sync)
-        self._forget_bq_table(db_name, table_name)
+        self.catalog.on_drop_table(db_name, table_name)
         return cmds
 
     def drop_view(self, db_name, view_name, if_exists=True, sync=None):
@@ -611,7 +619,7 @@ LIMIT 1""" % {
                 cmds = [sql]
         else:
             cmds = self.execute_ddl(sql, sync=sync)
-        self._forget_bq_table(db_name, view_name)
+        self.catalog.on_drop_table(db_name, view_name)
         return cmds
 
     def enclose_identifier(self, identifier):
@@ -818,6 +826,9 @@ LIMIT 1""" % {
     def get_columns(self, db_name, table_name):
         """Using str() on attributes from BigQuery below because in Python2 unicode() is preventing comparisons"""
         assert db_name and table_name
+        snap = self.catalog.get_snapshot(db_name, table_name)
+        if snap is not None and snap.columns is not None:
+            return list(snap.columns)
         table = self._get_bq_table(db_name, table_name)
         backend_columns = []
         for col in table.schema:
@@ -829,6 +840,9 @@ LIMIT 1""" % {
                     nullable=col.is_nullable,
                 )
             )
+        current = self.catalog.get_snapshot(db_name, table_name)
+        if current is not None:
+            self.catalog.put_snapshot(current.replace(columns=tuple(backend_columns)))
         return backend_columns
 
     def get_distinct_column_values(
@@ -1004,8 +1018,16 @@ LIMIT 1""" % {
         assert db_name and table_name
         if no_cache:
             self._forget_bq_table(db_name, table_name)
+        else:
+            snap = self.catalog.get_snapshot(db_name, table_name)
+            if snap is not None and snap.size_calculated:
+                return snap.size_bytes
         table = self._get_bq_table(db_name, table_name)
-        return table.num_bytes
+        size_bytes = table.num_bytes
+        current = self.catalog.get_snapshot(db_name, table_name)
+        if current is not None and not no_cache:
+            self.catalog.put_snapshot(current.replace(size_bytes=size_bytes, size_calculated=True))
+        return size_bytes
 
     def get_table_size_and_row_count(self, db_name, table_name):
         assert db_name and table_name
@@ -1350,6 +1372,9 @@ LIMIT 1""" % {
         return None
 
     def table_exists(self, db_name: str, table_name: str) -> bool:
+        snap = self.catalog.get_snapshot(db_name, table_name)
+        if snap is not None and (snap.columns is not None or snap.native_handle is not None):
+            return snap.exists and not snap.is_view
         return self._object_exists(db_name, table_name, table_type="TABLE")
 
     def table_has_rows(self, db_name: str, table_name: str) -> bool:
@@ -1463,6 +1488,89 @@ LIMIT 1""" % {
         """Translate an internal GOE column to a BigQuery column."""
         context = msgspec.structs.replace(self.type_mapping_context(), decimal_padding_digits=decimal_padding_digits)
         return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, context)
+
+    def warm_schema(self, db_name: str) -> int:
+        """Batch-load table and column metadata for db_name in two INFORMATION_SCHEMA queries."""
+        assert db_name
+        dataset_id = self._bq_dataset_id(db_name)
+        project = self._effective_project_name()
+        query_params = [
+            ("project", BIGQUERY_TYPE_STRING, project),
+            ("db_name", BIGQUERY_TYPE_STRING, db_name),
+        ]
+        tables_sql = (
+            f"SELECT table_name, table_type "
+            f"FROM `{dataset_id}`.INFORMATION_SCHEMA.TABLES "
+            f"WHERE table_catalog = @project AND table_schema = @db_name"
+        )
+        columns_sql = (
+            f"SELECT table_name, column_name, data_type, is_nullable "
+            f"FROM `{dataset_id}`.INFORMATION_SCHEMA.COLUMNS "
+            f"WHERE table_catalog = @project AND table_schema = @db_name "
+            f"ORDER BY table_name, ordinal_position"
+        )
+        table_rows = self.execute_query_fetch_all(tables_sql, query_params=query_params, log_level=VVERBOSE) or []
+        column_rows = self.execute_query_fetch_all(columns_sql, query_params=query_params, log_level=VVERBOSE) or []
+        cols_by_table: dict[str, list[ColumnSpec]] = {}
+        for row in column_rows:
+            tbl_name = str(row[0])
+            col_name = str(row[1])
+            raw_type = str(row[2])
+            is_nullable = str(row[3]).upper() != "NO" if len(row) > 3 and row[3] is not None else True
+            base_type, precision, scale, length = self._parse_information_schema_data_type(raw_type)
+            cols_by_table.setdefault(tbl_name.upper(), []).append(
+                ColumnSpec(
+                    ColumnDialect.BIGQUERY,
+                    col_name,
+                    data_type=base_type,
+                    nullable=is_nullable,
+                    data_precision=precision,
+                    data_scale=scale,
+                    data_length=length,
+                )
+            )
+        now = time.monotonic()
+        snapshots: list[BackendTableSnapshot] = []
+        for row in table_rows:
+            tbl_name = str(row[0])
+            tbl_type = str(row[1]).upper() if len(row) > 1 and row[1] is not None else "BASE TABLE"
+            snapshots.append(
+                BackendTableSnapshot(
+                    db_name=db_name,
+                    table_name=tbl_name,
+                    exists=True,
+                    is_view=(tbl_type == "VIEW"),
+                    columns=tuple(cols_by_table.get(tbl_name.upper(), ())),
+                    fetched_at=now,
+                )
+            )
+        return self.catalog.warm_schema(db_name, snapshots)
+
+    def execute_ingest(
+        self,
+        request: BigQueryLoadRequest,
+        strategy: BigQueryIngestStrategyProtocol | None = None,
+        *,
+        ingest_mode: str = "AUTO",
+        write_client: Any = None,
+    ) -> BigQueryLoadResult:
+        """Execute a BigQueryLoadRequest via the provided or selected strategy and update catalog state."""
+        effective_request = (
+            msgspec.structs.replace(request, dry_run=True) if self._dry_run and not request.dry_run else request
+        )
+        active_strategy = strategy or select_bigquery_ingest_strategy(
+            ingest_mode=ingest_mode,
+            payload_bytes=effective_request.payload_bytes,
+            has_arrow_source=effective_request.arrow_source is not None,
+        )
+        result = active_strategy.execute(
+            effective_request,
+            bq_client=self._client,
+            log_fn=self._log,
+            write_client=write_client,
+        )
+        self.catalog.on_load_table(effective_request.dataset, effective_request.table)
+        return result
 
     def _add_kms_key_to_job_config(self, job_config):
         """Add kms key details (if set) to job config"""
@@ -1735,10 +1843,31 @@ LIMIT 1""" % {
         return rows
 
     def _forget_bq_table(self, db_name, table_name):
-        """Remove a cached table from state"""
-        table_id = self._bq_table_id(db_name, table_name)
-        if table_id in self._cached_bq_tables:
-            del self._cached_bq_tables[table_id]
+        """Remove a cached table from state."""
+        self.catalog.invalidate_table(db_name, table_name)
+
+    def _fetch_bq_table(self, db_name: str, table_name: str) -> Any:
+        """Fetch a BigQuery Table resource from the client."""
+        assert self._client is not None
+        return self._client.get_table(self._bq_table_id(db_name, table_name))
+
+    @staticmethod
+    def _parse_information_schema_data_type(
+        raw_type: str,
+    ) -> tuple[str, int | None, int | None, int | None]:
+        """Parse an INFORMATION_SCHEMA data_type string into (base_type, precision, scale, length)."""
+        cleaned = raw_type.strip().upper()
+        if "(" not in cleaned:
+            return cleaned, None, None, None
+        base_type, rest = cleaned.split("(", maxsplit=1)
+        params_str = rest.rstrip(")").strip()
+        parts = [p.strip() for p in params_str.split(",") if p.strip()]
+        if base_type in (BIGQUERY_TYPE_NUMERIC, BIGQUERY_TYPE_BIGNUMERIC):
+            prec = int(parts[0]) if parts and parts[0].isdigit() else None
+            scale = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+            return base_type, prec, scale, None
+        length = int(parts[0]) if parts and parts[0].isdigit() else None
+        return base_type, None, None, length
 
     def _get_bq_client(self):
         """Return a BigQuery client bound to the shared GOE Google Cloud credentials and job project.
@@ -1817,15 +1946,10 @@ LIMIT 1""" % {
         return job_details
 
     def _get_bq_table(self, db_name, table_name):
-        """Instantiates bigquery.Table() if required or retrieves from cache"""
-        table_id = self._bq_table_id(db_name, table_name)
-        if table_id not in self._cached_bq_tables:
-            assert self._client is not None
-            bq_table = self._client.get_table(table_id)
-            if self._no_caching:
-                return bq_table
-            self._cached_bq_tables[table_id] = bq_table
-        return self._cached_bq_tables[table_id]
+        """Instantiates bigquery.Table() if required or retrieves from the unified catalog cache."""
+        if self._no_caching:
+            return self._fetch_bq_table(db_name, table_name)
+        return self.catalog.get_native_handle(db_name, table_name, self._fetch_bq_table)
 
     def _get_bq_table_partition_field(self, table):
         """Return the partition field name for a BigQuery client table object as returned by self._get_bq_table()."""

@@ -1,9 +1,7 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""BackendHiveApi: BackendApi implementation for a Hive backend.
+"""BackendImpalaApi: BackendApi implementation for an Impala backend.
 
 See BackendHadoopApi for better+impyla justification.
 """
@@ -20,6 +18,7 @@ from goe.offload.backend_api import (
     UdfDetails,
     UdfParameter,
 )
+from goe.offload.backend_capabilities import BackendCapabilities
 from goe.offload.hadoop.better_impyla import from_impala_size
 from goe.offload.hadoop.hadoop_backend_api import (
     BackendHadoopApi,
@@ -36,7 +35,6 @@ from goe.offload.offload_constants import (
     CAPABILITY_SENTRY,
     CAPABILITY_SORTED_TABLE,
     FILE_STORAGE_FORMAT_PARQUET,
-    IMPALA_BACKEND_CAPABILITIES,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.schema.column_spec import (
@@ -63,6 +61,8 @@ from goe.util import GOEVersion
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+
+IMPALA_CAPABILITIES = BackendCapabilities.for_impala()
 
 
 class BackendImpalaApi(BackendHadoopApi):
@@ -102,7 +102,10 @@ class BackendImpalaApi(BackendHadoopApi):
             self.enclose_identifier(table_name),
             sort_csv,
         )
-        return self.execute_ddl(sql, log_level=VERBOSE, sync=sync)
+        result = self.execute_ddl(sql, log_level=VERBOSE, sync=sync)
+        self.catalog.on_alter_table(db_name, table_name)
+        self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def backend_version(self):
         sql = "SELECT VERSION()"
@@ -247,7 +250,11 @@ class BackendImpalaApi(BackendHadoopApi):
         }
         if with_terminator:
             sql += ";"
-        return self.execute_ddl(sql, sync=sync)
+        result = self.execute_ddl(sql, sync=sync)
+        if db_name:
+            self.catalog.on_create_table(db_name, table_name, columns=column_list)
+            self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def create_udf(
         self,
@@ -441,16 +448,12 @@ FROM   %(from_db_table)s%(where)s""" % {
     def get_table_size(self, db_name, table_name, no_cache=False):
         """On Impala HiveTable (better_impyla) requires us to sum the size from partitions"""
         assert db_name and table_name
-        hive_table = self._get_hive_table(db_name, table_name, no_cache=no_cache)
-        if self.get_partition_columns(db_name, table_name):
-            partitions = self.get_table_partitions(db_name, table_name)
-            self._log("Summing size of %s partitions" % len(partitions), detail=VVERBOSE)
-            size_bytes = 0
-            for k, v in partitions.items():
-                size_bytes += v["size_in_bytes"] or 0
-        else:
-            size_bytes = hive_table.table_size() or 0
-        return size_bytes
+        return self.catalog.get_table_size(
+            db_name,
+            table_name,
+            lambda d, t: self._fetch_table_size(d, t, no_cache=no_cache),
+            no_cache=no_cache,
+        )
 
     def get_table_sort_columns(self, db_name, table_name, as_csv=True):
         assert db_name and table_name
@@ -531,7 +534,10 @@ FROM   %(from_db_table)s%(where)s""" % {
             self.enclose_identifier(db_name),
             self.enclose_identifier(table_name),
         )
-        return self.execute_ddl(sql, sync=sync)
+        result = self.execute_ddl(sql, sync=sync)
+        self.catalog.on_load_table(db_name, table_name)
+        self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def sentry_supported(self):
         """CDP/CDH >= 7 has moved from Sentry to Ranger. We do not currently establish the platform/distribution
@@ -592,7 +598,19 @@ FROM   %(from_db_table)s%(where)s""" % {
         return udfs
 
     def _backend_capabilities(self):
-        return IMPALA_BACKEND_CAPABILITIES
+        return IMPALA_CAPABILITIES.to_capability_dict()
+
+    def _fetch_table_size(self, db_name, table_name, no_cache=False):
+        hive_table = self._get_hive_table(db_name, table_name, no_cache=no_cache)
+        if self.get_partition_columns(db_name, table_name):
+            partitions = self.get_table_partitions(db_name, table_name)
+            self._log("Summing size of %s partitions" % len(partitions), detail=VVERBOSE)
+            size_bytes = 0
+            for k, v in partitions.items():
+                size_bytes += v["size_in_bytes"] or 0
+        else:
+            size_bytes = hive_table.table_size() or 0
+        return size_bytes
 
     def _execute_ddl_or_dml(
         self,

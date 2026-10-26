@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendHadoopApi: BackendApi implementation for a Hadoop backend, Hive and Impala are subclasses of this.
@@ -29,6 +27,7 @@ Comment from nj@2019-11-06:
 
 import logging
 import re
+import time
 import traceback
 from datetime import datetime
 from typing import ClassVar
@@ -57,6 +56,7 @@ from goe.offload.backend_api import (
     BackendApiException,
     BackendApiInterface,
 )
+from goe.offload.backend_cache import BackendTableSnapshot
 from goe.offload.hadoop.better_impyla import (
     BetterImpylaException,
     HiveConnection,
@@ -100,6 +100,7 @@ from goe.offload.schema.column_spec import (
     match_table_column,
 )
 from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
+from goe.offload.sql_ast.dialect_engine import DialectSqlEngine
 from goe.util.string_utils import backtick_sandwich
 
 HADOOP_DECIMAL_MAX_PRECISION = 38
@@ -168,6 +169,7 @@ class BackendHadoopApi(BackendApiInterface):
         )
 
         self._sql_engine_name = "Hadoop"
+        self._sql_engine = DialectSqlEngine("hive")
 
         self._target_version = None
 
@@ -195,7 +197,10 @@ class BackendHadoopApi(BackendApiInterface):
             self.enclose_identifier(table_name),
             column_clause,
         )
-        return self.execute_ddl(sql, sync=sync)
+        result = self.execute_ddl(sql, sync=sync)
+        self.catalog.on_alter_table(db_name, table_name)
+        self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def backend_report_info(self):
         """Reporting information about the type of backend and how to display
@@ -362,7 +367,9 @@ LIMIT 1""" % {
 
     def drop_state(self):
         """Drop any cached state so values are refreshed on next request."""
+        self.catalog.clear()
         self._cached_hive_tables = {}
+        self._cached_hive_table_stats = {}
 
     def drop_table(self, db_name, table_name, purge=False, if_exists=True, sync=None):
         """Drop a table and cater for backend specific details
@@ -376,7 +383,10 @@ LIMIT 1""" % {
         )
         if purge:
             drop_sql += " PURGE"
-        return self.execute_ddl(drop_sql, sync=sync)
+        result = self.execute_ddl(drop_sql, sync=sync)
+        self.catalog.on_drop_table(db_name, table_name)
+        self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def drop_view(self, db_name, view_name, if_exists=True, sync=None):
         assert db_name and view_name
@@ -475,8 +485,11 @@ LIMIT 1""" % {
         """
         assert db_name
         assert object_name
-        assert self._hive_conn is not None
-        return self._hive_conn.table_exists(db_name.lower(), object_name.lower())
+        return self.catalog.table_exists(
+            db_name,
+            object_name,
+            self._fetch_table_exists,
+        )
 
     def format_hadoop_partition_clause(self, partition_tuples, sep_char="/"):
         """Hadoop specific function call for use from Hadoop specific BackendTable function
@@ -569,10 +582,13 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
 
     def get_columns(self, db_name, table_name):
         assert db_name and table_name
-        hive_table = self._get_hive_table(db_name, table_name)
-        legacy_columns = hive_table.all_columns()
-
-        return self._legacy_column_list_to_type(legacy_columns)
+        return list(
+            self.catalog.get_columns(
+                db_name,
+                table_name,
+                self._fetch_columns,
+            )
+        )
 
     def gen_copy_into_sql_text(
         self,
@@ -621,9 +637,13 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
 
     def get_partition_columns(self, db_name, table_name):
         assert db_name and table_name
-        hive_table = self._get_hive_table(db_name, table_name)
-        part_cols_as_list = hive_table.partition_columns()
-        return self._legacy_column_list_to_type(part_cols_as_list)
+        return list(
+            self.catalog.get_partition_columns(
+                db_name,
+                table_name,
+                self._fetch_partition_columns,
+            )
+        )
 
     def get_session_option(self, option_name):
         raise NotImplementedError("get_session_option() is not implemented for common Hadoop class")
@@ -867,6 +887,11 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
         if fs_scheme == OFFLOAD_FS_SCHEME_S3A and not self.transactional_tables_default():
             self._alter_table_external(to_db_name, to_table_name, external=False)
 
+        self.catalog.on_drop_table(from_db_name, from_table_name)
+        self.catalog.on_alter_table(to_db_name, to_table_name)
+        self._cached_hive_tables.pop((from_db_name + "_" + from_table_name).lower(), None)
+        self._cached_hive_tables.pop((to_db_name + "_" + to_table_name).lower(), None)
+
         return executed_sqls
 
     def role_exists(self, role_name):
@@ -1013,6 +1038,37 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
         """Translate an internal GOE column to a Hadoop column."""
         context = msgspec.structs.replace(self.type_mapping_context(), decimal_padding_digits=decimal_padding_digits)
         return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, context)
+
+    def warm_schema(self, db_name: str) -> int:
+        """Warm the catalog cache for all tables in a Hadoop database."""
+        assert db_name
+        table_names = self.list_tables(db_name)
+        now = time.monotonic()
+        snapshots: list[BackendTableSnapshot] = []
+        for table_name in table_names:
+            snapshots.append(
+                BackendTableSnapshot(
+                    db_name=db_name.lower(),
+                    table_name=table_name.lower(),
+                    exists=True,
+                    fetched_at=now,
+                )
+            )
+        return self.catalog.warm_schema(db_name, snapshots)
+
+    def _fetch_table_exists(self, db_name: str, object_name: str) -> bool:
+        assert self._hive_conn is not None
+        return bool(self._hive_conn.table_exists(db_name.lower(), object_name.lower()))
+
+    def _fetch_columns(self, db_name: str, table_name: str) -> list[ColumnSpec]:
+        hive_table = self._get_hive_table(db_name, table_name)
+        legacy_columns = hive_table.all_columns()
+        return self._legacy_column_list_to_type(legacy_columns)
+
+    def _fetch_partition_columns(self, db_name: str, table_name: str) -> list[ColumnSpec]:
+        hive_table = self._get_hive_table(db_name, table_name)
+        part_cols_as_list = hive_table.partition_columns()
+        return self._legacy_column_list_to_type(part_cols_as_list)
 
     def _alter_table_external(self, db_name, table_name, external=True):
         """Execute Hive SQL to switch a table to external or managed"""

@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendSynapseTable: Library for logic/interaction with a table that will
@@ -8,6 +6,8 @@ be either:
   1) The target of an offload
   2) The source of a present
 """
+
+from __future__ import annotations
 
 import logging
 import os
@@ -35,6 +35,7 @@ from goe.offload.schema.column_spec import (
     ColumnDialect,
     ColumnSpec,
 )
+from goe.offload.sql_ast.dialect_engine import get_dialect_engine
 from goe.offload.staging.avro.avro_staging_file import (
     AVRO_TYPE_DOUBLE,
     AVRO_TYPE_FLOAT,
@@ -92,6 +93,7 @@ class BackendSynapseTable(BackendTableInterface):
         setattr(self, "_log_profile_after_verification_queries", True)
         self._offload_stats_method = getattr(orchestration_operation, "offload_stats_method", None)
         self._sql_engine_name = "Synapse"
+        self._sql_engine = get_dialect_engine("tsql")
         self._synapse_data_source = orchestration_options.synapse_data_source
         self._synapse_file_format = orchestration_options.synapse_file_format
         self._synapse_role = orchestration_options.synapse_role
@@ -126,6 +128,7 @@ class BackendSynapseTable(BackendTableInterface):
         )
         if self._offload_stats_method and self._offload_stats_method != OFFLOAD_STATS_METHOD_NONE:
             cmds.extend(self._db_api.compute_stats(self.db_name, self.table_name, for_columns=True))
+        self._db_api.catalog.invalidate_table(self.db_name, self.table_name)
 
         if not self._dry_run:
             self._drop_state()
@@ -170,6 +173,7 @@ class BackendSynapseTable(BackendTableInterface):
             query_options=query_options,
             profile=self._log_profile_after_final_table_load,
         )
+        self._db_api.catalog.invalidate_table(self.db_name, self.table_name)
 
     def load_materialized_join(
         self,
@@ -204,6 +208,7 @@ class BackendSynapseTable(BackendTableInterface):
             query_options=query_options,
             profile=self._log_profile_after_final_table_load,
         )
+        self._db_api.catalog.invalidate_table(self.db_name, self.table_name)
 
     def post_transport_tasks(self, staging_file):
         """On Synapse we create the load table AFTER creating the Parquet datafiles."""
@@ -307,7 +312,9 @@ class BackendSynapseTable(BackendTableInterface):
         drop_sql = "DROP EXTERNAL TABLE %s" % self._db_api.enclose_object_reference(
             self._load_db_name, self._load_table_name
         )
-        return self._db_api.execute_ddl(drop_sql, sync=sync)
+        result = self._db_api.execute_ddl(drop_sql, sync=sync)
+        self._db_api.catalog.on_drop_table(self._load_db_name, self._load_table_name)
+        return result
 
     def _final_insert_format_sql(
         self,
@@ -355,40 +362,42 @@ class BackendSynapseTable(BackendTableInterface):
     def _gen_synthetic_part_string_granularity_sql_expr(self, column_expr, granularity):
         raise NotImplementedError(self._not_implemented_message("Synthetic partitioning"))
 
+    @staticmethod
+    def _convert_expr(expr: str, data_type: str, style: int = 0, try_convert: bool = False) -> str:
+        if try_convert:
+            return "TRY_CONVERT(%s, %s, %s)" % (data_type, expr, style)
+        return "CONVERT(%s, %s, %s)" % (data_type, expr, style)
+
+    @staticmethod
+    def _staging_file_int_match(backend_column: ColumnSpec, staging_column: ColumnSpec) -> bool:
+        return bool(
+            (
+                backend_column.data_type == SYNAPSE_TYPE_BIGINT
+                and staging_column.data_type in [AVRO_TYPE_LONG, PARQUET_TYPE_INT64]
+            )
+            or (
+                backend_column.data_type == SYNAPSE_TYPE_INT
+                and staging_column.data_type in [AVRO_TYPE_INT, PARQUET_TYPE_INT32]
+            )
+        )
+
+    @staticmethod
+    def _staging_file_float_match(backend_column: ColumnSpec, staging_column: ColumnSpec) -> bool:
+        return bool(
+            (
+                backend_column.data_type == SYNAPSE_TYPE_REAL
+                and staging_column.data_type in [AVRO_TYPE_FLOAT, PARQUET_TYPE_FLOAT]
+            )
+            or (
+                backend_column.data_type == SYNAPSE_TYPE_FLOAT
+                and staging_column.data_type in [AVRO_TYPE_DOUBLE, PARQUET_TYPE_DOUBLE]
+            )
+        )
+
     def _staging_to_backend_cast(self, rdbms_column: Any, backend_column: Any, staging_column: Any) -> tuple[Any, ...]:
         """Returns correctly cast or overridden columns ready for insert/select to final table.
         Synapse implementation.
         """
-
-        def convert(expr, data_type, style=0, try_convert=False):
-            if try_convert:
-                return "TRY_CONVERT(%s, %s, %s)" % (data_type, expr, style)
-            return "CONVERT(%s, %s, %s)" % (data_type, expr, style)
-
-        def staging_file_int_match(backend_column, staging_column):
-            return bool(
-                (
-                    backend_column.data_type == SYNAPSE_TYPE_BIGINT
-                    and staging_column.data_type in [AVRO_TYPE_LONG, PARQUET_TYPE_INT64]
-                )
-                or (
-                    backend_column.data_type == SYNAPSE_TYPE_INT
-                    and staging_column.data_type in [AVRO_TYPE_INT, PARQUET_TYPE_INT32]
-                )
-            )
-
-        def staging_file_float_match(backend_column, staging_column):
-            return bool(
-                (
-                    backend_column.data_type == SYNAPSE_TYPE_REAL
-                    and staging_column.data_type in [AVRO_TYPE_FLOAT, PARQUET_TYPE_FLOAT]
-                )
-                or (
-                    backend_column.data_type == SYNAPSE_TYPE_FLOAT
-                    and staging_column.data_type in [AVRO_TYPE_DOUBLE, PARQUET_TYPE_DOUBLE]
-                )
-            )
-
         assert backend_column
         assert isinstance(backend_column, ColumnSpec) and backend_column.dialect is ColumnDialect.SYNAPSE
         assert rdbms_column, "RDBMS column missing for backend column: %s" % backend_column.name
@@ -410,8 +419,8 @@ class BackendSynapseTable(BackendTableInterface):
             )
         elif backend_column.is_number_based():
             if staging_column and (
-                staging_file_int_match(backend_column, staging_column)
-                or staging_file_float_match(backend_column, staging_column)
+                self._staging_file_int_match(backend_column, staging_column)
+                or self._staging_file_float_match(backend_column, staging_column)
             ):
                 self._log(
                     "No cast required for matching data types: %s/%s"
@@ -419,11 +428,11 @@ class BackendSynapseTable(BackendTableInterface):
                     detail=VVERBOSE,
                 )
             else:
-                return_cast = convert(
+                return_cast = self._convert_expr(
                     self._format_staging_column_name(staging_column),
                     backend_column.format_data_type().upper(),
                 )
-                return_vcast = convert(
+                return_vcast = self._convert_expr(
                     self._format_staging_column_name(staging_column),
                     backend_column.format_data_type().upper(),
                     try_convert=True,
@@ -433,22 +442,22 @@ class BackendSynapseTable(BackendTableInterface):
                 raise NotImplementedError(
                     "Offload of time zoned data to %s is not supported" % backend_column.data_type
                 )
-            return_cast = convert(
+            return_cast = self._convert_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.format_data_type().upper(),
             )
-            return_vcast = convert(
+            return_vcast = self._convert_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.format_data_type().upper(),
                 try_convert=True,
             )
         elif rdbms_column.is_date_based():
             if backend_column.is_string_based():
-                return_cast = convert(
+                return_cast = self._convert_expr(
                     self._format_staging_column_name(staging_column),
                     SYNAPSE_TYPE_DATETIME2,
                 )
-                return_vcast = convert(
+                return_vcast = self._convert_expr(
                     self._format_staging_column_name(staging_column),
                     SYNAPSE_TYPE_DATETIME2,
                     try_convert=True,
@@ -459,7 +468,7 @@ class BackendSynapseTable(BackendTableInterface):
                 END"""
                 return_cast = cast_staged_date_to_string_template.format(
                     col=self._format_staging_column_name(staging_column),
-                    convert=convert(
+                    convert=self._convert_expr(
                         return_cast,
                         backend_column.format_data_type().upper(),
                         style=121,
@@ -467,7 +476,7 @@ class BackendSynapseTable(BackendTableInterface):
                 )
                 return_vcast = cast_staged_date_to_string_template.format(
                     col=self._format_staging_column_name(staging_column),
-                    convert=convert(
+                    convert=self._convert_expr(
                         return_vcast,
                         backend_column.format_data_type().upper(),
                         style=121,
@@ -475,33 +484,33 @@ class BackendSynapseTable(BackendTableInterface):
                     ),
                 )
             else:
-                return_cast = convert(
+                return_cast = self._convert_expr(
                     self._format_staging_column_name(staging_column),
                     backend_column.format_data_type().upper(),
                 )
-                return_vcast = convert(
+                return_vcast = self._convert_expr(
                     self._format_staging_column_name(staging_column),
                     backend_column.format_data_type().upper(),
                     try_convert=True,
                 )
         elif backend_column.data_type == SYNAPSE_TYPE_TIME:
-            return_cast = convert(
+            return_cast = self._convert_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.format_data_type().upper(),
                 style=8,
             )
-            return_vcast = convert(
+            return_vcast = self._convert_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.format_data_type().upper(),
                 style=8,
                 try_convert=True,
             )
         elif backend_column.data_type == SYNAPSE_TYPE_VARBINARY:
-            return_cast = convert(
+            return_cast = self._convert_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.format_data_type().upper(),
             )
-            return_vcast = convert(
+            return_vcast = self._convert_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.format_data_type().upper(),
                 try_convert=True,

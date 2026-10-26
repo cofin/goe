@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Native BigQuery load job configuration for GOE staged files."""
+"""Native BigQuery load job configuration for GOE staged and direct loads."""
 
 from google.cloud import bigquery
 
@@ -19,9 +19,13 @@ STAGING_SOURCE_FORMATS = {
 
 
 def build_staging_load_job_config(
-    staging_format: str, kms_key_name: str | None, labels: dict[str, str]
+    staging_format: str,
+    kms_key_name: str | None,
+    labels: dict[str, str],
+    *,
+    write_disposition: str = bigquery.WriteDisposition.WRITE_TRUNCATE,
 ) -> bigquery.LoadJobConfig:
-    """Return a WRITE_TRUNCATE load job config for GOE staged Avro or Parquet files.
+    """Return a BigQuery LoadJobConfig for GOE Avro or Parquet loads.
 
     No explicit schema is set: the staged files are self-describing, matching the schema inference of the
     external table so string-staged columns remain STRING for validate_type_conversions.
@@ -30,7 +34,7 @@ def build_staging_load_job_config(
         raise ValueError(f"Unsupported BigQuery staging format: {staging_format}")
     job_config = bigquery.LoadJobConfig(
         source_format=STAGING_SOURCE_FORMATS[staging_format],
-        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+        write_disposition=write_disposition,
         labels=labels,
     )
     if staging_format == FILE_STORAGE_FORMAT_PARQUET:
