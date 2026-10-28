@@ -19,9 +19,9 @@ from goe.offload.offload_constants import (
     BACKEND_DISTRO_SNOWFLAKE,
 )
 from goe.offload.offload_messages import OffloadMessages
-from goe.offload.offload_source_data import OffloadSourcePartition
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
+from goe.orchestration.models import OffloadSourcePartition
 from goe.persistence.models import OffloadMetadata
 from goe.persistence.oracle.oracle_repository import (
     ORACLE_REPO_SQL_PATH,

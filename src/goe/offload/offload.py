@@ -16,7 +16,6 @@ from goe.offload.offload_metadata_functions import (
     decode_metadata_incremental_high_values_from_metadata,
     incremental_key_csv_from_part_keys,
 )
-from goe.offload.offload_source_data import offload_source_data_factory
 from goe.offload.offload_source_table import (
     OFFLOAD_PARTITION_TYPE_LIST,
 )
@@ -29,6 +28,7 @@ from goe.offload.option_validation import (
 )
 from goe.offload.registry import create_source_table
 from goe.orchestration import command_steps
+from goe.orchestration.stages.boundary import offload_source_data_factory
 from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPES_WITH_PREDICATE_IN_HV,
@@ -39,8 +39,8 @@ if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.goe import OffloadOperation
     from goe.offload.backend_table import BackendTableInterface
-    from goe.offload.offload_source_data import OffloadSourceDataInterface
     from goe.offload.offload_source_table import OffloadSourceTableInterface
+    from goe.orchestration.stages.boundary import OffloadSourceDataInterface
     from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 

@@ -53,8 +53,8 @@ from goe.util.string_utils import id_generator
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.offload.offload_messages import OffloadMessages
-    from goe.offload.offload_source_data import OffloadSourcePartitions
     from goe.offload.offload_source_table import OffloadSourceTableInterface
+    from goe.orchestration.models import OffloadSourcePartitions
 
 
 MAX_UNION_ALL_SPLITS = 1024

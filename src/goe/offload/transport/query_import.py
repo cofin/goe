@@ -43,7 +43,7 @@ from goe.offload.transport.spark.polling import (
 from goe.orchestration import command_steps
 
 if TYPE_CHECKING:
-    from goe.offload.offload_source_data import OffloadSourcePartitions
+    from goe.orchestration.models import OffloadSourcePartitions
 
 __all__ = [
     "QUERY_IMPORT_BIGQUERY_MAX_FETCH_SIZE",

@@ -13,14 +13,14 @@ from goe.offload.offload_metadata_functions import (
     OFFLOAD_TYPE_FULL,
     OFFLOAD_TYPE_INCREMENTAL,
 )
-from goe.offload.offload_source_data import (
+from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.registry import create_repository_client
+from goe.orchestration.stages.boundary import (
     PREDICATE_TYPE_INCOMPATIBLE_EXCEPTION_TEXT,
     PREDICATE_TYPE_OFFLOAD_TYPE_FULL_EXCEPTION_TEXT,
     PREDICATE_TYPE_REQUIRED_EXCEPTION_TEXT,
     RANGE_AND_PREDICATE_WITHOUT_PART_KEY_EXCEPTION_TEXT,
 )
-from goe.offload.predicate_offload import GenericPredicate
-from goe.offload.registry import create_repository_client
 from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE_AND_PREDICATE,

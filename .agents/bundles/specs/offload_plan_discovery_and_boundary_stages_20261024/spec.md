@@ -2,16 +2,16 @@
 type: Spec
 flow_id: offload_plan_discovery_and_boundary_stages_20261024
 title: "Chapter 10.2: OffloadPlan Discovery and Boundary Stages"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 3
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: verify
+operation_targets: ["1.1", "1.2", "1.3"]
+last_verified_checkpoint: 2026-10-28T20:12:00Z
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-28T20:12:00Z
 description: "Define immutable OffloadPlan value objects and implement pure SourceDiscoveryStage and BoundaryResolutionStage while retiring the mutable OffloadSourceData hierarchy."
 tags: [refactor, orchestration, offload, ipa, planning]
 parent_prd: prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024
@@ -80,18 +80,18 @@ uv run python tools/verify_architecture.py
 
 ### Phase 1: Staged Models, Discovery, and Boundary Resolution
 
-- [ ] 1.1 Define immutable OffloadPlan and stage value objects in `src/goe/orchestration/models.py` ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Implement `SourceDiscoveryStage` in `src/goe/orchestration/stages/discovery.py` ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 Implement `BoundaryResolutionStage` in `src/goe/orchestration/stages/boundary.py` and retire `offload_source_data` ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.1 Define immutable OffloadPlan and stage value objects in `src/goe/orchestration/models.py` ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Implement `SourceDiscoveryStage` in `src/goe/orchestration/stages/discovery.py` ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.3 Implement `BoundaryResolutionStage` in `src/goe/orchestration/stages/boundary.py` and retire `offload_source_data` ([tasks/1.3.md](tasks/1.3.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `offload_plan_discovery_and_boundary_stages_20261024`, `planned`.
+- **Flow / lifecycle**: `offload_plan_discovery_and_boundary_stages_20261024`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `2026-10-28T20:12:00Z` (all unit, characterization, ruff, mypy, and architecture gates green).
 - **Decisions**: All stage outputs are immutable `FrozenBaseStruct` structs in `src/goe/orchestration/models.py`; `SourcePartitionSlice` uses `array_like=True, frozen=True, gc=False` for minimal memory overhead on tables with tens of thousands of partitions; `BoundaryResolutionStage` replaces the `OffloadSourceDataInterface` class hierarchy completely.
-- **Discoveries**: none yet.
-- **Blockers**: Chapter 10.1 (`execution_context_and_concurrency_safety_20261024`) must complete first.
-- **Next exact step**: execute task `1.1` (`offload_plan_discovery_and_boundary_stages_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: `ColumnSpec` lives in `goe.offload.schema.column_spec` in this repository.
+- **Blockers**: none.
+- **Next exact step**: Chapter 10.3 (`offload_plan_resolution_and_stateless_executor_20261024`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 3`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/architecture/orchestration.md`, `.agents/bundles/knowledge/architecture/offload-lifecycle.md`, `.agents/bundles/knowledge/workflow.md`.

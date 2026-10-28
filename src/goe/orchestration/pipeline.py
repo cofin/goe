@@ -1,14 +1,16 @@
 # SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Offload data verification, operation logic, and target table orchestration entrypoints."""
+"""Staged OffloadPipeline orchestrating discovery, boundary, planning, and execution."""
 
+from __future__ import annotations
+
+import copy
 from typing import TYPE_CHECKING, Any
 
+from goe.config.options import OffloadOperationOptions
 from goe.exceptions import OffloadException, OffloadOptionError
-from goe.filesystem.goe_dfs import (
-    OFFLOAD_FS_SCHEME_INHERIT,
-)
+from goe.filesystem.goe_dfs import OFFLOAD_FS_SCHEME_INHERIT
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.offload import offload_constants
 from goe.offload.offload import (
@@ -28,12 +30,7 @@ from goe.offload.offload_messages import (
     OffloadMessages,
 )
 from goe.offload.offload_metadata_functions import gen_and_save_offload_metadata
-from goe.offload.offload_source_data import (
-    OFFLOAD_SOURCE_CLIENT_OFFLOAD,
-)
-from goe.offload.offload_source_table import (
-    OffloadSourceTableInterface,
-)
+from goe.offload.offload_source_table import OffloadSourceTableInterface
 from goe.offload.offload_validation import (
     BackendCountValidator,
     CrossDbValidator,
@@ -42,25 +39,29 @@ from goe.offload.offload_validation import (
 from goe.offload.operation.data_type_controls import (
     offload_source_to_canonical_mappings,
 )
-from goe.offload.operation.partition_controls import (
-    derive_partition_digits,
-)
+from goe.offload.operation.partition_controls import derive_partition_digits
 from goe.offload.operation.table_structure_checks import check_table_structure
-from goe.offload.operation.transport import (
-    offload_data_to_target,
-)
+from goe.offload.operation.transport import offload_data_to_target
 from goe.offload.registry import create_backend_table, create_transport
 from goe.offload.transport.selector import (
     choose_offload_transport_method,
     validate_offload_transport_method,
 )
-from goe.orchestration import command_steps, logging_init
-from goe.orchestration.constants import (
-    RETAINING_PARTITITON_FUNCTIONS_MESSAGE_TEXT,
-)
+from goe.orchestration import command_steps
+from goe.orchestration.constants import RETAINING_PARTITITON_FUNCTIONS_MESSAGE_TEXT
+from goe.orchestration.context import get_execution_context
 from goe.orchestration.logging_init import version_abort
-from goe.orchestration.operation import (
+from goe.orchestration.models import OffloadExecutionReport, OffloadPlan
+from goe.orchestration.stages.boundary import (
+    OFFLOAD_SOURCE_CLIENT_OFFLOAD,
+    BoundaryResolutionStage,
+    OffloadSourceDataInterface,
+)
+from goe.orchestration.stages.discovery import SourceDiscoveryStage
+from goe.orchestration.stages.executor import OffloadPlanExecutor
+from goe.orchestration.stages.plan_resolution import (
     OffloadOperation,
+    SchemaAndTransportPlanningStage,
     check_and_set_nls_lang,
     get_default_location_fs_scheme,
 )
@@ -72,10 +73,147 @@ from goe.persistence.models import (
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.offload.backend_table import BackendTableInterface
-    from goe.offload.offload_source_data import OffloadSourceDataInterface
+
+__all__ = [
+    "SUPPORTED_OFFLOAD_TARGETS",
+    "OffloadPipeline",
+    "derive_execution_settings",
+    "get_offload_target_table",
+    "incremental_offload_partition_overrides",
+    "offload_data_verification",
+    "offload_operation_logic",
+    "offload_table",
+    "verify_offload_by_backend_count",
+    "verify_row_count_by_aggs",
+]
+
+SUPPORTED_OFFLOAD_TARGETS: frozenset[str] = frozenset(
+    {
+        offload_constants.DBTYPE_BIGQUERY,
+        offload_constants.DBTYPE_SNOWFLAKE,
+        offload_constants.DBTYPE_SYNAPSE,
+        offload_constants.DBTYPE_HIVE,
+        offload_constants.DBTYPE_IMPALA,
+        offload_constants.DBTYPE_SPARK,
+    }
+)
 
 
-def incremental_offload_partition_overrides(offload_operation, existing_part_digits, messages):
+class OffloadPipeline:
+    """Coordinate staged OffloadPlan construction and stateless execution."""
+
+    def __init__(
+        self,
+        *,
+        discovery_stage: SourceDiscoveryStage,
+        boundary_stage: BoundaryResolutionStage,
+        planning_stage: SchemaAndTransportPlanningStage,
+        executor: OffloadPlanExecutor,
+        backend_dialect: str,
+        config: Any = None,
+    ) -> None:
+        """Initialize the pipeline with its three planning stages and stateless executor."""
+        self._discovery_stage = discovery_stage
+        self._boundary_stage = boundary_stage
+        self._planning_stage = planning_stage
+        self._executor = executor
+        self._backend_dialect = backend_dialect
+        self._config = config
+
+    def plan(
+        self,
+        options: OffloadOperationOptions,
+        *,
+        execution_id: str | None = None,
+    ) -> OffloadPlan:
+        """Build a complete immutable OffloadPlan without executing target side effects."""
+        ctx = get_execution_context()
+        resolved_exec_id = execution_id or (str(ctx.execution_id) if ctx and ctx.execution_id else "dry-run")
+        target_owner, target_table_name = self._resolve_target_names(options)
+
+        discovery, prior_state = self._discovery_stage.run(
+            options,
+            target_owner=target_owner,
+            target_table_name=target_table_name,
+        )
+        boundary, predicate = self._boundary_stage.run(
+            discovery,
+            prior_state,
+            options,
+            backend_dialect=self._backend_dialect,
+        )
+        return self._planning_stage.run(
+            execution_id=resolved_exec_id,
+            discovery=discovery,
+            prior_state=prior_state,
+            boundary=boundary,
+            predicate=predicate,
+            options=options,
+            target_owner=target_owner,
+            target_table_name=target_table_name,
+        )
+
+    def run(
+        self,
+        options: OffloadOperationOptions,
+        *,
+        execution_id: str | None = None,
+    ) -> OffloadExecutionReport:
+        """Build an OffloadPlan and execute it via OffloadPlanExecutor."""
+        offload_plan = self.plan(options, execution_id=execution_id)
+        return self._executor.execute(offload_plan)
+
+    def _resolve_target_names(
+        self,
+        options: OffloadOperationOptions,
+    ) -> tuple[str, str]:
+        """Resolve backend target owner and table name from options and naming conventions."""
+        target_owner_name = getattr(options, "target_owner_name", None)
+        if target_owner_name and "." in target_owner_name:
+            raw_owner, raw_table = target_owner_name.split(".", 1)
+        elif target_owner_name:
+            raw_owner = getattr(options, "target_owner", None) or getattr(options, "owner", None) or ""
+            raw_table = target_owner_name
+        else:
+            raw_owner = getattr(options, "target_owner", None) or getattr(options, "owner", None) or ""
+            raw_table = (
+                getattr(options, "target_table_name", None)
+                or getattr(options, "target_name", None)
+                or getattr(options, "table_name", None)
+                or ""
+            )
+
+        cfg = self._config or options
+        if getattr(cfg, "db_name_pattern", None):
+            raw_owner = data_db_name(raw_owner, cfg)
+
+        case_opt = (
+            getattr(cfg, "backend_identifier_case", None)
+            or getattr(options, "backend_identifier_case", None)
+            or "LOWER"
+        )
+        resolved_owner, resolved_table = convert_backend_identifier_case(case_opt, raw_owner, raw_table)
+        return str(resolved_owner), str(resolved_table)
+
+
+def derive_execution_settings(settings: Any, offload_operation: Any) -> Any:
+    """Return an execution-scoped copy of settings with offload filesystem overrides applied."""
+    scheme = getattr(offload_operation, "offload_fs_scheme", None)
+    container = getattr(offload_operation, "offload_fs_container", None)
+    prefix = getattr(offload_operation, "offload_fs_prefix", None)
+    if not scheme and container is None and prefix is None:
+        return settings
+    derived = copy.copy(settings)
+    derived.override_offload_dfs_config(scheme, container, prefix)
+    return derived
+
+
+def incremental_offload_partition_overrides(
+    offload_operation: Any,
+    existing_part_digits: Any,
+    messages: OffloadMessages,
+) -> None:
+    """Retain existing partition digits, columns, and functions during incremental append offload."""
     if existing_part_digits and existing_part_digits != offload_operation.synthetic_partition_digits:
         offload_operation.synthetic_partition_digits = existing_part_digits
         messages.notice("Retaining partition digits from backend target (ignoring --partition-digits)")
@@ -86,20 +224,15 @@ def incremental_offload_partition_overrides(offload_operation, existing_part_dig
 
 
 def verify_offload_by_backend_count(
-    offload_source_table,
-    offload_target_table,
-    offload_operation,
-    messages,
-    verification_hvs,
-    prior_hvs,
-    inflight_offload_predicate=None,
-):
-    """Verify (by row counts) the data offloaded in the current operation.
-    For partitioned tables the partition columns and verification_hvs and prior_hvs are used to limit
-    scanning to the relevant data in both frontend abd backend.
-
-    TODO NJ@2017-03-15 We need a second set of backend filters for synthetic partition keys (GOE-790)
-    """
+    offload_source_table: Any,
+    offload_target_table: Any,
+    offload_operation: Any,
+    messages: OffloadMessages,
+    verification_hvs: Any,
+    prior_hvs: Any,
+    inflight_offload_predicate: Any = None,
+) -> tuple[Any, Any, Any]:
+    """Verify by row counts the data offloaded in the current operation."""
     ipa_predicate_type = offload_operation.ipa_predicate_type
     verify_parallelism = offload_operation.verify_parallelism
     validator = BackendCountValidator(
@@ -141,20 +274,16 @@ def verify_offload_by_backend_count(
 
 
 def verify_row_count_by_aggs(
-    offload_source_table,
-    offload_target_table,
-    offload_operation,
-    options,
-    messages,
-    verification_hvs,
-    prior_hvs,
-    inflight_offload_predicate=None,
-):
-    """Light verification by running aggregate queries in both Oracle and backend
-    and comparing their results
-
-    TODO NJ@2017-03-15 We need a second set of backend filters for Hadoop partition keys (GOE-790)
-    """
+    offload_source_table: Any,
+    offload_target_table: Any,
+    offload_operation: Any,
+    options: Any,
+    messages: OffloadMessages,
+    verification_hvs: Any,
+    prior_hvs: Any,
+    inflight_offload_predicate: Any = None,
+) -> Any:
+    """Light verification by running aggregate queries in both frontend and backend and comparing results."""
     ipa_predicate_type = offload_operation.ipa_predicate_type
     verify_parallelism = offload_operation.verify_parallelism
     validator = CrossDbValidator(
@@ -201,17 +330,13 @@ def verify_row_count_by_aggs(
 
 def offload_data_verification(
     offload_source_table: OffloadSourceTableInterface,
-    offload_target_table: "BackendTableInterface",
+    offload_target_table: BackendTableInterface,
     offload_operation: OffloadOperation,
-    offload_options: "OrchestrationConfig",
+    offload_options: OrchestrationConfig,
     messages: OffloadMessages,
-    source_data_client: "OffloadSourceDataInterface",
+    source_data_client: OffloadSourceDataInterface,
 ) -> None:
-    """Verify offloaded data by either rowcount or sampling aggregation functions.
-    Boundary conditions used to verify only those partitions offloaded by the current operation.
-
-    Let's add query boundary conditions Leave prior_hvs unset for LIST because we don't have a lower bound
-    """
+    """Verify offloaded data by either rowcount or sampling aggregation functions."""
     new_hvs = None
     prior_hvs = None
     if source_data_client.is_partition_append_capable():
@@ -300,20 +425,13 @@ def offload_data_verification(
 def offload_operation_logic(
     offload_operation: OffloadOperation,
     offload_source_table: OffloadSourceTableInterface,
-    offload_target_table: "BackendTableInterface",
-    offload_options: "OrchestrationConfig",
-    source_data_client: "OffloadSourceDataInterface",
+    offload_target_table: BackendTableInterface,
+    offload_options: OrchestrationConfig,
+    source_data_client: OffloadSourceDataInterface,
     existing_metadata: Any,
     messages: OffloadMessages,
 ) -> bool:
-    """Logic defining what will be offloaded and what the final objects will look like
-    There's a lot goes on in here but one key item to note is there are 2 distinct routes through:
-    1) The table either is new or is being reset, we take on board lots of options to define the final table
-    2) The table already exists and we are adding data, many options are ignored to remain consistent with the target table
-
-    Cache some source data attributes in offload_operation to carry through rest of offload logic Drop out early We are creating a fresh table and therefore don't need to concern ourselves with existing structure Need to add partition information after we've tuned operation settings The backend table already exists therefore some options should be ignored/defaulted For incremental append offload we ignore user data type controls, let them know they are being ignored here If the user tried to influence the fs scheme for the table then we should tell them we're ignoring the attempt There's a user defined transport method and we now have enough information to fully check it
-    """
-
+    """Resolve offload operation schema, canonical column mappings, and target table structure."""
     if offload_operation.reset_backend_table and not offload_operation.force:
         messages.log("Enabling force mode based on --reset-backend-table", detail=VVERBOSE)
         offload_operation.force = True
@@ -417,13 +535,13 @@ def offload_operation_logic(
 
 
 def offload_table(
-    offload_options: "OrchestrationConfig",
+    offload_options: OrchestrationConfig,
     offload_operation: OffloadOperation,
     offload_source_table: OffloadSourceTableInterface,
-    offload_target_table: "BackendTableInterface",
+    offload_target_table: BackendTableInterface,
     messages: OffloadMessages,
 ) -> bool:
-    """As of GOE-2334 we only support BigQuery as a target. We need to pickup defaults for an existing table here, BEFORE we start looking for data to offload (get_offload_data_manager()). Call validate_offload_by_subpartition early so we can switch it on before any partition related information is requested. The ipa_predicate_type checks are intertwined with offload_by_subpartition. Write ipa_predicate_type back to operation in case the source_data_client has defined a new one. source_data_client may modify offload-predicate provided as input, this variable contains those changes for transport and verification. We need to set defaults for a fresh offload here, AFTER get_offload_data_manager() has decided what type of offload we'll do. This happens inside offload_operation_logic(). For a fresh offload we may have tuned offload_operation attributes For DDL file creation we need to drop out early, before we concern ourselves with database creation or table drop commands. Pre-offload SCN will be stored in metadata. Only run verification if data has been transferred"""
+    """Coordinate source boundary detection, schema setup, transport staging, load, verification, and metadata persistence."""
     if offload_options.db_type == offload_constants.DBTYPE_ORACLE:
         abort, v_goe, v_ora = version_abort(offload_operation.ver_check, offload_source_table.get_frontend_api())
         if abort:
@@ -431,15 +549,10 @@ def offload_table(
                 "Mismatch between Oracle component version (" + v_ora + ") and binary version (" + v_goe + ")"
             )
 
-    if offload_options.target != offload_constants.DBTYPE_BIGQUERY:
-        OffloadException(f"Unsupported Offload target: {offload_options.target}")
-    logging_init.suppress_stdout_override = True if messages.verbosity == 3 else False
+    if offload_options.target not in SUPPORTED_OFFLOAD_TARGETS:
+        raise OffloadException(f"Unsupported Offload target: {offload_options.target}")
 
-    offload_options.override_offload_dfs_config(
-        offload_operation.offload_fs_scheme,
-        offload_operation.offload_fs_container,
-        offload_operation.offload_fs_prefix,
-    )
+    offload_options = derive_execution_settings(offload_options, offload_operation)
     offload_options.check_backend_support(offload_target_table.get_backend_api())
     repo_client = offload_operation.repo_client
 
@@ -502,7 +615,7 @@ def offload_table(
             )
         )
 
-    source_data_client: "OffloadSourceDataInterface" = messages.offload_step(
+    source_data_client: OffloadSourceDataInterface = messages.offload_step(
         command_steps.STEP_FIND_OFFLOAD_DATA,
         lambda: get_offload_data_manager(
             offload_source_table,
@@ -632,7 +745,14 @@ def offload_table(
     return True
 
 
-def get_offload_target_table(offload_operation, offload_options, messages, metadata_override=None):
+def get_offload_target_table(
+    offload_operation: Any,
+    offload_options: Any,
+    messages: OffloadMessages,
+    metadata_override: Any = None,
+) -> Any:
+    """Resolve target naming and construct a BackendTable instance using execution-scoped settings."""
+    offload_options = derive_execution_settings(offload_options, offload_operation)
     check_and_set_nls_lang(offload_options, messages)
     existing_metadata = metadata_override or offload_operation.get_hybrid_metadata()
     if existing_metadata:

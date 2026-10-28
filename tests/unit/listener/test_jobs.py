@@ -3,6 +3,8 @@
 
 """Unit tests for litestar-queues background tasks and periodic cache publishers."""
 
+from __future__ import annotations
+
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
@@ -15,25 +17,46 @@ from goe.listener.jobs import (
     sync_schemas_job,
     system_heartbeat_job,
 )
+from goe.listener.services import orchestrate
 from goe.listener.services.periodic_tasks import (
     publish_command_executions,
     publish_heartbeat,
     publish_schemas,
 )
 from goe.listener.services.system import SystemService
+from goe.orchestration.execution_id import ExecutionId
 
 
 @pytest.mark.anyio
-@patch("goe.listener.jobs.orchestration_runner.offload")
-async def test_run_offload_job(mock_offload: MagicMock) -> None:
-    """Verify run_offload_job executes orchestration_runner.offload in a worker thread."""
-    result = await run_offload_job(
-        params={"owner_table": "SH.SALES", "execute": True},
-        execution_id="00000000-0000-0000-0000-000000000001",
-    )
+async def test_run_offload_job() -> None:
+    """Verify run_offload_job constructs a job-scoped runner and invokes offload."""
+    mock_runner = MagicMock()
+    with patch("goe.listener.jobs.create_orchestration_runner", return_value=mock_runner) as mock_factory:
+        result = await run_offload_job(
+            params={"owner_table": "SH.SALES", "execute": True},
+            execution_id="00000000-0000-0000-0000-000000000001",
+        )
     assert result["execution_id"] == "00000000-0000-0000-0000-000000000001"
     assert result["status"] == "COMPLETED"
-    assert mock_offload.called
+    mock_factory.assert_called_once_with()
+    mock_runner.offload.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_run_offload_job_constructs_fresh_runner_per_invocation() -> None:
+    """Verify run_offload_job constructs a distinct OrchestrationRunner with suppress_stdout=True per job."""
+    runner_1 = MagicMock()
+    runner_2 = MagicMock()
+    with patch.object(orchestrate, "OrchestrationRunner", side_effect=[runner_1, runner_2]) as mock_runner_cls:
+        await run_offload_job({"owner_table": "SH.SALES", "execute": False}, str(ExecutionId()))
+        await run_offload_job({"owner_table": "SH.SALES", "execute": False}, str(ExecutionId()))
+
+    assert mock_runner_cls.call_count == 2
+    for call in mock_runner_cls.call_args_list:
+        assert call.kwargs.get("suppress_stdout") is True
+    assert runner_1.offload.call_count == 1
+    assert runner_2.offload.call_count == 1
+    assert not hasattr(orchestrate, "_runner")
 
 
 @pytest.mark.anyio

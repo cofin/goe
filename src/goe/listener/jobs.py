@@ -3,22 +3,25 @@
 
 """Background tasks and jobs for GOE Listener using litestar-queues."""
 
+from __future__ import annotations
+
 from datetime import timedelta
 from typing import Any
 
 from litestar_queues import task
 
 from goe.listener.services import periodic_tasks
-from goe.listener.services.orchestrate import orchestration_runner
+from goe.listener.services.orchestrate import create_orchestration_runner
 from goe.orchestration.execution_id import ExecutionId
 from goe.util.concurrency import async_
 
 
 @task("orchestration.offload", queue="orchestration", timeout=86400)
 async def run_offload_job(params: dict[str, Any], execution_id: str) -> dict[str, Any]:
-    """Execute an offload operation asynchronously in the worker pool."""
+    """Execute an offload operation asynchronously in the worker pool using a job-scoped runner."""
     execution_identifier = ExecutionId.from_str(execution_id)
-    await async_(orchestration_runner.offload)(params=params, execution_id=execution_identifier)
+    runner = create_orchestration_runner()
+    await async_(runner.offload)(params=params, execution_id=execution_identifier)
     return {"execution_id": execution_id, "status": "COMPLETED"}
 
 

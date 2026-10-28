@@ -24,7 +24,7 @@ from goe.orchestration import command_steps
 from goe.util.string_utils import write_temp_file
 
 if TYPE_CHECKING:
-    from goe.offload.offload_source_data import OffloadSourcePartitions
+    from goe.orchestration.models import OffloadSourcePartitions
 
 
 class OffloadTransportSparkSubmit(OffloadTransportSpark):

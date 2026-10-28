@@ -27,6 +27,7 @@ from goe.offload.predicates.ast import (
 )
 from goe.offload.predicates.parser import (
     PredicateOffloadException,
+    parse_predicate_dsl,
     parse_safe_sql_predicate,
     resolve_predicate_types,
 )
@@ -118,6 +119,17 @@ class PredicateCompiler:
             quote_identifiers=quote_identifiers,
         )
         return RenderedSQL(sql=ast_node.sql(dialect), params=params)
+
+    @classmethod
+    def compile_predicate(
+        cls,
+        predicate_dsl: Any,
+        *,
+        dialect: str,
+        columns: Sequence[ColumnSpec] = (),
+    ) -> str:
+        """Compile a predicate DSL string or AST into a dialect WHERE clause."""
+        return get_predicate_dialect_engine(dialect.lower()).render_literal_sql(predicate_dsl, columns)
 
 
 def render_predicate(
@@ -376,10 +388,14 @@ class _DialectAstBuilder:
 
 
 def _ensure_resolved(
-    expr: PredicateExpr,
+    expr: Any,
     columns: Sequence[ColumnSpec],
 ) -> PredicateExpr:
     """Resolve column types on ``expr`` if any comparison literal lacks ``data_type``."""
+    if isinstance(expr, str):
+        expr = parse_predicate_dsl(expr)
+    elif hasattr(expr, "ast"):
+        expr = expr.ast
     if not columns or not _needs_resolution(expr):
         return expr
     return resolve_predicate_types(expr, columns, include_synthetic=False)

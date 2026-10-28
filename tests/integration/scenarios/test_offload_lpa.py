@@ -16,11 +16,6 @@ from goe.offload.offload_metadata_functions import (
     OFFLOAD_TYPE_FULL,
     OFFLOAD_TYPE_INCREMENTAL,
 )
-from goe.offload.offload_source_data import (
-    INCREMENTAL_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT,
-    IPA_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT,
-    NO_MATCHING_PARTITION_EXCEPTION_TEXT,
-)
 from goe.offload.registry import create_repository_client
 from goe.offload.schema.column_spec import (
     ORACLE_TYPE_CHAR,
@@ -29,6 +24,11 @@ from goe.offload.schema.column_spec import (
     ORACLE_TYPE_NVARCHAR2,
     ORACLE_TYPE_TIMESTAMP,
     ORACLE_TYPE_VARCHAR2,
+)
+from goe.orchestration.stages.boundary import (
+    INCREMENTAL_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT,
+    IPA_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT,
+    NO_MATCHING_PARTITION_EXCEPTION_TEXT,
 )
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import (

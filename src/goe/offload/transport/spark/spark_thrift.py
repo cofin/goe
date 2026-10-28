@@ -25,7 +25,7 @@ from goe.orchestration import command_steps
 from goe.util.string_utils import id_generator
 
 if TYPE_CHECKING:
-    from goe.offload.offload_source_data import OffloadSourcePartitions
+    from goe.orchestration.models import OffloadSourcePartitions
 
 
 class OffloadTransportSparkThrift(OffloadTransportSpark):

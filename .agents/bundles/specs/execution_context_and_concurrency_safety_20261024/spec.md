@@ -2,16 +2,16 @@
 type: Spec
 flow_id: execution_context_and_concurrency_safety_20261024
 title: "Chapter 10.1: Execution Context and Concurrency Safety"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 4
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: verify
+operation_targets: ["1.1", "1.2", "1.3", "1.4"]
+last_verified_checkpoint: 2026-10-28T20:12:00Z
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-28T20:12:00Z
 description: "Route orchestration log lines and step records through a ContextVar-bound ExecutionContext and its sinks, remove module-global and shared-runner state, and fix the execution-path defects that break concurrent offloads in one process."
 tags: [refactor, orchestration, concurrency, logging]
 parent_prd: prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024
@@ -93,22 +93,22 @@ uv run python tools/verify_architecture.py
 
 ### Phase 1: Baseline and Context Primitives
 
-- [ ] 1.1 Pin byte-exact console and log output ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Add ExecutionContext and execution sinks ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.1 Pin byte-exact console and log output ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Add ExecutionContext and execution sinks ([tasks/1.2.md](tasks/1.2.md))
 
 ### Phase 2: Adoption and Defect Fixes
 
-- [ ] 1.3 Route orchestration logging through the execution context and fix execution-state defects ([tasks/1.3.md](tasks/1.3.md))
-- [ ] 1.4 Make OrchestrationRunner stateless and fix operation defects ([tasks/1.4.md](tasks/1.4.md))
+- [x] 1.3 Route orchestration logging through the execution context and fix execution-state defects ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.4 Make OrchestrationRunner stateless and fix operation defects ([tasks/1.4.md](tasks/1.4.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `execution_context_and_concurrency_safety_20261024`, `planned`.
+- **Flow / lifecycle**: `execution_context_and_concurrency_safety_20261024`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `2026-10-28T20:12:00Z` (all unit, characterization, ruff, mypy, and architecture gates green).
 - **Decisions**: verbosity constants, `COLORS`, and `ansi_wrap` move to `goe.orchestration.sinks` and stay importable from `goe.offload.offload_messages` because it uses them; `traced_step` stays a context manager inside `offload_step` (span parentage needs lexical scope) while skipped-step and warning span events go through `TelemetrySink`; the unsupported-target guard accepts the backends PRD 9 preserves (`bigquery`, `snowflake`, `synapse`, `hive`, `impala`, `spark`); `ListenerCacheSink` is implemented in Chapter 10.4 because `ListenerCache` is created there.
-- **Discoveries**: none yet.
-- **Blockers**: Master PRDs 5–9 must complete first.
-- **Next exact step**: execute task `1.1` (`execution_context_and_concurrency_safety_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: `tests/unit/observability/test_orchestration_telemetry.py::test_runner_command_begin_enriches_trace_ids` constructs `OrchestrationRunner.__new__(OrchestrationRunner)` and sets `runner._execution_id` directly before calling `runner._command_begin(...)`; `_command_begin` accepts `execution_id: ExecutionId | None = None` and falls back to `getattr(self, "_execution_id", None)` or `current_execution_context().execution_id` while `OrchestrationRunner.__init__` never defines `_execution_id`, `_messages`, or `_max_hybrid_name_length`.
+- **Blockers**: none.
+- **Next exact step**: Chapter 10.2 (`offload_plan_discovery_and_boundary_stages_20261024`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 4`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/architecture/orchestration.md`, `.agents/bundles/knowledge/operations/observability.md`, `.agents/bundles/knowledge/standards/testing.md`, `.agents/bundles/knowledge/workflow.md`.

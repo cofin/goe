@@ -10,7 +10,7 @@ from goe.offload.bigquery.bigquery_backend_table import BackendBigQueryTable
 from goe.offload.offload_constants import DBTYPE_BIGQUERY, PART_OUT_OF_LIST
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_metadata_functions import OFFLOAD_TYPE_FULL, OFFLOAD_TYPE_INCREMENTAL
-from goe.offload.offload_source_data import (
+from goe.orchestration.stages.boundary import (
     OFFLOAD_SOURCE_CLIENT_OFFLOAD,
     OffloadSourceDataIpaRange,
     OffloadSourcePartitions,

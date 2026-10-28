@@ -101,7 +101,7 @@ def test_orchestration_execution_log_null_or_empty_path() -> None:
 
 
 @patch("goe.listener.utils.orchestrate.check_for_running_command")
-@patch("goe.listener.services.orchestrate.orchestration_runner.offload")
+@patch("goe.listener.services.orchestrate.create_orchestration_runner")
 def test_orchestration_post_offload(mock_offload: MagicMock, mock_check: MagicMock) -> None:
     """Verify POST /api/orchestration/offload/ dispatches an offload job."""
     app = create_app()
@@ -131,7 +131,7 @@ def test_orchestration_post_offload_lock_timeout_and_invalid_table(mock_lock_fac
 
 
 @patch("goe.listener.utils.orchestrate.check_for_running_command")
-@patch("goe.listener.services.orchestrate.orchestration_runner.offload")
+@patch("goe.listener.services.orchestrate.create_orchestration_runner")
 def test_orchestration_console_key_enforcement(mock_offload: MagicMock, mock_check: MagicMock) -> None:
     """Verify POST /api/orchestration/offload/ enforces x-goe-console-key when shared_token is set."""
     app = create_app()

@@ -2,16 +2,16 @@
 type: Spec
 flow_id: offload_plan_resolution_and_stateless_executor_20261024
 title: "Chapter 10.3: OffloadPlan Resolution and Stateless Executor"
-state: planned
+state: completed
 plan_revision: 1
 plan_commit: null
-state_revision: 0
+state_revision: 3
 current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+last_operation: verify
+operation_targets: ["1.1", "1.2", "1.3"]
+last_verified_checkpoint: 2026-10-28T20:12:00Z
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-28T20:12:00Z
 description: "Implement SchemaAndTransportPlanningStage, OffloadPlanExecutor, and OffloadPipeline while retiring the mutable OffloadOperation and procedural execution.py monoliths."
 tags: [refactor, orchestration, offload, executor, pipeline]
 parent_prd: prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024
@@ -81,18 +81,18 @@ uv run python tools/verify_architecture.py
 
 ### Phase 1: Plan Resolution, Stateless Executor, and Pipeline Replacement
 
-- [ ] 1.1 Implement `SchemaAndTransportPlanningStage` in `src/goe/orchestration/stages/plan_resolution.py` ([tasks/1.1.md](tasks/1.1.md))
-- [ ] 1.2 Implement `OffloadPlanExecutor` in `src/goe/orchestration/stages/executor.py` ([tasks/1.2.md](tasks/1.2.md))
-- [ ] 1.3 Replace `operation.py` and `execution.py` with `OffloadPipeline` and verify golden characterization suites ([tasks/1.3.md](tasks/1.3.md))
+- [x] 1.1 Implement `SchemaAndTransportPlanningStage` in `src/goe/orchestration/stages/plan_resolution.py` ([tasks/1.1.md](tasks/1.1.md))
+- [x] 1.2 Implement `OffloadPlanExecutor` in `src/goe/orchestration/stages/executor.py` ([tasks/1.2.md](tasks/1.2.md))
+- [x] 1.3 Replace `operation.py` and `execution.py` with `OffloadPipeline` and verify golden characterization suites ([tasks/1.3.md](tasks/1.3.md))
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `offload_plan_resolution_and_stateless_executor_20261024`, `planned`.
+- **Flow / lifecycle**: `offload_plan_resolution_and_stateless_executor_20261024`, `completed`.
 - **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Last verified checkpoint**: `2026-10-28T20:12:00Z` (all unit, characterization, ruff, mypy, and architecture gates green).
 - **Decisions**: `SchemaAndTransportPlanningStage` constructs the complete `OffloadPlan(FrozenBaseStruct)` before any target DDL or staging side effects occur; `OffloadPlanExecutor` is stateless and acquires `OrchestrationLockInterface` around plan execution; `operation.py` and `execution.py` are retired in Task 1.3.
-- **Discoveries**: none yet.
-- **Blockers**: Chapter 10.2 (`offload_plan_discovery_and_boundary_stages_20261024`) must complete first.
-- **Next exact step**: execute task `1.1` (`offload_plan_resolution_and_stateless_executor_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: `OffloadMessages.offload_step` always invokes `step_fn()` even when `execute=False`, so `OffloadPlanExecutor` guards gateway mutation calls with `if not dry_run:` inside each step callback while logging planned DDL statements during dry-run.
+- **Blockers**: none.
+- **Next exact step**: Chapter 10.4 (`durable_job_queue_listener_cache_and_mcp_20261024`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 3`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/architecture/orchestration.md`, `.agents/bundles/knowledge/architecture/offload-lifecycle.md`, `.agents/bundles/knowledge/workflow.md`.

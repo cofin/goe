@@ -40,11 +40,11 @@ if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.offload.backend_table import BackendTableInterface
     from goe.offload.offload_messages import OffloadMessages
-    from goe.offload.offload_source_data import OffloadSourcePartitions
     from goe.offload.offload_source_table import OffloadSourceTableInterface
     from goe.offload.predicate_offload import GenericPredicate
     from goe.offload.transport.spark.polling import OffloadTransport
     from goe.orchestration.execution_id import ExecutionId
+    from goe.orchestration.models import OffloadSourcePartitions
     from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 

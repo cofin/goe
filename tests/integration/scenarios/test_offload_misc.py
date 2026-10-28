@@ -9,8 +9,8 @@ from goe.offload.offload_functions import (
     data_db_name,
 )
 from goe.offload.offload_metadata_functions import OFFLOAD_TYPE_FULL
-from goe.offload.offload_source_data import NO_MAXVALUE_PARTITION_NOTICE_TEXT
 from goe.offload.registry import create_repository_client
+from goe.orchestration.stages.boundary import NO_MAXVALUE_PARTITION_NOTICE_TEXT
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import (
     hint_text_in_log,

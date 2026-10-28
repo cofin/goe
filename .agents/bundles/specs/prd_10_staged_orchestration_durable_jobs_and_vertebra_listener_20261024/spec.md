@@ -2,16 +2,16 @@
 type: Spec
 flow_id: prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024
 title: "Master PRD 10: Execution Context, Staged OffloadPlan, Durable Job Queue, and the Listener on Vertebra"
-state: planned
+state: in_progress
 plan_revision: 1
 plan_commit: null
-state_revision: 0
-current_task: null
-last_operation: null
-operation_targets: []
-last_verified_checkpoint: null
+state_revision: 3
+current_task: "10.4"
+last_operation: verify
+operation_targets: ["10.1", "10.2", "10.3"]
+last_verified_checkpoint: 2026-10-28T20:12:00Z
 created_at: 2026-10-24T16:45:00Z
-updated_at: 2026-10-24T16:45:00Z
+updated_at: 2026-10-28T20:12:00Z
 description: "Master roadmap that makes concurrent offload execution safe with a ContextVar execution context and event sinks, replaces the mutable OffloadOperation with a staged immutable OffloadPlan and stateless executor, replaces litestar-queues with a GOE-owned durable job queue, fixes Listener blocking, caching, and MCP authentication, and moves the Listener from Granian onto Vertebra behind a release gate."
 tags:
   - refactor
@@ -111,20 +111,20 @@ make test-integration-oracle
 
 ## Implementation Plan
 
-- [ ] 10.1 `execution_context_and_concurrency_safety_20261024` — `ExecutionContext`, sinks, concurrency defect fixes ([spec](../execution_context_and_concurrency_safety_20261024/spec.md)).
-- [ ] 10.2 `offload_plan_discovery_and_boundary_stages_20261024` — plan models, discovery and boundary stages ([spec](../offload_plan_discovery_and_boundary_stages_20261024/spec.md)).
-- [ ] 10.3 `offload_plan_resolution_and_stateless_executor_20261024` — type, target, and transport stages and the stateless executor ([spec](../offload_plan_resolution_and_stateless_executor_20261024/spec.md)).
+- [x] 10.1 `execution_context_and_concurrency_safety_20261024` — `ExecutionContext`, sinks, concurrency defect fixes ([spec](../execution_context_and_concurrency_safety_20261024/spec.md)).
+- [x] 10.2 `offload_plan_discovery_and_boundary_stages_20261024` — plan models, discovery and boundary stages ([spec](../offload_plan_discovery_and_boundary_stages_20261024/spec.md)).
+- [x] 10.3 `offload_plan_resolution_and_stateless_executor_20261024` — type, target, and transport stages and the stateless executor ([spec](../offload_plan_resolution_and_stateless_executor_20261024/spec.md)).
 - [ ] 10.4 `durable_job_queue_listener_cache_and_mcp_20261024` — durable job queue, `ListenerCache`, non-blocking endpoints, MCP ([spec](../durable_job_queue_listener_cache_and_mcp_20261024/spec.md)).
 - [ ] 10.5 `listener_on_vertebra_runtime_20261024` — Listener on Vertebra behind the release gate ([spec](../listener_on_vertebra_runtime_20261024/spec.md)).
 
 ## Continuity Snapshot
 
-- **Flow / lifecycle**: `prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024`, `planned`; five child flows.
-- **Current task / claimant**: none.
-- **Last verified checkpoint**: none.
+- **Flow / lifecycle**: `prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024`, `in_progress`; Chapters 10.1, 10.2, and 10.3 completed and verified.
+- **Current task / claimant**: `10.4` (`durable_job_queue_listener_cache_and_mcp_20261024`).
+- **Last verified checkpoint**: `2026-10-28T20:12:00Z` (Pass 10.A Chapters 10.1–10.3 complete).
 - **Decisions**: see §4.
-- **Discoveries**: none yet.
-- **Blockers**: Master PRDs 5–9 must complete first; Chapter 10.5 also waits for the Vertebra release gate.
-- **Next exact step**: execute Chapter 10.1 task `1.1` (`execution_context_and_concurrency_safety_20261024:1.1`).
-- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 0`.
+- **Discoveries**: Pass 10.A retired `src/goe/offload/offload_source_data.py`, `src/goe/offload/source_data/`, `src/goe/orchestration/operation.py`, and `src/goe/orchestration/execution.py`, replacing them with `src/goe/orchestration/{context,sinks,models,pipeline}.py` and `src/goe/orchestration/stages/{discovery,boundary,plan_resolution,executor}.py`.
+- **Blockers**: Chapter 10.5 waits for the Vertebra release gate.
+- **Next exact step**: execute Chapter 10.4 (`durable_job_queue_listener_cache_and_mcp_20261024`).
+- **Plan identity**: `plan_revision: 1`, `plan_commit: null`. **State identity**: `state_revision: 3`.
 - **Relevant knowledge**: `.agents/bundles/knowledge/architecture/orchestration.md`, `.agents/bundles/knowledge/architecture/offload-lifecycle.md`, `.agents/bundles/knowledge/listener/index.md`, `.agents/bundles/knowledge/listener/rest-api.md`, `.agents/bundles/knowledge/listener/worker-and-redis.md`, `.agents/bundles/knowledge/operations/cloud-run-deployment.md`.

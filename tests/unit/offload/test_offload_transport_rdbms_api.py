@@ -10,10 +10,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from goe.offload.offload_messages import OffloadMessages
-from goe.offload.offload_source_data import (
-    OffloadSourcePartition,
-    OffloadSourcePartitions,
-)
 from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_EXTENT,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
@@ -21,6 +17,10 @@ from goe.offload.offload_transport_rdbms_api import (
 )
 from goe.offload.oracle.oracle_offload_transport_rdbms_api import LOG_SQL_STATS_QUERY_TEXT
 from goe.offload.registry import create_transport_rdbms_api
+from goe.orchestration.models import (
+    OffloadSourcePartition,
+    OffloadSourcePartitions,
+)
 from tests.unit.test_functions import (
     FAKE_MSSQL_ENV,
     FAKE_ORACLE_ENV,

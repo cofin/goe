@@ -1,31 +1,29 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Orchestration runner service for GOE Listener."""
+"""Factory for per-job OrchestrationRunner instances in the GOE Listener."""
 
-import logging
+from __future__ import annotations
+
+from collections.abc import Sequence
 from typing import Any
 
 from goe.orchestration.orchestration_runner import OrchestrationRunner
+from goe.orchestration.sinks import ExecutionSink
 
-logger = logging.getLogger(__name__)
-
-_runner: OrchestrationRunner | None = None
-
-
-def get_orchestration_runner() -> OrchestrationRunner:
-    """Lazily get or initialize OrchestrationRunner."""
-    global _runner
-    if _runner is None:
-        _runner = OrchestrationRunner(suppress_stdout=True)
-    return _runner
+__all__ = ("create_orchestration_runner",)
 
 
-class LazyOrchestrationRunner:
-    """Proxy object delegating to lazily initialized OrchestrationRunner."""
-
-    def offload(self, *args: Any, **kwargs: Any) -> Any:
-        return get_orchestration_runner().offload(*args, **kwargs)
-
-
-orchestration_runner = LazyOrchestrationRunner()
+def create_orchestration_runner(
+    *,
+    config_overrides: dict[str, Any] | None = None,
+    settings: Any = None,
+    sinks: Sequence[ExecutionSink] = (),
+) -> OrchestrationRunner:
+    """Construct a fresh OrchestrationRunner with stdout suppressed for a Listener job."""
+    return OrchestrationRunner(
+        config_overrides=config_overrides,
+        suppress_stdout=True,
+        settings=settings,
+        sinks=sinks,
+    )

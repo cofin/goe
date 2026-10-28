@@ -75,9 +75,9 @@ from goe.util.string_utils import (
 if TYPE_CHECKING:
     from goe.offload.backend_table import BackendTableInterface
     from goe.offload.offload_messages import OffloadMessages
-    from goe.offload.offload_source_data import OffloadSourcePartitions
     from goe.offload.offload_source_table import OffloadSourceTableInterface
     from goe.offload.schema.column_spec import ColumnSpec
+    from goe.orchestration.models import OffloadSourcePartitions
 
 CONFIG_NOLOG_KEYS: list[str] = [
     "spark.jdbc.password",
