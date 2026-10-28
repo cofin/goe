@@ -5,9 +5,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from contextlib import nullcontext
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from goe.offload.backend_capabilities import BackendCapabilities
+from goe.offload.microsoft import synapse_backend_api
 from goe.offload.microsoft.synapse_backend_api import (
     SYNAPSE_CAPABILITIES,
     build_synapse_mssql_config,
@@ -30,49 +33,60 @@ from goe.offload.schema.column_spec import (
     ColumnDialect,
     ColumnSpec,
 )
+from goe.util.module_loader import import_optional
 from tests.unit.test_functions import FAKE_ORACLE_SYNAPSE_ENV, build_mock_options
 
 
 def test_synapse_uses_sqlspec_mssql_config_for_auth_modes() -> None:
-    sql_opts = build_mock_options(FAKE_ORACLE_SYNAPSE_ENV)
-    sql_opts.synapse_database = "SYNAPSE_DB"
-    sql_opts.synapse_server = "synapse.sql.azuresynapse.net"
-    sql_opts.synapse_port = 1433
-    sql_opts.synapse_auth_mechanism = SYNAPSE_AUTH_MECHANISM_SQL_PASSWORD
-    sql_opts.synapse_user = "sql_admin"
-    sql_opts.synapse_pass = "secret_pw"
+    fake_adapter = SimpleNamespace(
+        MssqlPythonPoolParams=lambda **kwargs: kwargs,
+        MssqlPythonConfig=lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+    ctx = (
+        nullcontext()
+        if import_optional("mssql_python") is not None
+        else patch.object(synapse_backend_api, "ensure_module", return_value=fake_adapter)
+    )
+    with ctx:
+        sql_opts = build_mock_options(FAKE_ORACLE_SYNAPSE_ENV)
+        sql_opts.synapse_database = "SYNAPSE_DB"
+        sql_opts.synapse_server = "synapse.sql.azuresynapse.net"
+        sql_opts.synapse_port = 1433
+        sql_opts.synapse_auth_mechanism = SYNAPSE_AUTH_MECHANISM_SQL_PASSWORD
+        sql_opts.synapse_user = "sql_admin"
+        sql_opts.synapse_pass = "secret_pw"
 
-    cfg_sql = build_synapse_mssql_config(sql_opts, password_decryptor=lambda p: f"dec:{p}")
-    assert cfg_sql.connection_config["server"] == "synapse.sql.azuresynapse.net"
-    assert cfg_sql.connection_config["database"] == "SYNAPSE_DB"
-    assert cfg_sql.connection_config["user"] == "sql_admin"
-    assert cfg_sql.connection_config["password"] == "dec:secret_pw"
-    assert cfg_sql.connection_config["authentication"] == SYNAPSE_AUTH_MECHANISM_SQL_PASSWORD
+        cfg_sql = build_synapse_mssql_config(sql_opts, password_decryptor=lambda p: f"dec:{p}")
+        assert cfg_sql.connection_config["server"] == "synapse.sql.azuresynapse.net"
+        assert cfg_sql.connection_config["database"] == "SYNAPSE_DB"
+        assert cfg_sql.connection_config["user"] == "sql_admin"
+        assert cfg_sql.connection_config["password"] == "dec:secret_pw"
+        assert cfg_sql.connection_config["authentication"] == SYNAPSE_AUTH_MECHANISM_SQL_PASSWORD
 
-    sp_opts = build_mock_options(FAKE_ORACLE_SYNAPSE_ENV)
-    sp_opts.synapse_database = "SYNAPSE_DB"
-    sp_opts.synapse_server = "synapse.sql.azuresynapse.net"
-    sp_opts.synapse_port = 1433
-    sp_opts.synapse_auth_mechanism = SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL
-    sp_opts.synapse_service_principal_id = "app-client-id"
-    sp_opts.synapse_service_principal_secret = "app-client-secret"
+        sp_opts = build_mock_options(FAKE_ORACLE_SYNAPSE_ENV)
+        sp_opts.synapse_database = "SYNAPSE_DB"
+        sp_opts.synapse_server = "synapse.sql.azuresynapse.net"
+        sp_opts.synapse_port = 1433
+        sp_opts.synapse_auth_mechanism = SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL
+        sp_opts.synapse_service_principal_id = "app-client-id"
+        sp_opts.synapse_service_principal_secret = "app-client-secret"
 
-    cfg_sp = build_synapse_mssql_config(sp_opts)
-    assert cfg_sp.connection_config["user"] == "app-client-id"
-    assert cfg_sp.connection_config["password"] == "app-client-secret"
-    assert cfg_sp.connection_config["authentication"] == SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL
+        cfg_sp = build_synapse_mssql_config(sp_opts)
+        assert cfg_sp.connection_config["user"] == "app-client-id"
+        assert cfg_sp.connection_config["password"] == "app-client-secret"
+        assert cfg_sp.connection_config["authentication"] == SYNAPSE_AUTH_MECHANISM_AD_SERVICE_PRINCIPAL
 
-    msi_opts = build_mock_options(FAKE_ORACLE_SYNAPSE_ENV)
-    msi_opts.synapse_database = "SYNAPSE_DB"
-    msi_opts.synapse_server = "synapse.sql.azuresynapse.net"
-    msi_opts.synapse_port = 1433
-    msi_opts.synapse_auth_mechanism = SYNAPSE_AUTH_MECHANISM_AD_MSI
-    msi_opts.synapse_msi_client_id = "msi-client-id"
+        msi_opts = build_mock_options(FAKE_ORACLE_SYNAPSE_ENV)
+        msi_opts.synapse_database = "SYNAPSE_DB"
+        msi_opts.synapse_server = "synapse.sql.azuresynapse.net"
+        msi_opts.synapse_port = 1433
+        msi_opts.synapse_auth_mechanism = SYNAPSE_AUTH_MECHANISM_AD_MSI
+        msi_opts.synapse_msi_client_id = "msi-client-id"
 
-    cfg_msi = build_synapse_mssql_config(msi_opts)
-    assert cfg_msi.connection_config["user"] == "msi-client-id"
-    assert cfg_msi.connection_config["password"] is None
-    assert cfg_msi.connection_config["authentication"] == SYNAPSE_AUTH_MECHANISM_AD_MSI
+        cfg_msi = build_synapse_mssql_config(msi_opts)
+        assert cfg_msi.connection_config["user"] == "msi-client-id"
+        assert cfg_msi.connection_config["password"] is None
+        assert cfg_msi.connection_config["authentication"] == SYNAPSE_AUTH_MECHANISM_AD_MSI
 
 
 def test_synapse_capabilities_and_type_mapping_roundtrip() -> None:

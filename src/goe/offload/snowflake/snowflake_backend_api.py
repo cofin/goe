@@ -113,8 +113,6 @@ class BackendSnowflakeApi(BackendApiInterface):
             no_caching=no_caching,
             do_not_connect=do_not_connect,
         )
-        if snowflake is None or snowflake_connector is None:
-            raise ModuleNotFoundError("No module named 'snowflake.connector'")
 
         logger.info("BackendSnowflakeApi")
         if dry_run:
@@ -125,7 +123,10 @@ class BackendSnowflakeApi(BackendApiInterface):
         self.catalog = CachedBackendCatalog(case_sensitive=True, no_caching=bool(no_caching))
 
         self._client = None
+        self._cursor = None
         if not do_not_connect:
+            if snowflake is None or snowflake_connector is None:
+                raise ModuleNotFoundError("No module named 'snowflake.connector'")
             snowflake.connector.paramstyle = "qmark"
 
             if connection_options.snowflake_pem_file:
@@ -380,8 +381,9 @@ class BackendSnowflakeApi(BackendApiInterface):
         return results
 
     def close(self):
-        if self._client:
-            self._client.close()
+        client = getattr(self, "_client", None)
+        if client is not None:
+            client.close()
 
     def compute_stats(
         self,

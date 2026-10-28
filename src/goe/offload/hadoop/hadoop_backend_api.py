@@ -33,7 +33,6 @@ from datetime import datetime
 from typing import ClassVar
 
 import msgspec
-from impala.hiveserver2 import TTransportException
 
 from goe.filesystem.goe_dfs import (
     OFFLOAD_FS_SCHEME_S3A,
@@ -101,7 +100,11 @@ from goe.offload.schema.column_spec import (
 )
 from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
 from goe.offload.sql_ast.dialect_engine import DialectSqlEngine
+from goe.util.module_loader import import_optional
 from goe.util.string_utils import backtick_sandwich
+
+_impala_hs2 = import_optional("impala.hiveserver2")
+TTransportException: type[Exception] = _impala_hs2.TTransportException if _impala_hs2 is not None else OSError
 
 HADOOP_DECIMAL_MAX_PRECISION = 38
 
