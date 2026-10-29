@@ -6,12 +6,14 @@
 from __future__ import annotations
 
 from goe.listener.controllers.orchestration import OrchestrationController
+from goe.listener.controllers.prompts import GOEPromptController
 from goe.listener.controllers.resources import GOEResourcesController
 from goe.listener.controllers.schemas import SchemasController
 from goe.listener.controllers.system import SystemController
 from goe.listener.controllers.tables import TablesController
 
 __all__ = (
+    "GOEPromptController",
     "GOEResourcesController",
     "OrchestrationController",
     "SchemasController",

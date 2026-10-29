@@ -7,15 +7,18 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import importlib.resources
 import secrets
 import time
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import msgspec
 from litestar_mcp import (
     MCPConfig,
     MCPInputRequiredResult,
+    MCPSkillsConfig,
     MCPTaskConfig,
     get_mcp_request_context,
 )
@@ -32,6 +35,7 @@ __all__ = (
     "DESTRUCTIVE_TOOL_ANNOTATIONS",
     "IDEMPOTENT_MUTATION_ANNOTATIONS",
     "READ_ONLY_TOOL_ANNOTATIONS",
+    "SKILLS_DIR",
     "ConfirmationChallenge",
     "ConfirmationGate",
     "build_mcp_config",
@@ -39,6 +43,7 @@ __all__ = (
 
 CONFIRMATION_HEADER = "x-goe-mcp-confirmation-token"
 _EPHEMERAL_CONFIRMATION_SECRET = secrets.token_hex(32)
+SKILLS_DIR = Path(str(importlib.resources.files("goe.listener").joinpath("skills")))
 
 READ_ONLY_TOOL_ANNOTATIONS: dict[str, Any] = {
     "readOnlyHint": True,
@@ -273,11 +278,13 @@ class ConfirmationGate:
 def build_mcp_config(active_settings: ListenerSettings | None = None) -> MCPConfig:
     """Build the stateless LitestarMCP configuration for GOE Listener."""
     cfg = active_settings or default_settings
+    skills_cfg = MCPSkillsConfig(paths=[SKILLS_DIR], directory_read=True) if cfg.mcp_skills_enabled else None
     return MCPConfig(
         name="GOE Listener MCP",
         instructions=_SERVER_INSTRUCTIONS,
         route_opt={AUTH_POLICY_OPT_KEY: required("console-key")},
         tasks=MCPTaskConfig(),
+        skills=skills_cfg,
         max_blob_bytes=max(1_048_576, cfg.max_log_bytes * 2),
         before_tool_call=before_mcp_tool_call,
         after_tool_call=after_mcp_tool_call,

@@ -5,12 +5,15 @@
 
 from __future__ import annotations
 
+import importlib.resources
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 import msgspec
 from litestar.testing import TestClient
+from litestar_autowire import clear_autowire_cache
 from litestar_mcp import MCPConfig, MCPInputRequiredResult
 from litestar_security.authentication import AUTH_POLICY_OPT_KEY
 
@@ -325,6 +328,167 @@ def test_otel_hooks_are_purely_observational() -> None:
         exception=None,
         duration=0.01,
     )
+
+
+def test_mcp_prompts_list_and_get_guided_dba_workflows() -> None:
+    """Verify GOEPromptController compiles under SecurityPlugin and serves guided DBA prompts over POST /mcp."""
+    clear_autowire_cache()
+    app = create_app(enable_background_worker=False)
+    list_headers, list_payload = _mcp_request("prompts/list", req_id=1)
+
+    with TestClient(app=app) as client:
+        list_resp = client.post("/mcp", headers=list_headers, json=list_payload)
+        assert list_resp.status_code == 200
+        prompts = list_resp.json()["result"]["prompts"]
+        by_name = {entry["name"]: entry for entry in prompts}
+        assert {
+            "plan_table_offload",
+            "diagnose_failed_execution",
+            "reconcile_schema_drift",
+            "audit_schema_readiness",
+        }.issubset(by_name)
+
+        plan_args = {arg["name"]: arg for arg in by_name["plan_table_offload"]["arguments"]}
+        assert plan_args["schema_name"]["required"] is True
+        assert plan_args["table_name"]["required"] is True
+        assert plan_args["offload_goal"]["required"] is False
+
+        plan_headers, plan_payload = _mcp_request(
+            "prompts/get",
+            req_id=2,
+            extra_params={
+                "name": "plan_table_offload",
+                "arguments": {"schema_name": "SH", "table_name": "SALES", "offload_goal": "incremental"},
+            },
+        )
+        plan_headers["Mcp-Name"] = "plan_table_offload"
+        plan_resp = client.post("/mcp", headers=plan_headers, json=plan_payload)
+        assert plan_resp.status_code == 200
+        plan_text = plan_resp.json()["result"]["messages"][0]["content"]["text"]
+        assert "goe://system/connectivity" in plan_text
+        assert "check_connectivity" in plan_text
+        assert "get_listener_config" in plan_text
+        assert "preview_offload_plan" in plan_text
+        assert "execute_offload" in plan_text
+        assert "validate_table" in plan_text
+
+        diag_headers, diag_payload = _mcp_request(
+            "prompts/get",
+            req_id=3,
+            extra_params={"name": "diagnose_failed_execution", "arguments": {"execution_id": "exec-42"}},
+        )
+        diag_headers["Mcp-Name"] = "diagnose_failed_execution"
+        diag_resp = client.post("/mcp", headers=diag_headers, json=diag_payload)
+        assert diag_resp.status_code == 200
+        diag_text = diag_resp.json()["result"]["messages"][0]["content"]["text"]
+        assert "goe://executions/exec-42" in diag_text
+        assert "goe://jobs/exec-42" in diag_text
+        assert "cancel_offload_job" in diag_text
+
+        drift_headers, drift_payload = _mcp_request(
+            "prompts/get",
+            req_id=4,
+            extra_params={"name": "reconcile_schema_drift", "arguments": {"schema_name": "SH", "table_name": "SALES"}},
+        )
+        drift_headers["Mcp-Name"] = "reconcile_schema_drift"
+        drift_resp = client.post("/mcp", headers=drift_headers, json=drift_payload)
+        assert drift_resp.status_code == 200
+        drift_text = drift_resp.json()["result"]["messages"][0]["content"]["text"]
+        assert "goe://schemas/SH/SALES/drift" in drift_text
+        assert "preview_schema_drift" in drift_text
+        assert "apply_schema_sync" in drift_text
+
+        audit_headers, audit_payload = _mcp_request(
+            "prompts/get",
+            req_id=5,
+            extra_params={"name": "audit_schema_readiness", "arguments": {"schema_name": "SH"}},
+        )
+        audit_headers["Mcp-Name"] = "audit_schema_readiness"
+        audit_resp = client.post("/mcp", headers=audit_headers, json=audit_payload)
+        assert audit_resp.status_code == 200
+        audit_text = audit_resp.json()["result"]["messages"][0]["content"]["text"]
+        assert "get_offloadable_schemas" in audit_text
+        assert "get_offloadable_tables" in audit_text
+        assert "goe://reports/status/SH" in audit_text
+
+    clear_autowire_cache()
+    secured = msgspec.structs.replace(settings, shared_token="console-secret")
+    with patch("goe.listener.security.settings", secured):
+        secured_app = create_app(enable_background_worker=False)
+        with TestClient(app=secured_app) as secured_client:
+            unauth = secured_client.post("/mcp", headers=list_headers, json=list_payload)
+            assert unauth.status_code == 401
+            authed = secured_client.post(
+                "/mcp",
+                headers={**list_headers, "x-goe-console-key": "console-secret"},
+                json=list_payload,
+            )
+            assert authed.status_code == 200
+
+
+def test_mcp_skills_catalog_discovery_sha256_verification_and_toggle() -> None:
+    """Verify packaged GOE operational skills are served with SHA-256 verification and respect mcp_skills_enabled."""
+    skills_root = Path(str(importlib.resources.files("goe.listener").joinpath("skills")))
+    for skill_slug in (
+        "goe-offload-operations",
+        "goe-diagnostics-and-recovery",
+        "goe-schema-drift-and-validation",
+    ):
+        assert (skills_root / skill_slug / "SKILL.md").is_file()
+
+    disabled_cfg = build_mcp_config(ListenerSettings(global_config=None, mcp_skills_enabled=False))
+    assert disabled_cfg.skills is None
+
+    app = create_app(enable_background_worker=False)
+    discover_headers, discover_payload = _mcp_request("server/discover", req_id=1)
+    skills_list_headers, skills_list_payload = _mcp_request("skills/list", req_id=2)
+
+    with TestClient(app=app) as client:
+        discover_resp = client.post("/mcp", headers=discover_headers, json=discover_payload)
+        assert discover_resp.status_code == 200
+        extensions = discover_resp.json()["result"]["capabilities"]["extensions"]
+        assert extensions["io.modelcontextprotocol/skills"] == {"directoryRead": True}
+
+        list_resp = client.post("/mcp", headers=skills_list_headers, json=skills_list_payload)
+        assert list_resp.status_code == 200
+        skills = list_resp.json()["result"]["skills"]
+        skill_uris = {entry["uri"] for entry in skills}
+        assert {
+            "skill://goe-offload-operations/SKILL.md",
+            "skill://goe-diagnostics-and-recovery/SKILL.md",
+            "skill://goe-schema-drift-and-validation/SKILL.md",
+        } == skill_uris
+        for entry in skills:
+            assert entry["frontmatter"]["name"]
+            assert entry["frontmatter"]["description"]
+            assert entry["resources"][0]["digest"].startswith("sha256:")
+
+        get_uri = "skill://goe-offload-operations/SKILL.md"
+        get_headers, get_payload = _mcp_request("skills/get", req_id=3, extra_params={"uri": get_uri})
+        get_headers["Mcp-Name"] = get_uri
+        get_resp = client.post("/mcp", headers=get_headers, json=get_payload)
+        assert get_resp.status_code == 200
+        skill_manifest = get_resp.json()["result"]["skill"]
+        assert skill_manifest["uri"] == get_uri
+        assert skill_manifest["resources"][0]["digest"].startswith("sha256:")
+
+        dir_uri = "skill://goe-offload-operations"
+        dir_headers, dir_payload = _mcp_request("resources/directory/read", req_id=4, extra_params={"uri": dir_uri})
+        dir_headers["Mcp-Name"] = dir_uri
+        dir_resp = client.post("/mcp", headers=dir_headers, json=dir_payload)
+        assert dir_resp.status_code == 200
+        dir_entries = dir_resp.json()["result"]["resources"]
+        assert any(item["uri"] == get_uri for item in dir_entries)
+
+        for req_id, uri in enumerate(sorted(skill_uris), start=10):
+            read_headers, read_payload = _mcp_request("resources/read", req_id=req_id, extra_params={"uri": uri})
+            read_headers["Mcp-Name"] = uri
+            read_resp = client.post("/mcp", headers=read_headers, json=read_payload)
+            assert read_resp.status_code == 200
+            content = read_resp.json()["result"]["contents"][0]
+            assert content["uri"] == uri
+            assert content["mimeType"] == "text/markdown"
+            assert "---" in content["text"]
 
 
 def _mcp_request(
