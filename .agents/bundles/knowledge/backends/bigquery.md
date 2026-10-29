@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Google Cloud BigQuery Backend Adapter
-description: BigQuery client lifecycle, BigQuerySqlEngine AST DDL/DML, native LoadJobConfig ingestion, INFORMATION_SCHEMA metadata, KMS CMEK, and OpenTelemetry spans/metrics
+description: BigQuery client lifecycle, BIGQUERY_CAPABILITIES, CachedBackendCatalog, BigQueryIngestStrategy (DirectNativeLoadUriStrategy, DirectBigQueryStorageWriteStrategy, StagedLoadInsertStrategy), KMS CMEK, and OpenTelemetry spans/metrics
 tags:
   - reference
   - backends
@@ -9,20 +9,25 @@ tags:
   - gcp
   - data-warehouse
   - opentelemetry
+updated_at: "2026-10-26T22:40:00Z"
 ---
 
 # Google Cloud BigQuery Backend Adapter
 
-The BigQuery backend adapter (`src/goe/offload/bigquery/`) manages target datasets, tables, partition schemes, clustering keys, native and external staged ingestion, and OpenTelemetry job telemetry on Google Cloud BigQuery.
+The BigQuery backend adapter (`src/goe/offload/bigquery/`) manages target datasets, tables, partition schemes, clustering keys, direct and staged ingestion strategies, cached catalog snapshots, and OpenTelemetry job telemetry on Google Cloud BigQuery.
 
 ## Key Modules
 
-- **`BackendBigQueryApi` (`src/goe/offload/bigquery/bigquery_backend_api.py`)**: Client management (`ClientInfo(user_agent=f"goe/{version()}")`, idempotent `close()`), `query_and_wait` execution, parameterized GoogleSQL `INFORMATION_SCHEMA.PARTITIONS` metadata queries, KMS CMEK bindings, job labels, and OpenTelemetry job spans/metrics.
-- **`BackendBigQueryTable` (`src/goe/offload/bigquery/bigquery_backend_table.py`)**: Table creation, native `load_table_from_uri` staged loading (`BIGQUERY_LOAD_TABLE_MODE=NATIVE`), external staging table fallback (`BIGQUERY_LOAD_TABLE_MODE=EXTERNAL`), and final `INSERT INTO ... SELECT` ingestion.
+- **`BackendBigQueryApi` (`src/goe/offload/bigquery/bigquery_backend_api.py`)**: Exposes `BIGQUERY_CAPABILITIES = BackendCapabilities.for_bigquery()`, routes metadata reads and write-through invalidation through `CachedBackendCatalog` (including 2-query `warm_schema(db_name)` via `INFORMATION_SCHEMA.TABLES` and `INFORMATION_SCHEMA.COLUMNS`), executes SQL via `query_and_wait`, and manages KMS CMEK bindings, job labels, and OpenTelemetry job spans/metrics.
+- **`BackendBigQueryTable` (`src/goe/offload/bigquery/bigquery_backend_table.py`)**: Coordinates target table DDL via `BigQuerySqlEngine`, delegates staged cast verification and final SQL generation to `StagingLoadService` and `FinalTableMerger`, and dispatches ingestion through `select_bigquery_ingest_strategy`.
+- **`BigQueryIngestStrategy` (`src/goe/offload/bigquery/ingest_strategy.py`)**:
+  - `DirectNativeLoadUriStrategy`: Directly loads staged GCS Parquet/Avro URIs into the final BigQuery table via `load_table_from_uri(WRITE_APPEND)` when `can_use_direct_load_uri()` holds (no synthetic partition columns, no custom casts, no `NOT NULL` or decimal scale validation required).
+  - `DirectBigQueryStorageWriteStrategy`: Streams Arrow/Parquet data directly to the BigQuery Storage Write API (`google.cloud.bigquery_storage_v1.BigQueryWriteClient`) using `PENDING` streams and atomic `BatchCommitWriteStreamsRequest`.
+  - `StagedLoadInsertStrategy`: Loads GCS files into a native or external load table (`BIGQUERY_LOAD_TABLE_MODE=NATIVE | EXTERNAL`), runs staged cast/data validation, and executes `INSERT INTO ... SELECT` into the final table.
 - **`BigQuerySqlEngine` (`src/goe/offload/bigquery/bigquery_sql.py`)**: `BigQueryDialectEngineProtocol` implementation building `CREATE TABLE`, `CREATE EXTERNAL TABLE`, `DROP TABLE`, `ALTER TABLE ADD COLUMN`, `INSERT INTO ... SELECT`, and `SELECT` ASTs.
-- **`build_staging_load_job_config` (`src/goe/offload/bigquery/bigquery_load_job.py`)**: Constructs `bigquery.LoadJobConfig` for native GCS load jobs (`PARQUET` with `DecimalTargetTypes` `[NUMERIC, BIGNUMERIC, STRING]` or `AVRO` with `use_avro_logical_types=True`, `WRITE_TRUNCATE`, `CREATE_IF_NEEDED`, optional CMEK `EncryptionConfiguration`, and `job_labels`).
-- **`BigQueryColumn` & `BigQueryLiteral`**: Column translation and SQL literal formatting.
-- **`src/goe/observability/bigquery.py`**: `traced_bigquery_job`, `merge_trace_labels`, and `record_bigquery_job_metrics`.
+- **`build_staging_load_job_config` & `build_final_append_load_job_config` (`src/goe/offload/bigquery/bigquery_load_job.py`)**: Constructs `bigquery.LoadJobConfig` for native GCS load jobs (`PARQUET` with `DecimalTargetTypes` `[NUMERIC, BIGNUMERIC, STRING]` or `AVRO` with `use_avro_logical_types=True`, `WRITE_TRUNCATE` for staging or `WRITE_APPEND` + `ALLOW_FIELD_ADDITION` for direct final table appends, optional CMEK `EncryptionConfiguration`, and `job_labels`).
+- **`ColumnSpec` (`ColumnDialect.BIGQUERY`), `TYPE_REGISTRY` (`MappingTarget.BIGQUERY`), & `BigQueryLiteral`**: Column translation and SQL literal formatting.
+- **`src/goe/observability/bigquery.py`**: `traced_bigquery_job`, `traced_bigquery_storage_write`, `merge_trace_labels`, and `record_bigquery_job_metrics`.
 
 ## Connection, Lifecycle & Security
 

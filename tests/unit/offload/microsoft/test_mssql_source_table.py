@@ -1,14 +1,21 @@
 # SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for MSSQLSourceTable, MSSQLColumn, OffloadTransportMSSQLApi, and mssql-python extras."""
+"""Unit tests for MSSQLSourceTable, ColumnSpec, OffloadTransportMSSQLApi, and mssql-python extras."""
 
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from goe.offload.column_metadata import (
+from goe.offload.microsoft.mssql_frontend_api import (
+    MssqlTableCatalogSnapshot,
+    mssql_column_from_dictionary_row,
+)
+from goe.offload.microsoft.mssql_offload_source_table import MSSQLSourceTable
+from goe.offload.microsoft.mssql_offload_transport_rdbms_api import OffloadTransportMSSQLApi
+from goe.offload.offload_constants import DBTYPE_MSSQL
+from goe.offload.schema.column_spec import (
     GOE_TYPE_BINARY,
     GOE_TYPE_BOOLEAN,
     GOE_TYPE_DATE,
@@ -21,8 +28,6 @@ from goe.offload.column_metadata import (
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
     GOE_TYPE_VARIABLE_STRING,
-)
-from goe.offload.microsoft.mssql_column import (
     MSSQL_TYPE_BIGINT,
     MSSQL_TYPE_BIT,
     MSSQL_TYPE_CHAR,
@@ -38,16 +43,13 @@ from goe.offload.microsoft.mssql_column import (
     MSSQL_TYPE_UNIQUEIDENTIFIER,
     MSSQL_TYPE_VARBINARY,
     MSSQL_TYPE_VARCHAR,
-    MSSQLColumn,
+    ColumnDialect,
+    ColumnSpec,
 )
-from goe.offload.microsoft.mssql_frontend_api import MssqlTableCatalogSnapshot
-from goe.offload.microsoft.mssql_offload_source_table import MSSQLSourceTable
-from goe.offload.microsoft.mssql_offload_transport_rdbms_api import OffloadTransportMSSQLApi
-from goe.offload.offload_constants import DBTYPE_MSSQL
 
 
 def test_mssql_column_from_mssql_and_type_predicates() -> None:
-    dec_col = MSSQLColumn.from_mssql(("amount", 1, "YES", "decimal", 18, 2, None, "0.00", None, None))
+    dec_col = mssql_column_from_dictionary_row(("amount", 1, "YES", "decimal", 18, 2, None, "0.00", None, None))
     assert dec_col.name == "amount"
     assert dec_col.format_data_type() == "decimal(18,2)"
     assert dec_col.is_number_based() is True
@@ -55,12 +57,14 @@ def test_mssql_column_from_mssql_and_type_predicates() -> None:
     assert dec_col.is_string_based() is False
     assert dec_col.valid_for_offload_predicate() is True
 
-    str_col = MSSQLColumn.from_mssql(("code", 2, "NO", "varchar", None, None, 64, None, None, 64))
+    str_col = mssql_column_from_dictionary_row(("code", 2, "NO", "varchar", None, None, 64, None, None, 64))
     assert str_col.format_data_type() == "varchar(64)"
     assert str_col.is_string_based() is True
     assert str_col.valid_for_offload_predicate() is True
 
-    tz_col = MSSQLColumn.from_mssql(("created_at", 3, "NO", "datetimeoffset", 7, None, None, None, None, None))
+    tz_col = mssql_column_from_dictionary_row(
+        ("created_at", 3, "NO", "datetimeoffset", 7, None, None, None, None, None)
+    )
     assert tz_col.is_date_based() is True
     assert tz_col.is_time_zone_based() is True
     assert tz_col.valid_for_offload_predicate() is False
@@ -83,22 +87,34 @@ def test_mssql_source_table_canonical_column_round_trip() -> None:
     )
 
     cases = [
-        (MSSQLColumn("c_bigint", MSSQL_TYPE_BIGINT), GOE_TYPE_INTEGER_8),
-        (MSSQLColumn("c_bit", MSSQL_TYPE_BIT), GOE_TYPE_BOOLEAN),
-        (MSSQLColumn("c_dec_int", MSSQL_TYPE_DECIMAL, data_precision=10, data_scale=0), GOE_TYPE_INTEGER_8),
-        (MSSQLColumn("c_dec", MSSQL_TYPE_DECIMAL, data_precision=18, data_scale=4), GOE_TYPE_DECIMAL),
-        (MSSQLColumn("c_money", MSSQL_TYPE_MONEY, data_precision=19, data_scale=4), GOE_TYPE_DECIMAL),
-        (MSSQLColumn("c_float", MSSQL_TYPE_FLOAT), GOE_TYPE_DOUBLE),
-        (MSSQLColumn("c_real", MSSQL_TYPE_REAL), GOE_TYPE_FLOAT),
-        (MSSQLColumn("c_date", MSSQL_TYPE_DATE), GOE_TYPE_DATE),
-        (MSSQLColumn("c_dt2", MSSQL_TYPE_DATETIME2), GOE_TYPE_TIMESTAMP),
-        (MSSQLColumn("c_dto", MSSQL_TYPE_DATETIMEOFFSET), GOE_TYPE_TIMESTAMP_TZ),
-        (MSSQLColumn("c_time", MSSQL_TYPE_TIME), GOE_TYPE_TIME),
-        (MSSQLColumn("c_varchar", MSSQL_TYPE_VARCHAR, data_length=100), GOE_TYPE_VARIABLE_STRING),
-        (MSSQLColumn("c_nvarchar", MSSQL_TYPE_NVARCHAR, data_length=50), GOE_TYPE_VARIABLE_STRING),
-        (MSSQLColumn("c_char", MSSQL_TYPE_CHAR, data_length=10), GOE_TYPE_FIXED_STRING),
-        (MSSQLColumn("c_varbin", MSSQL_TYPE_VARBINARY, data_length=16), GOE_TYPE_BINARY),
-        (MSSQLColumn("c_uuid", MSSQL_TYPE_UNIQUEIDENTIFIER, data_length=36), GOE_TYPE_VARIABLE_STRING),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_bigint", MSSQL_TYPE_BIGINT), GOE_TYPE_INTEGER_8),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_bit", MSSQL_TYPE_BIT), GOE_TYPE_BOOLEAN),
+        (
+            ColumnSpec(ColumnDialect.MSSQL, "c_dec_int", MSSQL_TYPE_DECIMAL, data_precision=10, data_scale=0),
+            GOE_TYPE_INTEGER_8,
+        ),
+        (
+            ColumnSpec(ColumnDialect.MSSQL, "c_dec", MSSQL_TYPE_DECIMAL, data_precision=18, data_scale=4),
+            GOE_TYPE_DECIMAL,
+        ),
+        (
+            ColumnSpec(ColumnDialect.MSSQL, "c_money", MSSQL_TYPE_MONEY, data_precision=19, data_scale=4),
+            GOE_TYPE_DECIMAL,
+        ),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_float", MSSQL_TYPE_FLOAT), GOE_TYPE_DOUBLE),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_real", MSSQL_TYPE_REAL), GOE_TYPE_FLOAT),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_date", MSSQL_TYPE_DATE), GOE_TYPE_DATE),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_dt2", MSSQL_TYPE_DATETIME2), GOE_TYPE_TIMESTAMP),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_dto", MSSQL_TYPE_DATETIMEOFFSET), GOE_TYPE_TIMESTAMP_TZ),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_time", MSSQL_TYPE_TIME), GOE_TYPE_TIME),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_varchar", MSSQL_TYPE_VARCHAR, data_length=100), GOE_TYPE_VARIABLE_STRING),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_nvarchar", MSSQL_TYPE_NVARCHAR, data_length=50), GOE_TYPE_VARIABLE_STRING),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_char", MSSQL_TYPE_CHAR, data_length=10), GOE_TYPE_FIXED_STRING),
+        (ColumnSpec(ColumnDialect.MSSQL, "c_varbin", MSSQL_TYPE_VARBINARY, data_length=16), GOE_TYPE_BINARY),
+        (
+            ColumnSpec(ColumnDialect.MSSQL, "c_uuid", MSSQL_TYPE_UNIQUEIDENTIFIER, data_length=36),
+            GOE_TYPE_VARIABLE_STRING,
+        ),
     ]
     for mssql_col, expected_canonical_type in cases:
         canonical = table.to_canonical_column(mssql_col)
@@ -107,8 +123,8 @@ def test_mssql_source_table_canonical_column_round_trip() -> None:
 
 
 def test_mssql_source_table_hydrates_from_table_snapshot() -> None:
-    col1 = MSSQLColumn("order_id", MSSQL_TYPE_BIGINT, nullable=False)
-    col2 = MSSQLColumn("amount", MSSQL_TYPE_DECIMAL, data_precision=18, data_scale=2, nullable=True)
+    col1 = ColumnSpec(ColumnDialect.MSSQL, "order_id", MSSQL_TYPE_BIGINT, nullable=False)
+    col2 = ColumnSpec(ColumnDialect.MSSQL, "amount", MSSQL_TYPE_DECIMAL, data_precision=18, data_scale=2, nullable=True)
     snapshot = MssqlTableCatalogSnapshot(
         schema_name="sales",
         table_name="orders",

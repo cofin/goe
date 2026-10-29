@@ -15,6 +15,7 @@ from goe.observability import runtime
 from goe.observability.bigquery import merge_trace_labels
 from goe.observability.config import ObservabilitySettings
 from goe.observability.spans import traced_command, traced_step
+from goe.offload.backend_cache import CachedBackendCatalog
 from goe.offload.bigquery.bigquery_backend_api import BackendBigQueryApi, sanitize_bigquery_label_value
 from goe.offload.bigquery.bigquery_backend_table import BackendBigQueryTable
 from goe.offload.offload_constants import FILE_STORAGE_FORMAT_PARQUET
@@ -101,10 +102,9 @@ def test_query_and_load_spans_and_dry_run(memory_runtime: runtime.ObservabilityR
     )
     bq_client = MagicMock(project="goe-proj")
     bq_client.load_table_from_uri.return_value = load_job
-    table._db_api = MagicMock()
-    table._db_api.bq_dataset_id.return_value = "goe-proj.stage_ds"
-    table._db_api.job_labels.return_value = {"goe_command": "offload"}
-    table._db_api.bq_client.return_value = bq_client
+    load_api = _api(MagicMock())
+    load_api._client = bq_client
+    table._db_api = load_api
     staging_file = MagicMock(file_format=FILE_STORAGE_FORMAT_PARQUET)
     with traced_command("OFFLOAD", EXEC_ID):
         table._load_native_load_table(staging_file, "gs://b/p/part*")
@@ -120,6 +120,10 @@ def _api(query_job: MagicMock) -> BackendBigQueryApi:
     api = object.__new__(BackendBigQueryApi)
     api._dry_run = False
     api._kms_key_name = None
+    api._bigquery_dataset_project = "goe-proj"
+    api._global_session_parameters = {}
+    api._messages = MagicMock(get_execution_id=lambda: EXEC_ID, command_type="offload")
+    api.catalog = CachedBackendCatalog(no_caching=True)
     api._client = MagicMock(project="goe-proj")
     api._client.query.return_value = query_job
     api._sql_engine_name = "BigQuery"

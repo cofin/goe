@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendBigqueryTable: Library for logic/interaction with a table that will
@@ -14,14 +12,21 @@ from typing import TYPE_CHECKING, Any
 
 from google.cloud import bigquery
 
-from goe.observability.bigquery import record_bigquery_job_metadata, traced_bigquery_job
 from goe.offload.backend_table import (
     PARTITION_KEY_OUT_OF_RANGE,
     TYPICAL_DATE_GRANULARITY_TERMS,
     BackendTableInterface,
 )
 from goe.offload.bigquery import bigquery_predicate
-from goe.offload.bigquery.bigquery_column import (
+from goe.offload.bigquery.ingest_strategy import (
+    BigQueryLoadRequest,
+    BigQueryLoadResult,
+    GcsLoadJobStrategy,
+    select_bigquery_ingest_strategy,
+)
+from goe.offload.offload_constants import BIGQUERY_LOAD_TABLE_MODE_NATIVE, FILE_STORAGE_FORMAT_PARQUET
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
     BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_DATE,
     BIGQUERY_TYPE_DATETIME,
@@ -29,17 +34,15 @@ from goe.offload.bigquery.bigquery_column import (
     BIGQUERY_TYPE_INT64,
     BIGQUERY_TYPE_NUMERIC,
     BIGQUERY_TYPE_TIME,
-    BigQueryColumn,
-)
-from goe.offload.bigquery.bigquery_load_job import build_staging_load_job_config
-from goe.offload.column_metadata import ColumnMetadataInterface, get_column_names
-from goe.offload.offload_constants import BIGQUERY_LOAD_TABLE_MODE_NATIVE
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.staging.avro.avro_staging_file import AVRO_TYPE_DOUBLE, AVRO_TYPE_LONG
-from goe.offload.staging.parquet.parquet_column import (
     PARQUET_TYPE_DOUBLE,
     PARQUET_TYPE_INT64,
+    ColumnDialect,
+    ColumnSpec,
+    get_column_names,
+    is_synthetic_partition_column,
 )
+from goe.offload.schema.type_registry import TYPE_REGISTRY
+from goe.offload.staging.avro.avro_staging_file import AVRO_TYPE_DOUBLE, AVRO_TYPE_LONG
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -241,6 +244,61 @@ class BackendBigQueryTable(BackendTableInterface):
         """
         self._validate_final_table_casts(staging_columns, log_profile=self._log_profile_after_verification_queries)
 
+    def can_ingest_direct_to_target(self, staging_file: Any) -> bool:
+        """Return True when the payload can be loaded directly into the final BigQuery table without a staged SQL merge."""
+        if getattr(staging_file, "file_format", None) != FILE_STORAGE_FORMAT_PARQUET:
+            return False
+        if self._user_requested_offload_chunk_column:
+            return False
+        if getattr(self._orchestration_config, "preserve_load_table", False):
+            return False
+        columns = self._columns if self._columns is not None else self.get_columns()
+        for col in columns or ():
+            if col.partition_info and col.partition_info.function:
+                return False
+        for col_name, cast_entry in (self._final_table_casts or {}).items():
+            if is_synthetic_partition_column(col_name):
+                continue
+            if isinstance(cast_entry, dict) and cast_entry.get("cast_type") is not None:
+                return False
+        return True
+
+    def ingest_direct_to_final_table(
+        self,
+        staging_file: Any = None,
+        *,
+        arrow_source: Any = None,
+        payload_bytes: int | None = None,
+        ingest_mode: str | None = None,
+    ) -> BigQueryLoadResult:
+        """Select and execute the BigQuery ingest strategy directly against the target table with WRITE_APPEND."""
+        mode = ingest_mode or getattr(self._orchestration_config, "bigquery_ingest_mode", None) or "AUTO"
+        strategy = select_bigquery_ingest_strategy(
+            ingest_mode=mode,
+            payload_bytes=payload_bytes,
+            has_arrow_source=arrow_source is not None,
+        )
+        staging_format = (
+            getattr(staging_file, "file_format", FILE_STORAGE_FORMAT_PARQUET)
+            if staging_file is not None
+            else FILE_STORAGE_FORMAT_PARQUET
+        )
+        source_uri = f"{self.get_staging_table_location()}/part*"
+        request = BigQueryLoadRequest(
+            project=self._db_api._effective_project_name(),
+            dataset=self.db_name,
+            table=self.table_name,
+            staging_format=staging_format,
+            source_uri=source_uri,
+            arrow_source=arrow_source,
+            payload_bytes=payload_bytes,
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            kms_key_name=self._kms_key_name,
+            labels=self._db_api.job_labels(),
+            dry_run=bool(self._dry_run),
+        )
+        return self._db_api.execute_ingest(request, strategy=strategy, ingest_mode=mode)
+
     def _create_load_table(self, staging_file: Any, with_terminator: bool = False) -> list:
         """Create the staging/load table in BigQuery
         Defining a URI for location is tricky. Initially we had *.avro but Avro files written by Spark ThriftServer
@@ -281,25 +339,20 @@ class BackendBigQueryTable(BackendTableInterface):
         )
 
     def _load_native_load_table(self, staging_file: Any, load_table_location: str) -> list:
-        """Load staged files into a native load table with a batch load job and return the logged command."""
-        destination = f"{self._db_api.bq_dataset_id(self._load_db_name)}.{self._load_table_name}"
-        job_config = build_staging_load_job_config(
-            staging_file.file_format, self._kms_key_name, self._db_api.job_labels()
+        """Load staged files into a native load table via GcsLoadJobStrategy and return the logged command."""
+        request = BigQueryLoadRequest(
+            project=self._db_api._effective_project_name(),
+            dataset=self._load_db_name,
+            table=self._load_table_name,
+            staging_format=staging_file.file_format,
+            source_uri=load_table_location,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            kms_key_name=self._kms_key_name,
+            labels=self._db_api.job_labels(),
+            dry_run=bool(self._dry_run),
         )
-        cmd = (
-            f"BigQuery load job: {load_table_location} -> {destination} "
-            f"(format={staging_file.file_format}, write_disposition=WRITE_TRUNCATE)"
-        )
-        self._log(cmd, detail=VERBOSE)
-        if not self._dry_run:
-            with traced_bigquery_job("load", self._db_api.bq_client().project) as bq_job:
-                load_job = self._db_api.bq_client().load_table_from_uri(
-                    load_table_location, destination, job_config=job_config
-                )
-                load_job.result()
-                record_bigquery_job_metadata(bq_job, load_job, "load")
-                self._log(f"BigQuery load job {load_job.job_id} loaded {load_job.output_rows} rows", detail=VVERBOSE)
-        return [cmd]
+        result = self._db_api.execute_ingest(request, strategy=GcsLoadJobStrategy())
+        return list(result.commands)
 
     def _drop_load_table(self, sync=None):
         """Drop the staging/load table."""
@@ -336,22 +389,10 @@ class BackendBigQueryTable(BackendTableInterface):
             }
         return None
 
-    def _gen_synthetic_partition_column_object(self, synthetic_name, canonical_column):
+    def _gen_synthetic_partition_column_object(self, synthetic_name: str, canonical_column: ColumnSpec) -> ColumnSpec:
         """Return BigQuery column object for synthetic partition column"""
-        if canonical_column.is_date_based():
-            return self._db_api.gen_column_object(
-                synthetic_name,
-                data_type=BIGQUERY_TYPE_DATE,
-                partition_info=canonical_column.partition_info,
-            )
-        if canonical_column.is_number_based():
-            return self._db_api.gen_column_object(
-                synthetic_name,
-                data_type=BIGQUERY_TYPE_INT64,
-                partition_info=canonical_column.partition_info,
-            )
-        raise NotImplementedError(
-            "BigQuery synthetic partitioning not implemented for column type: %s" % canonical_column.data_type
+        return TYPE_REGISTRY.synthetic_partition_column(
+            canonical_column, synthetic_name, self._db_api.type_mapping_target
         )
 
     def _gen_synthetic_partition_date_as_string_sql_expr(self, extract_name, pad_size, source_column_cast):
@@ -472,17 +513,19 @@ class BackendBigQueryTable(BackendTableInterface):
             )
 
         assert backend_column
-        assert isinstance(backend_column, BigQueryColumn)
+        assert isinstance(backend_column, ColumnSpec) and backend_column.dialect is ColumnDialect.BIGQUERY
         assert rdbms_column, "RDBMS column missing for backend column: %s" % backend_column.name
-        assert isinstance(rdbms_column, ColumnMetadataInterface)
+        assert isinstance(rdbms_column, ColumnSpec)
         assert staging_column
-        assert isinstance(staging_column, ColumnMetadataInterface)
+        assert isinstance(staging_column, ColumnSpec)
 
         return_cast = None
         return_vcast = None
         return_type = backend_column.format_data_type().upper()
 
-        if isinstance(staging_column, BigQueryColumn) and staging_column.data_type == backend_column.data_type:
+        if (
+            isinstance(staging_column, ColumnSpec) and staging_column.dialect is ColumnDialect.BIGQUERY
+        ) and staging_column.data_type == backend_column.data_type:
             self._log(
                 "No cast of %s required for matching load data type: %s"
                 % (backend_column.name, staging_column.data_type),

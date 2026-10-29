@@ -19,17 +19,13 @@ from goe.offload.backend_api import (
     CONNECT_DETAIL,
     CONNECT_STATUS,
     CONNECT_TEST,
+    UdfDetails,
+    UdfParameter,
 )
-from goe.offload.bigquery.bigquery_column import (
-    BIGQUERY_TYPE_DATETIME,
-    BIGQUERY_TYPE_INT64,
-    BIGQUERY_TYPE_TIMESTAMP,
-)
-from goe.offload.column_metadata import (
-    ColumnMetadataInterface,
-    ColumnPartitionInfo,
-    get_partition_columns,
-)
+from goe.offload.backend_cache import CachedBackendCatalog
+from goe.offload.backend_capabilities import BackendCapabilities
+from goe.offload.backend_ddl import BackendDDLCompiler
+from goe.offload.backend_session import BackendSessionManager
 from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
     DBTYPE_HIVE,
@@ -42,6 +38,19 @@ from goe.offload.offload_constants import (
 )
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.registry import create_backend_api
+from goe.offload.schema.column_spec import (
+    BIGQUERY_TYPE_DATETIME,
+    BIGQUERY_TYPE_INT64,
+    BIGQUERY_TYPE_NUMERIC,
+    BIGQUERY_TYPE_TIMESTAMP,
+    GOE_TYPE_DECIMAL,
+    ColumnDialect,
+    ColumnPartitionSpec,
+    ColumnSpec,
+    get_partition_columns,
+)
+from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
+from goe.typing import FrozenBaseStruct
 from goe.util.string_utils import add_suffix_in_same_case
 from tests.testlib.test_framework.factory.backend_testing_api_factory import (
     backend_testing_api_factory,
@@ -201,14 +210,14 @@ class TestBackendApi(TestCase):
 
         if self.api.partition_by_column_supported():
             if self.target == DBTYPE_BIGQUERY:
-                partition_info = ColumnPartitionInfo(position=0, granularity=10, range_start=0, range_end=1000)
+                partition_info = ColumnPartitionSpec(position=0, granularity=10, range_start=0, range_end=1000)
                 partition_column = self.api.gen_column_object(
                     "part_col",
                     data_type=self.test_api.backend_test_type_canonical_int_8(),
                     partition_info=partition_info,
                 )
             else:
-                partition_info = ColumnPartitionInfo(
+                partition_info = ColumnPartitionSpec(
                     position=0, granularity=10, range_start=0, range_end=1000, digits=6
                 )
                 partition_column = self.api.gen_column_object(
@@ -474,12 +483,11 @@ class TestBackendApi(TestCase):
             )
 
     def _test_gen_default_numeric_column(self):
-        self.assertIsInstance(self.api.gen_default_numeric_column("some_col"), ColumnMetadataInterface)
+        self.assertIsInstance(self.api.gen_default_numeric_column("some_col"), ColumnSpec)
 
     def _test_gen_native_range_partition_key_cast(self):
         def test_granularity_query(source_col, partition_info):
-            part_col = source_col.clone()
-            part_col.partition_info = partition_info
+            part_col = source_col.replace(partition_info=partition_info)
             cast_expr = self.api.gen_native_range_partition_key_cast(part_col)
             self.assertIsNotNone(cast_expr)
             row = self.api.execute_query_fetch_one("SELECT %s FROM %s.%s LIMIT 1" % (cast_expr, self.db, self.table))
@@ -491,16 +499,16 @@ class TestBackendApi(TestCase):
                 date_column = [_ for _ in column_list if _.is_date_based()]
                 if date_column:
                     date_column = date_column[0]
-                    test_granularity_query(date_column, ColumnPartitionInfo(position=0, granularity="Y"))
-                    test_granularity_query(date_column, ColumnPartitionInfo(position=0, granularity="M"))
-                    test_granularity_query(date_column, ColumnPartitionInfo(position=0, granularity="D"))
+                    test_granularity_query(date_column, ColumnPartitionSpec(position=0, granularity="Y"))
+                    test_granularity_query(date_column, ColumnPartitionSpec(position=0, granularity="M"))
+                    test_granularity_query(date_column, ColumnPartitionSpec(position=0, granularity="D"))
                 if self.api.backend_type() == DBTYPE_BIGQUERY:
                     int_column = [_ for _ in column_list if _.data_type == BIGQUERY_TYPE_INT64]
                     if int_column:
                         int_column = int_column[0]
                         test_granularity_query(
                             int_column,
-                            ColumnPartitionInfo(
+                            ColumnPartitionSpec(
                                 position=0,
                                 granularity=10,
                                 range_start=0,
@@ -552,7 +560,7 @@ class TestBackendApi(TestCase):
             column_list = self.api.get_columns(self.db, self.table)
             self.assertIsInstance(column_list, list)
             if column_list:
-                self.assertIsInstance(column_list[0], ColumnMetadataInterface)
+                self.assertIsInstance(column_list[0], ColumnSpec)
 
     def _test_get_distinct_column_values(self):
         if self.connect_to_backend:
@@ -607,7 +615,7 @@ class TestBackendApi(TestCase):
             cols = self.api.get_partition_columns(self.db, self.part_table)
             if cols:
                 self.assertIsInstance(cols, list)
-                self.assertIsInstance(cols[0], ColumnMetadataInterface)
+                self.assertIsInstance(cols[0], ColumnSpec)
 
     def _test_get_session_option(self):
         if self.connect_to_backend:
@@ -1232,6 +1240,60 @@ class TestSynapseBackendApi(TestBackendApi):
 
     def test_all_non_connecting_synapse_tests(self):
         self._run_all_tests()
+
+
+def test_backend_mapping_delegates_to_registry():
+    messages = OffloadMessages()
+    config = build_mock_options(FAKE_ORACLE_BQ_ENV)
+    api = create_backend_api(
+        DBTYPE_BIGQUERY,
+        config,
+        messages,
+        dry_run=True,
+        do_not_connect=True,
+    )
+    canonical_col = ColumnSpec(
+        ColumnDialect.CANONICAL,
+        "C",
+        GOE_TYPE_DECIMAL,
+        data_precision=10,
+        data_scale=2,
+    )
+    mapped = api.from_canonical_column(canonical_col)
+    expected = TYPE_REGISTRY.from_canonical(canonical_col, MappingTarget.BIGQUERY, api.type_mapping_context())
+    assert mapped.data_type == BIGQUERY_TYPE_NUMERIC
+    assert mapped.data_precision == 10
+    assert mapped.data_scale == 2
+    assert mapped == expected
+
+
+def test_udf_parameter_and_details_are_frozen_structs():
+    param = UdfParameter("arg1", "INT64")
+    assert isinstance(param, FrozenBaseStruct)
+    details = UdfDetails("my_db", "my_udf", "STRING", [param])
+    assert isinstance(details, FrozenBaseStruct)
+    assert details.parameter_spec_string() == "arg1 INT64"
+    with pytest.raises(AttributeError):
+        param.name = "arg2"
+
+
+def test_backend_api_composes_capabilities_catalog_session_and_ddl_services():
+    messages = OffloadMessages()
+    config = build_mock_options(FAKE_ORACLE_BQ_ENV)
+    api = create_backend_api(
+        DBTYPE_BIGQUERY,
+        config,
+        messages,
+        dry_run=True,
+        do_not_connect=True,
+    )
+    assert isinstance(api.capabilities, BackendCapabilities)
+    assert isinstance(api.catalog, CachedBackendCatalog)
+    assert isinstance(api._session_mgr, BackendSessionManager)
+    assert isinstance(api._ddl_compiler, BackendDDLCompiler)
+    assert api.canonical_date_supported() == api.capabilities.canonical_date
+    assert api.extract_date_part_sql_expression("YEAR", "col_a") == "EXTRACT(YEAR FROM `col_a`)"
+    assert api._validate_no_log_items({"item": "secret"}) == [{"item": "secret"}]
 
 
 if __name__ == "__main__":

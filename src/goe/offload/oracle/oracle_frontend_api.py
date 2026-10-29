@@ -9,7 +9,7 @@ import logging
 import re
 import time
 import traceback
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from textwrap import dedent
@@ -21,7 +21,6 @@ from numpy import datetime64
 from sqlspec.core.sqlcommenter import SQLCommenterContext
 
 from goe.offload import offload_constants
-from goe.offload.column_metadata import match_table_column
 from goe.offload.frontend_api import (
     FETCH_ACTION_ALL,
     FETCH_ACTION_CURSOR,
@@ -38,12 +37,20 @@ from goe.offload.oracle.catalog import (
     OracleSessionContext,
     OracleTableSnapshot,
 )
-from goe.offload.oracle.oracle_column import (
-    ORACLE_SPLIT_HIGH_VALUE_RE,
-    ORACLE_TYPE_VARCHAR2,
-    OracleColumn,
-)
 from goe.offload.oracle.oracle_literal import OracleLiteral
+from goe.offload.schema.column_spec import (
+    CANONICAL_CHAR_SEMANTICS_BYTE,
+    CANONICAL_CHAR_SEMANTICS_CHAR,
+    CANONICAL_CHAR_SEMANTICS_UNICODE,
+    ORACLE_TYPE_FLOAT,
+    ORACLE_TYPE_NCHAR,
+    ORACLE_TYPE_NCLOB,
+    ORACLE_TYPE_NVARCHAR2,
+    ORACLE_TYPE_VARCHAR2,
+    ColumnDialect,
+    ColumnSpec,
+    match_table_column,
+)
 from goe.persistence.registry import OracleDatabaseRegistry, OracleRole
 from goe.persistence.retry import run_with_session_retry
 from goe.persistence.statements import NamedStatements
@@ -60,6 +67,8 @@ ORACLE_VERSION_WITH_128_BYTE_IDENTIFIERS = "12.2.0"
 
 CREATE_TABLE_ORACLE_PARTITION_SPEC = "partition_spec"
 
+ORACLE_SPLIT_HIGH_VALUE_RE = re.compile(r"( *TO_DATE\([^)]+\)|[^,]+)+")
+
 FRONTEND_METADATA_SQL_PATH = Path(__file__).resolve().parent / "sql" / "frontend_metadata.sql"
 LEASE_IDLE_PING_SECONDS: Final = 60.0
 _DDL_TABLE_RE = re.compile(
@@ -74,6 +83,49 @@ def switch_oracle_open_partition_token(frontend_token):
     if frontend_token and frontend_token.upper() == "DEFAULT":
         return offload_constants.PART_OUT_OF_LIST
     return frontend_token
+
+
+def oracle_column_from_dictionary_row(attribute_list: Sequence[Any]) -> ColumnSpec:
+    """Construct an Oracle ColumnSpec from an 11-element Oracle dictionary row."""
+    (
+        name,
+        _,
+        nullable,
+        data_type,
+        data_precision,
+        data_scale,
+        data_length,
+        data_default,
+        hidden,
+        char_used,
+        char_length,
+    ) = attribute_list
+    if data_type == ORACLE_TYPE_FLOAT and data_precision:
+        data_precision = None
+    if char_used:
+        if data_type in (
+            ORACLE_TYPE_NCHAR,
+            ORACLE_TYPE_NCLOB,
+            ORACLE_TYPE_NVARCHAR2,
+        ):
+            char_semantics = CANONICAL_CHAR_SEMANTICS_UNICODE
+        else:
+            char_semantics = CANONICAL_CHAR_SEMANTICS_BYTE if char_used == "B" else CANONICAL_CHAR_SEMANTICS_CHAR
+    else:
+        char_semantics = None
+    return ColumnSpec(
+        ColumnDialect.ORACLE,
+        name,
+        data_type,
+        data_length=data_length,
+        data_precision=data_precision,
+        data_scale=data_scale,
+        nullable=nullable,
+        data_default=data_default,
+        hidden=hidden,
+        char_semantics=char_semantics,
+        char_length=char_length,
+    )
 
 
 class OracleFrontendApi(FrontendApiInterface):
@@ -224,7 +276,7 @@ class OracleFrontendApi(FrontendApiInterface):
         return ctx.version if ctx else None
 
     def gen_column_object(self, column_name, **kwargs):
-        return OracleColumn(column_name, **kwargs)
+        return ColumnSpec(ColumnDialect.ORACLE, column_name, **kwargs)
 
     def generic_string_data_type(self) -> str:
         return ORACLE_TYPE_VARCHAR2
@@ -262,7 +314,7 @@ class OracleFrontendApi(FrontendApiInterface):
         if snap is None:
             return []
         return [
-            OracleColumn.from_oracle(
+            oracle_column_from_dictionary_row(
                 (
                     col.name,
                     col.column_id,

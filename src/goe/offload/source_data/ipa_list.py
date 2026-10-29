@@ -12,10 +12,7 @@ from goe.offload.offload_metadata_functions import (
     OFFLOAD_TYPE_INCREMENTAL,
     decode_metadata_incremental_high_values_from_metadata,
 )
-from goe.offload.oracle.oracle_column import (
-    ORACLE_TYPE_TIMESTAMP,
-    ORACLE_TYPE_TIMESTAMP_TZ,
-)
+from goe.offload.schema.column_spec import ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ
 from goe.offload.source_data.base import (
     INCREMENTAL_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT,
     IPA_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT,

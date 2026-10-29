@@ -6,41 +6,24 @@
 """OffloadStagingParquetFile: OffloadStagingFile implementation for Parquet"""
 
 import logging
+from typing import ClassVar
 
-from goe.offload.column_metadata import (
+from goe.offload.schema.column_spec import (
     GOE_TYPE_BINARY,
-    GOE_TYPE_BOOLEAN,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
     GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-    is_safe_mapping,
-    match_table_column,
-)
-from goe.offload.staging.parquet.parquet_column import (
-    PARQUET_TYPE_BINARY,
     PARQUET_TYPE_BOOLEAN,
     PARQUET_TYPE_DOUBLE,
     PARQUET_TYPE_FLOAT,
     PARQUET_TYPE_INT32,
     PARQUET_TYPE_INT64,
-    PARQUET_TYPE_STRING,
-    StagingParquetColumn,
+    ColumnSpec,
+    match_table_column,
+)
+from goe.offload.schema.type_registry import (
+    TYPE_REGISTRY,
+    MappingContext,
+    MappingTarget,
+    TypeMappingLimits,
 )
 from goe.offload.staging.staging_file import (
     JAVA_PRIMITIVE_BOOLEAN,
@@ -58,6 +41,8 @@ logger.addHandler(logging.NullHandler())
 
 class OffloadStagingParquetFile(OffloadStagingFileInterface):
     """Parquet implementation"""
+
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.PARQUET
 
     def __init__(
         self,
@@ -84,13 +69,19 @@ class OffloadStagingParquetFile(OffloadStagingFileInterface):
         if dry_run:
             logger.info("* Dry run *")
 
-    def from_canonical_column(self, column):
+    def from_canonical_column(self, column: ColumnSpec) -> ColumnSpec:
         """Translate an internal GOE column to a Parquet column"""
-        return self._from_canonical_column_to_parquet(column)
+        ctx = MappingContext(limits=TypeMappingLimits(), binary_as_base64=self._binary_data_as_base64)
+        return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, ctx)
 
-    def to_canonical_column(self, column, use_staging_file_name=False):
+    def to_canonical_column(self, column: ColumnSpec, use_staging_file_name: bool = False) -> ColumnSpec:
         """Translate a Parquet column to an internal GOE column"""
-        return self._from_parquet_to_canonical_column(column, use_staging_file_name=use_staging_file_name)
+        ctx = MappingContext(
+            limits=TypeMappingLimits(),
+            binary_as_base64=self._binary_data_as_base64,
+            use_staging_file_name=use_staging_file_name,
+        )
+        return TYPE_REGISTRY.staging_to_canonical(column, ctx)
 
     def get_java_primitive(self, staging_column):
         return self._get_parquet_java_primitive(staging_column)
@@ -100,138 +91,6 @@ class OffloadStagingParquetFile(OffloadStagingFileInterface):
             (_.staging_file_column_name, _.format_data_type(), bool(_.nullable)) for _ in self.get_staging_columns()
         ]
         return repr(schema) if as_string else schema
-
-    def _from_canonical_column_to_parquet(self, column):
-        """Translate an internal GOE column to a Parquet column
-        This is the basic translations, each specific backend may override individual translations
-        before calling this method.
-        """
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable, data_default & char_semantics forward from RDBMS"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return StagingParquetColumn(
-                col.name,
-                data_type=data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                char_semantics=col.char_semantics,
-            )
-
-        assert column
-        assert isinstance(column, CanonicalColumn)
-
-        if column.data_type == GOE_TYPE_FIXED_STRING:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_LARGE_STRING:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_VARIABLE_STRING:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_BINARY:
-            data_type = PARQUET_TYPE_STRING if self._binary_data_as_base64 else PARQUET_TYPE_BINARY
-            return new_column(column, data_type, safe_mapping=True)
-        if column.data_type == GOE_TYPE_LARGE_BINARY:
-            data_type = PARQUET_TYPE_STRING if self._binary_data_as_base64 else PARQUET_TYPE_BINARY
-            return new_column(column, data_type, safe_mapping=True)
-        if column.data_type in (
-            GOE_TYPE_INTEGER_1,
-            GOE_TYPE_INTEGER_2,
-            GOE_TYPE_INTEGER_4,
-        ):
-            if column.safe_mapping:
-                return new_column(column, PARQUET_TYPE_INT32, safe_mapping=True)
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTEGER_8:
-            if column.safe_mapping:
-                return new_column(column, PARQUET_TYPE_INT64, safe_mapping=True)
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTEGER_38:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_DECIMAL:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_FLOAT:
-            if column.safe_mapping:
-                return new_column(column, PARQUET_TYPE_FLOAT, safe_mapping=True)
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_DOUBLE:
-            if column.safe_mapping:
-                return new_column(column, PARQUET_TYPE_DOUBLE, safe_mapping=True)
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_DATE:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_TIME:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_TIMESTAMP:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTERVAL_DS:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTERVAL_YM:
-            return new_column(column, PARQUET_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_BOOLEAN:
-            return new_column(column, PARQUET_TYPE_BOOLEAN, safe_mapping=True)
-        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
-
-    def _from_parquet_to_canonical_column(self, column, use_staging_file_name=False):
-        """Translate a Parquet column to an internal GOE column
-        This is the basic translations, each specific backend may override individual translations
-        before calling this method.
-        """
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable, data_default & char_semantics forward"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            name = col.staging_file_column_name if use_staging_file_name else col.name
-            return CanonicalColumn(
-                name,
-                data_type=data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                char_semantics=col.char_semantics,
-            )
-
-        assert column
-        assert isinstance(column, StagingParquetColumn)
-
-        if column.data_type == PARQUET_TYPE_BOOLEAN:
-            return new_column(column, GOE_TYPE_BOOLEAN, safe_mapping=True)
-        if column.data_type == PARQUET_TYPE_BINARY:
-            data_type = GOE_TYPE_VARIABLE_STRING if self._binary_data_as_base64 else GOE_TYPE_BINARY
-            return new_column(column, data_type, safe_mapping=True)
-        if column.data_type == PARQUET_TYPE_DOUBLE:
-            return new_column(column, GOE_TYPE_DOUBLE, safe_mapping=True)
-        if column.data_type == PARQUET_TYPE_FLOAT:
-            return new_column(column, GOE_TYPE_FLOAT, safe_mapping=True)
-        if column.data_type == PARQUET_TYPE_INT32:
-            return new_column(column, GOE_TYPE_INTEGER_4, safe_mapping=True)
-        if column.data_type == PARQUET_TYPE_INT64:
-            return new_column(column, GOE_TYPE_INTEGER_8, safe_mapping=True)
-        if column.data_type == PARQUET_TYPE_STRING:
-            return new_column(column, GOE_TYPE_VARIABLE_STRING, safe_mapping=True)
-        raise NotImplementedError("Unsupported Parquet data type: %s" % column.data_type)
 
     def _get_parquet_java_primitive(self, staging_column):
         """Let the calling program use implicit conversion"""

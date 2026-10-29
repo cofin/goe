@@ -11,7 +11,7 @@ from datetime import date
 from numpy import datetime64
 
 from goe.offload.format_literal import FormatLiteralInterface
-from goe.offload.hadoop.hadoop_column import HADOOP_TYPE_DATE, HADOOP_TYPE_TIMESTAMP
+from goe.offload.schema.column_spec import HADOOP_TYPE_DATE, HADOOP_TYPE_TIMESTAMP
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

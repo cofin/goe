@@ -10,7 +10,6 @@ from typing import Any
 
 from goe.offload import offload_constants
 from goe.offload.backend_table import BackendTableInterface
-from goe.offload.column_metadata import valid_column_list
 from goe.offload.offload_functions import (
     datetime_literal_to_python,
 )
@@ -25,10 +24,7 @@ from goe.offload.offload_source_table import (
     OFFLOAD_PARTITION_TYPE_RANGE,
     OffloadSourceTableInterface,
 )
-from goe.offload.oracle.oracle_column import (
-    ORACLE_TYPE_TIMESTAMP,
-    ORACLE_TYPE_TIMESTAMP_TZ,
-)
+from goe.offload.schema.column_spec import ORACLE_TYPE_TIMESTAMP, ORACLE_TYPE_TIMESTAMP_TZ, valid_column_list
 
 
 class OffloadSourceDataException(Exception):

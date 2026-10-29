@@ -20,12 +20,15 @@ from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_AVRO,
     FILE_STORAGE_FORMAT_PARQUET,
 )
-from goe.offload.oracle.oracle_column import ORACLE_TYPE_NUMBER, ORACLE_TYPE_VARCHAR2, OracleColumn
-from goe.offload.staging.avro.avro_column import AVRO_TYPE_LONG, AVRO_TYPE_STRING, StagingAvroColumn
-from goe.offload.staging.parquet.parquet_column import (
+from goe.offload.schema.column_spec import (
+    AVRO_TYPE_LONG,
+    AVRO_TYPE_STRING,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_VARCHAR2,
     PARQUET_TYPE_INT64,
     PARQUET_TYPE_STRING,
-    StagingParquetColumn,
+    ColumnDialect,
+    ColumnSpec,
 )
 from goe.offload.transport.arrow_extractor import OracleArrowStreamExtractor
 from goe.offload.transport.constants import (
@@ -41,15 +44,15 @@ from goe.util.module_loader import import_optional
 def test_query_import_transport_streams_parquet_via_arrow_and_duckdb(tmp_path: Path) -> None:
     """OffloadTransportQueryImport.transport() extracts via arrow_batch_extraction and writes Parquet via DuckDB."""
     source_cols = [
-        OracleColumn("ID", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0, nullable=True),
-        OracleColumn("LABEL", ORACLE_TYPE_VARCHAR2, data_length=50, nullable=True),
+        ColumnSpec(ColumnDialect.ORACLE, "ID", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0, nullable=True),
+        ColumnSpec(ColumnDialect.ORACLE, "LABEL", ORACLE_TYPE_VARCHAR2, data_length=50, nullable=True),
     ]
     staging_cols = [
-        StagingParquetColumn("ID", PARQUET_TYPE_INT64, nullable=True),
-        StagingParquetColumn("LABEL", PARQUET_TYPE_STRING, nullable=True),
+        ColumnSpec(ColumnDialect.PARQUET, "ID", PARQUET_TYPE_INT64, nullable=True, staging_file_column_name="ID"),
+        ColumnSpec(
+            ColumnDialect.PARQUET, "LABEL", PARQUET_TYPE_STRING, nullable=True, staging_file_column_name="LABEL"
+        ),
     ]
-    for col in staging_cols:
-        col.staging_file_column_name = col.name
 
     rows = [(1, "alpha"), (2, "beta"), (3, "gamma")]
     transport, captured_dfs_files, captured_queries = _build_transport_double(
@@ -82,15 +85,13 @@ def test_query_import_transport_streams_parquet_via_arrow_and_duckdb(tmp_path: P
 def test_query_import_transport_streams_avro_via_arrow_and_fastavro(tmp_path: Path) -> None:
     """OffloadTransportQueryImport.transport() writes Avro via ArrowAvroStagingWriter when AVRO is configured."""
     source_cols = [
-        OracleColumn("ID", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0, nullable=True),
-        OracleColumn("LABEL", ORACLE_TYPE_VARCHAR2, data_length=50, nullable=True),
+        ColumnSpec(ColumnDialect.ORACLE, "ID", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0, nullable=True),
+        ColumnSpec(ColumnDialect.ORACLE, "LABEL", ORACLE_TYPE_VARCHAR2, data_length=50, nullable=True),
     ]
     staging_cols = [
-        StagingAvroColumn("ID", AVRO_TYPE_LONG, nullable=True),
-        StagingAvroColumn("LABEL", AVRO_TYPE_STRING, nullable=True),
+        ColumnSpec(ColumnDialect.AVRO, "ID", AVRO_TYPE_LONG, nullable=True, staging_file_column_name="ID"),
+        ColumnSpec(ColumnDialect.AVRO, "LABEL", AVRO_TYPE_STRING, nullable=True, staging_file_column_name="LABEL"),
     ]
-    for col in staging_cols:
-        col.staging_file_column_name = col.name
 
     avro_schema = {
         "type": "record",
@@ -134,9 +135,12 @@ def test_query_import_transport_streams_avro_via_arrow_and_fastavro(tmp_path: Pa
 
 def test_query_import_transport_honors_parallelism_and_consistent_read_scn(tmp_path: Path) -> None:
     """OffloadTransportQueryImport preserves parallelism and pins extraction SQL to AS OF SCN without warning."""
-    source_cols = [OracleColumn("ID", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0, nullable=True)]
-    staging_cols = [StagingParquetColumn("ID", PARQUET_TYPE_INT64, nullable=True)]
-    staging_cols[0].staging_file_column_name = "ID"
+    source_cols = [
+        ColumnSpec(ColumnDialect.ORACLE, "ID", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0, nullable=True)
+    ]
+    staging_cols = [
+        ColumnSpec(ColumnDialect.PARQUET, "ID", PARQUET_TYPE_INT64, nullable=True, staging_file_column_name="ID")
+    ]
 
     transport, _files, captured_queries = _build_transport_double(
         tmp_path=tmp_path,
@@ -192,7 +196,7 @@ def _build_transport_double(
     *,
     tmp_path: Path,
     file_format: str,
-    source_cols: list[OracleColumn],
+    source_cols: list[ColumnSpec],
     staging_cols: list[Any],
     rows: list[tuple[Any, ...]],
     avro_schema: dict[str, Any] | None = None,

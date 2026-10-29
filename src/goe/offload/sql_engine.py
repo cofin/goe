@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 import msgspec
 
 if TYPE_CHECKING:
-    from goe.offload.column_metadata import ColumnMetadataInterface
     from goe.offload.predicates.ast import PredicateExpr
+    from goe.offload.schema.column_spec import ColumnSpec
     from goe.offload.sql_ast.dialect_engine import TableRef
 
 __all__ = (
@@ -153,7 +153,7 @@ class DialectSqlEngineProtocol(Protocol):
     def parse_and_render(self, sql: str) -> str:
         """Parse a SQL query and render back to SQL for this dialect."""
 
-    def partition_by_clause(self, partition_column: "ColumnMetadataInterface") -> str:
+    def partition_by_clause(self, partition_column: "ColumnSpec") -> str:
         """Render the BigQuery PARTITION BY expression for a partition column."""
 
     def properties_clause(
@@ -171,7 +171,7 @@ class DialectSqlEngineProtocol(Protocol):
         project: str | None,
         db_name: str,
         table_name: str,
-        columns: "Sequence[ColumnMetadataInterface]",
+        columns: "Sequence[ColumnSpec]",
         partition_expr_sql: str | None = None,
         cluster_cols: Sequence[str] | None = None,
         options: Mapping[str, Any] | None = None,
@@ -185,7 +185,7 @@ class DialectSqlEngineProtocol(Protocol):
         project: str | None,
         db_name: str,
         table_name: str,
-        columns: "Sequence[ColumnMetadataInterface] | None" = None,
+        columns: "Sequence[ColumnSpec] | None" = None,
         storage_format: str = "PARQUET",
         uris: Sequence[str] = (),
         extra_options: Mapping[str, Any] | None = None,
@@ -307,14 +307,14 @@ class PredicateDialectEngineProtocol(Protocol):
     def render_literal_sql(
         self,
         typed_tree: "PredicateExpr | Any",
-        columns: "Sequence[ColumnMetadataInterface]",
+        columns: "Sequence[ColumnSpec]",
     ) -> str:
         """Render a typed predicate expression into a SQL WHERE clause with inline literals."""
 
     def render_bind_sql(
         self,
         typed_tree: "PredicateExpr | Any",
-        columns: "Sequence[ColumnMetadataInterface]",
+        columns: "Sequence[ColumnSpec]",
     ) -> RenderedSQL:
         """Render a typed predicate expression into a SQL WHERE clause with named bind parameters."""
 

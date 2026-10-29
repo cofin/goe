@@ -104,10 +104,14 @@ def source_to_canonical_mappings(
             max_rdbms_time_scale=max_rdbms_time_scale,
         )
         canonical_columns.append(new_col)
-    # Process any char semantics overrides
-    for cs_col in [_ for _ in canonical_columns if _.name in char_semantics_overrides.keys()]:
-        cs_col.char_semantics = char_semantics_overrides[cs_col.name]
-        cs_col.from_override = True
+    canonical_columns = [
+        (
+            col.replace(char_semantics=char_semantics_overrides[col.name], from_override=True)
+            if col.name in char_semantics_overrides
+            else col
+        )
+        for col in canonical_columns
+    ]
 
     return canonical_columns
 

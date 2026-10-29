@@ -22,8 +22,8 @@ from goe.offload.oracle.catalog import (
     OracleSubpartitionMeta,
     OracleTableSnapshot,
 )
-from goe.offload.oracle.oracle_column import ORACLE_TYPE_NUMBER, OracleColumn
 from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
+from goe.offload.schema.column_spec import ORACLE_TYPE_NUMBER, ColumnDialect, ColumnSpec
 
 
 class _DummyMessages:
@@ -156,7 +156,7 @@ def test_oracle_source_table_arrow_batch_sampling_for_unknown_number() -> None:
         db_api=api,
     )
 
-    amount_col = OracleColumn("AMOUNT", ORACLE_TYPE_NUMBER, nullable="Y")
+    amount_col = ColumnSpec(ColumnDialect.ORACLE, "AMOUNT", ORACLE_TYPE_NUMBER, nullable="Y")
     sampled = table.sample_rdbms_data_types(
         [amount_col],
         data_sample_pct=10,

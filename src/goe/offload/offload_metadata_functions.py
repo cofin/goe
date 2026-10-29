@@ -9,17 +9,13 @@ For now a handy location for like minded functions, in the future this might bec
 
 from typing import TYPE_CHECKING, Any
 
-from goe.offload.column_metadata import (
-    invalid_column_list_message,
-    match_table_column,
-    valid_column_list,
-)
 from goe.offload.offload_source_table import (
     OFFLOAD_PARTITION_TYPE_LIST,
     OFFLOAD_PARTITION_TYPE_RANGE,
     OffloadSourceTableInterface,
     convert_high_values_to_python,
 )
+from goe.offload.schema.column_spec import invalid_column_list_message, match_table_column, valid_column_list
 from goe.orchestration import command_steps
 from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,

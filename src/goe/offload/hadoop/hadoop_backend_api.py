@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendHadoopApi: BackendApi implementation for a Hadoop backend, Hive and Impala are subclasses of this.
@@ -29,10 +27,12 @@ Comment from nj@2019-11-06:
 
 import logging
 import re
+import time
 import traceback
 from datetime import datetime
+from typing import ClassVar
 
-from impala.hiveserver2 import TTransportException
+import msgspec
 
 from goe.filesystem.goe_dfs import (
     OFFLOAD_FS_SCHEME_S3A,
@@ -55,60 +55,11 @@ from goe.offload.backend_api import (
     BackendApiException,
     BackendApiInterface,
 )
-from goe.offload.column_metadata import (
-    ALL_CANONICAL_TYPES,
-    DATE_CANONICAL_TYPES,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_BOOLEAN,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-    NUMERIC_CANONICAL_TYPES,
-    STRING_CANONICAL_TYPES,
-    CanonicalColumn,
-    is_safe_mapping,
-    match_table_column,
-)
+from goe.offload.backend_cache import BackendTableSnapshot
 from goe.offload.hadoop.better_impyla import (
     BetterImpylaException,
     HiveConnection,
     HiveTable,
-)
-from goe.offload.hadoop.hadoop_column import (
-    HADOOP_TYPE_BIGINT,
-    HADOOP_TYPE_BINARY,
-    HADOOP_TYPE_BOOLEAN,
-    HADOOP_TYPE_CHAR,
-    HADOOP_TYPE_DATE,
-    HADOOP_TYPE_DECIMAL,
-    HADOOP_TYPE_DOUBLE,
-    HADOOP_TYPE_DOUBLE_PRECISION,
-    HADOOP_TYPE_FLOAT,
-    HADOOP_TYPE_INT,
-    HADOOP_TYPE_INTERVAL_DS,
-    HADOOP_TYPE_INTERVAL_YM,
-    HADOOP_TYPE_REAL,
-    HADOOP_TYPE_SMALLINT,
-    HADOOP_TYPE_STRING,
-    HADOOP_TYPE_TIMESTAMP,
-    HADOOP_TYPE_TINYINT,
-    HADOOP_TYPE_VARCHAR,
-    HadoopColumn,
 )
 from goe.offload.hadoop.hive_table_stats import HiveTableStats
 from goe.offload.hadoop.hs2_connection import HS2_OPTIONS, hs2_connection
@@ -130,7 +81,30 @@ from goe.offload.offload_constants import (
     PART_COL_GRANULARITY_YEAR,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
+    HADOOP_TYPE_BIGINT,
+    HADOOP_TYPE_CHAR,
+    HADOOP_TYPE_DECIMAL,
+    HADOOP_TYPE_DOUBLE,
+    HADOOP_TYPE_FLOAT,
+    HADOOP_TYPE_INT,
+    HADOOP_TYPE_REAL,
+    HADOOP_TYPE_SMALLINT,
+    HADOOP_TYPE_STRING,
+    HADOOP_TYPE_TIMESTAMP,
+    HADOOP_TYPE_TINYINT,
+    HADOOP_TYPE_VARCHAR,
+    ColumnDialect,
+    ColumnSpec,
+    match_table_column,
+)
+from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
+from goe.offload.sql_ast.dialect_engine import DialectSqlEngine
+from goe.util.module_loader import import_optional
 from goe.util.string_utils import backtick_sandwich
+
+_impala_hs2 = import_optional("impala.hiveserver2")
+TTransportException: type[Exception] = _impala_hs2.TTransportException if _impala_hs2 is not None else OSError
 
 HADOOP_DECIMAL_MAX_PRECISION = 38
 
@@ -176,6 +150,8 @@ class BackendHadoopApi(BackendApiInterface):
     in this Hadoop class.
     """
 
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.HIVE
+
     def __init__(
         self,
         connection_options,
@@ -196,6 +172,7 @@ class BackendHadoopApi(BackendApiInterface):
         )
 
         self._sql_engine_name = "Hadoop"
+        self._sql_engine = DialectSqlEngine("hive")
 
         self._target_version = None
 
@@ -223,7 +200,10 @@ class BackendHadoopApi(BackendApiInterface):
             self.enclose_identifier(table_name),
             column_clause,
         )
-        return self.execute_ddl(sql, sync=sync)
+        result = self.execute_ddl(sql, sync=sync)
+        self.catalog.on_alter_table(db_name, table_name)
+        self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def backend_report_info(self):
         """Reporting information about the type of backend and how to display
@@ -368,14 +348,14 @@ FROM   %(from_tables)s%(where_clause)s""" % {
         return codec
 
     def derive_native_partition_info(self, db_name, table_name, column, position):
-        """Return a ColumnPartitionInfo object (or None) based on native partition settings.
+        """Return a ColumnPartitionSpec object (or None) based on native partition settings.
         No such thing on Hadoop.
         """
         return
 
     def detect_column_has_fractional_seconds(self, db_name, table_name, column):
         assert db_name and table_name
-        assert isinstance(column, HadoopColumn)
+        assert isinstance(column, ColumnSpec) and column.dialect is ColumnDialect.HADOOP
         if column.data_type != HADOOP_TYPE_TIMESTAMP:
             return False
         sql = """SELECT %(col)s
@@ -390,7 +370,9 @@ LIMIT 1""" % {
 
     def drop_state(self):
         """Drop any cached state so values are refreshed on next request."""
+        self.catalog.clear()
         self._cached_hive_tables = {}
+        self._cached_hive_table_stats = {}
 
     def drop_table(self, db_name, table_name, purge=False, if_exists=True, sync=None):
         """Drop a table and cater for backend specific details
@@ -404,7 +386,10 @@ LIMIT 1""" % {
         )
         if purge:
             drop_sql += " PURGE"
-        return self.execute_ddl(drop_sql, sync=sync)
+        result = self.execute_ddl(drop_sql, sync=sync)
+        self.catalog.on_drop_table(db_name, table_name)
+        self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def drop_view(self, db_name, view_name, if_exists=True, sync=None):
         assert db_name and view_name
@@ -503,8 +488,11 @@ LIMIT 1""" % {
         """
         assert db_name
         assert object_name
-        assert self._hive_conn is not None
-        return self._hive_conn.table_exists(db_name.lower(), object_name.lower())
+        return self.catalog.table_exists(
+            db_name,
+            object_name,
+            self._fetch_table_exists,
+        )
 
     def format_hadoop_partition_clause(self, partition_tuples, sep_char="/"):
         """Hadoop specific function call for use from Hadoop specific BackendTable function
@@ -518,20 +506,15 @@ LIMIT 1""" % {
         return param_name
 
     def gen_column_object(self, column_name, **kwargs):
-        return HadoopColumn(column_name, **kwargs)
+        return ColumnSpec(ColumnDialect.HADOOP, column_name, **kwargs)
 
     def gen_default_numeric_column(self, column_name, data_scale=18):
-        """Return a default best-fit numeric column for generic usage.
-        Used when we can't really know or influence a type, e.g. AVG() output in AAPD.
-        data_scale=0 can be used if the outcome is known to be integral.
-        """
-        return HadoopColumn(
+        """Return a default best-fit numeric column for generic usage."""
+        return TYPE_REGISTRY.default_numeric_column(
             column_name,
-            data_type=HADOOP_TYPE_DECIMAL,
-            data_precision=self.max_decimal_precision(),
+            self.type_mapping_target,
+            self.type_mapping_context(),
             data_scale=data_scale,
-            nullable=True,
-            safe_mapping=False,
         )
 
     def gen_ctas_sql_text(
@@ -602,10 +585,13 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
 
     def get_columns(self, db_name, table_name):
         assert db_name and table_name
-        hive_table = self._get_hive_table(db_name, table_name)
-        legacy_columns = hive_table.all_columns()
-
-        return self._legacy_column_list_to_type(legacy_columns)
+        return list(
+            self.catalog.get_columns(
+                db_name,
+                table_name,
+                self._fetch_columns,
+            )
+        )
 
     def gen_copy_into_sql_text(
         self,
@@ -654,9 +640,13 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
 
     def get_partition_columns(self, db_name, table_name):
         assert db_name and table_name
-        hive_table = self._get_hive_table(db_name, table_name)
-        part_cols_as_list = hive_table.partition_columns()
-        return self._legacy_column_list_to_type(part_cols_as_list)
+        return list(
+            self.catalog.get_partition_columns(
+                db_name,
+                table_name,
+                self._fetch_partition_columns,
+            )
+        )
 
     def get_session_option(self, option_name):
         raise NotImplementedError("get_session_option() is not implemented for common Hadoop class")
@@ -900,6 +890,11 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
         if fs_scheme == OFFLOAD_FS_SCHEME_S3A and not self.transactional_tables_default():
             self._alter_table_external(to_db_name, to_table_name, external=False)
 
+        self.catalog.on_drop_table(from_db_name, from_table_name)
+        self.catalog.on_alter_table(to_db_name, to_table_name)
+        self._cached_hive_tables.pop((from_db_name + "_" + from_table_name).lower(), None)
+        self._cached_hive_tables.pop((to_db_name + "_" + to_table_name).lower(), None)
+
         return executed_sqls
 
     def role_exists(self, role_name):
@@ -996,7 +991,7 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
         return HADOOP_TYPE_STRING
 
     def transform_null_cast(self, backend_column):
-        assert isinstance(backend_column, HadoopColumn)
+        assert isinstance(backend_column, ColumnSpec) and backend_column.dialect is ColumnDialect.HADOOP
         return "CAST(NULL AS %s)" % (backend_column.format_data_type())
 
     def transform_tokenize_data_type(self):
@@ -1025,35 +1020,12 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
             raise
 
     def valid_canonical_override(self, column, canonical_override):
-        assert isinstance(column, HadoopColumn)
-        if isinstance(canonical_override, CanonicalColumn):
-            target_type = canonical_override.data_type
-        else:
-            target_type = canonical_override
-        if column.is_number_based():
-            if column.data_type in [HADOOP_TYPE_DOUBLE, HADOOP_TYPE_FLOAT]:
-                return bool(target_type in [GOE_TYPE_DECIMAL, GOE_TYPE_DOUBLE, GOE_TYPE_FLOAT])
-            return target_type in NUMERIC_CANONICAL_TYPES
-        if column.is_date_based():
-            return bool(target_type in DATE_CANONICAL_TYPES)
-        if column.is_string_based():
-            if column.data_type == HADOOP_TYPE_CHAR:
-                return bool(target_type == GOE_TYPE_FIXED_STRING)
-            return bool(
-                target_type in STRING_CANONICAL_TYPES
-                or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
-                or target_type in [GOE_TYPE_INTERVAL_DS, GOE_TYPE_INTERVAL_YM]
-            )
-        if target_type not in ALL_CANONICAL_TYPES:
-            self._log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
-            return False
-        if column.data_type not in self.supported_backend_data_types():
-            return False
-        if column.data_type == HADOOP_TYPE_BOOLEAN:
-            return bool(target_type == GOE_TYPE_BOOLEAN)
-        if column.data_type == HADOOP_TYPE_BINARY:
-            return bool(target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
-        return False
+        target_type = canonical_override.data_type if isinstance(canonical_override, ColumnSpec) else canonical_override
+        return TYPE_REGISTRY.valid_canonical_override(
+            column,
+            target_type,
+            self.type_mapping_context(),
+        )
 
     def valid_staging_formats(self):
         return [FILE_STORAGE_FORMAT_AVRO]
@@ -1063,237 +1035,43 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
 
     def to_canonical_column(self, column):
         """Translate a Hive/Impala column to an internal GOE column."""
-
-        def new_column(col, data_type, data_precision=None, data_scale=None, safe_mapping=None):
-            """Wrapper that carries name forward to the canonical column"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return CanonicalColumn(
-                name=col.name,
-                data_type=data_type,
-                data_length=col.data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                char_length=col.char_length,
-            )
-
-        assert column
-        assert isinstance(column, HadoopColumn)
-
-        if column.data_type == HADOOP_TYPE_CHAR:
-            return new_column(column, GOE_TYPE_FIXED_STRING)
-        if column.data_type in (HADOOP_TYPE_STRING, HADOOP_TYPE_VARCHAR):
-            return new_column(column, GOE_TYPE_VARIABLE_STRING)
-        if column.data_type == HADOOP_TYPE_BINARY:
-            return new_column(column, GOE_TYPE_BINARY)
-        if column.data_type in (
-            HADOOP_TYPE_TINYINT,
-            HADOOP_TYPE_SMALLINT,
-            HADOOP_TYPE_INT,
-            HADOOP_TYPE_BIGINT,
-        ) or (column.data_type == HADOOP_TYPE_DECIMAL and column.data_scale == 0):
-            if column.data_type == HADOOP_TYPE_TINYINT or (1 <= (column.data_precision or 0) <= 2):
-                integral_type = GOE_TYPE_INTEGER_1
-            elif column.data_type == HADOOP_TYPE_SMALLINT or (3 <= (column.data_precision or 0) <= 4):
-                integral_type = GOE_TYPE_INTEGER_2
-            elif column.data_type == HADOOP_TYPE_INT or (5 <= (column.data_precision or 0) <= 9):
-                integral_type = GOE_TYPE_INTEGER_4
-            elif column.data_type == HADOOP_TYPE_BIGINT or (10 <= (column.data_precision or 0) <= 18):
-                integral_type = GOE_TYPE_INTEGER_8
-            elif column.data_type == HADOOP_TYPE_BIGINT or (19 <= (column.data_precision or 0) <= 38):
-                integral_type = GOE_TYPE_INTEGER_38
-            else:
-                return new_column(
-                    column,
-                    GOE_TYPE_INTEGER_38,
-                    data_precision=column.data_precision,
-                    data_scale=0,
-                )
-            return new_column(column, integral_type)
-        if column.data_type == HADOOP_TYPE_DECIMAL:
-            return new_column(
-                column,
-                GOE_TYPE_DECIMAL,
-                data_precision=column.data_precision,
-                data_scale=column.data_scale,
-            )
-        if column.data_type == HADOOP_TYPE_FLOAT:
-            return new_column(column, GOE_TYPE_FLOAT)
-        if column.data_type in (
-            HADOOP_TYPE_DOUBLE,
-            HADOOP_TYPE_DOUBLE_PRECISION,
-            HADOOP_TYPE_REAL,
-        ):
-            return new_column(column, GOE_TYPE_DOUBLE)
-        if column.data_type == HADOOP_TYPE_DATE:
-            return new_column(column, GOE_TYPE_DATE)
-        if column.data_type == HADOOP_TYPE_TIMESTAMP:
-            data_scale = column.data_scale if column.data_scale is not None else self.max_datetime_scale()
-            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=data_scale)
-        if column.data_type == HADOOP_TYPE_INTERVAL_DS:
-            return new_column(column, GOE_TYPE_INTERVAL_DS)
-        if column.data_type == HADOOP_TYPE_INTERVAL_YM:
-            return new_column(column, GOE_TYPE_INTERVAL_YM)
-        if column.data_type == HADOOP_TYPE_BOOLEAN:
-            return new_column(column, GOE_TYPE_BOOLEAN)
-        raise NotImplementedError("Unsupported backend data type: %s" % column.data_type)
+        return TYPE_REGISTRY.to_canonical(column, self.type_mapping_context())
 
     def from_canonical_column(self, column, decimal_padding_digits=0):
-        """Translate an internal GOE column to a Hadoop column.
-        Note that Impala has its own override.
+        """Translate an internal GOE column to a Hadoop column."""
+        context = msgspec.structs.replace(self.type_mapping_context(), decimal_padding_digits=decimal_padding_digits)
+        return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, context)
 
-        Honour the canonical type because it is from a user override or a staging file
-        On Hadoop all 4 native integer types map to BIGINT
-        On Hadoop we have UDFs for each even scale but need to mix decimal_padding_digits with UDF alignment
-        """
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable & data_default forward from RDBMS"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return HadoopColumn(
-                col.name,
-                data_type=data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
+    def warm_schema(self, db_name: str) -> int:
+        """Warm the catalog cache for all tables in a Hadoop database."""
+        assert db_name
+        table_names = self.list_tables(db_name)
+        now = time.monotonic()
+        snapshots: list[BackendTableSnapshot] = []
+        for table_name in table_names:
+            snapshots.append(
+                BackendTableSnapshot(
+                    db_name=db_name.lower(),
+                    table_name=table_name.lower(),
+                    exists=True,
+                    fetched_at=now,
+                )
             )
+        return self.catalog.warm_schema(db_name, snapshots)
 
-        assert column
-        assert isinstance(column, CanonicalColumn), "%s is not instance of CanonicalColumn" % type(column)
+    def _fetch_table_exists(self, db_name: str, object_name: str) -> bool:
+        assert self._hive_conn is not None
+        return bool(self._hive_conn.table_exists(db_name.lower(), object_name.lower()))
 
-        if column.data_type == GOE_TYPE_FIXED_STRING:
-            return new_column(column, HADOOP_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_LARGE_STRING:
-            return new_column(column, HADOOP_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_VARIABLE_STRING:
-            return new_column(column, HADOOP_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_BINARY:
-            return new_column(column, HADOOP_TYPE_BINARY, safe_mapping=True)
-        if column.data_type == GOE_TYPE_LARGE_BINARY:
-            return new_column(column, HADOOP_TYPE_BINARY, safe_mapping=True)
-        if column.data_type in (
-            GOE_TYPE_INTEGER_1,
-            GOE_TYPE_INTEGER_2,
-            GOE_TYPE_INTEGER_4,
-            GOE_TYPE_INTEGER_8,
-        ):
-            if column.from_override:
-                if column.data_type == GOE_TYPE_INTEGER_1:
-                    return new_column(column, HADOOP_TYPE_TINYINT, safe_mapping=True)
-                if column.data_type == GOE_TYPE_INTEGER_2:
-                    return new_column(column, HADOOP_TYPE_SMALLINT, safe_mapping=True)
-                if column.data_type == GOE_TYPE_INTEGER_4:
-                    return new_column(column, HADOOP_TYPE_INT, safe_mapping=True)
-                return new_column(column, HADOOP_TYPE_BIGINT, safe_mapping=True)
-            return new_column(column, HADOOP_TYPE_BIGINT, safe_mapping=True)
-        if column.data_type == GOE_TYPE_INTEGER_38:
-            return new_column(
-                column,
-                HADOOP_TYPE_DECIMAL,
-                data_precision=self.max_decimal_precision(),
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_DECIMAL:
-            if column.data_precision is None and column.data_scale is None:
-                new_col = self.gen_default_numeric_column(column.name)
-            else:
-                new_precision, new_scale = self._align_decimal_scale_to_udfs(
-                    column.name, column.data_precision, column.data_scale
-                )
-                new_precision, new_scale = self._apply_decimal_padding_digits(
-                    column.name, new_precision, new_scale, decimal_padding_digits
-                )
-                new_precision, new_scale = self._align_decimal_precision_to_udfs(column.name, new_precision, new_scale)
-                if self._unsupported_decimal_precision_scale(new_precision, new_scale):
-                    raise NotImplementedError(
-                        "Unsupported precision/scale for %s column %s: %s/%s"
-                        % (column.data_type, column.name, new_precision, new_scale)
-                    )
-                if new_precision != column.data_precision or new_scale != column.data_scale:
-                    self._log(
-                        "UDF aligned/padded precision/scale for %s: %s,%s -> %s,%s"
-                        % (
-                            column.name,
-                            column.data_precision,
-                            column.data_scale,
-                            new_precision,
-                            new_scale,
-                        ),
-                        detail=VERBOSE,
-                    )
-                new_col = new_column(
-                    column,
-                    HADOOP_TYPE_DECIMAL,
-                    data_precision=new_precision,
-                    data_scale=new_scale,
-                    safe_mapping=False,
-                )
-            return new_col
-        if column.data_type == GOE_TYPE_FLOAT:
-            return new_column(column, HADOOP_TYPE_FLOAT, safe_mapping=True)
-        if column.data_type == GOE_TYPE_DOUBLE:
-            return new_column(column, HADOOP_TYPE_DOUBLE, safe_mapping=True)
-        if column.data_type == GOE_TYPE_DATE and not self.canonical_date_supported():
-            return new_column(column, HADOOP_TYPE_TIMESTAMP)
-        if column.data_type == GOE_TYPE_DATE:
-            return new_column(column, HADOOP_TYPE_DATE)
-        if column.data_type == GOE_TYPE_TIME:
-            return new_column(column, HADOOP_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_TIMESTAMP:
-            return new_column(column, HADOOP_TYPE_TIMESTAMP, safe_mapping=False)
-        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            return new_column(column, HADOOP_TYPE_TIMESTAMP, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTERVAL_DS:
-            return new_column(column, HADOOP_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTERVAL_YM:
-            return new_column(column, HADOOP_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_BOOLEAN:
-            return new_column(column, HADOOP_TYPE_BOOLEAN, safe_mapping=True)
-        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
+    def _fetch_columns(self, db_name: str, table_name: str) -> list[ColumnSpec]:
+        hive_table = self._get_hive_table(db_name, table_name)
+        legacy_columns = hive_table.all_columns()
+        return self._legacy_column_list_to_type(legacy_columns)
 
-    def _align_decimal_scale_to_udfs(self, column_name, data_precision, data_scale):
-        """Pad/round up decimal precision and scale in a number of ways:
-        1) If precision is unset then assume it is the max possible for Hadoop
-        2) UDFs are on even numbered scales only, increase if applicable and if precision has headroom
-        3) Increase precision to accommodate any scale increases in 2
-        4) The precision we end up with is finally increased to either 18 or 38 as appropriate
-        Returns a tuple of the adjusted precision & scale
-        """
-        self._debug("Aligning decimal scale to UDFs: %s (%s,%s)" % (column_name, data_precision, data_scale))
-
-        if not data_precision and not data_scale:
-            return data_precision, data_scale
-
-        private_precision = data_precision or self.max_decimal_precision()
-        new_precision = data_precision
-        new_scale = data_scale
-
-        if private_precision < self.max_decimal_precision():
-            if new_precision:
-                new_precision += new_scale % 2
-            new_scale += new_scale % 2
-        return new_precision, new_scale
-
-    def _align_decimal_precision_to_udfs(self, column_name, data_precision, data_scale):
-        self._debug("Aligning decimal precision to UDFs: %s (%s,%s)" % (column_name, data_precision, data_scale))
-        new_precision = data_precision or self.max_decimal_precision()
-        new_precision = (
-            max(new_precision, 18) if new_precision < 19 else max(new_precision, self.max_decimal_precision())
-        )
-        return new_precision, data_scale
+    def _fetch_partition_columns(self, db_name: str, table_name: str) -> list[ColumnSpec]:
+        hive_table = self._get_hive_table(db_name, table_name)
+        part_cols_as_list = hive_table.partition_columns()
+        return self._legacy_column_list_to_type(part_cols_as_list)
 
     def _alter_table_external(self, db_name, table_name, external=True):
         """Execute Hive SQL to switch a table to external or managed"""
@@ -1545,7 +1323,8 @@ SELECT %(projection)s%(from_clause)s%(limit_clause)s""" % {
                 scale,
             ) = self._decode_hadoop_data_type_spec(data_type_spec)
             backend_columns.append(
-                HadoopColumn(
+                ColumnSpec(
+                    ColumnDialect.HADOOP,
                     col_name,
                     data_type=data_type,
                     data_length=data_length,

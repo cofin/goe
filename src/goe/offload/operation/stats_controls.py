@@ -6,9 +6,6 @@
 from typing import Any
 
 from goe.exceptions import OffloadException
-from goe.offload.column_metadata import (
-    get_partition_source_column_names,
-)
 from goe.offload.offload import (
     get_current_offload_hv,
     get_prior_offloaded_hv,
@@ -17,6 +14,7 @@ from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessages
 from goe.offload.offload_metadata_functions import (
     flatten_lpa_high_values,
 )
+from goe.offload.schema.column_spec import get_partition_source_column_names
 from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,

@@ -12,10 +12,10 @@ import numpy as np
 
 from goe.exceptions import OptionValueError
 from goe.offload import predicate_offload
-from goe.offload.bigquery import bigquery_column, bigquery_predicate
-from goe.offload.hadoop import hadoop_column, hadoop_predicate
-from goe.offload.microsoft import synapse_column, synapse_predicate
-from goe.offload.oracle import oracle_column, oracle_predicate
+from goe.offload.bigquery import bigquery_predicate
+from goe.offload.hadoop import hadoop_predicate
+from goe.offload.microsoft import synapse_predicate
+from goe.offload.oracle import oracle_predicate
 from goe.offload.predicate_offload import (
     GenericPredicate,
     PredicateOffloadException,
@@ -23,60 +23,88 @@ from goe.offload.predicate_offload import (
     parse_predicate_dsl,
 )
 from goe.offload.predicates.ast import BinaryComparison, TypedValue
-from goe.offload.snowflake import snowflake_column, snowflake_predicate
+from goe.offload.schema.column_spec import (
+    BIGQUERY_TYPE_DATETIME,
+    BIGQUERY_TYPE_INT64,
+    BIGQUERY_TYPE_NUMERIC,
+    BIGQUERY_TYPE_STRING,
+    HADOOP_TYPE_DECIMAL,
+    HADOOP_TYPE_INT,
+    HADOOP_TYPE_STRING,
+    HADOOP_TYPE_TIMESTAMP,
+    ORACLE_TYPE_DATE,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_VARCHAR2,
+    SNOWFLAKE_TYPE_NUMBER,
+    SNOWFLAKE_TYPE_TEXT,
+    SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
+    SYNAPSE_TYPE_BIGINT,
+    SYNAPSE_TYPE_DATETIME2,
+    SYNAPSE_TYPE_DECIMAL,
+    SYNAPSE_TYPE_VARCHAR,
+    ColumnDialect,
+    ColumnSpec,
+)
+from goe.offload.snowflake import snowflake_predicate
 from goe.offload.sql_engine import PredicateDialectEngineProtocol
 
 BIGQUERY_COLUMNS = [
-    bigquery_column.BigQueryColumn("COL_INT", bigquery_column.BIGQUERY_TYPE_INT64),
-    bigquery_column.BigQueryColumn("COL_STRING", bigquery_column.BIGQUERY_TYPE_STRING),
-    bigquery_column.BigQueryColumn("COL_DATE", bigquery_column.BIGQUERY_TYPE_DATETIME),
-    bigquery_column.BigQueryColumn(
+    ColumnSpec(ColumnDialect.BIGQUERY, "COL_INT", BIGQUERY_TYPE_INT64),
+    ColumnSpec(ColumnDialect.BIGQUERY, "COL_STRING", BIGQUERY_TYPE_STRING),
+    ColumnSpec(ColumnDialect.BIGQUERY, "COL_DATE", BIGQUERY_TYPE_DATETIME),
+    ColumnSpec(
+        ColumnDialect.BIGQUERY,
         "COL_DECIMAL",
-        bigquery_column.BIGQUERY_TYPE_NUMERIC,
+        BIGQUERY_TYPE_NUMERIC,
         data_precision=10,
         data_scale=2,
     ),
 ]
 HADOOP_COLUMNS = [
-    hadoop_column.HadoopColumn("COL_INT", hadoop_column.HADOOP_TYPE_INT),
-    hadoop_column.HadoopColumn("COL_STRING", hadoop_column.HADOOP_TYPE_STRING),
-    hadoop_column.HadoopColumn("COL_DATE", hadoop_column.HADOOP_TYPE_TIMESTAMP),
-    hadoop_column.HadoopColumn(
+    ColumnSpec(ColumnDialect.HADOOP, "COL_INT", HADOOP_TYPE_INT),
+    ColumnSpec(ColumnDialect.HADOOP, "COL_STRING", HADOOP_TYPE_STRING),
+    ColumnSpec(ColumnDialect.HADOOP, "COL_DATE", HADOOP_TYPE_TIMESTAMP),
+    ColumnSpec(
+        ColumnDialect.HADOOP,
         "COL_DECIMAL",
-        hadoop_column.HADOOP_TYPE_DECIMAL,
+        HADOOP_TYPE_DECIMAL,
         data_precision=10,
         data_scale=2,
     ),
 ]
 ORACLE_COLUMNS = [
-    oracle_column.OracleColumn("COL_INT", oracle_column.ORACLE_TYPE_NUMBER, data_precision=5, data_scale=0),
-    oracle_column.OracleColumn("COL_STRING", oracle_column.ORACLE_TYPE_VARCHAR2),
-    oracle_column.OracleColumn("COL_DATE", oracle_column.ORACLE_TYPE_DATE),
-    oracle_column.OracleColumn("COL_DECIMAL", oracle_column.ORACLE_TYPE_NUMBER, data_precision=10, data_scale=2),
+    ColumnSpec(ColumnDialect.ORACLE, "COL_INT", ORACLE_TYPE_NUMBER, data_precision=5, data_scale=0),
+    ColumnSpec(ColumnDialect.ORACLE, "COL_STRING", ORACLE_TYPE_VARCHAR2),
+    ColumnSpec(ColumnDialect.ORACLE, "COL_DATE", ORACLE_TYPE_DATE),
+    ColumnSpec(ColumnDialect.ORACLE, "COL_DECIMAL", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=2),
 ]
 SNOWFLAKE_COLUMNS = [
-    snowflake_column.SnowflakeColumn(
+    ColumnSpec(
+        ColumnDialect.SNOWFLAKE,
         "COL_INT",
-        snowflake_column.SNOWFLAKE_TYPE_NUMBER,
+        SNOWFLAKE_TYPE_NUMBER,
         data_precision=5,
         data_scale=0,
     ),
-    snowflake_column.SnowflakeColumn("COL_STRING", snowflake_column.SNOWFLAKE_TYPE_TEXT),
-    snowflake_column.SnowflakeColumn("COL_DATE", snowflake_column.SNOWFLAKE_TYPE_TIMESTAMP_NTZ),
-    snowflake_column.SnowflakeColumn(
+    ColumnSpec(ColumnDialect.SNOWFLAKE, "COL_STRING", SNOWFLAKE_TYPE_TEXT),
+    ColumnSpec(ColumnDialect.SNOWFLAKE, "COL_DATE", SNOWFLAKE_TYPE_TIMESTAMP_NTZ),
+    ColumnSpec(
+        ColumnDialect.SNOWFLAKE,
         "COL_DECIMAL",
-        snowflake_column.SNOWFLAKE_TYPE_NUMBER,
+        SNOWFLAKE_TYPE_NUMBER,
         data_precision=10,
         data_scale=2,
     ),
 ]
 SYNAPSE_COLUMNS = [
-    synapse_column.SynapseColumn("COL_INT", synapse_column.SYNAPSE_TYPE_BIGINT),
-    synapse_column.SynapseColumn("COL_STRING", synapse_column.SYNAPSE_TYPE_VARCHAR),
-    synapse_column.SynapseColumn("COL_DATE", synapse_column.SYNAPSE_TYPE_DATETIME2),
-    synapse_column.SynapseColumn(
+    ColumnSpec(ColumnDialect.SYNAPSE, "COL_INT", SYNAPSE_TYPE_BIGINT),
+    ColumnSpec(ColumnDialect.SYNAPSE, "COL_STRING", SYNAPSE_TYPE_VARCHAR),
+    ColumnSpec(ColumnDialect.SYNAPSE, "COL_DATE", SYNAPSE_TYPE_DATETIME2),
+    ColumnSpec(
+        ColumnDialect.SYNAPSE,
         "COL_DECIMAL",
-        synapse_column.SYNAPSE_TYPE_DECIMAL,
+        SYNAPSE_TYPE_DECIMAL,
         data_precision=10,
         data_scale=2,
     ),
@@ -379,7 +407,7 @@ def test_multi_dialect_predicate_sql_and_bind_rendering_with_nanoseconds() -> No
     assert isinstance(bq_engine, PredicateDialectEngineProtocol)
 
     cols = ORACLE_COLUMNS + [
-        oracle_column.OracleColumn("COL_TS", oracle_column.ORACLE_TYPE_TIMESTAMP, data_scale=9),
+        ColumnSpec(ColumnDialect.ORACLE, "COL_TS", ORACLE_TYPE_TIMESTAMP, data_scale=9),
     ]
     pred_ts = GenericPredicate("column(COL_TS) = datetime(2011-01-01 05:06:07.123456789)")
     assert (

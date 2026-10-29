@@ -1,9 +1,7 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""BackendHiveApi: BackendApi implementation for a Hive backend.
+"""BackendImpalaApi: BackendApi implementation for an Impala backend.
 
 See BackendHadoopApi for better+impyla justification.
 """
@@ -11,6 +9,7 @@ See BackendHadoopApi for better+impyla justification.
 import logging
 import re
 from copy import copy
+from typing import ClassVar
 
 from numpy import datetime64
 
@@ -19,19 +18,26 @@ from goe.offload.backend_api import (
     UdfDetails,
     UdfParameter,
 )
-from goe.offload.column_metadata import (
-    GOE_TYPE_BINARY,
-    GOE_TYPE_LARGE_BINARY,
-    is_safe_mapping,
-    match_table_column,
-    str_list_of_columns,
-    valid_column_list,
-)
+from goe.offload.backend_capabilities import BackendCapabilities
 from goe.offload.hadoop.better_impyla import from_impala_size
 from goe.offload.hadoop.hadoop_backend_api import (
     BackendHadoopApi,
 )
-from goe.offload.hadoop.hadoop_column import (
+from goe.offload.hadoop.impala_literal import ImpalaLiteral
+from goe.offload.offload_constants import (
+    CAPABILITY_CANONICAL_DATE,
+    CAPABILITY_COLUMN_STATS_SET,
+    CAPABILITY_DROP_COLUMN,
+    CAPABILITY_FS_SCHEME_ABFS,
+    CAPABILITY_FS_SCHEME_ADL,
+    CAPABILITY_FS_SCHEME_S3A,
+    CAPABILITY_RANGER,
+    CAPABILITY_SENTRY,
+    CAPABILITY_SORTED_TABLE,
+    FILE_STORAGE_FORMAT_PARQUET,
+)
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_BOOLEAN,
     HADOOP_TYPE_CHAR,
@@ -46,31 +52,23 @@ from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_TIMESTAMP,
     HADOOP_TYPE_TINYINT,
     HADOOP_TYPE_VARCHAR,
-    HadoopColumn,
+    match_table_column,
+    str_list_of_columns,
+    valid_column_list,
 )
-from goe.offload.hadoop.impala_literal import ImpalaLiteral
-from goe.offload.offload_constants import (
-    CAPABILITY_CANONICAL_DATE,
-    CAPABILITY_COLUMN_STATS_SET,
-    CAPABILITY_DROP_COLUMN,
-    CAPABILITY_FS_SCHEME_ABFS,
-    CAPABILITY_FS_SCHEME_ADL,
-    CAPABILITY_FS_SCHEME_S3A,
-    CAPABILITY_RANGER,
-    CAPABILITY_SENTRY,
-    CAPABILITY_SORTED_TABLE,
-    FILE_STORAGE_FORMAT_PARQUET,
-    IMPALA_BACKEND_CAPABILITIES,
-)
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.type_registry import MappingTarget
 from goe.util import GOEVersion
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
+IMPALA_CAPABILITIES = BackendCapabilities.for_impala()
+
 
 class BackendImpalaApi(BackendHadoopApi):
     """Impala implementation."""
+
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.IMPALA
 
     def __init__(
         self,
@@ -104,7 +102,10 @@ class BackendImpalaApi(BackendHadoopApi):
             self.enclose_identifier(table_name),
             sort_csv,
         )
-        return self.execute_ddl(sql, log_level=VERBOSE, sync=sync)
+        result = self.execute_ddl(sql, log_level=VERBOSE, sync=sync)
+        self.catalog.on_alter_table(db_name, table_name)
+        self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def backend_version(self):
         sql = "SELECT VERSION()"
@@ -249,7 +250,11 @@ class BackendImpalaApi(BackendHadoopApi):
         }
         if with_terminator:
             sql += ";"
-        return self.execute_ddl(sql, sync=sync)
+        result = self.execute_ddl(sql, sync=sync)
+        if db_name:
+            self.catalog.on_create_table(db_name, table_name, columns=column_list)
+            self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def create_udf(
         self,
@@ -324,40 +329,6 @@ class BackendImpalaApi(BackendHadoopApi):
         if self.is_capability_supported(CAPABILITY_FS_SCHEME_S3A):
             return bool(GOEVersion(self.target_version()) >= GOEVersion("2.6.0"))
         return False
-
-    def from_canonical_column(self, column, decimal_padding_digits=0):
-        """Translate an internal GOE column to an Impala column.
-
-        Impala has a different outcome to Hive for GOE_TYPE_BINARY and GOE_TYPE_LARGE_BINARY
-        We deal with them here and then fall back into the parent code
-        """
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable & data_default forward from RDBMS."""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return HadoopColumn(
-                col.name,
-                data_type=data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-            )
-
-        if column.data_type == GOE_TYPE_BINARY:
-            return new_column(column, HADOOP_TYPE_STRING)
-        if column.data_type == GOE_TYPE_LARGE_BINARY:
-            return new_column(column, HADOOP_TYPE_STRING)
-        return super().from_canonical_column(column, decimal_padding_digits=decimal_padding_digits)
 
     def gen_insert_select_sql_text(
         self,
@@ -477,16 +448,12 @@ FROM   %(from_db_table)s%(where)s""" % {
     def get_table_size(self, db_name, table_name, no_cache=False):
         """On Impala HiveTable (better_impyla) requires us to sum the size from partitions"""
         assert db_name and table_name
-        hive_table = self._get_hive_table(db_name, table_name, no_cache=no_cache)
-        if self.get_partition_columns(db_name, table_name):
-            partitions = self.get_table_partitions(db_name, table_name)
-            self._log("Summing size of %s partitions" % len(partitions), detail=VVERBOSE)
-            size_bytes = 0
-            for k, v in partitions.items():
-                size_bytes += v["size_in_bytes"] or 0
-        else:
-            size_bytes = hive_table.table_size() or 0
-        return size_bytes
+        return self.catalog.get_table_size(
+            db_name,
+            table_name,
+            lambda d, t: self._fetch_table_size(d, t, no_cache=no_cache),
+            no_cache=no_cache,
+        )
 
     def get_table_sort_columns(self, db_name, table_name, as_csv=True):
         assert db_name and table_name
@@ -567,7 +534,10 @@ FROM   %(from_db_table)s%(where)s""" % {
             self.enclose_identifier(db_name),
             self.enclose_identifier(table_name),
         )
-        return self.execute_ddl(sql, sync=sync)
+        result = self.execute_ddl(sql, sync=sync)
+        self.catalog.on_load_table(db_name, table_name)
+        self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def sentry_supported(self):
         """CDP/CDH >= 7 has moved from Sentry to Ranger. We do not currently establish the platform/distribution
@@ -628,7 +598,19 @@ FROM   %(from_db_table)s%(where)s""" % {
         return udfs
 
     def _backend_capabilities(self):
-        return IMPALA_BACKEND_CAPABILITIES
+        return IMPALA_CAPABILITIES.to_capability_dict()
+
+    def _fetch_table_size(self, db_name, table_name, no_cache=False):
+        hive_table = self._get_hive_table(db_name, table_name, no_cache=no_cache)
+        if self.get_partition_columns(db_name, table_name):
+            partitions = self.get_table_partitions(db_name, table_name)
+            self._log("Summing size of %s partitions" % len(partitions), detail=VVERBOSE)
+            size_bytes = 0
+            for k, v in partitions.items():
+                size_bytes += v["size_in_bytes"] or 0
+        else:
+            size_bytes = hive_table.table_size() or 0
+        return size_bytes
 
     def _execute_ddl_or_dml(
         self,

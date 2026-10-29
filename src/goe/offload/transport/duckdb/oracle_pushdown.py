@@ -8,8 +8,7 @@ from collections.abc import Sequence
 
 import duckdb
 
-from goe.offload.column_metadata import ColumnMetadataInterface
-from goe.offload.oracle.oracle_column import (
+from goe.offload.schema.column_spec import (
     ORACLE_TYPE_BFILE,
     ORACLE_TYPE_BLOB,
     ORACLE_TYPE_CLOB,
@@ -22,6 +21,7 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP_LOCAL_TZ,
     ORACLE_TYPE_TIMESTAMP_TZ,
     ORACLE_TYPE_XMLTYPE,
+    ColumnSpec,
 )
 from goe.offload.transport.duckdb.engine import (
     DuckDBEngine,
@@ -93,7 +93,7 @@ class OracleExtensionTransport:
     @classmethod
     def assess_table_eligibility(
         cls,
-        columns: Sequence[ColumnMetadataInterface],
+        columns: Sequence[ColumnSpec],
         *,
         has_oci_library: bool | None = None,
     ) -> OracleFallbackAssessment:

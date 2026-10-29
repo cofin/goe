@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 import oracledb as cxo
 
 from goe.observability.db import build_oracle_client_info_command
-from goe.offload.column_metadata import match_table_column
 from goe.offload.frontend_api import FRONTEND_TRACE_ID, FRONTEND_TRACE_MODULE
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
@@ -29,7 +28,10 @@ from goe.offload.offload_transport_rdbms_api import (
     OffloadTransportRdbmsApiException,
     OffloadTransportRdbmsApiInterface,
 )
-from goe.offload.oracle.oracle_column import (
+from goe.offload.oracle.oracle_offload_source_table import (
+    oracle_version_is_smart_scan_unsafe,
+)
+from goe.offload.schema.column_spec import (
     ORACLE_TYPE_BINARY_DOUBLE,
     ORACLE_TYPE_BINARY_FLOAT,
     ORACLE_TYPE_DATE,
@@ -41,9 +43,7 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP_LOCAL_TZ,
     ORACLE_TYPE_TIMESTAMP_TZ,
     ORACLE_TYPE_XMLTYPE,
-)
-from goe.offload.oracle.oracle_offload_source_table import (
-    oracle_version_is_smart_scan_unsafe,
+    match_table_column,
 )
 from goe.offload.sql_ast.dialect_engine import get_dialect_engine
 from goe.offload.transport.arrow_extractor import ArrowExtractionConfig, OracleArrowStreamExtractor

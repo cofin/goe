@@ -9,7 +9,12 @@ from decimal import Decimal
 import pytest
 from numpy import datetime64
 
-from goe.offload.bigquery.bigquery_column import (
+from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
+from goe.offload.hadoop.hive_literal import HiveLiteral
+from goe.offload.hadoop.impala_literal import ImpalaLiteral
+from goe.offload.microsoft.synapse_literal import SynapseLiteral
+from goe.offload.oracle.oracle_literal import OracleLiteral
+from goe.offload.schema.column_spec import (
     BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_DATE,
     BIGQUERY_TYPE_DATETIME,
@@ -18,19 +23,22 @@ from goe.offload.bigquery.bigquery_column import (
     BIGQUERY_TYPE_NUMERIC,
     BIGQUERY_TYPE_STRING,
     BIGQUERY_TYPE_TIME,
-)
-from goe.offload.bigquery.bigquery_literal import BigQueryLiteral
-from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_DATE,
     HADOOP_TYPE_DECIMAL,
     HADOOP_TYPE_DOUBLE,
     HADOOP_TYPE_STRING,
     HADOOP_TYPE_TIMESTAMP,
-)
-from goe.offload.hadoop.hive_literal import HiveLiteral
-from goe.offload.hadoop.impala_literal import ImpalaLiteral
-from goe.offload.microsoft.synapse_column import (
+    ORACLE_TYPE_DATE,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_VARCHAR2,
+    SNOWFLAKE_TYPE_DATE,
+    SNOWFLAKE_TYPE_FLOAT,
+    SNOWFLAKE_TYPE_NUMBER,
+    SNOWFLAKE_TYPE_TEXT,
+    SNOWFLAKE_TYPE_TIME,
+    SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
     SYNAPSE_TYPE_BIGINT,
     SYNAPSE_TYPE_BINARY,
     SYNAPSE_TYPE_CHAR,
@@ -47,22 +55,6 @@ from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_UNIQUEIDENTIFIER,
     SYNAPSE_TYPE_VARBINARY,
     SYNAPSE_TYPE_VARCHAR,
-)
-from goe.offload.microsoft.synapse_literal import SynapseLiteral
-from goe.offload.oracle.oracle_column import (
-    ORACLE_TYPE_DATE,
-    ORACLE_TYPE_NUMBER,
-    ORACLE_TYPE_TIMESTAMP,
-    ORACLE_TYPE_VARCHAR2,
-)
-from goe.offload.oracle.oracle_literal import OracleLiteral
-from goe.offload.snowflake.snowflake_column import (
-    SNOWFLAKE_TYPE_DATE,
-    SNOWFLAKE_TYPE_FLOAT,
-    SNOWFLAKE_TYPE_NUMBER,
-    SNOWFLAKE_TYPE_TEXT,
-    SNOWFLAKE_TYPE_TIME,
-    SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
 )
 from goe.offload.snowflake.snowflake_literal import SnowflakeLiteral
 from goe.offload.spark.pyspark_literal import PysparkLiteral

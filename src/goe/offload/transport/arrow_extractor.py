@@ -12,9 +12,7 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from goe.offload.column_metadata import ColumnMetadataInterface
-from goe.offload.oracle.oracle_column import ORACLE_TYPE_TIMESTAMP_LOCAL_TZ
-from goe.offload.staging.avro.avro_column import (
+from goe.offload.schema.column_spec import (
     AVRO_TYPE_BOOLEAN,
     AVRO_TYPE_BYTES,
     AVRO_TYPE_DOUBLE,
@@ -22,8 +20,7 @@ from goe.offload.staging.avro.avro_column import (
     AVRO_TYPE_INT,
     AVRO_TYPE_LONG,
     AVRO_TYPE_STRING,
-)
-from goe.offload.staging.parquet.parquet_column import (
+    ORACLE_TYPE_TIMESTAMP_LOCAL_TZ,
     PARQUET_TYPE_BINARY,
     PARQUET_TYPE_BOOLEAN,
     PARQUET_TYPE_DOUBLE,
@@ -31,6 +28,7 @@ from goe.offload.staging.parquet.parquet_column import (
     PARQUET_TYPE_INT32,
     PARQUET_TYPE_INT64,
     PARQUET_TYPE_STRING,
+    ColumnSpec,
 )
 from goe.typing import FrozenBaseStruct
 from goe.util.module_loader import import_optional
@@ -84,7 +82,7 @@ class OracleArrowStreamExtractor:
         return self._config
 
     @staticmethod
-    def build_expected_arrow_schema(staging_columns: Sequence[ColumnMetadataInterface]) -> pa.Schema:
+    def build_expected_arrow_schema(staging_columns: Sequence[ColumnSpec]) -> pa.Schema:
         """Build the target Arrow schema from GOE staging column metadata."""
         fields: list[pa.Field] = []
         for col in staging_columns:
@@ -119,7 +117,7 @@ class OracleArrowStreamExtractor:
                 )
         return None
 
-    def empty_reader(self, staging_columns: Sequence[ColumnMetadataInterface]) -> pa.RecordBatchReader:
+    def empty_reader(self, staging_columns: Sequence[ColumnSpec]) -> pa.RecordBatchReader:
         """Return a typed 0-row RecordBatchReader matching staging_columns."""
         target_schema = self.build_expected_arrow_schema(staging_columns)
         return pa.RecordBatchReader.from_batches(target_schema, iter(()))
@@ -129,9 +127,9 @@ class OracleArrowStreamExtractor:
         conn: Any,
         sql_text: str,
         binds: dict[str, Any] | None,
-        staging_columns: Sequence[ColumnMetadataInterface],
+        staging_columns: Sequence[ColumnSpec],
         *,
-        source_columns: Sequence[ColumnMetadataInterface] = (),
+        source_columns: Sequence[ColumnSpec] = (),
     ) -> pa.RecordBatchReader:
         """Return a lazy pyarrow.RecordBatchReader streaming batches from conn.fetch_df_batches."""
         target_schema = self.build_expected_arrow_schema(staging_columns)
@@ -163,9 +161,9 @@ class OracleArrowStreamExtractor:
     def from_cursor(
         self,
         cursor: Any,
-        staging_columns: Sequence[ColumnMetadataInterface],
+        staging_columns: Sequence[ColumnSpec],
         *,
-        source_columns: Sequence[ColumnMetadataInterface] = (),
+        source_columns: Sequence[ColumnSpec] = (),
     ) -> pa.RecordBatchReader:
         """Stream rows from a DB-API cursor into a lazy pyarrow.RecordBatchReader."""
         target_schema = self.build_expected_arrow_schema(staging_columns)
@@ -182,9 +180,9 @@ class OracleArrowStreamExtractor:
     def from_rows(
         self,
         rows: Sequence[Sequence[Any]],
-        staging_columns: Sequence[ColumnMetadataInterface],
+        staging_columns: Sequence[ColumnSpec],
         *,
-        source_columns: Sequence[ColumnMetadataInterface] = (),
+        source_columns: Sequence[ColumnSpec] = (),
     ) -> pa.RecordBatchReader:
         """Stream an in-memory sequence of row tuples into a lazy pyarrow.RecordBatchReader."""
         target_schema = self.build_expected_arrow_schema(staging_columns)
@@ -204,7 +202,7 @@ class OracleArrowStreamExtractor:
         batch: pa.RecordBatch,
         target_schema: pa.Schema,
         *,
-        source_columns: Sequence[ColumnMetadataInterface] = (),
+        source_columns: Sequence[ColumnSpec] = (),
     ) -> pa.RecordBatch:
         """Align column names, scrub NaN/Inf floats when configured, and cast columns to target_schema."""
         arrays: list[pa.Array] = []
@@ -241,7 +239,7 @@ class OracleArrowStreamExtractor:
         reader = pa.RecordBatchReader.from_stream(ora_df)
         return list(reader)
 
-    def _needs_python_wrangling(self, field_name: str, src_col: ColumnMetadataInterface | None) -> bool:
+    def _needs_python_wrangling(self, field_name: str, src_col: ColumnSpec | None) -> bool:
         """Return True when a column requires base64 decoding or TIMESTAMP WITH LOCAL TIME ZONE dot stripping."""
         b64_upper = {getattr(c, "name", str(c)).upper() for c in self._config.base64_columns}
         if b64_upper and field_name.upper() in b64_upper:
@@ -258,7 +256,7 @@ class OracleArrowStreamExtractor:
         rows: Sequence[Sequence[Any]],
         target_schema: pa.Schema,
         *,
-        source_columns: Sequence[ColumnMetadataInterface] = (),
+        source_columns: Sequence[ColumnSpec] = (),
     ) -> pa.RecordBatch:
         """Convert a batch of Python row tuples into a normalized pyarrow.RecordBatch."""
         arrays: list[pa.Array] = []
@@ -274,7 +272,7 @@ class OracleArrowStreamExtractor:
         target_type: pa.DataType,
         *,
         field_name: str = "",
-        src_col: ColumnMetadataInterface | None = None,
+        src_col: ColumnSpec | None = None,
     ) -> pa.Array:
         """Convert complex scalar objects (Decimal, memoryview, LOBs, base64, float NaN) to target_type."""
         return self._convert_python_values(arr.to_pylist(), target_type, field_name=field_name, src_col=src_col)
@@ -285,7 +283,7 @@ class OracleArrowStreamExtractor:
         target_type: pa.DataType,
         *,
         field_name: str = "",
-        src_col: ColumnMetadataInterface | None = None,
+        src_col: ColumnSpec | None = None,
     ) -> pa.Array:
         """Normalize a sequence of Python values into a typed PyArrow Array."""
         b64_upper = {getattr(c, "name", str(c)).upper() for c in self._config.base64_columns}

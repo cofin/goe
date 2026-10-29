@@ -15,17 +15,12 @@ from numpy import datetime64
 
 from goe.config.orchestration_defaults import get_load_db_pattern
 from goe.offload import offload_constants
-from goe.offload.column_metadata import (
-    ColumnMetadataInterface,
-    get_column_names,
-    invalid_column_list_message,
-    valid_column_list,
-)
 from goe.offload.offload_metadata_functions import (
     flatten_lpa_individual_high_values,
     incremental_hv_csv_from_list,
 )
 from goe.offload.predicate_offload import GenericPredicate, create_or_relation_predicate
+from goe.offload.schema.column_spec import ColumnSpec, get_column_names, invalid_column_list_message, valid_column_list
 from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
@@ -111,7 +106,7 @@ def expand_columns_csv(columns_csv, reference_columns, retain_non_matching_names
     column_names = csv_split(columns_csv)
     if not reference_columns:
         return column_names
-    if isinstance(reference_columns[0], ColumnMetadataInterface):
+    if isinstance(reference_columns[0], ColumnSpec):
         reference_names = get_column_names(reference_columns)
     else:
         reference_names = reference_columns

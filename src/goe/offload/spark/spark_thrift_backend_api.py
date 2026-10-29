@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendSparkThriftApi: BackendApi implementation for a Spark ThriftServer SQL backend.
@@ -21,14 +19,17 @@ from goe.offload.backend_api import (
     REPORT_ATTR_BACKEND_TYPE,
     BackendApiException,
 )
+from goe.offload.backend_capabilities import BackendCapabilities
 from goe.offload.hadoop.hadoop_backend_api import BackendHadoopApi
 from goe.offload.hadoop.hive_backend_api import BackendHiveApi
 from goe.offload.hadoop.hs2_connection import HS2_OPTIONS
-from goe.offload.offload_constants import SPARK_BACKEND_CAPABILITIES
 from goe.offload.offload_messages import VVERBOSE
+from goe.offload.sql_ast.dialect_engine import DialectSqlEngine
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+
+SPARK_CAPABILITIES = BackendCapabilities.for_spark()
 
 
 class BackendSparkThriftApi(BackendHiveApi):
@@ -58,6 +59,7 @@ class BackendSparkThriftApi(BackendHiveApi):
         )
 
         self._sql_engine_name = "Spark"
+        self._sql_engine = DialectSqlEngine("spark")
 
         self._target_version = None
         self._spark_thrift_host = connection_options.offload_transport_spark_thrift_host
@@ -101,14 +103,21 @@ class BackendSparkThriftApi(BackendHiveApi):
         """
         assert db_name
         assert object_name
-        return bool(self.database_exists(db_name) and self.list_tables(db_name, object_name))
+        return self.catalog.table_exists(
+            db_name,
+            object_name,
+            self._fetch_table_exists,
+        )
 
     def get_columns(self, db_name, table_name):
         assert db_name and table_name
-        legacy_columns = self.execute_query_fetch_all(
-            "DESCRIBE %s" % self.enclose_object_reference(db_name, table_name)
+        return list(
+            self.catalog.get_columns(
+                db_name,
+                table_name,
+                self._fetch_columns,
+            )
         )
-        return self._legacy_column_list_to_type(legacy_columns)
 
     def get_missing_hive_table_stats(self, db_name, table_name, colstats=True, as_dict=False):
         """See note in get_partition_columns() for commentary"""
@@ -196,7 +205,16 @@ class BackendSparkThriftApi(BackendHiveApi):
         return
 
     def _backend_capabilities(self):
-        return SPARK_BACKEND_CAPABILITIES
+        return SPARK_CAPABILITIES.to_capability_dict()
+
+    def _fetch_table_exists(self, db_name: str, object_name: str) -> bool:
+        return bool(self.database_exists(db_name) and self.list_tables(db_name, object_name))
+
+    def _fetch_columns(self, db_name: str, table_name: str) -> list:
+        legacy_columns = self.execute_query_fetch_all(
+            "DESCRIBE %s" % self.enclose_object_reference(db_name, table_name)
+        )
+        return self._legacy_column_list_to_type(legacy_columns)
 
     def _format_storage_format_clause(self, storage_format):
         return "STORED AS %s" % storage_format

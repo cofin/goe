@@ -20,12 +20,12 @@ from datetime import date, datetime
 
 from numpy import datetime64
 
-from goe.offload.column_metadata import ColumnMetadataInterface, match_table_column
 from goe.offload.offload_constants import (
     PART_COL_DATE_GRANULARITIES,
     PART_COL_GRANULARITY_MONTH,
     PART_COL_GRANULARITY_YEAR,
 )
+from goe.offload.schema.column_spec import ColumnSpec, match_table_column
 from goe.util.string_utils import MAX_SUPPORTED_PRECISION
 
 
@@ -56,13 +56,15 @@ class SyntheticPartitionLiteral:
         """Generate a Python function which can be used to create a synthetic partition literal
         partition_column can be a column name, which must exist in table_columns, or a column object.
         """
-        part_col_obj: ColumnMetadataInterface | None
-        if isinstance(partition_column, ColumnMetadataInterface):
+        part_col_obj: ColumnSpec | None
+        if isinstance(partition_column, ColumnSpec):
             part_col_obj = partition_column
         else:
             part_col_obj = match_table_column(partition_column, table_columns)
         assert part_col_obj is not None
+        assert part_col_obj.partition_info is not None
         source_column_name = part_col_obj.partition_info.source_column_name
+        assert source_column_name is not None
         source_column = match_table_column(source_column_name, table_columns)
         return SyntheticPartitionLiteral._gen_synthetic_literal_function(part_col_obj, source_column)
 
@@ -155,8 +157,9 @@ class SyntheticPartitionLiteral:
         For example a month granularity fn that converts:
             datetime64('2011-01-01 12:12:12.1234') -> '2011-01'
         """
-        assert isinstance(partition_column, ColumnMetadataInterface)
-        assert isinstance(source_column, ColumnMetadataInterface)
+        assert isinstance(partition_column, ColumnSpec)
+        assert isinstance(source_column, ColumnSpec)
+        assert partition_column.partition_info is not None
 
         source_column_name = partition_column.partition_info.source_column_name
         if source_column.name.upper() != (source_column_name or "").upper():
@@ -166,6 +169,7 @@ class SyntheticPartitionLiteral:
 
         digits = partition_column.partition_info.digits
         granularity = partition_column.partition_info.granularity
+        assert granularity is not None
         partition_fn = None
         if source_column.is_date_based() and partition_column.is_date_based():
             partition_fn = lambda x: SyntheticPartitionLiteral._gen_date_truncated_literal(x, granularity)

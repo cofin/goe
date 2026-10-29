@@ -7,41 +7,24 @@
 
 import json
 import logging
+from typing import ClassVar
 
-from goe.offload.column_metadata import (
-    GOE_TYPE_BINARY,
-    GOE_TYPE_BOOLEAN,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-    is_safe_mapping,
-    match_table_column,
-)
-from goe.offload.staging.avro.avro_column import (
+from goe.offload.schema.column_spec import (
     AVRO_TYPE_BOOLEAN,
-    AVRO_TYPE_BYTES,
     AVRO_TYPE_DOUBLE,
     AVRO_TYPE_FLOAT,
     AVRO_TYPE_INT,
     AVRO_TYPE_LONG,
-    AVRO_TYPE_STRING,
-    StagingAvroColumn,
+    GOE_TYPE_BINARY,
+    GOE_TYPE_LARGE_BINARY,
+    ColumnSpec,
+    match_table_column,
+)
+from goe.offload.schema.type_registry import (
+    TYPE_REGISTRY,
+    MappingContext,
+    MappingTarget,
+    TypeMappingLimits,
 )
 from goe.offload.staging.staging_file import (
     JAVA_PRIMITIVE_BOOLEAN,
@@ -59,6 +42,8 @@ logger.addHandler(logging.NullHandler())
 
 class OffloadStagingAvroFile(OffloadStagingFileInterface):
     """AVRO implementation"""
+
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.AVRO
 
     def __init__(
         self,
@@ -85,13 +70,19 @@ class OffloadStagingAvroFile(OffloadStagingFileInterface):
         if dry_run:
             logger.info("* Dry run *")
 
-    def from_canonical_column(self, column):
+    def from_canonical_column(self, column: ColumnSpec) -> ColumnSpec:
         """Translate an internal GOE column to an Avro column"""
-        return self._from_canonical_column_to_avro(column)
+        ctx = MappingContext(limits=TypeMappingLimits(), binary_as_base64=self._binary_data_as_base64)
+        return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, ctx)
 
-    def to_canonical_column(self, column, use_staging_file_name=False):
+    def to_canonical_column(self, column: ColumnSpec, use_staging_file_name: bool = False) -> ColumnSpec:
         """Translate an Avro column to an internal GOE column"""
-        return self._from_avro_to_canonical_column(column, use_staging_file_name=use_staging_file_name)
+        ctx = MappingContext(
+            limits=TypeMappingLimits(),
+            binary_as_base64=self._binary_data_as_base64,
+            use_staging_file_name=use_staging_file_name,
+        )
+        return TYPE_REGISTRY.staging_to_canonical(column, ctx)
 
     def get_file_schema_json(self, as_string=True):
         json_string = self._get_avro_schema_json_string()
@@ -99,138 +90,6 @@ class OffloadStagingAvroFile(OffloadStagingFileInterface):
 
     def get_java_primitive(self, staging_column):
         return self._get_avro_java_primitive(staging_column)
-
-    def _from_canonical_column_to_avro(self, column):
-        """Translate an internal GOE column to an Avro column
-        This is the basic translations, each specific backend may override individual translations
-        before calling this method.
-        """
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable, data_default & char_semantics forward from RDBMS"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return StagingAvroColumn(
-                col.name,
-                data_type=data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                char_semantics=col.char_semantics,
-            )
-
-        assert column
-        assert isinstance(column, CanonicalColumn)
-
-        if column.data_type == GOE_TYPE_FIXED_STRING:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_LARGE_STRING:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_VARIABLE_STRING:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_BINARY:
-            data_type = AVRO_TYPE_STRING if self._binary_data_as_base64 else AVRO_TYPE_BYTES
-            return new_column(column, data_type, safe_mapping=True)
-        if column.data_type == GOE_TYPE_LARGE_BINARY:
-            data_type = AVRO_TYPE_STRING if self._binary_data_as_base64 else AVRO_TYPE_BYTES
-            return new_column(column, data_type, safe_mapping=True)
-        if column.data_type in (
-            GOE_TYPE_INTEGER_1,
-            GOE_TYPE_INTEGER_2,
-            GOE_TYPE_INTEGER_4,
-        ):
-            if column.safe_mapping:
-                return new_column(column, AVRO_TYPE_INT, safe_mapping=True)
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTEGER_8:
-            if column.safe_mapping:
-                return new_column(column, AVRO_TYPE_LONG, safe_mapping=True)
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTEGER_38:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_DECIMAL:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_FLOAT:
-            if column.safe_mapping:
-                return new_column(column, AVRO_TYPE_FLOAT, safe_mapping=True)
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_DOUBLE:
-            if column.safe_mapping:
-                return new_column(column, AVRO_TYPE_DOUBLE, safe_mapping=True)
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_DATE:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_TIME:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_TIMESTAMP:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTERVAL_DS:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTERVAL_YM:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=False)
-        if column.data_type == GOE_TYPE_BOOLEAN:
-            return new_column(column, AVRO_TYPE_BOOLEAN, safe_mapping=True)
-        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
-
-    def _from_avro_to_canonical_column(self, column, use_staging_file_name=False):
-        """Translate an Avro column to an internal GOE column
-        This is the basic translations, each specific backend may override individual translations
-        before calling this method.
-        """
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable, data_default & char_semantics forward"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            name = col.staging_file_column_name if use_staging_file_name else col.name
-            return CanonicalColumn(
-                name,
-                data_type=data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                char_semantics=col.char_semantics,
-            )
-
-        assert column
-        assert isinstance(column, StagingAvroColumn)
-
-        if column.data_type == AVRO_TYPE_BOOLEAN:
-            return new_column(column, GOE_TYPE_BOOLEAN, safe_mapping=True)
-        if column.data_type == AVRO_TYPE_BYTES:
-            data_type = GOE_TYPE_VARIABLE_STRING if self._binary_data_as_base64 else GOE_TYPE_BINARY
-            return new_column(column, data_type, safe_mapping=True)
-        if column.data_type == AVRO_TYPE_DOUBLE:
-            return new_column(column, GOE_TYPE_DOUBLE, safe_mapping=True)
-        if column.data_type == AVRO_TYPE_FLOAT:
-            return new_column(column, GOE_TYPE_FLOAT, safe_mapping=True)
-        if column.data_type == AVRO_TYPE_INT:
-            return new_column(column, GOE_TYPE_INTEGER_4, safe_mapping=True)
-        if column.data_type == AVRO_TYPE_LONG:
-            return new_column(column, GOE_TYPE_INTEGER_8, safe_mapping=True)
-        if column.data_type == AVRO_TYPE_STRING:
-            return new_column(column, GOE_TYPE_VARIABLE_STRING, safe_mapping=True)
-        raise NotImplementedError("Unsupported Avro data type: %s" % column.data_type)
 
     def _get_avro_schema_json_string(self):
         col_schemas = []
@@ -274,6 +133,8 @@ class OffloadStagingAvroFile(OffloadStagingFileInterface):
 class OffloadStagingAvroImpalaFile(OffloadStagingAvroFile):
     """AVRO implementation on Impala (inherits from Avro)"""
 
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.AVRO_IMPALA
+
     def __init__(
         self,
         load_db_name,
@@ -298,39 +159,6 @@ class OffloadStagingAvroImpalaFile(OffloadStagingAvroFile):
         logger.info("OffloadStagingAvroImpalaFile setup: (%s, %s)" % (load_db_name, table_name))
         if dry_run:
             logger.info("* Dry run *")
-
-    def from_canonical_column(self, column):
-        """Translate an internal GOE column to an Avro/Impala column"""
-
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            safe_mapping=None,
-        ):
-            """Wrapper that carries name, nullable & data_default forward from RDBMS"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return StagingAvroColumn(
-                col.name,
-                data_type=data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-            )
-
-        assert column
-        assert isinstance(column, CanonicalColumn)
-
-        if column.data_type == GOE_TYPE_BINARY:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=True)
-        if column.data_type == GOE_TYPE_LARGE_BINARY:
-            return new_column(column, AVRO_TYPE_STRING, safe_mapping=True)
-        return self._from_canonical_column_to_avro(column)
 
     def get_file_schema_json(self, as_string=True):
         json_string = self._get_avro_schema_json_string()

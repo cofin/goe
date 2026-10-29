@@ -11,7 +11,7 @@ from datetime import date, time
 from numpy import datetime64
 
 from goe.offload.format_literal import FormatLiteralInterface
-from goe.offload.snowflake.snowflake_column import (
+from goe.offload.schema.column_spec import (
     SNOWFLAKE_TYPE_DATE,
     SNOWFLAKE_TYPE_TIME,
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,

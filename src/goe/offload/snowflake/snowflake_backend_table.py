@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendSnowflakeTable: Library for logic/interaction with a table that will
@@ -8,6 +6,8 @@ be either:
   1) The target of an offload
   2) The source of a present
 """
+
+from __future__ import annotations
 
 import logging
 from textwrap import dedent
@@ -26,16 +26,18 @@ from goe.filesystem.goe_dfs import (
     azure_fq_container_name,
 )
 from goe.offload.backend_table import BackendTableException, BackendTableInterface
-from goe.offload.column_metadata import ColumnMetadataInterface, valid_column_list
 from goe.offload.offload_constants import FILE_STORAGE_FORMAT_AVRO
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.snowflake import snowflake_predicate
-from goe.offload.snowflake.snowflake_column import (
+from goe.offload.schema.column_spec import (
     SNOWFLAKE_TYPE_BINARY,
     SNOWFLAKE_TYPE_TIME,
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
-    SnowflakeColumn,
+    ColumnDialect,
+    ColumnSpec,
+    valid_column_list,
 )
+from goe.offload.snowflake import snowflake_predicate
+from goe.offload.sql_ast.dialect_engine import get_dialect_engine
 from goe.util.string_utils import add_suffix_in_same_case
 
 logger = logging.getLogger(__name__)
@@ -76,6 +78,7 @@ class BackendSnowflakeTable(BackendTableInterface):
         )
 
         self._sql_engine_name = "Snowflake"
+        self._sql_engine = get_dialect_engine("snowflake")
         self._snowflake_integration = orchestration_options.snowflake_integration
         self._snowflake_stage = orchestration_options.snowflake_stage
         self._snowflake_file_format = add_suffix_in_same_case(
@@ -113,6 +116,7 @@ class BackendSnowflakeTable(BackendTableInterface):
             sort_column_names=self._sort_columns,
             with_terminator=with_terminator,
         )
+        self._db_api.catalog.invalidate_table(self.db_name, self.table_name)
         if not self._dry_run:
             self._drop_state()
         return cmds
@@ -183,6 +187,7 @@ class BackendSnowflakeTable(BackendTableInterface):
             query_options=query_options,
             profile=self._log_profile_after_final_table_load,
         )
+        self._db_api.catalog.invalidate_table(self.db_name, self.table_name)
 
     def load_materialized_join(
         self,
@@ -219,6 +224,7 @@ class BackendSnowflakeTable(BackendTableInterface):
             query_options=query_options,
             profile=self._log_profile_after_final_table_load,
         )
+        self._db_api.catalog.invalidate_table(self.db_name, self.table_name)
 
     def partition_function_requires_granularity(self):
         """No partitioning on Snowflake"""
@@ -249,7 +255,7 @@ class BackendSnowflakeTable(BackendTableInterface):
               If we remove this overload then modify the description in the interface.
         """
         assert valid_column_list(new_columns)
-        cols = [_.clone(name=_.name.upper()) for _ in new_columns]
+        cols = [_.replace(name=_.name.upper()) for _ in new_columns]
         self._columns = cols
 
     def setup_result_cache_area(self):
@@ -360,7 +366,7 @@ class BackendSnowflakeTable(BackendTableInterface):
         )
 
     def _format_staging_column_name(self, column):
-        if isinstance(column, ColumnMetadataInterface):
+        if isinstance(column, ColumnSpec):
             column_name = column.staging_file_column_name or column.name
         else:
             column_name = column
@@ -468,6 +474,41 @@ class BackendSnowflakeTable(BackendTableInterface):
             return "%s != 'null'" % self._format_staging_column_name(column_name)
         return super()._staging_column_is_not_null_sql_expr(column_name)
 
+    @staticmethod
+    def _cast_expr(expr: str, data_type: str, safe_cast: bool = False) -> str:
+        """TRY_CAST only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
+        if safe_cast:
+            return "TRY_CAST(CAST(%s AS TEXT) AS %s)" % (expr, data_type)
+        return "CAST(%s AS %s)" % (expr, data_type)
+
+    @staticmethod
+    def _cast_date_expr(expr: str, data_type: str, safe_cast: bool = False) -> str:
+        """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
+        if safe_cast:
+            return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'YYYY-MM-DD')"
+        return f"TO_{data_type}({expr})"
+
+    @staticmethod
+    def _cast_datetime_expr(expr: str, data_type: str, safe_cast: bool = False) -> str:
+        """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
+        if safe_cast:
+            return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'YYYY-MM-DD HH24:MI:SS.FF')"
+        return f"TO_{data_type}({expr})"
+
+    @staticmethod
+    def _cast_time_expr(expr: str, data_type: str, safe_cast: bool = False) -> str:
+        """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
+        if safe_cast:
+            return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'HH24:MI:SS.FF')"
+        return f"TO_{data_type}({expr})"
+
+    @staticmethod
+    def _cast_tz_expr(expr: str, data_type: str, safe_cast: bool = False) -> str:
+        """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
+        if safe_cast:
+            return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')"
+        return f"TO_{data_type}({expr})"
+
     def _staging_to_backend_cast(self, rdbms_column: Any, backend_column: Any, staging_column: Any) -> tuple:
         """Returns correctly cast or overridden columns ready for insert/select to final table
 
@@ -475,71 +516,42 @@ class BackendSnowflakeTable(BackendTableInterface):
         Time zoned so we do not normalise to UTC.
         We need a string containing the full timestamp spec including nanoseconds and 4 digit year.
         """
-
-        def cast(expr, data_type, safe_cast=False):
-            """TRY_CAST only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
-            if safe_cast:
-                return "TRY_CAST(CAST(%s AS TEXT) AS %s)" % (expr, data_type)
-            return "CAST(%s AS %s)" % (expr, data_type)
-
-        def cast_date(expr, data_type, safe_cast=False):
-            """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
-            if safe_cast:
-                return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'YYYY-MM-DD')"
-            return f"TO_{data_type}({expr})"
-
-        def cast_datetime(expr, data_type, safe_cast=False):
-            """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
-            if safe_cast:
-                return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'YYYY-MM-DD HH24:MI:SS.FF')"
-            return f"TO_{data_type}({expr})"
-
-        def cast_time(expr, data_type, safe_cast=False):
-            """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
-            if safe_cast:
-                return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'HH24:MI:SS.FF')"
-            return f"TO_{data_type}({expr})"
-
-        def cast_tz(expr, data_type, safe_cast=False):
-            """TRY_TO_... only works with TEXT but all staging columns are VARIANT. Std CAST is fine."""
-            if safe_cast:
-                return f"TRY_TO_{data_type}(CAST({expr} AS TEXT),'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')"
-            return f"TO_{data_type}({expr})"
-
         assert backend_column
-        assert isinstance(backend_column, SnowflakeColumn)
+        assert isinstance(backend_column, ColumnSpec) and backend_column.dialect is ColumnDialect.SNOWFLAKE
         assert rdbms_column, "RDBMS column missing for backend column: %s" % backend_column.name
-        assert isinstance(rdbms_column, ColumnMetadataInterface)
+        assert isinstance(rdbms_column, ColumnSpec)
         assert staging_column
-        assert isinstance(staging_column, ColumnMetadataInterface)
+        assert isinstance(staging_column, ColumnSpec)
 
         return_cast = None
         return_vcast = None
         return_type = backend_column.format_data_type().upper()
 
-        if isinstance(staging_column, SnowflakeColumn) and staging_column.data_type == backend_column.data_type:
+        if (
+            isinstance(staging_column, ColumnSpec) and staging_column.dialect is ColumnDialect.SNOWFLAKE
+        ) and staging_column.data_type == backend_column.data_type:
             self._log(
                 "No cast of %s required for matching load data type: %s"
                 % (backend_column.name, staging_column.data_type),
                 detail=VVERBOSE,
             )
         elif backend_column.is_number_based():
-            return_cast = cast(
+            return_cast = self._cast_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.format_data_type().upper(),
             )
-            return_vcast = cast(
+            return_vcast = self._cast_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.format_data_type().upper(),
                 safe_cast=True,
             )
         elif rdbms_column.is_time_zone_based():
             if not backend_column.is_string_based():
-                return_cast = cast_tz(
+                return_cast = self._cast_tz_expr(
                     self._format_staging_column_name(staging_column),
                     backend_column.data_type,
                 )
-                return_vcast = cast_tz(
+                return_vcast = self._cast_tz_expr(
                     self._format_staging_column_name(staging_column),
                     backend_column.data_type,
                     safe_cast=True,
@@ -547,11 +559,11 @@ class BackendSnowflakeTable(BackendTableInterface):
         elif rdbms_column.is_date_based():
             if backend_column.is_string_based():
                 if rdbms_column.has_time_element():
-                    return_cast = cast_datetime(
+                    return_cast = self._cast_datetime_expr(
                         self._format_staging_column_name(staging_column),
                         SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
                     )
-                    return_vcast = cast_datetime(
+                    return_vcast = self._cast_datetime_expr(
                         self._format_staging_column_name(staging_column),
                         SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
                         safe_cast=True,
@@ -561,11 +573,11 @@ class BackendSnowflakeTable(BackendTableInterface):
                         TO_CHAR({cast},'YYYY-MM-DD HH24:MI:SS.FF9')
                     END"""
                 else:
-                    return_cast = cast_date(
+                    return_cast = self._cast_date_expr(
                         self._format_staging_column_name(staging_column),
                         SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
                     )
-                    return_vcast = cast_date(
+                    return_vcast = self._cast_date_expr(
                         self._format_staging_column_name(staging_column),
                         SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
                         safe_cast=True,
@@ -583,41 +595,41 @@ class BackendSnowflakeTable(BackendTableInterface):
                     cast=return_vcast,
                 )
             elif rdbms_column.has_time_element():
-                return_cast = cast_datetime(
+                return_cast = self._cast_datetime_expr(
                     self._format_staging_column_name(staging_column),
                     backend_column.data_type,
                 )
-                return_vcast = cast_datetime(
+                return_vcast = self._cast_datetime_expr(
                     self._format_staging_column_name(staging_column),
                     backend_column.data_type,
                     safe_cast=True,
                 )
             else:
-                return_cast = cast_date(
+                return_cast = self._cast_date_expr(
                     self._format_staging_column_name(staging_column),
                     backend_column.data_type,
                 )
-                return_vcast = cast_date(
+                return_vcast = self._cast_date_expr(
                     self._format_staging_column_name(staging_column),
                     backend_column.data_type,
                     safe_cast=True,
                 )
         elif backend_column.data_type == SNOWFLAKE_TYPE_TIME:
-            return_cast = cast_time(
+            return_cast = self._cast_time_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.data_type,
             )
-            return_vcast = cast_time(
+            return_vcast = self._cast_time_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.data_type,
                 safe_cast=True,
             )
         elif backend_column.data_type == SNOWFLAKE_TYPE_BINARY:
-            return_cast = cast(
+            return_cast = self._cast_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.format_data_type().upper(),
             )
-            return_vcast = cast(
+            return_vcast = self._cast_expr(
                 self._format_staging_column_name(staging_column),
                 backend_column.format_data_type().upper(),
                 safe_cast=True,

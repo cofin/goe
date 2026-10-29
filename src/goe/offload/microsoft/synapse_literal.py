@@ -12,7 +12,7 @@ from datetime import date, time
 from numpy import datetime64
 
 from goe.offload.format_literal import RE_TIMEZONE_NO_COLON, FormatLiteralInterface
-from goe.offload.microsoft.synapse_column import (
+from goe.offload.schema.column_spec import (
     SYNAPSE_TYPE_BINARY,
     SYNAPSE_TYPE_DATE,
     SYNAPSE_TYPE_DATETIME,

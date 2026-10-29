@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING, Any
 from goe.filesystem.goe_dfs import DFS_TYPE_FILE
 from goe.observability.db import build_transport_sql_comment
 from goe.observability.transport import inject_spark_trace_properties
-from goe.offload.column_metadata import match_table_column
 from goe.offload.frontend_api import FRONTEND_TRACE_MODULE
 from goe.offload.offload_constants import (
     DBTYPE_ORACLE,
@@ -46,6 +45,7 @@ from goe.offload.offload_transport_rdbms_api import (
 from goe.offload.offload_xform_functions import apply_transformation
 from goe.offload.operation.data_type_controls import char_semantics_override_map
 from goe.offload.registry import create_staging_file, create_transport_rdbms_api
+from goe.offload.schema.column_spec import match_table_column
 from goe.offload.spark.pyspark_literal import PysparkLiteral
 from goe.offload.transport.constants import (
     GOE_LISTENER_JAR,
@@ -74,10 +74,10 @@ from goe.util.string_utils import (
 
 if TYPE_CHECKING:
     from goe.offload.backend_table import BackendTableInterface
-    from goe.offload.column_metadata import ColumnMetadataInterface
     from goe.offload.offload_messages import OffloadMessages
     from goe.offload.offload_source_data import OffloadSourcePartitions
     from goe.offload.offload_source_table import OffloadSourceTableInterface
+    from goe.offload.schema.column_spec import ColumnSpec
 
 CONFIG_NOLOG_KEYS: list[str] = [
     "spark.jdbc.password",
@@ -726,7 +726,7 @@ class OffloadTransport(metaclass=ABCMeta):
             for tab_col in self._rdbms_columns:
                 canonical_column = self._rdbms_table.to_canonical_column(tab_col)
                 if tab_col.name in char_semantics_map:
-                    canonical_column.char_semantics = char_semantics_map[tab_col.name]
+                    canonical_column = canonical_column.replace(char_semantics=char_semantics_map[tab_col.name])
                 canonical_columns.append(canonical_column)
             self._canonical_columns = canonical_columns
         return self._canonical_columns
@@ -1190,7 +1190,7 @@ class OffloadTransportSpark(OffloadTransport, metaclass=ABCMeta):
             self._messages,
         )
 
-    def _get_id_column_for_range_splitting(self) -> ColumnMetadataInterface:
+    def _get_id_column_for_range_splitting(self) -> ColumnSpec:
         assert self._rdbms_table is not None
         return self._rdbms_api.get_id_column_for_range_splitting(self._rdbms_table)
 

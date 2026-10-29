@@ -30,9 +30,8 @@ Comment from nj@2019-11-06:
 
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
-from goe.config.password_tools import PasswordTools
 from goe.filesystem.goe_dfs import (
     OFFLOAD_FS_SCHEME_ABFS,
     OFFLOAD_FS_SCHEME_ABFSS,
@@ -44,12 +43,10 @@ from goe.filesystem.goe_dfs import (
     OFFLOAD_FS_SCHEME_WASB,
     OFFLOAD_FS_SCHEME_WASBS,
 )
-from goe.offload.column_metadata import (
-    ColumnMetadataInterface,
-    get_column_names,
-    is_synthetic_partition_column,
-    match_table_column,
-)
+from goe.offload.backend_cache import CachedBackendCatalog
+from goe.offload.backend_capabilities import BackendCapabilities
+from goe.offload.backend_ddl import BackendDDLCompiler
+from goe.offload.backend_session import BackendSessionManager
 from goe.offload.offload_constants import (
     CAPABILITY_BUCKET_HASH_COLUMN,
     CAPABILITY_CANONICAL_DATE,
@@ -94,7 +91,14 @@ from goe.offload.offload_constants import (
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_functions import run_os_cmd
-from goe.util.string_utils import str_summary_of_self
+from goe.offload.schema.column_spec import (
+    ColumnSpec,
+    get_column_names,
+    is_synthetic_partition_column,
+    match_table_column,
+)
+from goe.offload.schema.type_registry import MappingContext, MappingTarget, TypeMappingLimits
+from goe.typing import FrozenBaseStruct
 
 
 class BackendApiException(Exception):
@@ -142,46 +146,37 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
-class UdfParameter:
-    def __init__(self, name, data_type):
-        assert data_type
-        self.name = name
-        self.data_type = data_type
+class UdfParameter(FrozenBaseStruct, frozen=True):
+    name: str | None
+    data_type: str
 
-    def __str__(self):
-        return str_summary_of_self(self)
-
-    def __repr__(self):
-        return str_summary_of_self(self)
+    def __post_init__(self) -> None:
+        if not self.data_type:
+            raise AssertionError("data_type is required")
 
 
-class UdfDetails:
-    def __init__(self, db_name, udf_name, return_type, parameters):
-        assert db_name
-        assert udf_name
-        if return_type:
-            assert isinstance(return_type, str)
-        if parameters:
-            assert isinstance(parameters, list)
-            assert isinstance(parameters[0], UdfParameter)
-        self.db_name = db_name
-        self.udf_name = udf_name
-        self.return_type = return_type
-        self.parameters = parameters
+class UdfDetails(FrozenBaseStruct, frozen=True):
+    db_name: str
+    udf_name: str
+    return_type: str | None
+    parameters: list[UdfParameter] | tuple[UdfParameter, ...] | None
 
-    def parameter_spec_string(self):
+    def __post_init__(self) -> None:
+        assert self.db_name
+        assert self.udf_name
+        if self.return_type:
+            assert isinstance(self.return_type, str)
+        if self.parameters:
+            assert isinstance(self.parameters, (list, tuple))
+            assert isinstance(self.parameters[0], UdfParameter)
+
+    def parameter_spec_string(self) -> str:
         """Return the parameters as a str for displaying to an end user"""
 
-        def arg_to_str(arg):
+        def arg_to_str(arg: UdfParameter) -> str:
             return " ".join([(arg.name or ""), (arg.data_type or "")])
 
         return ",".join(arg_to_str(_) for _ in (self.parameters or []))
-
-    def __str__(self):
-        return str_summary_of_self(self)
-
-    def __repr__(self):
-        return str_summary_of_self(self)
 
 
 class BackendApiInterface(metaclass=ABCMeta):
@@ -189,6 +184,8 @@ class BackendApiInterface(metaclass=ABCMeta):
     no_caching: Prevents state from being cached between calls. When testing we don't want caching
     do_not_connect: Prevents the object from automatically connecting to a backend, required for unit tests
     """
+
+    type_mapping_target: ClassVar[MappingTarget]
 
     def __init__(
         self,
@@ -207,14 +204,45 @@ class BackendApiInterface(metaclass=ABCMeta):
         self._dry_run = dry_run
         self._no_caching = no_caching
         self._sql_engine_name = "Backend"
-        self._global_session_parameters = self._gen_global_session_parameters(
-            connection_options.backend_session_parameters,
-            log_clashes=bool(not do_not_connect),
+        self._session_mgr = BackendSessionManager(
+            connection_options,
+            self.backend_db_name(),
+            messages,
+            fixed_parameters=self._fixed_session_parameters(),
+            do_not_connect=do_not_connect,
         )
+        self._global_session_parameters = self._session_mgr.global_session_parameters
         self._valid_schemes = None
+        self._capabilities: BackendCapabilities | None = None
+        self.catalog = CachedBackendCatalog(
+            case_sensitive=False,
+            no_caching=bool(no_caching),
+        )
+        self._ddl_compiler = BackendDDLCompiler(
+            self.enclose_identifier,
+            self.enclose_object_reference,
+            not_null_column_supported=self.not_null_column_supported,
+            max_decimal_precision=self.max_decimal_precision,
+            generic_string_data_type=self.generic_string_data_type,
+            regexp_extract_sql=self.regexp_extract_sql_expression,
+            regexp_extract_decimal_scale_pattern=self.regexp_extract_decimal_scale_pattern,
+            length_sql=self.length_sql_expression,
+            log_fn=self._log,
+            debug_fn=self._debug,
+        )
 
     def __del__(self):
         self.close()
+
+    @property
+    def capabilities(self) -> BackendCapabilities:
+        """Return the typed BackendCapabilities struct for this backend."""
+        if self._capabilities is None:
+            self._capabilities = BackendCapabilities.for_backend(
+                self._backend_type,
+                self._backend_capabilities(),
+            )
+        return self._capabilities
 
     def backend_db_name(self):
         """Some backends have overrides due to stylistic formatting, e.g. BigQuery."""
@@ -229,12 +257,7 @@ class BackendApiInterface(metaclass=ABCMeta):
         to the actual scale of the value.
         Some backends have overrides due to lack of regular expression support, e.g. Synapse
         """
-        extract_scale_expr = self.regexp_extract_sql_expression(
-            column_name, self.regexp_extract_decimal_scale_pattern()
-        )
-        length_expr = self.length_sql_expression(extract_scale_expr)
-        is_invalid_scale_expr = "%s > %s" % (length_expr, column_scale)
-        return is_invalid_scale_expr
+        return self._ddl_compiler.decimal_scale_validation_expression(column_name, column_scale)
 
     def drop(self, db_name, object_name, purge=False, sync=None):
         assert db_name and object_name
@@ -294,26 +317,19 @@ class BackendApiInterface(metaclass=ABCMeta):
         may override with their own variation.
         column: Can be a column object or a column name.
         """
-        assert isinstance(date_part, str)
-        assert date_part.upper() in ("DAY", "MONTH", "YEAR")
-        assert isinstance(column, (str, ColumnMetadataInterface))
-        column_name = column if isinstance(column, str) else column.name
-        column_name = self.enclose_identifier(column_name)
-        return f"EXTRACT({date_part.upper()} FROM {column_name})"
+        return self._ddl_compiler.extract_date_part_sql_expression(date_part, column)
 
     def format_column_comparison(self, left_col, operator, right_col, left_alias=None, right_alias=None):
         """Format a simple 'column operator column' string, generic for most backends but some may override.
         left_col and right_col are column objects, not names.
         """
-        assert isinstance(left_col, ColumnMetadataInterface)
-        assert isinstance(right_col, ColumnMetadataInterface)
-        left_identifier = self.enclose_identifier(left_col.name)
-        if left_alias:
-            left_identifier = f"{self.enclose_identifier(left_alias)}.{left_identifier}"
-        right_identifier = self.enclose_identifier(right_col.name)
-        if right_alias:
-            right_identifier = f"{self.enclose_identifier(right_alias)}.{right_identifier}"
-        return f"{left_identifier} {operator} {right_identifier}"
+        return self._ddl_compiler.format_column_comparison(
+            left_col,
+            operator,
+            right_col,
+            left_alias=left_alias,
+            right_alias=right_alias,
+        )
 
     def get_column(self, db_name, table_name, column_name):
         """Get a single column from get_columns()"""
@@ -634,7 +650,7 @@ class BackendApiInterface(metaclass=ABCMeta):
 
     @abstractmethod
     def derive_native_partition_info(self, db_name, table_name, column, position):
-        """Return a ColumnPartitionInfo object (or None) based on native partition settings"""
+        """Return a ColumnPartitionSpec object (or None) based on native partition settings"""
 
     @abstractmethod
     def detect_column_has_fractional_seconds(self, db_name, table_name, column):
@@ -1199,9 +1215,24 @@ class BackendApiInterface(metaclass=ABCMeta):
     def from_canonical_column(self, column, decimal_padding_digits=0):
         """Translate an internal GOE column to a backend column."""
 
+    def type_mapping_context(self) -> MappingContext:
+        """Build the immutable MappingContext from the backend's active limits and capabilities."""
+        return MappingContext(
+            limits=TypeMappingLimits(
+                max_datetime_scale=self.max_datetime_scale(),
+                max_decimal_precision=self.max_decimal_precision(),
+                max_decimal_scale=self.max_decimal_scale(),
+                max_decimal_integral_magnitude=self.max_decimal_integral_magnitude(),
+                canonical_date_supported=self.canonical_date_supported(),
+                canonical_time_supported=self.canonical_time_supported(),
+                supported_data_types=frozenset(self.supported_backend_data_types()),
+            ),
+            log=self._log_type_mapping,
+        )
+
     def is_capability_supported(self, capability_constant):
         assert capability_constant in self._backend_capabilities(), "Unknown capability: %s" % capability_constant
-        return self._backend_capabilities()[capability_constant]
+        return self.capabilities.supports(capability_constant)
 
     def bucket_hash_column_supported(self):
         return self.is_capability_supported(CAPABILITY_BUCKET_HASH_COLUMN)
@@ -1329,23 +1360,16 @@ class BackendApiInterface(metaclass=ABCMeta):
         """Write to offload log file.
         no_log_items: See self._validate_no_log_items() for description
         """
-        no_log_items = self._validate_no_log_items(no_log_items)
-        if no_log_items:
-            log_msg = msg
-            for itm in no_log_items:
-                log_msg = log_msg.replace(itm["item"], itm.get("sub", "?"))
-        else:
-            log_msg = msg
-        self._messages.log(log_msg, detail=detail, ansi_code=ansi_code)
-        if detail == VVERBOSE:
-            logger.debug(log_msg)
-        else:
-            logger.info(log_msg)
+        self._session_mgr.log(
+            msg,
+            detail=detail,
+            ansi_code=ansi_code,
+            no_log_items=no_log_items,
+        )
 
     def _log_or_not(self, msg, log_level=VERBOSE, no_log_items=None):
         """Wrapper over _log() to cater for suppressing logging of SQLs"""
-        if log_level is not None:
-            self._log(msg, detail=log_level, no_log_items=no_log_items)
+        self._session_mgr.log_or_not(msg, log_level=log_level, no_log_items=no_log_items)
 
     def _debug(self, msg):
         self._messages.debug(msg)
@@ -1355,74 +1379,33 @@ class BackendApiInterface(metaclass=ABCMeta):
         self._messages.warning(msg)
         logger.warning(msg)
 
-    def _apply_decimal_padding_digits(self, column_name, data_precision, data_scale, decimal_padding_digits):
-        """Add decimal_padding_digits to scale if precision has headroom then pad precision if it has headroom for
-        that too.
-        Currently this has no max for scale, i.e. assumes the max is same as max precision. This may not be true
-        for all backends.
-        Returns a tuple of the adjusted precision & scale
+    def _log_type_mapping(self, message: str, detail: int) -> None:
+        self._log(message, detail=detail)
 
-        Change precision after scale
-        """
-        if not decimal_padding_digits:
-            return data_precision, data_scale
-
-        if data_precision is None or data_scale is None:
-            self._log(
-                "No padding applied to %s for precision/scale: %s/%s" % (column_name, data_precision, data_scale),
-                detail=VVERBOSE,
-            )
-            return data_precision, data_scale
-
-        self._debug("Aligning precision/scale for %s" % column_name)
-
-        new_precision = data_precision
-        new_scale = data_scale
-
-        if new_precision <= self.max_decimal_precision() - decimal_padding_digits:
-            new_scale += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
-            new_precision += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
-
-        if new_precision < self.max_decimal_precision():
-            new_precision += min(decimal_padding_digits, self.max_decimal_precision() - new_precision)
-
-        if new_precision != data_precision or new_scale != data_scale:
-            self._log(
-                "Padded precision/scale for %s in line with DECIMAL_PADDING_DIGITS=%s: %s,%s -> %s,%s"
-                % (
-                    column_name,
-                    decimal_padding_digits,
-                    data_precision,
-                    data_scale,
-                    new_precision,
-                    new_scale,
-                ),
-                detail=VVERBOSE,
-            )
-        return new_precision, new_scale
+    def _apply_decimal_padding_digits(
+        self,
+        column_name: str,
+        data_precision: int | None,
+        data_scale: int | None,
+        decimal_padding_digits: int,
+    ) -> tuple[int | None, int | None]:
+        return self._ddl_compiler.apply_decimal_padding_digits(
+            column_name,
+            data_precision,
+            data_scale,
+            decimal_padding_digits,
+        )
 
     def _create_table_columns_clause_common(self, column_list, external=False):
         """Trivial helper for SQL text consistency"""
-        sql_cols = [
-            (
-                self.enclose_identifier(_.name),
-                _.format_data_type(),
-                self._create_table_column_nn_clause_common(_, external=external),
-            )
-            for _ in column_list
-        ]
-        max_name = max(len(_[0]) for _ in sql_cols)
-        col_template = f"%-{max_name}s %s%s"
-        return "    " + "\n,   ".join([col_template % (_[0], _[1], f" {_[2]}" if _[2] else "") for _ in sql_cols])
+        return self._ddl_compiler.format_create_table_columns_clause(column_list, external=external)
 
-    def _create_table_column_nn_clause_common(self, column: ColumnMetadataInterface, external: bool = False) -> str:
+    def _create_table_column_nn_clause_common(self, column: ColumnSpec, external: bool = False) -> str:
         """Return clause for a NOT NULL column if the backend supports it and it is not an external table.
         We don't want the constraint on external tables because we want to stage the data and then validate correctness.
         nullable of None is treated as True. i.e. we can't be sure of NOT NULL so go with the safe option.
         """
-        if not self.not_null_column_supported() or column.nullable or column.nullable is None or external:
-            return ""
-        return "NOT NULL"
+        return self._ddl_compiler.format_column_nn_clause(column, external=external)
 
     def _cursor_projection(self, cursor: Any) -> list:
         """Returns a list of strings describing the projection of a cursor.
@@ -1438,13 +1421,7 @@ class BackendApiInterface(metaclass=ABCMeta):
         return dict(zip(cursor_projection, row))
 
     def _decrypt_password(self, password):
-        if self._connection_options.password_key_file:
-            pass_tool = PasswordTools()
-            goe_key = pass_tool.get_password_key_from_key_file(self._connection_options.password_key_file)
-            self._log("Decrypting %s password" % self.backend_db_name(), detail=VVERBOSE)
-            clear_password = pass_tool.b64decrypt(password, goe_key)
-            return clear_password
-        return password
+        return self._session_mgr.decrypt_password(password)
 
     @staticmethod
     def _fixed_session_parameters():
@@ -1453,7 +1430,7 @@ class BackendApiInterface(metaclass=ABCMeta):
 
     def _format_select_projection(self, select_expr_tuples):
         """Return string of column-expr AS alias pairs formatted consistently across all usages"""
-        return "\n,      ".join(f"{e} AS {self.enclose_identifier(n)}" for e, n in select_expr_tuples)
+        return self._ddl_compiler.format_select_projection(select_expr_tuples)
 
     def _gen_max_column_values_sql(
         self,
@@ -1475,69 +1452,24 @@ class BackendApiInterface(metaclass=ABCMeta):
         Analytic row_number() function tests very slow in Impala, group by method below much faster.
         max() fastest but not multi column on supported backends at time of implementation.
         """
-
-        def add_sql_cast(col_name, col_expr=None, add_alias=False):
-            col_expr = col_expr or col_name
-            if col_name in (columns_to_cast_to_string or []):
-                cast_str = "CAST(%s AS %s)" % (
-                    col_expr,
-                    self.generic_string_data_type(),
-                )
-            else:
-                cast_str = col_expr
-            if add_alias:
-                cast_str += " AS %s" % col_name
-            return cast_str
-
-        assert column_name_list and isinstance(column_name_list, list)
-
-        self._debug("Generate max SQL for columns: %s" % column_name_list)
-
-        if len(column_name_list) == 1:
-            proj_col = add_sql_cast(
-                column_name_list[0],
-                col_expr="MAX(%s)" % self.enclose_identifier(column_name_list[0]),
-            )
-            sql = "SELECT %s FROM %s" % (
-                proj_col,
-                self.enclose_object_reference(db_name, table_name),
-            )
-            if filter_clause:
-                sql += " WHERE " + filter_clause
-        else:
-            cols = ",".join(column_name_list)
-            proj_cols = ",".join([add_sql_cast(_, add_alias=True) for _ in column_name_list])
-            order_by = ",".join([_ + " DESC" for _ in column_name_list])
-            where = (" WHERE " + filter_clause) if filter_clause else ""
-            sql = "SELECT %s FROM %s%s GROUP BY %s ORDER BY %s LIMIT 1" % (
-                proj_cols,
-                self.enclose_object_reference(db_name, table_name),
-                where,
-                cols,
-                order_by,
-            )
-        return sql
+        return self._ddl_compiler.build_max_column_values_sql(
+            db_name,
+            table_name,
+            column_name_list,
+            filter_clause=filter_clause,
+            columns_to_cast_to_string=columns_to_cast_to_string,
+        )
 
     def _gen_global_session_parameters(self, backend_session_parameters, log_clashes=True):
         """Merge user defined session parameters with our fixed session parameters.
         We remove any fixed parameters from custom list in a case insensitive way to prevent duplicates.
         Apply fixed parameters second so they have precedence.
         """
-        global_session_parameters = {}
-        if backend_session_parameters:
-            global_session_parameters.update(backend_session_parameters)
-        if self._fixed_session_parameters():
-            fixed_keys = [_.lower() for _ in list(self._fixed_session_parameters().keys())]
-            for key_to_delete in [_ for _ in list(global_session_parameters.keys()) if _.lower() in fixed_keys]:
-                if log_clashes:
-                    self._log(
-                        "Removing OFFLOAD_BACKEND_SESSION_PARAMETERS[%s] because of fixed parameter clash"
-                        % key_to_delete,
-                        detail=VVERBOSE,
-                    )
-                del global_session_parameters[key_to_delete]
-            global_session_parameters.update(self._fixed_session_parameters())
-        return global_session_parameters
+        return self._session_mgr.merge_session_parameters(
+            backend_session_parameters,
+            self._fixed_session_parameters(),
+            log_clashes=log_clashes,
+        )
 
     def _gen_insert_select_sql_assertions(
         self,
@@ -1581,51 +1513,22 @@ class BackendApiInterface(metaclass=ABCMeta):
             assert isinstance(measures, (list, tuple)), "%s is not list/tuple" % type(measures)
             assert agg_fns
             assert isinstance(agg_fns, (list, tuple)), "%s is not list/tuple" % type(agg_fns)
-
-        projection = []
-        if column_names:
-            projection += [self.enclose_identifier(_) for _ in column_names]
-            self._debug("gen_sql_text base projection: %s" % str(projection))
-        if measures and agg_fns:
-            projection += ["%s(%s)" % (fn.upper(), self.enclose_identifier(m)) for m in measures for fn in agg_fns]
-            self._debug("gen_sql_text projection with measures: %s" % str(projection))
-        if not projection:
-            raise BackendApiException("No columns have been specified for projection: %s.%s" % (db_name, table_name))
-
-        projection_clause = "\n,      ".join(projection)
-        where_clause = "\nWHERE  " + "\nAND    ".join(filter_clauses) if filter_clauses else ""
-        group_by_clause = (
-            ("\nGROUP BY " + "\n,        ".join([self.enclose_identifier(_) for _ in column_names]))
-            if measures and column_names
-            else ""
+        return self._ddl_compiler.build_select_sql(
+            db_name,
+            table_name,
+            column_names=column_names,
+            filter_clauses=filter_clauses,
+            measures=measures,
+            agg_fns=agg_fns,
+            exc_factory=BackendApiException,
         )
-        order_by_clause = (
-            ("\nORDER BY " + "\n,        ".join([self.enclose_identifier(_) for _ in column_names]))
-            if agg_fns and column_names
-            else ""
-        )
-        sql = """SELECT %(projection)s
-FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
-            "db": self.enclose_identifier(db_name),
-            "table": self.enclose_identifier(table_name),
-            "projection": projection_clause,
-            "where_clause": where_clause,
-            "group_by": group_by_clause,
-            "order_by": order_by_clause,
-        }
-        return sql
 
     def _gen_select_count_sql_text_common(self, db_name, table_name, filter_clause=None):
         """filter_clause does NOT include "WHERE" because that could be backend specific.
         At the point WHERE is not compatible with a backend we'll need to add an
         override method for this.
         """
-        assert db_name and table_name
-        where_clause = f" WHERE {filter_clause}" if filter_clause else ""
-        return "SELECT COUNT(*) FROM %s%s" % (
-            self.enclose_object_reference(db_name, table_name),
-            where_clause,
-        )
+        return self._ddl_compiler.build_select_count_sql(db_name, table_name, filter_clause=filter_clause)
 
     def _get_max_column_values_common(
         self,
@@ -1692,13 +1595,13 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
         self, db_name, table_name, column_names, literal_csv_list, split_by_cr=True
     ):
         """Format a SQL statement for inserting literals using SQL where multiple rows are passed to VALUES."""
-        join_str = "\n," if split_by_cr else ","
-        insert_template = "INSERT INTO %s (%s) VALUES" % (
-            self.enclose_object_reference(db_name, table_name),
-            ",".join(self.enclose_identifier(_) for _ in column_names),
+        return self._ddl_compiler.build_insert_values_sql(
+            db_name,
+            table_name,
+            column_names,
+            literal_csv_list,
+            split_by_cr=split_by_cr,
         )
-        sql = insert_template + "\n " + join_str.join(f"({_})" for _ in literal_csv_list)
-        return sql
 
     def _run_os_cmd(self, cmd):
         """Run an os command and:
@@ -1728,13 +1631,6 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
             "size_in_bytes": size_in_bytes,
         }
 
-    def _unsupported_decimal_precision_scale(self, data_precision, data_scale):
-        return (
-            (data_scale is not None and (data_scale < 0 or data_scale > self.max_decimal_scale()))
-            or (data_precision and data_precision > self.max_decimal_precision())
-            or (data_precision and data_scale and data_scale > data_precision)
-        )
-
     def _validate_no_log_items(self, no_log_items):
         """Validate no_log_items is a valid dict for the purpose of removing sensitive information from logging.
         no_log_items should be either:
@@ -1746,18 +1642,10 @@ FROM   %(db)s.%(table)s%(where_clause)s%(group_by)s%(order_by)s""" % {
             ]
         'sub' is optional
         """
-        if no_log_items is None:
-            return no_log_items
-        assert isinstance(no_log_items, (list, dict))
-        if isinstance(no_log_items, dict):
-            no_log_items = [no_log_items]
-        assert all(_ in ["item", "sub"] for _ in list(no_log_items[0].keys()))
-        return no_log_items
+        return self._session_mgr.validate_no_log_items(no_log_items)
 
     def _validate_connection_options(self, option_list):
-        missing_opts = [_ for _ in option_list if not hasattr(self._connection_options, _)]
-        if missing_opts:
-            raise BackendApiException("Missing connection options: %s" % ", ".join(missing_opts))
+        self._session_mgr.validate_connection_options(option_list, BackendApiException)
 
     @abstractmethod
     def _backend_capabilities(self):

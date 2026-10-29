@@ -15,10 +15,6 @@ from goe.offload.backend_table import (
     PARTITION_FUNCTION_ARG_TYPE_EXCEPTION_TEXT,
     PARTITION_FUNCTION_DOES_NOT_EXIST_EXCEPTION_TEXT,
 )
-from goe.offload.bigquery.bigquery_column import (
-    BIGQUERY_TYPE_FLOAT64,
-    BIGQUERY_TYPE_INT64,
-)
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
@@ -29,6 +25,7 @@ from goe.offload.operation.partition_controls import (
     PARTITION_FUNCTIONS_NOT_SUPPORTED_EXCEPTION_TEXT,
 )
 from goe.offload.registry import create_repository_client
+from goe.offload.schema.column_spec import BIGQUERY_TYPE_FLOAT64, BIGQUERY_TYPE_INT64
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
     standard_dimension_assertion,

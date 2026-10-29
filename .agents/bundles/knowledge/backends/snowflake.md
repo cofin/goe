@@ -1,23 +1,24 @@
 ---
 type: Reference
 title: Snowflake Backend Adapter
-description: Snowflake connector lifecycle, stages, storage integrations, and COPY INTO ingestion
+description: Snowflake connector lifecycle, SNOWFLAKE_CAPABILITIES, CachedBackendCatalog, DialectSqlEngine, stages, storage integrations, and COPY INTO ingestion
 tags:
   - reference
   - backends
   - snowflake
   - data-warehouse
+updated_at: "2026-10-26T22:40:00Z"
 ---
 
 # Snowflake Backend Adapter
 
-The Snowflake backend adapter (`src/goe/offload/snowflake/`) manages target databases, schemas, stages, clustering keys, and `COPY INTO` data loading.
+The Snowflake backend adapter (`src/goe/offload/snowflake/`) manages target databases, schemas, stages, clustering keys, cached metadata snapshots, and `COPY INTO` data loading.
 
 ## Key Modules
 
-- **`BackendSnowflakeApi` (`snowflake_backend_api.py`)**: Connection handling, storage integration, and session setup.
-- **`BackendSnowflakeTable` (`snowflake_backend_table.py`)**: Table creation, stage management, and `COPY INTO` execution.
-- **`SnowflakeColumn` & `SnowflakeLiteral`**: Column translation and SQL formatting.
+- **`BackendSnowflakeApi` (`src/goe/offload/snowflake/snowflake_backend_api.py`)**: Exposes `SNOWFLAKE_CAPABILITIES = BackendCapabilities.for_snowflake()`, routes `table_exists`, `get_columns`, `get_table_size`, `get_table_row_count_from_metadata`, and 2-query `warm_schema(db_name)` (`INFORMATION_SCHEMA.TABLES` + `INFORMATION_SCHEMA.COLUMNS`) through `CachedBackendCatalog`, renders SQL via `DialectSqlEngine("snowflake")`, and translates columns via `TYPE_REGISTRY` (`MappingTarget.SNOWFLAKE`).
+- **`BackendSnowflakeTable` (`src/goe/offload/snowflake/snowflake_backend_table.py`)**: Coordinates table creation, stage/file-format management, `StagingLoadService` cast verification, and `COPY INTO` execution with write-through catalog invalidation.
+- **`ColumnSpec` (`ColumnDialect.SNOWFLAKE`) & `SnowflakeLiteral`**: Column representation and SQL literal formatting.
 
 ## Connection & Security
 

@@ -13,7 +13,9 @@ import sys
 from abc import ABCMeta, abstractmethod
 from subprocess import PIPE, STDOUT
 
-from goe.offload.column_metadata import (
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.registry import create_backend_api
+from goe.offload.schema.column_spec import (
     GOE_TYPE_INTEGER_1,
     GOE_TYPE_INTEGER_2,
     GOE_TYPE_INTEGER_4,
@@ -21,8 +23,6 @@ from goe.offload.column_metadata import (
     GOE_TYPE_INTEGER_38,
     match_table_column,
 )
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.registry import create_backend_api
 from tests.testlib.test_framework import test_constants
 
 

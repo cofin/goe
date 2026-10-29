@@ -6,11 +6,6 @@
 import re
 from unittest import TestCase, main
 
-from goe.offload.column_metadata import (
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-)
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     expand_columns_csv,
@@ -18,6 +13,7 @@ from goe.offload.offload_functions import (
     hybrid_view_list_clauses,
 )
 from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.schema.column_spec import GOE_TYPE_INTEGER_2, GOE_TYPE_VARIABLE_STRING, ColumnDialect, ColumnSpec
 
 
 class TestOffloadFunctions(TestCase):
@@ -47,12 +43,12 @@ class TestOffloadFunctions(TestCase):
 
     def test_expand_columns_csv(self):
         columns = [
-            CanonicalColumn("COL1_ID", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL2_ID", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL3_KEY", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL4_KEY", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL5_YEAR", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL6_MONTH", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL1_ID", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL2_ID", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL3_KEY", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL4_KEY", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL5_YEAR", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL6_MONTH", GOE_TYPE_INTEGER_2),
         ]
         self.assertListEqual(expand_columns_csv("COL1_ID,COL4_KEY", columns), ["COL1_ID", "COL4_KEY"])
         self.assertListEqual(expand_columns_csv("COL1_ID,COL5_YEAR", columns), ["COL1_ID", "COL5_YEAR"])
@@ -93,14 +89,14 @@ class TestOffloadFunctions(TestCase):
             self.assertEqual(sum(len(_.split(",")) for _ in in_lists), len(pretend_hvs))
 
         # Numeric list
-        columns = [CanonicalColumn("COL_NAME", GOE_TYPE_INTEGER_2)]
+        columns = [ColumnSpec(ColumnDialect.CANONICAL, "COL_NAME", GOE_TYPE_INTEGER_2)]
         pretend_hvs = [(_,) for _ in range(20)]
         check_call(columns, pretend_hvs, 9, 3, '"')
         check_call(columns, pretend_hvs, 10, 2, '"')
         check_call(columns, pretend_hvs, 21, 1, '"')
         check_call(columns, pretend_hvs, 10, 2, "`")
         # Character list
-        columns = [CanonicalColumn("COL_NAME", GOE_TYPE_VARIABLE_STRING)]
+        columns = [ColumnSpec(ColumnDialect.CANONICAL, "COL_NAME", GOE_TYPE_VARIABLE_STRING)]
         pretend_hvs = [(f"'{_}'",) for _ in range(20)]
         check_call(columns, pretend_hvs, 9, 3, '"')
         check_call(columns, pretend_hvs, 10, 2, '"')
@@ -140,13 +136,13 @@ class TestOffloadFunctions(TestCase):
                 self.assertTrue(gte_clause.count(col_name), expected_gte_col2_count)
 
         # Numeric range
-        columns = [CanonicalColumn("COL_NAME", GOE_TYPE_INTEGER_2)]
+        columns = [ColumnSpec(ColumnDialect.CANONICAL, "COL_NAME", GOE_TYPE_INTEGER_2)]
         check_call(columns, (10,), ch='"')
         check_call(columns, (10,), ch="`")
         # Multi column
         columns = [
-            CanonicalColumn("COL_NAME1", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL_NAME2", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL_NAME1", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL_NAME2", GOE_TYPE_INTEGER_2),
         ]
         check_call(
             columns,

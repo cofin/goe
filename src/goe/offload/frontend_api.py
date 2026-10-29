@@ -12,11 +12,6 @@ import logging
 from abc import ABCMeta, abstractmethod
 from typing import Any
 
-from goe.offload.column_metadata import (
-    get_column_names,
-    match_table_column,
-    valid_column_list,
-)
 from goe.offload.offload_constants import (
     CAPABILITY_CANONICAL_DATE,
     CAPABILITY_CANONICAL_TIME,
@@ -32,6 +27,7 @@ from goe.offload.offload_constants import (
     CAPABILITY_SCHEMA_EVOLUTION,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import get_column_names, match_table_column, valid_column_list
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -182,7 +178,7 @@ class FrontendApiInterface(metaclass=ABCMeta):
     def get_columns(self, schema, table_name):
         """Get a list of frontend column objects in the order they are stored by the frontend.
         Example might be:
-            [OracleColumn(...), OracleColumn(...)]
+            [ColumnSpec(ColumnDialect.ORACLE, ...), ColumnSpec(ColumnDialect.ORACLE, ...)]
         """
 
     @abstractmethod

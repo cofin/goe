@@ -5,24 +5,26 @@ from unittest import TestCase
 
 from numpy import datetime64
 
-from goe.offload.microsoft.mssql_column import (
-    MSSQL_TYPE_BIGINT,
-    MSSQL_TYPE_DATETIME,
-    MSSQL_TYPE_VARCHAR,
-)
 from goe.offload.offload_constants import (
     DBTYPE_MSSQL,
     DBTYPE_ORACLE,
 )
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.oracle import oracle_offload_source_table
-from goe.offload.oracle.oracle_column import (
+from goe.offload.registry import create_source_table
+from goe.offload.schema.column_spec import (
+    GOE_TYPE_INTEGER_8,
+    MSSQL_TYPE_BIGINT,
+    MSSQL_TYPE_DATETIME,
+    MSSQL_TYPE_VARCHAR,
     ORACLE_TYPE_DATE,
     ORACLE_TYPE_NUMBER,
     ORACLE_TYPE_TIMESTAMP,
     ORACLE_TYPE_VARCHAR2,
+    ColumnDialect,
+    ColumnSpec,
 )
-from goe.offload.registry import create_source_table
+from goe.offload.schema.type_registry import TYPE_REGISTRY
 from tests.unit.test_functions import (
     FAKE_MSSQL_ENV,
     FAKE_ORACLE_ENV,
@@ -194,3 +196,27 @@ def test_oracle_version_is_smart_scan_unsafe():
     assert not oracle_offload_source_table.oracle_version_is_smart_scan_unsafe(
         oracle_offload_source_table.ORACLE_VERSION_SAFE_FOR_CELL_OFFLOAD_PROCESSING
     )
+
+
+def test_oracle_mapping_delegates_to_registry():
+    messages = OffloadMessages()
+    config = build_mock_options(FAKE_ORACLE_ENV)
+    source_table = create_source_table(
+        "any_db",
+        "some_table",
+        config,
+        messages,
+        dry_run=True,
+        do_not_connect=True,
+    )
+    oracle_col = ColumnSpec(
+        ColumnDialect.ORACLE,
+        "C",
+        ORACLE_TYPE_NUMBER,
+        data_precision=10,
+        data_scale=0,
+    )
+    mapped = source_table.to_canonical_column(oracle_col)
+    expected = TYPE_REGISTRY.to_canonical(oracle_col, source_table.type_mapping_context())
+    assert mapped.data_type == GOE_TYPE_INTEGER_8
+    assert mapped == expected

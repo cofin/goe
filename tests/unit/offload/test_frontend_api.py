@@ -12,7 +12,6 @@ from unittest import TestCase, main
 
 from numpy import datetime64
 
-from goe.offload.column_metadata import ColumnMetadataInterface
 from goe.offload.frontend_api import QueryParameter
 from goe.offload.offload_constants import (
     DBTYPE_MSSQL,
@@ -20,6 +19,7 @@ from goe.offload.offload_constants import (
 )
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.registry import create_frontend_api
+from goe.offload.schema.column_spec import ColumnSpec
 from tests.testlib.test_framework.factory.frontend_testing_api_factory import (
     frontend_testing_api_factory,
 )
@@ -166,7 +166,7 @@ class TestFrontendApi(TestCase):
             column_list = self.api.get_columns(self.db, self.table)
             self.assertIsInstance(column_list, list)
             if column_list:
-                self.assertIsInstance(column_list[0], ColumnMetadataInterface)
+                self.assertIsInstance(column_list[0], ColumnSpec)
 
     def _test_get_current_scn(self):
         if self.connect_to_frontend:
@@ -197,7 +197,7 @@ class TestFrontendApi(TestCase):
             column_list = self.api.get_partition_columns(self.db, self.part_table)
             self.assertIsInstance(column_list, list)
             if column_list:
-                self.assertIsInstance(column_list[0], ColumnMetadataInterface)
+                self.assertIsInstance(column_list[0], ColumnSpec)
 
     def _test_get_primary_key_column_names(self):
         if self.connect_to_frontend:

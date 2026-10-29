@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendSnowflakeApi: Library for logic/interaction with a remote Snowflake backend.
@@ -8,14 +6,17 @@ This module enforces an interface with common, high level, methods and an implem
 for each supported remote system, e.g. Impala, Hive, Google BigQuery.
 """
 
+from __future__ import annotations
+
 import logging
 import re
 import time
 import traceback
 from datetime import datetime
 from textwrap import dedent
+from typing import ClassVar
 
-import snowflake.connector
+import msgspec
 from numpy import datetime64
 
 from goe.config.password_tools import PasswordTools
@@ -35,37 +36,10 @@ from goe.offload.backend_api import (
     BackendApiException,
     BackendApiInterface,
     UdfDetails,
+    UdfParameter,
 )
-from goe.offload.column_metadata import (
-    ALL_CANONICAL_TYPES,
-    CANONICAL_CHAR_SEMANTICS_CHAR,
-    DATE_CANONICAL_TYPES,
-    GOE_TYPE_BINARY,
-    GOE_TYPE_BOOLEAN,
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_DOUBLE,
-    GOE_TYPE_FIXED_STRING,
-    GOE_TYPE_FLOAT,
-    GOE_TYPE_INTEGER_1,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_INTEGER_38,
-    GOE_TYPE_INTERVAL_DS,
-    GOE_TYPE_INTERVAL_YM,
-    GOE_TYPE_LARGE_BINARY,
-    GOE_TYPE_LARGE_STRING,
-    GOE_TYPE_TIME,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_TIMESTAMP_TZ,
-    GOE_TYPE_VARIABLE_STRING,
-    NUMERIC_CANONICAL_TYPES,
-    STRING_CANONICAL_TYPES,
-    CanonicalColumn,
-    is_safe_mapping,
-    valid_column_list,
-)
+from goe.offload.backend_cache import BackendTableSnapshot, CachedBackendCatalog
+from goe.offload.backend_capabilities import BackendCapabilities
 from goe.offload.offload_constants import (
     DBTYPE_SNOWFLAKE,
     EMPTY_BACKEND_COLUMN_STATS_DICT,
@@ -73,12 +47,10 @@ from goe.offload.offload_constants import (
     EMPTY_BACKEND_TABLE_STATS_DICT,
     FILE_STORAGE_FORMAT_AVRO,
     FILE_STORAGE_FORMAT_PARQUET,
-    SNOWFLAKE_BACKEND_CAPABILITIES,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.snowflake.snowflake_column import (
+from goe.offload.schema.column_spec import (
     SNOWFLAKE_TYPE_BINARY,
-    SNOWFLAKE_TYPE_BOOLEAN,
     SNOWFLAKE_TYPE_DATE,
     SNOWFLAKE_TYPE_FLOAT,
     SNOWFLAKE_TYPE_INTEGER,
@@ -87,17 +59,30 @@ from goe.offload.snowflake.snowflake_column import (
     SNOWFLAKE_TYPE_TIME,
     SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
     SNOWFLAKE_TYPE_TIMESTAMP_TZ,
-    SnowflakeColumn,
+    ColumnDialect,
+    ColumnSpec,
+    valid_column_list,
 )
+from goe.offload.schema.type_registry import TYPE_REGISTRY, MappingTarget
 from goe.offload.snowflake.snowflake_literal import SnowflakeLiteral
+from goe.offload.sql_ast.dialect_engine import get_dialect_engine
+from goe.util.module_loader import import_optional
 from goe.util.string_utils import (
     backtick_sandwich,
     format_list_for_logging,
     unsurround,
 )
 
+snowflake = import_optional("snowflake")
+snowflake_connector = import_optional("snowflake.connector")
+_SNOWFLAKE_PROGRAMMING_ERROR: type[Exception] = (
+    snowflake_connector.ProgrammingError if snowflake_connector is not None else Exception
+)
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+
+SNOWFLAKE_CAPABILITIES: BackendCapabilities = BackendCapabilities.for_snowflake()
 
 SNOWFLAKE_INVALID_IDENTIFIER_CHARS_RE = re.compile(r"[\"]", re.IGNORECASE)
 
@@ -105,6 +90,8 @@ SNOWFLAKE_CONNECTION_IDENTIFIER = "GOE"
 
 
 class BackendSnowflakeApi(BackendApiInterface):
+    type_mapping_target: ClassVar[MappingTarget] = MappingTarget.SNOWFLAKE
+
     def __init__(
         self,
         connection_options,
@@ -131,8 +118,15 @@ class BackendSnowflakeApi(BackendApiInterface):
         if dry_run:
             logger.info("* Dry run *")
 
+        self._capabilities = SNOWFLAKE_CAPABILITIES
+        self._sql_engine = get_dialect_engine("snowflake")
+        self.catalog = CachedBackendCatalog(case_sensitive=True, no_caching=bool(no_caching))
+
         self._client = None
+        self._cursor = None
         if not do_not_connect:
+            if snowflake is None or snowflake_connector is None:
+                raise ModuleNotFoundError("No module named 'snowflake.connector'")
             snowflake.connector.paramstyle = "qmark"
 
             if connection_options.snowflake_pem_file:
@@ -176,6 +170,77 @@ class BackendSnowflakeApi(BackendApiInterface):
         self._sql_engine_name = "Snowflake"
         self._target_version = None
 
+    def warm_schema(self, db_name: str) -> int:
+        """Warm the backend catalog for all tables and columns in ``db_name`` using 2 queries."""
+        assert db_name
+        if self._dry_run:
+            return 0
+        catalog_ident = self.enclose_identifier(self._catalog_name())
+        tables_sql = dedent(
+            f"""\
+            SELECT table_name, table_type, bytes, row_count
+            FROM   {catalog_ident}.information_schema.tables
+            WHERE  table_catalog = ? AND table_schema = ?"""
+        )
+        cols_sql = dedent(
+            f"""\
+            SELECT table_name, column_name, data_type, is_nullable
+            ,      character_maximum_length, character_octet_length
+            ,      numeric_precision, numeric_scale, datetime_precision
+            FROM   {catalog_ident}.information_schema.columns
+            WHERE  table_catalog = ? AND table_schema = ?
+            ORDER BY table_name, ordinal_position"""
+        )
+        params = [self._catalog_name(), db_name]
+        table_rows = self.execute_query_fetch_all(tables_sql, log_level=VVERBOSE, query_params=params) or []
+        col_rows = self.execute_query_fetch_all(cols_sql, log_level=VVERBOSE, query_params=params) or []
+
+        cols_by_table: dict[str, list[ColumnSpec]] = {}
+        for col in col_rows:
+            (
+                tbl_name,
+                col_name,
+                data_type,
+                is_nullable,
+                char_length,
+                byte_length,
+                num_precision,
+                num_scale,
+                time_scale,
+            ) = col
+            data_scale = time_scale if time_scale is not None else num_scale
+            cols_by_table.setdefault(tbl_name, []).append(
+                ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
+                    col_name,
+                    data_type,
+                    data_length=byte_length,
+                    char_length=char_length,
+                    data_precision=num_precision,
+                    data_scale=data_scale,
+                    nullable=is_nullable,
+                )
+            )
+
+        snapshots: dict[str, BackendTableSnapshot] = {}
+        now = time.monotonic()
+        for tbl_row in table_rows:
+            tbl_name, tbl_type, size_bytes, row_count = tbl_row
+            is_view = bool(str(tbl_type).upper() == "VIEW")
+            snapshots[tbl_name] = BackendTableSnapshot(
+                db_name=db_name,
+                table_name=tbl_name,
+                exists=not is_view,
+                fetched_at=now,
+                is_view=is_view,
+                columns=tuple(cols_by_table.get(tbl_name, ())),
+                size_bytes=int(size_bytes) if size_bytes is not None else None,
+                size_calculated=True,
+                row_count=int(row_count) if row_count is not None else None,
+                row_count_calculated=True,
+            )
+        return self.catalog.warm_schema(db_name, snapshots.values())
+
     def add_columns(self, db_name, table_name, column_tuples, sync=None):
         """See interface spec for description"""
         assert db_name and table_name
@@ -192,6 +257,7 @@ class BackendSnowflakeApi(BackendApiInterface):
                 col_type,
             )
             ddls += self.execute_ddl(sql)
+        self.catalog.on_alter_table(db_name, table_name)
         return ddls
 
     def alter_sort_columns(self, db_name, table_name, sort_column_names, sync=None):
@@ -205,7 +271,9 @@ class BackendSnowflakeApi(BackendApiInterface):
             )
         else:
             sql = "ALTER TABLE %s DROP CLUSTERING KEY" % self.enclose_object_reference(db_name, table_name)
-        return self.execute_ddl(sql, log_level=VERBOSE)
+        result = self.execute_ddl(sql, log_level=VERBOSE)
+        self.catalog.on_alter_table(db_name, table_name)
+        return result
 
     def backend_report_info(self):
         """Reporting information about the type of backend and how to display
@@ -313,8 +381,9 @@ class BackendSnowflakeApi(BackendApiInterface):
         return results
 
     def close(self):
-        if self._client:
-            self._client.close()
+        client = getattr(self, "_client", None)
+        if client is not None:
+            client.close()
 
     def compute_stats(
         self,
@@ -415,7 +484,9 @@ class BackendSnowflakeApi(BackendApiInterface):
         }
         if with_terminator:
             sql += ";"
-        return self.execute_ddl(sql, sync=sync)
+        result = self.execute_ddl(sql, sync=sync)
+        self.catalog.on_create_table(db_name, table_name, column_list)
+        return result
 
     def create_view(
         self,
@@ -489,7 +560,7 @@ class BackendSnowflakeApi(BackendApiInterface):
 
     def detect_column_has_fractional_seconds(self, db_name, table_name, column):
         assert db_name and table_name
-        assert isinstance(column, SnowflakeColumn)
+        assert isinstance(column, ColumnSpec) and column.dialect is ColumnDialect.SNOWFLAKE
         if column.data_type not in [
             SNOWFLAKE_TYPE_TIMESTAMP_NTZ,
             SNOWFLAKE_TYPE_TIMESTAMP_TZ,
@@ -509,7 +580,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         return True if row else False
 
     def drop_state(self):
-        pass
+        self.catalog.clear()
 
     def drop_table(self, db_name, table_name, purge=False, if_exists=True, sync=None):
         """Drop a table, purge parameter is ignored on Snowflake.
@@ -521,7 +592,9 @@ class BackendSnowflakeApi(BackendApiInterface):
             if_exists_clause,
             self.enclose_object_reference(db_name, table_name),
         )
-        return self.execute_ddl(drop_sql, sync=sync)
+        result = self.execute_ddl(drop_sql, sync=sync)
+        self.catalog.on_drop_table(db_name, table_name)
+        return result
 
     def drop_view(self, db_name, view_name, if_exists=True, sync=None):
         """Drop a view, purge parameter is ignored on Snowflake.
@@ -533,7 +606,9 @@ class BackendSnowflakeApi(BackendApiInterface):
             if_exists_clause,
             self.enclose_object_reference(db_name, view_name),
         )
-        return self.execute_ddl(drop_sql, sync=sync)
+        result = self.execute_ddl(drop_sql, sync=sync)
+        self.catalog.on_drop_table(db_name, view_name)
+        return result
 
     def enclose_identifier(self, identifier):
         if identifier is None:
@@ -632,7 +707,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         return "?"
 
     def gen_column_object(self, column_name, **kwargs):
-        return SnowflakeColumn(column_name, **kwargs)
+        return ColumnSpec(ColumnDialect.SNOWFLAKE, column_name, **kwargs)
 
     def gen_copy_into_sql_text(
         self,
@@ -715,17 +790,12 @@ class BackendSnowflakeApi(BackendApiInterface):
         return sql
 
     def gen_default_numeric_column(self, column_name, data_scale=18):
-        """Return a default best-fit numeric column for generic usage.
-        Used when we can't really know or influence a type, e.g. AVG() output in AAPD.
-        data_scale=0 can be used if the outcome is known to be integral.
-        """
-        return SnowflakeColumn(
+        """Return a default best-fit numeric column for generic usage."""
+        return TYPE_REGISTRY.default_numeric_column(
             column_name,
-            data_type=SNOWFLAKE_TYPE_NUMBER,
-            data_precision=self.max_decimal_precision(),
+            self.type_mapping_target,
+            self.type_mapping_context(),
             data_scale=data_scale,
-            nullable=True,
-            safe_mapping=False,
         )
 
     def gen_insert_select_sql_text(
@@ -803,81 +873,9 @@ class BackendSnowflakeApi(BackendApiInterface):
         return SNOWFLAKE_TYPE_TEXT
 
     def get_columns(self, db_name, table_name):
-        """Snowflake information_schema queries are faster if database is in FROM clause than when via column predicate
-
-        Information schema does not expose lengths of BINARY columns, need supplementary information from DESCRIBE
-        """
-
-        def get_binary_lengths_from_desc(db_name, table_name):
-            """Information schema does not expose lengths of BINARY columns, this function gets the correct information
-            from DESCRIBE and stores it in a dictionary.
-            """
-            if self.is_view(db_name, table_name):
-                sql = "DESCRIBE VIEW %s" % self.enclose_object_reference(db_name, table_name)
-            else:
-                sql = "DESCRIBE TABLE %s" % self.enclose_object_reference(db_name, table_name)
-            data_type_decode_re = re.compile(r"^([a-z0-9_]+)[\(]?([0-9]*)?[\)]?$", re.IGNORECASE)
-            byte_lengths = {}
-            for row in [
-                _ for _ in self.execute_query_fetch_all(sql, log_level=VVERBOSE) if SNOWFLAKE_TYPE_BINARY in _[1]
-            ]:
-                m = data_type_decode_re.match(row[1])
-                if m:
-                    byte_length = int(m.group(2))
-                    byte_lengths[row[0]] = byte_length
-            return byte_lengths
-
+        """Return cached or freshly queried column metadata for a Snowflake table."""
         assert db_name and table_name
-
-        backend_columns = []
-        binary_byte_lengths = {}
-
-        sql = dedent(
-            """\
-            SELECT column_name, data_type, is_nullable, character_maximum_length, character_octet_length
-            ,      numeric_precision, numeric_scale, datetime_precision
-            FROM   %s.information_schema.columns
-            WHERE  table_catalog = ? AND table_schema = ? AND table_name = ?
-            ORDER BY ordinal_position"""
-            % self.enclose_identifier(self._catalog_name())
-        )
-        col_rows = self.execute_query_fetch_all(
-            sql,
-            log_level=VVERBOSE,
-            query_params=[self._catalog_name(), db_name, table_name],
-        )
-        if any(_[1] == SNOWFLAKE_TYPE_BINARY for _ in col_rows):
-            binary_byte_lengths = get_binary_lengths_from_desc(db_name, table_name)
-        for col in col_rows:
-            (
-                col_name,
-                data_type,
-                is_nullable,
-                char_length,
-                byte_length,
-                num_precision,
-                num_scale,
-                time_scale,
-            ) = col
-            if time_scale is not None:
-                data_scale = time_scale
-            else:
-                data_scale = num_scale
-            if data_type == SNOWFLAKE_TYPE_BINARY:
-                self._debug("Overriding byte_length for column %s with: %s" % (col_name, binary_byte_lengths[col_name]))
-                char_length = byte_length = binary_byte_lengths[col_name]
-            backend_columns.append(
-                SnowflakeColumn(
-                    col_name,
-                    data_type,
-                    data_length=byte_length,
-                    char_length=char_length,
-                    data_precision=num_precision,
-                    data_scale=data_scale,
-                    nullable=is_nullable,
-                )
-            )
-        return backend_columns
+        return self.catalog.get_columns(db_name, table_name, self._fetch_columns)
 
     def get_distinct_column_values(
         self,
@@ -891,12 +889,14 @@ class BackendSnowflakeApi(BackendApiInterface):
         """Run SQL to get distinct values for a list of columns.
         See interface description for parameter details.
         """
-
-        def add_sql_cast(col):
-            return ("CAST(%s as TEXT)" % col) if col in (columns_to_cast_to_string or []) else col
-
         assert column_name_list and isinstance(column_name_list, list)
-        expression_list = [add_sql_cast(self.enclose_identifier(_)) for _ in column_name_list]
+        cast_cols = set(columns_to_cast_to_string or [])
+        expression_list = [
+            f"CAST({self.enclose_identifier(_)} as TEXT)"
+            if self.enclose_identifier(_) in cast_cols
+            else self.enclose_identifier(_)
+            for _ in column_name_list
+        ]
         return self.get_distinct_expressions(
             db_name,
             table_name,
@@ -945,7 +945,7 @@ class BackendSnowflakeApi(BackendApiInterface):
             if not rows:
                 raise BackendApiException("Query plan not found for query id: %s" % query_id)
             return "\n".join([row[0] for row in rows])
-        except snowflake.connector.errors.ProgrammingError:
+        except _SNOWFLAKE_PROGRAMMING_ERROR:
             raise BackendApiException("Query plan not found for query id: %s" % query_id)
         finally:
             if self._cursor:
@@ -977,7 +977,7 @@ class BackendSnowflakeApi(BackendApiInterface):
             longest_key = max(len(_) for _ in profile_keys)
             formatted_stats = ["{k: <{pad}}: {v}".format(k=k, v=v, pad=longest_key) for k, v in stats]
             return "\n".join(formatted_stats)
-        except snowflake.connector.errors.ProgrammingError:
+        except _SNOWFLAKE_PROGRAMMING_ERROR:
             raise BackendApiException("Query plan not found for session id: %s, query id: %s" % (session_id, query_id))
         finally:
             if self._cursor:
@@ -1038,27 +1038,44 @@ class BackendSnowflakeApi(BackendApiInterface):
         return row_count
 
     def get_table_size(self, db_name, table_name, no_cache=False):
-        """no_cache is ignored on Snowflake because we use SQL to get the size."""
+        """Return the size in bytes of the Snowflake table."""
         assert db_name and table_name
+        if no_cache:
+            size_bytes, _ = self._fetch_table_size_and_row_count(db_name, table_name)
+            return size_bytes
         size_bytes, _ = self.get_table_size_and_row_count(db_name, table_name)
         return size_bytes
 
     def get_table_size_and_row_count(self, db_name, table_name):
-        """Snowflake information_schema queries are faster if database is in FROM clause than when via column predicate"""
+        """Return (size_bytes, row_count) using the cached backend catalog."""
         assert db_name and table_name
-        sql = dedent(
-            """\
-                SELECT bytes, row_count
-                FROM   %s.information_schema.tables
-                WHERE  table_catalog = ? AND table_schema = ? AND table_name = ?"""
-            % self.enclose_identifier(self._catalog_name())
+        snap = self.catalog.get_snapshot(db_name, table_name)
+        if snap is not None and snap.size_calculated and snap.row_count_calculated:
+            return snap.size_bytes, snap.row_count
+        size_bytes, row_count = self._fetch_table_size_and_row_count(db_name, table_name)
+        now = time.monotonic()
+        updated = (
+            snap.replace(
+                size_bytes=size_bytes,
+                size_calculated=True,
+                row_count=row_count,
+                row_count_calculated=True,
+                fetched_at=now,
+            )
+            if snap is not None
+            else BackendTableSnapshot(
+                db_name=db_name,
+                table_name=table_name,
+                exists=size_bytes is not None or row_count is not None,
+                size_bytes=size_bytes,
+                size_calculated=True,
+                row_count=row_count,
+                row_count_calculated=True,
+                fetched_at=now,
+            )
         )
-        row = self.execute_query_fetch_one(
-            sql,
-            log_level=VVERBOSE,
-            query_params=[self._catalog_name(), db_name, table_name],
-        )
-        return row or (None, None)
+        self.catalog.put_snapshot(updated)
+        return size_bytes, row_count
 
     def get_table_sort_columns(self, db_name, table_name, as_csv=True):
         """Extract cluster key columns from information_schema.
@@ -1272,13 +1289,13 @@ class BackendSnowflakeApi(BackendApiInterface):
         return [_[0] for _ in rows]
 
     def max_decimal_integral_magnitude(self):
-        return 38
+        return SNOWFLAKE_CAPABILITIES.max_decimal_integral_magnitude
 
     def max_decimal_precision(self):
-        return 38
+        return SNOWFLAKE_CAPABILITIES.max_decimal_precision
 
     def max_decimal_scale(self, data_type=None):
-        return 37
+        return SNOWFLAKE_CAPABILITIES.max_decimal_scale
 
     def max_datetime_value(self):
         return datetime64("99999-12-31T23:59:59.999999")
@@ -1287,7 +1304,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         return 9
 
     def max_partition_columns(self):
-        return 0
+        return SNOWFLAKE_CAPABILITIES.max_partition_columns
 
     def max_sort_columns(self):
         """Cannot find a documented maximum but tested up to 15 columns and worked. Did find this in docs:
@@ -1298,7 +1315,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         return SORT_COLUMNS_UNLIMITED
 
     def max_table_name_length(self):
-        return 255
+        return SNOWFLAKE_CAPABILITIES.max_table_name_length
 
     def min_datetime_value(self):
         return datetime64("0000-01-01")
@@ -1333,6 +1350,8 @@ class BackendSnowflakeApi(BackendApiInterface):
         rename_sql = f"ALTER TABLE {self.enclose_identifier(from_db_name)}.{self.enclose_identifier(from_table_name)} RENAME TO {self.enclose_identifier(to_db_name)}.{self.enclose_identifier(to_table_name)}"
 
         executed_sqls = self.execute_ddl(rename_sql, sync=sync)
+        self.catalog.on_drop_table(from_db_name, from_table_name)
+        self.catalog.invalidate_table(to_db_name, to_table_name)
         return executed_sqls
 
     def role_exists(self, role_name):
@@ -1382,39 +1401,8 @@ class BackendSnowflakeApi(BackendApiInterface):
         return None
 
     def table_exists(self, db_name: str, table_name: str) -> bool:
-        """Return True/False if a table exists using SHOW TABLES.
-        DESCRIBE TABLE/SHOW TABLES are much faster than using INFORMATION_SCHEMA but both have problems:
-        SHOW TABLES is has case-insensitive LIKE and IN clauses plus throws exceptions if the schema doesn't exist.
-        DESCRIBE TABLE has no case-sensitivity problems but is interchangeable with DESCRIBE VIEW, also
-                       throws exceptions when schema or object do not exist.
-        INFORMATION_SCHEMA is much nicer to use but slow and costs money. Offload Status Report is really slow
-        when using INFORMATION_SCHEMA for table/view_exists(). So it is a case of choosing the least worst option.
-        Chosen below and will recheck data in Python to avoid case-sensitivity issues:
-            SHOW TERSE TABLES LIKE '%s' IN SCHEMA %s STARTS WITH '%s'
-        I can't find a documented list of err codes which is why we're using a primitive check on the msg attribute.
-        Because we're relying on the order of the output columns from SHOW we use cursor.description to verify
-        things are where they should be.
-        """
-        sql = "SHOW TERSE TABLES LIKE '%s' IN SCHEMA %s.%s STARTS WITH '%s'" % (
-            table_name,
-            self.enclose_identifier(self._catalog_name()),
-            self.enclose_identifier(db_name),
-            table_name,
-        )
-        try:
-            cursor = self.execute_query_get_cursor(sql, log_level=None)
-            headers = [_[0] for _ in cursor.description]
-            assert headers[1] == "name"
-            assert headers[3] == "database_name"
-            assert headers[4] == "schema_name"
-            rows = cursor.fetchall()
-            if any((_[3], _[4], _[1]) == (self._catalog_name(), db_name, table_name) for _ in rows):
-                return True
-        except snowflake.connector.ProgrammingError as exc:
-            if "not exist" in (exc.msg or ""):
-                return False
-            raise
-        return False
+        """Return True/False if a table exists using the cached backend catalog."""
+        return self.catalog.table_exists(db_name, table_name, self._fetch_table_exists)
 
     def table_has_rows(self, db_name: str, table_name: str) -> bool:
         """Return bool depending whether the table has rows or not."""
@@ -1444,7 +1432,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         return SNOWFLAKE_TYPE_TEXT
 
     def transform_null_cast(self, backend_column):
-        assert isinstance(backend_column, SnowflakeColumn)
+        assert isinstance(backend_column, ColumnSpec) and backend_column.dialect is ColumnDialect.SNOWFLAKE
         return "CAST(NULL AS %s)" % (backend_column.format_data_type())
 
     def transform_tokenize_data_type(self):
@@ -1487,39 +1475,17 @@ class BackendSnowflakeApi(BackendApiInterface):
             if row and row[1]:
                 arg_strings = re.findall(r"[A-Z0-9_]+ [A-Z0-9_]+", row[1])
                 if arg_strings:
-                    parameters = [tuple(_.split()) for _ in arg_strings]
+                    parameters = [UdfParameter(*_.split()) for _ in arg_strings]
             udfs.append(UdfDetails(db_name, udf_name, return_type, parameters))
         return udfs
 
     def valid_canonical_override(self, column, canonical_override):
-        """Snowflake FLOAT is always stored as DOUBLE therefore no canonical FLOAT below"""
-        assert isinstance(column, SnowflakeColumn)
-        if isinstance(canonical_override, CanonicalColumn):
-            target_type = canonical_override.data_type
-        else:
-            target_type = canonical_override
-        if column.is_number_based():
-            if column.data_type == SNOWFLAKE_TYPE_FLOAT:
-                return bool(target_type in [GOE_TYPE_DECIMAL, GOE_TYPE_DOUBLE])
-            return target_type in NUMERIC_CANONICAL_TYPES
-        if column.is_date_based():
-            return bool(target_type in DATE_CANONICAL_TYPES)
-        if column.is_string_based():
-            return bool(
-                target_type in STRING_CANONICAL_TYPES
-                or target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY]
-                or target_type in [GOE_TYPE_INTERVAL_DS, GOE_TYPE_INTERVAL_YM]
-            )
-        if target_type not in ALL_CANONICAL_TYPES:
-            self._log("Unknown canonical type in mapping: %s" % target_type, detail=VVERBOSE)
-            return False
-        if column.data_type not in self.supported_backend_data_types():
-            return False
-        if column.data_type == SNOWFLAKE_TYPE_BINARY:
-            return bool(target_type in [GOE_TYPE_BINARY, GOE_TYPE_LARGE_BINARY])
-        if column.data_type == SNOWFLAKE_TYPE_TIME:
-            return bool(target_type == GOE_TYPE_TIME)
-        return False
+        target_type = canonical_override.data_type if isinstance(canonical_override, ColumnSpec) else canonical_override
+        return TYPE_REGISTRY.valid_canonical_override(
+            column,
+            target_type,
+            self.type_mapping_context(),
+        )
 
     def valid_staging_formats(self):
         return [FILE_STORAGE_FORMAT_AVRO, FILE_STORAGE_FORMAT_PARQUET]
@@ -1543,188 +1509,127 @@ class BackendSnowflakeApi(BackendApiInterface):
             rows = cursor.fetchall()
             if any((_[3], _[4], _[1]) == (self._catalog_name(), db_name, view_name) for _ in rows):
                 return True
-        except snowflake.connector.ProgrammingError as exc:
-            if "not exist" in (exc.msg or ""):
+        except _SNOWFLAKE_PROGRAMMING_ERROR as exc:
+            if "not exist" in (getattr(exc, "msg", None) or ""):
                 return False
             raise
         return False
 
     def to_canonical_column(self, column):
-        """Translate a Snowflake column to an internal GOE column"""
-
-        def new_column(col, data_type, data_precision=None, data_scale=None, safe_mapping=None):
-            """Wrapper that carries name forward but applies other attributes as specified"""
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return CanonicalColumn(
-                name=col.name,
-                data_type=data_type,
-                data_length=col.data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-                char_length=col.char_length,
-                char_semantics=CANONICAL_CHAR_SEMANTICS_CHAR,
-            )
-
-        assert column
-        assert isinstance(column, SnowflakeColumn)
-
-        if column.data_type == SNOWFLAKE_TYPE_BOOLEAN:
-            return new_column(column, GOE_TYPE_BOOLEAN)
-        if column.data_type == SNOWFLAKE_TYPE_BINARY:
-            return new_column(column, GOE_TYPE_BINARY)
-        if column.data_type == SNOWFLAKE_TYPE_DATE:
-            return new_column(column, GOE_TYPE_DATE)
-        if column.data_type == SNOWFLAKE_TYPE_FLOAT:
-            return new_column(column, GOE_TYPE_DOUBLE)
-        if column.data_type == SNOWFLAKE_TYPE_INTEGER:
-            return new_column(column, GOE_TYPE_INTEGER_38)
-        if column.data_type == SNOWFLAKE_TYPE_NUMBER:
-            if column.data_scale == 0:
-                if 1 <= column.data_precision <= 2:
-                    integral_type = GOE_TYPE_INTEGER_1
-                elif 3 <= column.data_precision <= 4:
-                    integral_type = GOE_TYPE_INTEGER_2
-                elif 5 <= column.data_precision <= 9:
-                    integral_type = GOE_TYPE_INTEGER_4
-                elif 10 <= column.data_precision <= 18:
-                    integral_type = GOE_TYPE_INTEGER_8
-                else:
-                    integral_type = GOE_TYPE_INTEGER_38
-                return new_column(column, integral_type)
-            return new_column(
-                column,
-                GOE_TYPE_DECIMAL,
-                data_precision=column.data_precision,
-                data_scale=column.data_scale,
-            )
-        if column.data_type == SNOWFLAKE_TYPE_TEXT:
-            return new_column(column, GOE_TYPE_VARIABLE_STRING)
-        if column.data_type == SNOWFLAKE_TYPE_TIME:
-            return new_column(column, GOE_TYPE_TIME)
-        if column.data_type == SNOWFLAKE_TYPE_TIMESTAMP_NTZ:
-            return new_column(column, GOE_TYPE_TIMESTAMP, data_scale=self.max_datetime_scale())
-        if column.data_type == SNOWFLAKE_TYPE_TIMESTAMP_TZ:
-            return new_column(column, GOE_TYPE_TIMESTAMP_TZ, data_scale=self.max_datetime_scale())
-        raise NotImplementedError("Unsupported backend data type: %s" % column.data_type)
+        """Translate a Snowflake column to an internal GOE column."""
+        return TYPE_REGISTRY.to_canonical(column, self.type_mapping_context())
 
     def from_canonical_column(self, column, decimal_padding_digits=0):
-        def new_column(
-            col,
-            data_type,
-            data_length=None,
-            data_precision=None,
-            data_scale=None,
-            char_length=None,
-            safe_mapping=None,
-        ):
-            safe_mapping = is_safe_mapping(col.safe_mapping, safe_mapping)
-            return SnowflakeColumn(
-                col.name,
-                data_type=data_type,
-                data_length=data_length,
-                char_length=char_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-                nullable=col.nullable,
-                data_default=col.data_default,
-                safe_mapping=safe_mapping,
-            )
-
-        assert column
-        assert isinstance(column, CanonicalColumn), "%s is not instance of CanonicalColumn" % type(column)
-
-        if column.data_type == GOE_TYPE_BOOLEAN:
-            return new_column(column, SNOWFLAKE_TYPE_BOOLEAN, safe_mapping=True)
-        if column.data_type in (
-            GOE_TYPE_FIXED_STRING,
-            GOE_TYPE_LARGE_STRING,
-            GOE_TYPE_VARIABLE_STRING,
-        ):
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_TEXT,
-                char_length=column.char_length or column.data_length,
-                safe_mapping=True,
-            )
-        if column.data_type in (GOE_TYPE_LARGE_BINARY, GOE_TYPE_BINARY):
-            return new_column(column, SNOWFLAKE_TYPE_BINARY, data_length=column.data_length)
-        if column.data_type == GOE_TYPE_DATE:
-            return new_column(column, SNOWFLAKE_TYPE_DATE, safe_mapping=True)
-        if column.data_type in (GOE_TYPE_FLOAT, GOE_TYPE_DOUBLE):
-            return new_column(column, SNOWFLAKE_TYPE_FLOAT, safe_mapping=True)
-        if column.data_type == GOE_TYPE_INTEGER_1:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=3,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_INTEGER_2:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=5,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_INTEGER_4:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=10,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_INTEGER_8:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=19,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_INTEGER_38:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=38,
-                data_scale=0,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_DECIMAL:
-            if column.data_precision is None and column.data_scale is None:
-                return self.gen_default_numeric_column(column.name)
-            data_precision = column.data_precision or self.max_decimal_precision()
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_NUMBER,
-                data_precision=data_precision,
-                data_scale=column.data_scale,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_TIME:
-            return new_column(
-                column,
-                SNOWFLAKE_TYPE_TIME,
-                data_scale=column.data_scale,
-                safe_mapping=True,
-            )
-        if column.data_type == GOE_TYPE_TIMESTAMP:
-            return new_column(column, SNOWFLAKE_TYPE_TIMESTAMP_NTZ, data_scale=column.data_scale)
-        if column.data_type == GOE_TYPE_TIMESTAMP_TZ:
-            return new_column(column, SNOWFLAKE_TYPE_TIMESTAMP_TZ, data_scale=column.data_scale)
-        if column.data_type == GOE_TYPE_INTERVAL_DS:
-            return new_column(column, SNOWFLAKE_TYPE_TEXT, safe_mapping=False)
-        if column.data_type == GOE_TYPE_INTERVAL_YM:
-            return new_column(column, SNOWFLAKE_TYPE_TEXT, safe_mapping=False)
-        raise NotImplementedError("Unsupported GOE data type: %s" % column.data_type)
+        """Translate an internal GOE column to a Snowflake column."""
+        context = msgspec.structs.replace(self.type_mapping_context(), decimal_padding_digits=decimal_padding_digits)
+        return TYPE_REGISTRY.from_canonical(column, self.type_mapping_target, context)
 
     def _backend_capabilities(self):
-        return SNOWFLAKE_BACKEND_CAPABILITIES
+        return SNOWFLAKE_CAPABILITIES.to_capability_dict()
+
+    def _fetch_table_exists(self, db_name: str, table_name: str) -> bool:
+        """Uncached check for whether a Snowflake table exists using SHOW TERSE TABLES."""
+        sql = "SHOW TERSE TABLES LIKE '%s' IN SCHEMA %s.%s STARTS WITH '%s'" % (
+            table_name,
+            self.enclose_identifier(self._catalog_name()),
+            self.enclose_identifier(db_name),
+            table_name,
+        )
+        try:
+            cursor = self.execute_query_get_cursor(sql, log_level=None)
+            headers = [_[0] for _ in cursor.description]
+            assert headers[1] == "name"
+            assert headers[3] == "database_name"
+            assert headers[4] == "schema_name"
+            rows = cursor.fetchall()
+            if any((_[3], _[4], _[1]) == (self._catalog_name(), db_name, table_name) for _ in rows):
+                return True
+        except _SNOWFLAKE_PROGRAMMING_ERROR as exc:
+            if "not exist" in (getattr(exc, "msg", None) or ""):
+                return False
+            raise
+        return False
+
+    def _fetch_table_size_and_row_count(self, db_name: str, table_name: str) -> tuple[int | None, int | None]:
+        """Uncached lookup of (bytes, row_count) from information_schema.tables."""
+        sql = dedent(
+            """\
+                SELECT bytes, row_count
+                FROM   %s.information_schema.tables
+                WHERE  table_catalog = ? AND table_schema = ? AND table_name = ?"""
+            % self.enclose_identifier(self._catalog_name())
+        )
+        row = self.execute_query_fetch_one(
+            sql,
+            log_level=VVERBOSE,
+            query_params=[self._catalog_name(), db_name, table_name],
+        )
+        return row or (None, None)
+
+    def _get_binary_lengths_from_desc(self, db_name: str, table_name: str) -> dict[str, int]:
+        """Extract BINARY column lengths from DESCRIBE TABLE or DESCRIBE VIEW."""
+        if self.is_view(db_name, table_name):
+            sql = "DESCRIBE VIEW %s" % self.enclose_object_reference(db_name, table_name)
+        else:
+            sql = "DESCRIBE TABLE %s" % self.enclose_object_reference(db_name, table_name)
+        data_type_decode_re = re.compile(r"^([a-z0-9_]+)[\(]?([0-9]*)?[\)]?$", re.IGNORECASE)
+        byte_lengths: dict[str, int] = {}
+        for row in [_ for _ in self.execute_query_fetch_all(sql, log_level=VVERBOSE) if SNOWFLAKE_TYPE_BINARY in _[1]]:
+            m = data_type_decode_re.match(row[1])
+            if m:
+                byte_length = int(m.group(2))
+                byte_lengths[row[0]] = byte_length
+        return byte_lengths
+
+    def _fetch_columns(self, db_name: str, table_name: str) -> list[ColumnSpec]:
+        """Uncached fetch of Snowflake table columns from information_schema.columns."""
+        backend_columns: list[ColumnSpec] = []
+        binary_byte_lengths: dict[str, int] = {}
+
+        sql = dedent(
+            """\
+            SELECT column_name, data_type, is_nullable, character_maximum_length, character_octet_length
+            ,      numeric_precision, numeric_scale, datetime_precision
+            FROM   %s.information_schema.columns
+            WHERE  table_catalog = ? AND table_schema = ? AND table_name = ?
+            ORDER BY ordinal_position"""
+            % self.enclose_identifier(self._catalog_name())
+        )
+        col_rows = self.execute_query_fetch_all(
+            sql,
+            log_level=VVERBOSE,
+            query_params=[self._catalog_name(), db_name, table_name],
+        )
+        if any(_[1] == SNOWFLAKE_TYPE_BINARY for _ in col_rows):
+            binary_byte_lengths = self._get_binary_lengths_from_desc(db_name, table_name)
+        for col in col_rows:
+            (
+                col_name,
+                data_type,
+                is_nullable,
+                char_length,
+                byte_length,
+                num_precision,
+                num_scale,
+                time_scale,
+            ) = col
+            data_scale = time_scale if time_scale is not None else num_scale
+            if data_type == SNOWFLAKE_TYPE_BINARY:
+                self._debug("Overriding byte_length for column %s with: %s" % (col_name, binary_byte_lengths[col_name]))
+                char_length = byte_length = binary_byte_lengths[col_name]
+            backend_columns.append(
+                ColumnSpec(
+                    ColumnDialect.SNOWFLAKE,
+                    col_name,
+                    data_type,
+                    data_length=byte_length,
+                    char_length=char_length,
+                    data_precision=num_precision,
+                    data_scale=data_scale,
+                    nullable=is_nullable,
+                )
+            )
+        return backend_columns
 
     def _catalog_name(self):
         """Using "catalog" because used in INFORMATION_SCHEMA to avoid confusion of using term "database" """
@@ -1873,22 +1778,22 @@ class BackendSnowflakeApi(BackendApiInterface):
         }
 
     @staticmethod
+    def _prep_param_value(v):
+        if isinstance(v, str):
+            return backtick_sandwich(v, ch="'")
+        if isinstance(v, float):
+            return repr(v)
+        return str(v)
+
+    @staticmethod
     def _format_query_options(query_options=None):
         """Format SET commands for Snowflake.
         query_options: key/value pairs for session settings.
         """
-
-        def prep_param_value(v):
-            if isinstance(v, str):
-                return backtick_sandwich(v, ch="'")
-            if isinstance(v, float):
-                return repr(v)
-            return str(v)
-
         if not query_options:
             return []
         assert isinstance(query_options, dict)
-        return [f"ALTER SESSION SET {k}={prep_param_value(v)}" for k, v in query_options.items()]
+        return [f"ALTER SESSION SET {k}={BackendSnowflakeApi._prep_param_value(v)}" for k, v in query_options.items()]
 
     def _get_private_key_from_pemfile(self, pem_file, pem_passphrase):
         pass_tool = PasswordTools()
@@ -1902,6 +1807,22 @@ class BackendSnowflakeApi(BackendApiInterface):
             return "SAMPLE BLOCK (%s)" % sample_perc
         return ""
 
+    def _get_query_history_after_delay(self, wait_seconds):
+        time.sleep(wait_seconds)
+        sql = dedent(
+            """\
+             SELECT *
+             FROM TABLE(
+                %s.information_schema.query_history_by_session(end_time_range_end => CURRENT_TIMESTAMP,
+                                                               result_limit => 1)
+             )
+             WHERE query_id = ?"""
+            % self.enclose_identifier(self._catalog_name())
+        )
+        assert self._cursor is not None
+        self._cursor.execute(sql, [self._cursor.sfqid])
+        return self._cursor.fetchone()
+
     def _get_query_profile(self, query_identifier=None):
         """On Snowflake query_identifier is not used.
         We look for a query using the existing cursor.
@@ -1913,39 +1834,19 @@ class BackendSnowflakeApi(BackendApiInterface):
 
         Found the data was not always there instantly, so added a brief pause
         """
-
-        def get_query_history_after_delay(wait_seconds):
-            time.sleep(wait_seconds)
-            sql = dedent(
-                """\
-                 SELECT *
-                 FROM TABLE(
-                    %s.information_schema.query_history_by_session(end_time_range_end => CURRENT_TIMESTAMP,
-                                                                   result_limit => 1)
-                 )
-                 WHERE query_id = ?"""
-                % self.enclose_identifier(self._catalog_name())
-            )
-            assert self._cursor is not None
-            self._cursor.execute(sql, [self._cursor.sfqid])
-            return self._cursor.fetchone()
-
-        def str_fn(x):
-            return x if isinstance(x, str) else str(x)
-
         assert self._cursor
         assert not self._cursor.is_closed()
         self._log("Fetching query history for id: %s" % self._cursor.sfqid, detail=VVERBOSE)
-        row = get_query_history_after_delay(0.5)
+        row = self._get_query_history_after_delay(0.5)
         if not row:
             self._log("Query history not found (after attempt 1)", detail=VVERBOSE)
-            row = get_query_history_after_delay(2)
+            row = self._get_query_history_after_delay(2)
         if not row:
             self._log("Query history not found (after attempt 2)", detail=VVERBOSE)
             return ""
         profile_keys = [_[0] for _ in self._cursor.description]
         stats = [("Statistic", "Value")]
-        stats.extend(sorted(zip(profile_keys, [str_fn(_) for _ in row])))
+        stats.extend(sorted(zip(profile_keys, [(_ if isinstance(_, str) else str(_)) for _ in row])))
         return format_list_for_logging(stats)
 
     def _get_snowflake_ddl(
@@ -1995,7 +1896,7 @@ class BackendSnowflakeApi(BackendApiInterface):
         assert warehouse_name
         try:
             return self.execute_ddl("USE WAREHOUSE %s" % warehouse_name, log_level=log_level)
-        except snowflake.connector.ProgrammingError as exc:
+        except _SNOWFLAKE_PROGRAMMING_ERROR as exc:
             self._log(traceback.format_exc(), detail=VVERBOSE)
             raise BackendApiException("Snowflake warehouse %s is not usable: %s" % (warehouse_name, str(exc)))
 

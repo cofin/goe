@@ -12,9 +12,9 @@ This is split into two categories
 
 from unittest import TestCase, main
 
-from goe.offload.column_metadata import ALL_CANONICAL_TYPES
 from goe.offload.offload_constants import DBTYPE_MSSQL, DBTYPE_ORACLE
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.schema.column_spec import ALL_CANONICAL_TYPES
 from tests.testlib.test_framework.factory.frontend_testing_api_factory import (
     frontend_testing_api_factory,
 )

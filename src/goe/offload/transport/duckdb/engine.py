@@ -13,8 +13,7 @@ import duckdb
 from packaging.version import Version
 from sqlspec.adapters.duckdb import DuckDBConfig
 
-from goe.offload.column_metadata import ColumnMetadataInterface
-from goe.offload.staging.parquet.parquet_column import (
+from goe.offload.schema.column_spec import (
     PARQUET_TYPE_BINARY,
     PARQUET_TYPE_BOOLEAN,
     PARQUET_TYPE_DOUBLE,
@@ -22,6 +21,7 @@ from goe.offload.staging.parquet.parquet_column import (
     PARQUET_TYPE_INT32,
     PARQUET_TYPE_INT64,
     PARQUET_TYPE_STRING,
+    ColumnSpec,
 )
 from goe.offload.transport.duckdb_constants import (
     DUCKDB_AZURE_SECRET_NAME,
@@ -336,7 +336,7 @@ def attach_oracle(
     )
 
 
-def build_cast_projection(staging_columns: Sequence[ColumnMetadataInterface]) -> str:
+def build_cast_projection(staging_columns: Sequence[ColumnSpec]) -> str:
     """Cast each result column to its target DuckDB Parquet staging type."""
     if not staging_columns:
         return "*"

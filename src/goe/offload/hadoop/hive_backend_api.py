@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendHiveApi: BackendApi implementation for a Hive backend.
@@ -13,14 +11,18 @@ import logging
 from numpy import datetime64
 
 from goe.offload.backend_api import BackendApiException
-from goe.offload.column_metadata import (
-    match_table_column,
-    str_list_of_columns,
-    valid_column_list,
-)
+from goe.offload.backend_capabilities import BackendCapabilities
 from goe.offload.hadoop.better_impyla import HDFS_NULL_PART_KEY_CONSTANT
 from goe.offload.hadoop.hadoop_backend_api import BackendHadoopApi
-from goe.offload.hadoop.hadoop_column import (
+from goe.offload.hadoop.hive_literal import HiveLiteral
+from goe.offload.offload_constants import (
+    DBTYPE_HIVE,
+    FILE_STORAGE_FORMAT_AVRO,
+    FILE_STORAGE_FORMAT_ORC,
+    FILE_STORAGE_FORMAT_PARQUET,
+)
+from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_BINARY,
     HADOOP_TYPE_BOOLEAN,
@@ -39,19 +41,15 @@ from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_TIMESTAMP,
     HADOOP_TYPE_TINYINT,
     HADOOP_TYPE_VARCHAR,
+    match_table_column,
+    str_list_of_columns,
+    valid_column_list,
 )
-from goe.offload.hadoop.hive_literal import HiveLiteral
-from goe.offload.offload_constants import (
-    DBTYPE_HIVE,
-    FILE_STORAGE_FORMAT_AVRO,
-    FILE_STORAGE_FORMAT_ORC,
-    FILE_STORAGE_FORMAT_PARQUET,
-    HIVE_BACKEND_CAPABILITIES,
-)
-from goe.offload.offload_messages import VERBOSE, VVERBOSE
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+
+HIVE_CAPABILITIES = BackendCapabilities.for_hive()
 
 
 class BackendHiveApi(BackendHadoopApi):
@@ -220,7 +218,11 @@ class BackendHiveApi(BackendHadoopApi):
         if with_terminator:
             sql += ";"
 
-        return self.execute_ddl(sql, sync=sync)
+        result = self.execute_ddl(sql, sync=sync)
+        if db_name:
+            self.catalog.on_create_table(db_name, table_name, columns=column_list)
+            self._cached_hive_tables.pop((db_name + "_" + table_name).lower(), None)
+        return result
 
     def create_udf(
         self,
@@ -387,9 +389,12 @@ FROM   %(from_db_table)s%(where)s%(dist_by)s%(sort_by)s""" % {
         therefore there's a strong chance this will return 0
         """
         assert db_name and table_name
-        hive_table = self._get_hive_table(db_name, table_name, no_cache=no_cache)
-        size_bytes = hive_table.table_size() or 0
-        return size_bytes
+        return self.catalog.get_table_size(
+            db_name,
+            table_name,
+            lambda d, t: self._fetch_table_size(d, t, no_cache=no_cache),
+            no_cache=no_cache,
+        )
 
     def get_table_sort_columns(self, db_name, table_name, as_csv=True):
         """Irrelevant on Hive"""
@@ -427,6 +432,8 @@ FROM   %(from_db_table)s%(where)s%(dist_by)s%(sort_by)s""" % {
         MSCK REPAIR TABLE is for finding new partitions rather than just rescanning for files
         therefore is not what this is intended for.
         """
+        if db_name and table_name:
+            self.catalog.on_load_table(db_name, table_name)
         self.drop_state()
 
     def supported_backend_data_types(self):
@@ -459,7 +466,11 @@ FROM   %(from_db_table)s%(where)s%(dist_by)s%(sort_by)s""" % {
         raise NotImplementedError("udf_details is not implemented on Hive")
 
     def _backend_capabilities(self):
-        return HIVE_BACKEND_CAPABILITIES
+        return HIVE_CAPABILITIES.to_capability_dict()
+
+    def _fetch_table_size(self, db_name, table_name, no_cache=False):
+        hive_table = self._get_hive_table(db_name, table_name, no_cache=no_cache)
+        return hive_table.table_size() or 0
 
     def _execute_ddl_or_dml(
         self,

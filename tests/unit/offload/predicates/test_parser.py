@@ -9,23 +9,6 @@ import numpy as np
 import pytest
 
 from goe.exceptions import OptionValueError
-from goe.offload.bigquery.bigquery_column import (
-    BIGQUERY_TYPE_BIGNUMERIC,
-    BIGQUERY_TYPE_BYTES,
-    BIGQUERY_TYPE_DATETIME,
-    BIGQUERY_TYPE_INT64,
-    BIGQUERY_TYPE_STRING,
-    BigQueryColumn,
-)
-from goe.offload.column_metadata import ColumnPartitionInfo
-from goe.offload.oracle.oracle_column import (
-    ORACLE_TYPE_BLOB,
-    ORACLE_TYPE_DATE,
-    ORACLE_TYPE_NUMBER,
-    ORACLE_TYPE_TIMESTAMP,
-    ORACLE_TYPE_VARCHAR2,
-    OracleColumn,
-)
 from goe.offload.predicates.ast import (
     BinaryComparison,
     ColumnRef,
@@ -45,6 +28,21 @@ from goe.offload.predicates.parser import (
     parse_predicate_dsl,
     parse_safe_sql_predicate,
     resolve_predicate_types,
+)
+from goe.offload.schema.column_spec import (
+    BIGQUERY_TYPE_BIGNUMERIC,
+    BIGQUERY_TYPE_BYTES,
+    BIGQUERY_TYPE_DATETIME,
+    BIGQUERY_TYPE_INT64,
+    BIGQUERY_TYPE_STRING,
+    ORACLE_TYPE_BLOB,
+    ORACLE_TYPE_DATE,
+    ORACLE_TYPE_NUMBER,
+    ORACLE_TYPE_TIMESTAMP,
+    ORACLE_TYPE_VARCHAR2,
+    ColumnDialect,
+    ColumnPartitionSpec,
+    ColumnSpec,
 )
 
 
@@ -147,13 +145,14 @@ def test_ast_column_helpers_extract_rename_and_re_alias() -> None:
 def test_resolve_predicate_types_attaches_column_data_types_and_synthetic_partitions() -> None:
     """Verify resolve_predicate_types populates data_type and injects synthetic partition comparisons."""
     bq_cols = [
-        BigQueryColumn("ID", BIGQUERY_TYPE_INT64),
-        BigQueryColumn("AMOUNT", BIGQUERY_TYPE_BIGNUMERIC, data_precision=38, data_scale=9),
-        BigQueryColumn("EVENT_TS", BIGQUERY_TYPE_DATETIME),
-        BigQueryColumn(
+        ColumnSpec(ColumnDialect.BIGQUERY, "ID", BIGQUERY_TYPE_INT64),
+        ColumnSpec(ColumnDialect.BIGQUERY, "AMOUNT", BIGQUERY_TYPE_BIGNUMERIC, data_precision=38, data_scale=9),
+        ColumnSpec(ColumnDialect.BIGQUERY, "EVENT_TS", BIGQUERY_TYPE_DATETIME),
+        ColumnSpec(
+            ColumnDialect.BIGQUERY,
             "GOE_PART_M_EVENT_TS",
             BIGQUERY_TYPE_STRING,
-            partition_info=ColumnPartitionInfo(
+            partition_info=ColumnPartitionSpec(
                 position=1,
                 source_column_name="EVENT_TS",
                 granularity="M",
@@ -188,14 +187,14 @@ def test_resolve_predicate_types_attaches_column_data_types_and_synthetic_partit
 def test_resolve_predicate_types_raises_option_value_error_on_unknown_or_mismatched_column() -> None:
     """Verify unknown columns, unsupported column types, and mismatched value kinds raise OptionValueError."""
     ora_cols = [
-        OracleColumn("ID", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0),
-        OracleColumn("NAME", ORACLE_TYPE_VARCHAR2, data_length=50),
-        OracleColumn("CREATED_AT", ORACLE_TYPE_DATE),
-        OracleColumn("EVENT_TS", ORACLE_TYPE_TIMESTAMP, data_scale=9),
-        OracleColumn("RAW_BLOB", ORACLE_TYPE_BLOB),
+        ColumnSpec(ColumnDialect.ORACLE, "ID", ORACLE_TYPE_NUMBER, data_precision=10, data_scale=0),
+        ColumnSpec(ColumnDialect.ORACLE, "NAME", ORACLE_TYPE_VARCHAR2, data_length=50),
+        ColumnSpec(ColumnDialect.ORACLE, "CREATED_AT", ORACLE_TYPE_DATE),
+        ColumnSpec(ColumnDialect.ORACLE, "EVENT_TS", ORACLE_TYPE_TIMESTAMP, data_scale=9),
+        ColumnSpec(ColumnDialect.ORACLE, "RAW_BLOB", ORACLE_TYPE_BLOB),
     ]
     bq_cols = [
-        BigQueryColumn("RAW_BYTES", BIGQUERY_TYPE_BYTES),
+        ColumnSpec(ColumnDialect.BIGQUERY, "RAW_BYTES", BIGQUERY_TYPE_BYTES),
     ]
 
     with pytest.raises(OptionValueError, match="Unable to resolve column 'MISSING_COL' in offload predicate"):

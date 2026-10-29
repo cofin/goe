@@ -7,15 +7,16 @@ import pytest
 import sqlglot
 from sqlglot import exp
 
-from goe.offload.bigquery.bigquery_column import (
+from goe.offload.schema.column_spec import (
     BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_DATE,
     BIGQUERY_TYPE_INT64,
     BIGQUERY_TYPE_NUMERIC,
     BIGQUERY_TYPE_STRING,
-    BigQueryColumn,
+    ColumnDialect,
+    ColumnPartitionSpec,
+    ColumnSpec,
 )
-from goe.offload.column_metadata import ColumnPartitionInfo
 from goe.offload.sql_ast.dialect_engine import (
     DialectNotSupportedError,
     DialectSqlEngine,
@@ -177,14 +178,19 @@ def test_bigquery_ddl_and_dml_match_current_output() -> None:
     """Verify BigQuery DDL and DML builders match legacy BigQuerySqlEngine outputs byte-for-byte."""
     engine = get_dialect_engine("bigquery")
     cols = [
-        BigQueryColumn("ID", BIGQUERY_TYPE_INT64, nullable=False),
-        BigQueryColumn("AMT", BIGQUERY_TYPE_BIGNUMERIC, data_precision=38, data_scale=0, nullable=True),
-        BigQueryColumn("PRICE", BIGQUERY_TYPE_NUMERIC, data_precision=38, data_scale=9, nullable=True),
-        BigQueryColumn(
+        ColumnSpec(ColumnDialect.BIGQUERY, "ID", BIGQUERY_TYPE_INT64, nullable=False),
+        ColumnSpec(
+            ColumnDialect.BIGQUERY, "AMT", BIGQUERY_TYPE_BIGNUMERIC, data_precision=38, data_scale=0, nullable=True
+        ),
+        ColumnSpec(
+            ColumnDialect.BIGQUERY, "PRICE", BIGQUERY_TYPE_NUMERIC, data_precision=38, data_scale=9, nullable=True
+        ),
+        ColumnSpec(
+            ColumnDialect.BIGQUERY,
             "SALE_DATE",
             BIGQUERY_TYPE_DATE,
             nullable=True,
-            partition_info=ColumnPartitionInfo(position=1, granularity="M"),
+            partition_info=ColumnPartitionSpec(position=1, granularity="M"),
         ),
     ]
     options = {"kms_key_name": "projects/p/locations/l/keyRings/r/cryptoKeys/k", "description": "o'brien"}
@@ -224,7 +230,10 @@ def test_bigquery_ddl_and_dml_match_current_output() -> None:
             project="my-proj",
             db_name="sh_stage",
             table_name="sales_ext",
-            columns=[BigQueryColumn("ID", BIGQUERY_TYPE_INT64), BigQueryColumn("NAME", BIGQUERY_TYPE_STRING)],
+            columns=[
+                ColumnSpec(ColumnDialect.BIGQUERY, "ID", BIGQUERY_TYPE_INT64),
+                ColumnSpec(ColumnDialect.BIGQUERY, "NAME", BIGQUERY_TYPE_STRING),
+            ],
             storage_format="PARQUET",
             uris=["gs://bucket/path/*.parquet"],
             extra_options={"enable_list_inference": True},

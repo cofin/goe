@@ -4,6 +4,7 @@
 """MSSQLFrontendApi: Library for logic/interaction with an MSSQL frontend."""
 
 import logging
+from collections.abc import Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -23,10 +24,10 @@ from goe.offload.frontend_api import (
     extract_connection_details_from_dsn,
 )
 from goe.offload.frontend_cache import FrontendCatalogCache, get_frontend_catalog_cache
-from goe.offload.microsoft.mssql_column import MSSQL_TYPE_VARCHAR, MSSQLColumn
 from goe.offload.microsoft.synapse_literal import SynapseLiteral
 from goe.offload.offload_constants import MSSQL_FRONTEND_CAPABILITIES
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.schema.column_spec import MSSQL_TYPE_VARCHAR, ColumnDialect, ColumnSpec
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.statements import NamedStatements
 from goe.typing import FrozenBaseStruct
@@ -49,7 +50,7 @@ class MssqlTableCatalogSnapshot(FrozenBaseStruct, frozen=True):
     num_rows: int | None
     partitioned: str
     size_bytes: int | None
-    columns: tuple[MSSQLColumn, ...]
+    columns: tuple[ColumnSpec, ...]
     primary_key_columns: tuple[str, ...]
     hash_bucket_candidate: str | None
 
@@ -95,6 +96,34 @@ def setup_mssql_session(
     logger.debug('Connecting to DB "%s" as %s', database, username)
     config = build_mssql_config(server, port, database, username, password)
     return config.create_connection()
+
+
+def mssql_column_from_dictionary_row(attribute_list: Sequence[Any]) -> ColumnSpec:
+    """Construct an MSSQL ColumnSpec from a 10-element SQL Server catalog row."""
+    (
+        name,
+        _,
+        nullable,
+        data_type,
+        data_precision,
+        data_scale,
+        data_length,
+        data_default,
+        hidden,
+        char_length,
+    ) = attribute_list
+    return ColumnSpec(
+        ColumnDialect.MSSQL,
+        name,
+        data_type,
+        data_length=data_length,
+        data_precision=data_precision,
+        data_scale=data_scale,
+        nullable=nullable,
+        data_default=data_default,
+        hidden=hidden,
+        char_length=char_length,
+    )
 
 
 class MSSQLFrontendApi(FrontendApiInterface):
@@ -199,8 +228,8 @@ class MSSQLFrontendApi(FrontendApiInterface):
         row = self.execute_query_fetch_one(_MSSQL_CATALOG_SQL["fetch_server_version"], log_level=VVERBOSE)
         return row[0] if row else None
 
-    def gen_column_object(self, column_name: str, **kwargs: Any) -> MSSQLColumn:
-        return MSSQLColumn(column_name, **kwargs)
+    def gen_column_object(self, column_name: str, **kwargs: Any) -> ColumnSpec:
+        return ColumnSpec(ColumnDialect.MSSQL, column_name, **kwargs)
 
     def generic_string_data_type(self) -> str:
         return MSSQL_TYPE_VARCHAR
@@ -223,7 +252,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
             lambda: self._load_table_snapshot(schema, table_name),
         )
 
-    def get_columns(self, schema: str, table_name: str) -> list[MSSQLColumn]:
+    def get_columns(self, schema: str, table_name: str) -> list[ColumnSpec]:
         return list(self.get_table_snapshot(schema, table_name).columns)
 
     def get_current_scn(self) -> int:
@@ -273,7 +302,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
     def get_partition_column_names(self, schema: str, table_name: str, conv_fn: Any = None) -> list[str]:
         raise NotImplementedError("MSSQL get_partition_column_names not implemented.")
 
-    def get_partition_columns(self, schema: str, table_name: str) -> list[MSSQLColumn]:
+    def get_partition_columns(self, schema: str, table_name: str) -> list[ColumnSpec]:
         raise NotImplementedError("MSSQL get_partition_column_names not implemented.")
 
     def get_primary_key_column_names(self, schema: str, table_name: str) -> list[str]:
@@ -288,7 +317,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
     def get_subpartition_column_names(self, schema: str, table_name: str, conv_fn: Any = None) -> list[str]:
         raise NotImplementedError("MSSQL get_subpartition_column_names not implemented.")
 
-    def get_subpartition_columns(self, schema: str, table_name: str) -> list[MSSQLColumn]:
+    def get_subpartition_columns(self, schema: str, table_name: str) -> list[ColumnSpec]:
         raise NotImplementedError("MSSQL get_subpartition_columns not implemented.")
 
     def get_table_row_count(
@@ -602,7 +631,7 @@ class MSSQLFrontendApi(FrontendApiInterface):
             query_params=bind_pair,
             log_level=VVERBOSE,
         )
-        columns = tuple(MSSQLColumn.from_mssql(row) for row in (col_rows or []))
+        columns = tuple(mssql_column_from_dictionary_row(row) for row in (col_rows or []))
 
         pk_rows = self.execute_query_fetch_all(
             _MSSQL_CATALOG_SQL["fetch_primary_key_columns"],

@@ -9,7 +9,8 @@ processing and verification of integration tests.
 
 import logging
 
-from goe.offload.column_metadata import (
+from goe.offload.offload_messages import VVERBOSE
+from goe.offload.schema.column_spec import (
     GOE_TYPE_BINARY,
     GOE_TYPE_BOOLEAN,
     GOE_TYPE_DATE,
@@ -30,9 +31,6 @@ from goe.offload.column_metadata import (
     GOE_TYPE_TIMESTAMP,
     GOE_TYPE_TIMESTAMP_TZ,
     GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-)
-from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_BOOLEAN,
     HADOOP_TYPE_DATE,
@@ -45,9 +43,9 @@ from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_STRING,
     HADOOP_TYPE_TIMESTAMP,
     HADOOP_TYPE_TINYINT,
-    HadoopColumn,
+    ColumnDialect,
+    ColumnSpec,
 )
-from goe.offload.offload_messages import VVERBOSE
 from tests.testlib.test_framework.hadoop.hadoop_backend_testing_api import (
     BackendHadoopTestingApi,
 )
@@ -116,13 +114,17 @@ class BackendImpalaTestingApi(BackendHadoopTestingApi):
         all_columns.update(
             {
                 name(HADOOP_TYPE_REAL): {
-                    "column": HadoopColumn(name(HADOOP_TYPE_REAL), HADOOP_TYPE_REAL),
-                    "expected_canonical_column": CanonicalColumn(name(HADOOP_TYPE_REAL), GOE_TYPE_DOUBLE),
+                    "column": ColumnSpec(ColumnDialect.HADOOP, name(HADOOP_TYPE_REAL), HADOOP_TYPE_REAL),
+                    "expected_canonical_column": ColumnSpec(
+                        ColumnDialect.CANONICAL, name(HADOOP_TYPE_REAL), GOE_TYPE_DOUBLE
+                    ),
                 },
                 name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL): {
-                    "column": HadoopColumn(name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL), HADOOP_TYPE_REAL),
-                    "expected_canonical_column": CanonicalColumn(
-                        name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
+                    "column": ColumnSpec(
+                        ColumnDialect.HADOOP, name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL), HADOOP_TYPE_REAL
+                    ),
+                    "expected_canonical_column": ColumnSpec(
+                        ColumnDialect.CANONICAL, name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL), GOE_TYPE_DECIMAL
                     ),
                     "present_options": {
                         "decimal_columns_csv_list": [name(HADOOP_TYPE_REAL, GOE_TYPE_DECIMAL)],

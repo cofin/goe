@@ -13,7 +13,7 @@ from packaging.version import Version
 
 from goe.offload.offload_constants import DBTYPE_BIGQUERY, FILE_STORAGE_FORMAT_PARQUET
 from goe.offload.offload_messages import VVERBOSE
-from goe.offload.oracle.oracle_column import (
+from goe.offload.schema.column_spec import (
     ORACLE_TYPE_BLOB,
     ORACLE_TYPE_CLOB,
     ORACLE_TYPE_LONG,

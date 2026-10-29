@@ -21,8 +21,6 @@ files = []
 
 [member-ordering]
 files = [
-    "tests/unit/offload/test_columns.py",
-    "tests/unit/offload/test_data_type_mappings.py",
     "tests/unit/offload/test_staging_file.py",
     "tests/unit/orchestration/test_command_steps.py",
     "tests/unit/util/test_hs2_connection.py",
@@ -33,8 +31,6 @@ files = [
     "tests/unit/config/test_orchestration_config.py",
     "tests/unit/offload/operation/test_ddl_file.py",
     "tests/unit/offload/test_backend_api.py",
-    "tests/unit/offload/test_column_metadata.py",
-    "tests/unit/offload/test_data_type_mappings.py",
     "tests/unit/offload/test_frontend_api.py",
     "tests/unit/offload/test_offload_functions.py",
     "tests/unit/offload/test_offload_messages.py",

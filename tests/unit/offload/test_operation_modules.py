@@ -5,12 +5,6 @@
 
 from unittest import TestCase, main
 
-from goe.offload.column_metadata import (
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_INTEGER_2,
-    GOE_TYPE_INTEGER_4,
-    CanonicalColumn,
-)
 from goe.offload.offload_constants import (
     NOT_NULL_PROPAGATION_AUTO,
     NOT_NULL_PROPAGATION_NONE,
@@ -24,6 +18,13 @@ from goe.offload.operation.not_null_columns import (
     OffloadNotNullControlsException,
     apply_not_null_columns_csv,
 )
+from goe.offload.schema.column_spec import (
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_INTEGER_2,
+    GOE_TYPE_INTEGER_4,
+    ColumnDialect,
+    ColumnSpec,
+)
 
 
 class TestOperationDataTypeControls(TestCase):
@@ -31,12 +32,12 @@ class TestOperationDataTypeControls(TestCase):
 
     def test_canonical_columns_from_columns_csv(self):
         reference_columns = [
-            CanonicalColumn("COL1_ID", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL2_ID", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL3_KEY", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL4_KEY", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL5_YEAR", GOE_TYPE_INTEGER_2),
-            CanonicalColumn("COL6_MONTH", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL1_ID", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL2_ID", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL3_KEY", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL4_KEY", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL5_YEAR", GOE_TYPE_INTEGER_2),
+            ColumnSpec(ColumnDialect.CANONICAL, "COL6_MONTH", GOE_TYPE_INTEGER_2),
         ]
         col_list = canonical_columns_from_columns_csv(GOE_TYPE_INTEGER_4, "COL1_ID,COL2_ID", [], reference_columns)
         self.assertEqual(len(col_list), 2)
@@ -76,10 +77,10 @@ class TestOperationNotNullColumns(TestCase):
     """Test operation.not_null_columns"""
 
     reference_columns = [
-        CanonicalColumn("COL1_ID", GOE_TYPE_INTEGER_2, nullable=True),
-        CanonicalColumn("COL2_ID_NN", GOE_TYPE_INTEGER_2, nullable=False),
-        CanonicalColumn("COL3_MONTH", GOE_TYPE_INTEGER_2, nullable=True),
-        CanonicalColumn("COL4_MONTH_NN", GOE_TYPE_INTEGER_2, nullable=False),
+        ColumnSpec(ColumnDialect.CANONICAL, "COL1_ID", GOE_TYPE_INTEGER_2, nullable=True),
+        ColumnSpec(ColumnDialect.CANONICAL, "COL2_ID_NN", GOE_TYPE_INTEGER_2, nullable=False),
+        ColumnSpec(ColumnDialect.CANONICAL, "COL3_MONTH", GOE_TYPE_INTEGER_2, nullable=True),
+        ColumnSpec(ColumnDialect.CANONICAL, "COL4_MONTH_NN", GOE_TYPE_INTEGER_2, nullable=False),
     ]
 
     def test_not_null_columns_auto(self):

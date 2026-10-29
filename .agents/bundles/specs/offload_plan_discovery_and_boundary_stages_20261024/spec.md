@@ -18,8 +18,8 @@ parent_prd: prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261
 depends_on:
   - execution_context_and_concurrency_safety_20261024
 research:
-  - .agents/bundles/specs/prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/research/module-by-module-redesign.md
-  - .agents/bundles/specs/prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
+  - .agents/bundles/specs/prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024/research/module-by-module-redesign.md
+  - .agents/bundles/specs/prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
 ---
 
 # Chapter 10.2: OffloadPlan Discovery and Boundary Stages

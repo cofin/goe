@@ -10,23 +10,6 @@ import pytest
 from goe.offload.bigquery import bigquery_predicate
 from goe.offload.bigquery.bigquery_backend_api import BackendBigQueryApi
 from goe.offload.bigquery.bigquery_backend_table import BackendBigQueryTable
-from goe.offload.bigquery.bigquery_column import (
-    BIGQUERY_TYPE_DATE,
-    BIGQUERY_TYPE_DATETIME,
-    BIGQUERY_TYPE_INT64,
-    BIGQUERY_TYPE_NUMERIC,
-    BIGQUERY_TYPE_STRING,
-    BigQueryColumn,
-)
-from goe.offload.column_metadata import (
-    GOE_TYPE_DATE,
-    GOE_TYPE_DECIMAL,
-    GOE_TYPE_INTEGER_8,
-    GOE_TYPE_TIMESTAMP,
-    GOE_TYPE_VARIABLE_STRING,
-    CanonicalColumn,
-    ColumnPartitionInfo,
-)
 from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
     FILE_STORAGE_FORMAT_AVRO,
@@ -38,14 +21,26 @@ from goe.offload.offload_source_data import (
     OffloadSourcePartitions,
 )
 from goe.offload.oracle import oracle_predicate
-from goe.offload.oracle.oracle_column import (
+from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.registry import create_staging_file
+from goe.offload.schema.column_spec import (
+    BIGQUERY_TYPE_DATE,
+    BIGQUERY_TYPE_DATETIME,
+    BIGQUERY_TYPE_INT64,
+    BIGQUERY_TYPE_NUMERIC,
+    BIGQUERY_TYPE_STRING,
+    GOE_TYPE_DATE,
+    GOE_TYPE_DECIMAL,
+    GOE_TYPE_INTEGER_8,
+    GOE_TYPE_TIMESTAMP,
+    GOE_TYPE_VARIABLE_STRING,
     ORACLE_TYPE_DATE,
     ORACLE_TYPE_NUMBER,
     ORACLE_TYPE_VARCHAR2,
-    OracleColumn,
+    ColumnDialect,
+    ColumnPartitionSpec,
+    ColumnSpec,
 )
-from goe.offload.predicate_offload import GenericPredicate
-from goe.offload.registry import create_staging_file
 from tests.unit.test_functions import (
     FAKE_ORACLE_BQ_ENV,
     build_fake_oracle_subpartitioned_table,
@@ -86,16 +81,16 @@ def test_golden_rbo_bigquery_ddl_staging_and_final_insert_sql(bq_config, message
         sort_columns=["ID", "STATUS"],
     )
     rdbms_cols = [
-        OracleColumn("ID", ORACLE_TYPE_NUMBER, data_precision=18, data_scale=0, nullable=False),
-        OracleColumn("STATUS", ORACLE_TYPE_VARCHAR2, data_length=32, nullable=True),
-        OracleColumn("AMOUNT", ORACLE_TYPE_NUMBER, data_precision=12, data_scale=2, nullable=True),
-        OracleColumn("ORDER_DATE", ORACLE_TYPE_DATE, nullable=True),
+        ColumnSpec(ColumnDialect.ORACLE, "ID", ORACLE_TYPE_NUMBER, data_precision=18, data_scale=0, nullable=False),
+        ColumnSpec(ColumnDialect.ORACLE, "STATUS", ORACLE_TYPE_VARCHAR2, data_length=32, nullable=True),
+        ColumnSpec(ColumnDialect.ORACLE, "AMOUNT", ORACLE_TYPE_NUMBER, data_precision=12, data_scale=2, nullable=True),
+        ColumnSpec(ColumnDialect.ORACLE, "ORDER_DATE", ORACLE_TYPE_DATE, nullable=True),
     ]
     canonical_cols = [
-        CanonicalColumn("ID", GOE_TYPE_INTEGER_8, nullable=False),
-        CanonicalColumn("STATUS", GOE_TYPE_VARIABLE_STRING, data_length=32, nullable=True),
-        CanonicalColumn("AMOUNT", GOE_TYPE_DECIMAL, data_precision=12, data_scale=2, nullable=True),
-        CanonicalColumn("ORDER_DATE", GOE_TYPE_DATE, nullable=True),
+        ColumnSpec(ColumnDialect.CANONICAL, "ID", GOE_TYPE_INTEGER_8, nullable=False),
+        ColumnSpec(ColumnDialect.CANONICAL, "STATUS", GOE_TYPE_VARIABLE_STRING, data_length=32, nullable=True),
+        ColumnSpec(ColumnDialect.CANONICAL, "AMOUNT", GOE_TYPE_DECIMAL, data_precision=12, data_scale=2, nullable=True),
+        ColumnSpec(ColumnDialect.CANONICAL, "ORDER_DATE", GOE_TYPE_DATE, nullable=True),
     ]
     bq_cols = bq_table.convert_canonical_columns_to_backend(canonical_cols)
     bq_table.set_columns(bq_cols)
@@ -159,13 +154,14 @@ def test_golden_ipa_range_partitioning_and_chunking(bq_config, messages):
     """Verify IPA RANGE native datetime partitioning, synthetic numeric partitioning, and chunking."""
     bq_table = _build_bq_table(bq_config, messages, db_name="target_ds", table_name="sales_ipa_range")
     canonical_cols = [
-        CanonicalColumn("ID", GOE_TYPE_INTEGER_8, nullable=False),
-        CanonicalColumn(
+        ColumnSpec(ColumnDialect.CANONICAL, "ID", GOE_TYPE_INTEGER_8, nullable=False),
+        ColumnSpec(
+            ColumnDialect.CANONICAL,
             "CREATED_TS",
             GOE_TYPE_TIMESTAMP,
             data_scale=6,
             nullable=True,
-            partition_info=ColumnPartitionInfo(
+            partition_info=ColumnPartitionSpec(
                 position=0,
                 source_column_name="CREATED_TS",
                 granularity="M",
@@ -182,16 +178,19 @@ def test_golden_ipa_range_partitioning_and_chunking(bq_config, messages):
 
     synth_table = _build_bq_table(bq_config, messages, db_name="target_ds", table_name="sales_ipa_decimal")
     synth_rdbms_cols = [
-        OracleColumn("ACCOUNT_NUM", ORACLE_TYPE_NUMBER, data_precision=28, data_scale=0, nullable=False),
+        ColumnSpec(
+            ColumnDialect.ORACLE, "ACCOUNT_NUM", ORACLE_TYPE_NUMBER, data_precision=28, data_scale=0, nullable=False
+        ),
     ]
     synth_canonical = [
-        CanonicalColumn(
+        ColumnSpec(
+            ColumnDialect.CANONICAL,
             "ACCOUNT_NUM",
             GOE_TYPE_DECIMAL,
             data_precision=28,
             data_scale=0,
             nullable=False,
-            partition_info=ColumnPartitionInfo(
+            partition_info=ColumnPartitionSpec(
                 position=0,
                 source_column_name="ACCOUNT_NUM",
                 granularity=100,
@@ -270,14 +269,14 @@ def test_golden_ipa_list_subpartition_tracking(bq_config, messages):
 def test_golden_pbo_predicate_pushdown_oracle_and_bigquery_rendering(bq_config, messages):
     """Verify GenericPredicate AST renders identical semantic filters for Oracle and BigQuery."""
     ora_cols = [
-        OracleColumn("ID", ORACLE_TYPE_NUMBER, data_precision=18, data_scale=0),
-        OracleColumn("STATUS", ORACLE_TYPE_VARCHAR2, data_length=32),
-        OracleColumn("AMOUNT", ORACLE_TYPE_NUMBER, data_precision=12, data_scale=2),
+        ColumnSpec(ColumnDialect.ORACLE, "ID", ORACLE_TYPE_NUMBER, data_precision=18, data_scale=0),
+        ColumnSpec(ColumnDialect.ORACLE, "STATUS", ORACLE_TYPE_VARCHAR2, data_length=32),
+        ColumnSpec(ColumnDialect.ORACLE, "AMOUNT", ORACLE_TYPE_NUMBER, data_precision=12, data_scale=2),
     ]
     bq_cols = [
-        BigQueryColumn("ID", BIGQUERY_TYPE_INT64),
-        BigQueryColumn("STATUS", BIGQUERY_TYPE_STRING),
-        BigQueryColumn("AMOUNT", BIGQUERY_TYPE_NUMERIC, data_precision=38, data_scale=9),
+        ColumnSpec(ColumnDialect.BIGQUERY, "ID", BIGQUERY_TYPE_INT64),
+        ColumnSpec(ColumnDialect.BIGQUERY, "STATUS", BIGQUERY_TYPE_STRING),
+        ColumnSpec(ColumnDialect.BIGQUERY, "AMOUNT", BIGQUERY_TYPE_NUMERIC, data_precision=38, data_scale=9),
     ]
     bq_table = _build_bq_table(bq_config, messages, db_name="target_ds", table_name="sales_pbo")
     bq_table.set_columns(bq_cols)

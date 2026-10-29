@@ -1,6 +1,4 @@
-#! /usr/bin/env python3
-
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """BackendHadoopTable: Library for logic/interaction with a table that will
@@ -20,16 +18,7 @@ from goe.offload.backend_table import (
     TYPICAL_DATE_GRANULARITY_TERMS,
     BackendTableInterface,
 )
-from goe.offload.column_metadata import ColumnMetadataInterface, get_column_names
 from goe.offload.hadoop import hadoop_predicate
-from goe.offload.hadoop.hadoop_column import (
-    HADOOP_TYPE_BIGINT,
-    HADOOP_TYPE_DATE,
-    HADOOP_TYPE_DOUBLE,
-    HADOOP_TYPE_FLOAT,
-    HADOOP_TYPE_INT,
-    HADOOP_TYPE_STRING,
-)
 from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_AVRO,
     OFFLOAD_STATS_METHOD_HISTORY,
@@ -37,17 +26,26 @@ from goe.offload.offload_constants import (
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_functions import load_db_hdfs_path, schema_path
+from goe.offload.schema.column_spec import (
+    HADOOP_TYPE_BIGINT,
+    HADOOP_TYPE_DATE,
+    HADOOP_TYPE_DOUBLE,
+    HADOOP_TYPE_FLOAT,
+    HADOOP_TYPE_INT,
+    PARQUET_TYPE_DOUBLE,
+    PARQUET_TYPE_FLOAT,
+    PARQUET_TYPE_INT32,
+    PARQUET_TYPE_INT64,
+    ColumnSpec,
+    get_column_names,
+)
+from goe.offload.schema.type_registry import TYPE_REGISTRY
+from goe.offload.sql_ast.dialect_engine import get_dialect_engine
 from goe.offload.staging.avro.avro_staging_file import (
     AVRO_TYPE_DOUBLE,
     AVRO_TYPE_FLOAT,
     AVRO_TYPE_INT,
     AVRO_TYPE_LONG,
-)
-from goe.offload.staging.parquet.parquet_column import (
-    PARQUET_TYPE_DOUBLE,
-    PARQUET_TYPE_FLOAT,
-    PARQUET_TYPE_INT32,
-    PARQUET_TYPE_INT64,
 )
 from goe.offload.staging.staging_file import OffloadStagingFileInterface
 
@@ -101,6 +99,7 @@ class BackendHadoopTable(BackendTableInterface):
         )
 
         self._sql_engine_name = "Hadoop"
+        self._sql_engine = get_dialect_engine("hive")
         self._default_location = None
         self._delta_db_name = self._load_db_name
         self._delta_table_name = None
@@ -132,7 +131,7 @@ class BackendHadoopTable(BackendTableInterface):
             self._avro_schema_hdfs_path = None
 
     def cleanup_staging_area(self):
-        self._drop_load_table(sync=True)
+        return self._cleanup_staging_area_impl()
 
     def create_backend_table(self, with_terminator: bool = False) -> list:
         """Create a table in the backend based on object state.
@@ -151,56 +150,8 @@ class BackendHadoopTable(BackendTableInterface):
         raise NotImplementedError("incremental_merge_final_table() is not implemented for common Hadoop class")
 
     def load_final_table(self, sync=None):
-        """Copy data from the staged load table into the final backend table
-        If this fails with ERROR_STATE then we offer up some SQL to assist the user
-        """
-        self._debug(
-            "Loading %s.%s from %s.%s"
-            % (
-                self.db_name,
-                self.table_name,
-                self._load_db_name,
-                self._load_table_name,
-            )
-        )
-
-        select_expression_tuples = [
-            (self.get_final_table_cast(col), col.name.upper()) for col in self.get_non_synthetic_columns()
-        ]
-        sort_cols: list[Any] = getattr(self, "_sort_columns", None) or []
-        sort_expressions = [self.get_final_table_cast(col_name) for col_name in sort_cols]
-
-        sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples, sort_expr_list=sort_expressions)
-
-        try:
-            self._execute_dml(
-                sqls,
-                query_options=query_options,
-                sync=sync,
-                profile=self._log_profile_after_final_table_load,
-            )
-        except Exception as exc:
-            if "ERROR_STATE" in str(exc):
-                partition_expressions = ", ".join(
-                    self.get_final_table_cast(_) for _ in get_column_names(self.get_partition_columns())
-                )
-                suggest_sql = """SELECT COUNT(*)
-        FROM (
-            SELECT DISTINCT %(part_expr)s
-            FROM %(db)s.%(table)s
-        ) v""" % {
-                    "part_expr": partition_expressions,
-                    "db": self._load_db_name,
-                    "table": self._load_table_name,
-                }
-                self._log(
-                    "If memory pressure is the cause of INSERT failure then the number of partitions being created may be a factor."
-                )
-                self._log(
-                    "The SQL below will identify the number of partitions the failing INSERT attempted to create:\n%s"
-                    % suggest_sql
-                )
-            raise
+        """Copy data from the staged load table into the final backend table."""
+        return self._load_final_table_impl(sync=sync)
 
     def load_materialized_join(
         self,
@@ -210,43 +161,20 @@ class BackendHadoopTable(BackendTableInterface):
         insert_predicates=None,
         sync=None,
     ):
-        """Copy data from the load view into the final backend table"""
-        if insert_predicates:
-            assert isinstance(insert_predicates, list)
-        self._debug(
-            "Loading %s.%s from %s.%s"
-            % (
-                self.db_name,
-                self.table_name,
-                self._load_db_name,
-                self._load_table_name,
-            )
-        )
-        select_expression_tuples = [
-            (self.get_final_table_cast(col), col.name.upper()) for col in self.get_non_synthetic_columns()
-        ]
-        sqls, query_options = self._gen_mat_join_insert_sqls(
-            select_expression_tuples,
-            threshold_cols,
-            gte_threshold_vals,
-            lt_threshold_vals,
+        """Copy data from the load view into the final backend table."""
+        return self._load_materialized_join_impl(
+            threshold_cols=threshold_cols,
+            gte_threshold_vals=gte_threshold_vals,
+            lt_threshold_vals=lt_threshold_vals,
             insert_predicates=insert_predicates,
-            sort_expr_list=self._sort_columns or [],
-        )
-        self._execute_dml(
-            sqls,
-            query_options=query_options,
             sync=sync,
-            profile=self._log_profile_after_final_table_load,
         )
 
     def post_transport_tasks(self, staging_file):
         """Tasks required to ensure we are ready to process the staged data.
         staging_file ignored in Hadoop.
         """
-        self._refresh_load_table_files()
-        if self.table_stats_compute_supported():
-            self._compute_load_table_statistics()
+        return self._post_transport_tasks_impl(staging_file)
 
     def setup_result_cache_area(self):
         """Prepare result cache area for Hybrid Queries"""
@@ -254,14 +182,7 @@ class BackendHadoopTable(BackendTableInterface):
 
     def setup_staging_area(self, staging_file):
         """Prepare any staging area for Hadoop OffloadTransport"""
-        if staging_file:
-            assert isinstance(staging_file, OffloadStagingFileInterface)
-        self._create_hadoop_load_database()
-        if not staging_file:
-            return
-        if staging_file.file_format == FILE_STORAGE_FORMAT_AVRO:
-            self._copy_load_table_avro_schema(staging_file)
-        self._recreate_load_table(staging_file)
+        return self._setup_staging_area_impl(staging_file)
 
     def validate_type_conversions(self, staging_columns: list) -> None:
         self._validate_final_table_casts(staging_columns)
@@ -312,6 +233,112 @@ class BackendHadoopTable(BackendTableInterface):
 
     def predicate_to_where_clause(self, predicate, columns_override=None):
         return hadoop_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
+
+    def _cleanup_staging_area_impl(self):
+        self._drop_load_table(sync=True)
+
+    def _setup_staging_area_impl(self, staging_file):
+        if staging_file:
+            assert isinstance(staging_file, OffloadStagingFileInterface)
+        self._create_hadoop_load_database()
+        if not staging_file:
+            return
+        if staging_file.file_format == FILE_STORAGE_FORMAT_AVRO:
+            self._copy_load_table_avro_schema(staging_file)
+        self._recreate_load_table(staging_file)
+
+    def _post_transport_tasks_impl(self, staging_file):
+        self._refresh_load_table_files()
+        if self.table_stats_compute_supported():
+            self._compute_load_table_statistics()
+
+    def _load_final_table_impl(self, sync=None):
+        self._debug(
+            "Loading %s.%s from %s.%s"
+            % (
+                self.db_name,
+                self.table_name,
+                self._load_db_name,
+                self._load_table_name,
+            )
+        )
+
+        select_expression_tuples = [
+            (self.get_final_table_cast(col), col.name.upper()) for col in self.get_non_synthetic_columns()
+        ]
+        sort_cols: list[Any] = getattr(self, "_sort_columns", None) or []
+        sort_expressions = [self.get_final_table_cast(col_name) for col_name in sort_cols]
+
+        sqls, query_options = self._gen_final_insert_sqls(select_expression_tuples, sort_expr_list=sort_expressions)
+
+        try:
+            self._execute_dml(
+                sqls,
+                query_options=query_options,
+                sync=sync,
+                profile=self._log_profile_after_final_table_load,
+            )
+            self._db_api.catalog.on_load_table(self.db_name, self.table_name)
+        except Exception as exc:
+            if "ERROR_STATE" in str(exc):
+                partition_expressions = ", ".join(
+                    self.get_final_table_cast(_) for _ in get_column_names(self.get_partition_columns())
+                )
+                suggest_sql = """SELECT COUNT(*)
+        FROM (
+            SELECT DISTINCT %(part_expr)s
+            FROM %(db)s.%(table)s
+        ) v""" % {
+                    "part_expr": partition_expressions,
+                    "db": self._load_db_name,
+                    "table": self._load_table_name,
+                }
+                self._log(
+                    "If memory pressure is the cause of INSERT failure then the number of partitions being created may be a factor."
+                )
+                self._log(
+                    "The SQL below will identify the number of partitions the failing INSERT attempted to create:\n%s"
+                    % suggest_sql
+                )
+            raise
+
+    def _load_materialized_join_impl(
+        self,
+        threshold_cols=None,
+        gte_threshold_vals=None,
+        lt_threshold_vals=None,
+        insert_predicates=None,
+        sync=None,
+    ):
+        if insert_predicates:
+            assert isinstance(insert_predicates, list)
+        self._debug(
+            "Loading %s.%s from %s.%s"
+            % (
+                self.db_name,
+                self.table_name,
+                self._load_db_name,
+                self._load_table_name,
+            )
+        )
+        select_expression_tuples = [
+            (self.get_final_table_cast(col), col.name.upper()) for col in self.get_non_synthetic_columns()
+        ]
+        sqls, query_options = self._gen_mat_join_insert_sqls(
+            select_expression_tuples,
+            threshold_cols,
+            gte_threshold_vals,
+            lt_threshold_vals,
+            insert_predicates=insert_predicates,
+            sort_expr_list=self._sort_columns or [],
+        )
+        self._execute_dml(
+            sqls,
+            query_options=query_options,
+            sync=sync,
+            profile=self._log_profile_after_final_table_load,
+        )
+        self._db_api.catalog.on_load_table(self.db_name, self.table_name)
 
     def _compute_load_table_statistics(self):
         if not self._user_requested_compute_load_table_stats:
@@ -515,12 +542,10 @@ FROM %s.%s""" % (
             "_gen_synthetic_part_number_granularity_sql_expr() is not implemented for common Hadoop class"
         )
 
-    def _gen_synthetic_partition_column_object(self, synthetic_name, canonical_column):
+    def _gen_synthetic_partition_column_object(self, synthetic_name: str, canonical_column: ColumnSpec) -> ColumnSpec:
         """On Hadoop all synthetic columns are STRING"""
-        return self._db_api.gen_column_object(
-            synthetic_name,
-            data_type=HADOOP_TYPE_STRING,
-            partition_info=canonical_column.partition_info,
+        return TYPE_REGISTRY.synthetic_partition_column(
+            canonical_column, synthetic_name, self._db_api.type_mapping_target
         )
 
     def _gen_synthetic_partition_date_as_string_sql_expr(self, extract_name, pad_size, source_column_cast):
@@ -646,11 +671,11 @@ FROM %s.%s""" % (
             )
 
         assert backend_column
-        assert isinstance(backend_column, ColumnMetadataInterface)
+        assert isinstance(backend_column, ColumnSpec)
         assert rdbms_column, "RDBMS column missing for backend column: %s" % backend_column.name
-        assert isinstance(rdbms_column, ColumnMetadataInterface)
+        assert isinstance(rdbms_column, ColumnSpec)
         assert staging_column
-        assert isinstance(staging_column, ColumnMetadataInterface)
+        assert isinstance(staging_column, ColumnSpec)
 
         return_cast = None
         return_type = backend_column.format_data_type().upper()

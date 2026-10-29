@@ -7,15 +7,12 @@ import pytest
 
 from goe.config import orchestration_defaults
 from goe.offload import offload_constants
-from goe.offload.column_metadata import (
-    CANONICAL_CHAR_SEMANTICS_UNICODE,
-    match_table_column,
-)
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.schema.column_spec import CANONICAL_CHAR_SEMANTICS_UNICODE, match_table_column
 from tests.integration.test_functions import (
     build_current_options,
     get_default_test_user,
