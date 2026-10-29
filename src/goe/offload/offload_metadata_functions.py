@@ -21,11 +21,11 @@ from goe.offload.offload_source_table import (
     convert_high_values_to_python,
 )
 from goe.orchestration import command_steps
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
-    OrchestrationMetadata,
+    OffloadMetadata,
 )
 from goe.util.string_utils import csv_split, nvl, unsurround
 
@@ -33,9 +33,7 @@ if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.offload.backend_table import BackendTableInterface
     from goe.offload.offload_messages import OffloadMessages
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 
 class OffloadMetadataException(Exception):
@@ -54,7 +52,7 @@ METADATA_HYBRID_VIEW = "GOE_OFFLOAD_HYBRID_VIEW"
 
 
 def gen_offload_metadata(
-    repo_client: "OrchestrationRepoClientInterface",
+    repo_client: "OracleRepositoryService | None",
     offload_operation: Any,
     frontend_owner: str,
     frontend_table_name: str,
@@ -64,8 +62,8 @@ def gen_offload_metadata(
     offload_high_values: Any,
     incremental_predicate_values: Any,
     offload_snapshot: Any,
-    pre_offload_metadata: OrchestrationMetadata | None,
-) -> OrchestrationMetadata:
+    pre_offload_metadata: OffloadMetadata | None,
+) -> OffloadMetadata:
     """pre_offload_metadata is used to carry certain metadata attributes forward to another operation,
     e.g. from an offload to a present. Also used to carry forward attributes from one offload to another which would
     not otherwise be set, e.g. Incremental Update attributes.
@@ -121,8 +119,7 @@ def gen_offload_metadata(
         [p.dsl for p in incremental_predicate_values] if incremental_predicate_values else None
     )
 
-    return OrchestrationMetadata.from_attributes(
-        client=repo_client,
+    return OffloadMetadata.from_attributes(
         backend_owner=backend_owner,
         backend_table=backend_table_name,
         offload_type=offload_operation.offload_type,
@@ -142,7 +139,7 @@ def gen_offload_metadata(
 
 
 def gen_and_save_offload_metadata(
-    repo_client: "OrchestrationRepoClientInterface",
+    repo_client: "OracleRepositoryService",
     messages: "OffloadMessages",
     offload_operation: Any,
     config: "OrchestrationConfig",
@@ -152,8 +149,8 @@ def gen_and_save_offload_metadata(
     incremental_high_values: Any,
     incremental_predicate_values: Any,
     pre_offload_snapshot: Any,
-    pre_offload_metadata: OrchestrationMetadata | None,
-) -> OrchestrationMetadata:
+    pre_offload_metadata: OffloadMetadata | None,
+) -> OffloadMetadata:
     """Simple wrapper over generation and saving of metadata.
     Returns the new metadata object for convenience.
     """
@@ -173,7 +170,7 @@ def gen_and_save_offload_metadata(
 
     messages.offload_step(
         command_steps.STEP_SAVE_METADATA,
-        lambda: goe_metadata.save(),
+        lambda: repo_client.set_offload_metadata(goe_metadata),
         execute=offload_operation.execute,
     )
     return goe_metadata
@@ -275,13 +272,13 @@ def incremental_hv_list_from_csv(metadata_high_value_string, ipa_predicate_type)
 
 
 def decode_metadata_incremental_high_values_from_metadata(
-    base_metadata: OrchestrationMetadata, rdbms_base_table: OffloadSourceTableInterface
+    base_metadata: OffloadMetadata, rdbms_base_table: OffloadSourceTableInterface
 ) -> tuple[Any, Any, Any]:
     """Equivalent of OffloadSourceTable.decode_partition_high_values_with_literals but for metadata based values
     This function subverts ipa_predicate_type by using it as partition_type. This works currently but is not
     ideal.
     """
-    assert isinstance(base_metadata, OrchestrationMetadata)
+    assert isinstance(base_metadata, OffloadMetadata)
     assert isinstance(rdbms_base_table, OffloadSourceTableInterface), (
         "%s is not of type OffloadSourceTableInterface" % str(type(rdbms_base_table))
     )
@@ -338,7 +335,7 @@ def decode_metadata_incremental_high_values(
     return partition_columns, hv_real_vals, hv_indiv_vals
 
 
-def split_metadata_incremental_high_values(base_metadata: OrchestrationMetadata, frontend_api: Any) -> Any:
+def split_metadata_incremental_high_values(base_metadata: OffloadMetadata, frontend_api: Any) -> Any:
     """Equivalent of decode_metadata_incremental_high_values() above but for when we don't have access
     to an RDBMS base table.
     This means we can only decode as far as string HVs, no conversion to real Python values.

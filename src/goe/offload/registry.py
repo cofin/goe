@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages
     from goe.offload.offload_transport_rdbms_api import OffloadTransportRdbmsApiInterface
     from goe.offload.staging.staging_file import OffloadStagingFileInterface
-    from goe.persistence.orchestration_repo_client import OrchestrationRepoClientInterface
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 __all__ = [
     "ADAPTER_REGISTRY",
@@ -158,8 +158,6 @@ def staging_file_key(staging_file_format: str, target: str) -> str:
     """Build the composite registry key for a staging file format and backend target."""
     return f"{staging_file_format}:{target}"
 
-
-_ORCHESTRATION_METADATA = LazyTarget("goe.persistence.orchestration_metadata", "OrchestrationMetadata")
 
 ADAPTER_REGISTRY = AdapterRegistry(
     (
@@ -335,7 +333,7 @@ ADAPTER_REGISTRY = AdapterRegistry(
         AdapterEntry(
             AdapterKind.REPOSITORY_CLIENT,
             DBTYPE_ORACLE,
-            LazyTarget("goe.persistence.oracle.oracle_orchestration_repo_client", "OracleOrchestrationRepoClient"),
+            LazyTarget("goe.persistence.oracle.oracle_repository", "OracleRepositoryService"),
         ),
     )
 )
@@ -566,12 +564,12 @@ def create_repository_client(
     messages: "OffloadMessages",
     dry_run: bool | None = None,
     trace_action: str | None = None,
-) -> "OrchestrationRepoClientInterface":
+) -> "OracleRepositoryService":
     """Construct a repository persistence client for connection_options.db_type."""
     resolved_dry_run = _execute_dry_run(connection_options) if dry_run is None else dry_run
     repo_cls = ADAPTER_REGISTRY.resolve(AdapterKind.REPOSITORY_CLIENT, connection_options.db_type)
     return cast(
-        "OrchestrationRepoClientInterface",
+        "OracleRepositoryService",
         repo_cls(
             connection_options,
             messages,
@@ -619,11 +617,6 @@ def _hybrid_metadata_for(
     if operation:
         return operation.get_hybrid_metadata()
     if owner and name:
-        metadata_cls = _ORCHESTRATION_METADATA.load()
-        return metadata_cls.from_name(
-            owner,
-            name,
-            connection_options=options,
-            messages=messages,
-        )
+        client = create_repository_client(options, messages)
+        return client.get_offload_metadata(owner, name)
     return None

@@ -18,9 +18,7 @@ from tests.testlib.test_framework.backend_testing_api import subproc_cmd
 from tests.testlib.test_framework.offload_test_messages import OffloadTestMessages
 
 if TYPE_CHECKING:
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
     from testlib.test_framework.backend_testing_api import BackendTestingApiInterface
     from testlib.test_framework.frontend_testing_api import FrontendTestingApiInterface
 
@@ -29,7 +27,7 @@ class ScenarioRunnerException(Exception):
     pass
 
 
-def get_config_overrides(config_dict: dict, orchestration_config: "OrchestrationRepoClientInterface"):
+def get_config_overrides(config_dict: dict, orchestration_config: "OracleRepositoryService"):
     """Return config from story enhanced with certain attributes from orchestration_config"""
     base_config = {
         "verbose": orchestration_config.verbose,
@@ -42,7 +40,7 @@ def get_config_overrides(config_dict: dict, orchestration_config: "Orchestration
 
 def run_offload(
     option_dict: dict,
-    orchestration_config: "OrchestrationRepoClientInterface",
+    orchestration_config: "OracleRepositoryService",
     parent_messages: OffloadMessages,
     expected_status=True,
     expected_exception_string: str = None,
@@ -92,7 +90,7 @@ def run_offload(
 def run_setup(
     frontend_api: "FrontendTestingApiInterface",
     backend_api: "BackendTestingApiInterface",
-    config: "OrchestrationRepoClientInterface",
+    config: "OracleRepositoryService",
     test_messages: OffloadTestMessages,
     frontend_sqls=None,
     python_fns=None,
@@ -132,7 +130,7 @@ def run_setup(
 
 
 def create_goe_shell_runner(
-    orchestration_config: "OrchestrationRepoClientInterface",
+    orchestration_config: "OracleRepositoryService",
     messages: OffloadTestMessages,
     shell_command: list,
     cwd: str = None,
@@ -152,7 +150,7 @@ def create_goe_shell_runner(
 
 
 def run_shell_cmd(
-    orchestration_config: "OrchestrationRepoClientInterface",
+    orchestration_config: "OracleRepositoryService",
     messages: OffloadTestMessages,
     shell_command: list,
     cwd: str = None,

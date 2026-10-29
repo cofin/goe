@@ -34,7 +34,7 @@ _EXTRA_PROBE_MODULES = {
     "hadoop": "impala",
     "snowflake": "snowflake.connector",
     "synapse": "pyodbc",
-    "sql_server": "pymssql",
+    "sql_server": "mssql_python",
 }
 
 
@@ -119,7 +119,7 @@ def test_duplicate_registration_is_rejected() -> None:
     entry = AdapterEntry(
         AdapterKind.REPOSITORY_CLIENT,
         "oracle",
-        LazyTarget("goe.persistence.oracle.oracle_orchestration_repo_client", "OracleOrchestrationRepoClient"),
+        LazyTarget("goe.persistence.oracle.oracle_repository", "OracleRepositoryService"),
     )
     with pytest.raises(ValueError, match="Duplicate adapter registration"):
         AdapterRegistry((entry, entry))

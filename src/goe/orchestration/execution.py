@@ -64,7 +64,7 @@ from goe.orchestration.operation import (
     check_and_set_nls_lang,
     get_default_location_fs_scheme,
 )
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )

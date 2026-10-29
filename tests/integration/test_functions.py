@@ -13,9 +13,7 @@ from goe.orchestration.orchestration_runner import OrchestrationRunner
 from tests.testlib.test_framework.offload_test_messages import OffloadTestMessages
 
 if TYPE_CHECKING:
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
     from testlib.test_framework.frontend_testing_api import FrontendTestingApiInterface
 
 
@@ -69,7 +67,7 @@ def get_offload_home():
 
 
 def run_setup_ddl(
-    config: "OrchestrationRepoClientInterface",
+    config: "OracleRepositoryService",
     frontend_api: "FrontendTestingApiInterface",
     messages: "OffloadTestMessages",
     sqls: list[str],

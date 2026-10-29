@@ -81,14 +81,14 @@ from goe.orchestration.constants import (
     vverbose,
 )
 from goe.orchestration.logging_init import log, strict_version_ready, version
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE_AND_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE_AND_PREDICATE,
-    OrchestrationMetadata,
+    OffloadMetadata,
 )
 from goe.util.string_utils import (
     all_int_chars,
@@ -775,16 +775,14 @@ class BaseOperation:
         else:
             self.bucket_hash_col = self.bucket_hash_col.upper()
 
-    def get_hybrid_metadata(self, force=False):
+    def get_hybrid_metadata(self, force: bool = False) -> OffloadMetadata | None:
         """Get metadata for current table and add to state
         force can be used to ensure we read regardless of the reset status of the operation, but not store in state.
         """
         if not self._existing_metadata and not self.reset_backend_table:
-            self._existing_metadata = OrchestrationMetadata.from_name(
-                self.owner, self.table_name, client=self.repo_client
-            )
+            self._existing_metadata = self.repo_client.get_offload_metadata(self.owner, self.table_name)
         elif force:
-            return OrchestrationMetadata.from_name(self.owner, self.table_name, client=self.repo_client)
+            return self.repo_client.get_offload_metadata(self.owner, self.table_name)
         return self._existing_metadata
 
     def reset_hybrid_metadata(self, new_metadata):
@@ -837,7 +835,7 @@ class BaseOperation:
         self,
         offload_target_table: "BackendTableInterface",
         messages: OffloadMessages,
-    ) -> OrchestrationMetadata | None:
+    ) -> OffloadMetadata | None:
         """Default bucket hash column and datatype mappings from existing table
         This is required for setting up a pre-existing table and is used by
         incremental partition append.
@@ -1182,7 +1180,7 @@ class BaseOperation:
                 return
 
             if hybrid_metadata == "NONE":
-                hybrid_metadata = self.get_hybrid_metadata(offload_options)
+                hybrid_metadata = self.get_hybrid_metadata()
 
             self.sort_columns = sort_columns_csv_to_sort_columns(
                 self.sort_columns_csv,

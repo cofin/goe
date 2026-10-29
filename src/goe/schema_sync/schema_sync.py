@@ -17,9 +17,7 @@ from goe.util.string_utils import double_quote_sandwich
 if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages
     from goe.orchestration.execution_id import ExecutionId
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 normal, verbose, vverbose = list(range(3))
 
@@ -40,7 +38,7 @@ def schema_sync(
     options: Any,
     messages: "OffloadMessages",
     execution_id: "ExecutionId",
-    repo_client: "OrchestrationRepoClientInterface",
+    repo_client: "OracleRepositoryService",
 ) -> int:
     messages.setup_offload_step(
         error_before_step=options.error_before_step,

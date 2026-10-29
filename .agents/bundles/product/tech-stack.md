@@ -13,7 +13,7 @@ tags:
 
 <!-- truth: start -->
 - **Language**: Python >= 3.12 (CPython) with PEP 585/604 type annotations, `FrozenBaseStruct` / `BaseStruct` (`gc=False` in `src/goe/typing.py`), and strict `mypy` + `tools/verify_architecture.py` verification.
-- **Frontend Databases & SQL Layer**: Oracle (`oracledb`, SQLSpec `OracleGateway` with `SQLFileLoader`), MS SQL Server (`pymssql`), Pluggable SQL Dialect Protocols (`src/goe/offload/sql_engine.py`, `sqlglot>=30.17.0` with custom Oracle `AS OF SCN`/`PARTITION` dialect extension).
+- **Frontend Databases & SQL Layer**: Oracle (`oracledb`, pooled SQLSpec `OracleDatabaseRegistry` with `SQLFileLoader`, `OracleCatalogService`, `OracleRepositoryService`, and `FrontendCatalogCache`), MS SQL Server (`mssql-python` via SQLSpec `MssqlPythonConfig` and `mssql_catalog.sql`), Pluggable SQL Dialect Protocols (`src/goe/offload/sql_engine.py`, `sqlglot>=30.17.0` with custom Oracle `AS OF SCN`/`PARTITION` dialect extension).
 - **Cloud DW Backends**: Google BigQuery (`google-cloud-bigquery`, native `load_table_from_uri` + `INFORMATION_SCHEMA.PARTITIONS`), Snowflake (`snowflake-connector-python`), Azure Synapse (`pyodbc`), Apache Hadoop (`better_impyla`).
 - **Storage Systems**: Google Cloud Storage (`google-cloud-storage`), AWS S3 (`boto3`), Azure Blob / ADLS Gen2 (`azure-storage-blob`), HDFS (`hdfs`).
 - **Compute & Transport**: PySpark, Google Cloud Dataproc (Serverless Batches & Clusters), Apache Livy, Scala 2.12/2.13 (`GOETaskListener`), opt-in DuckDB (`duckdb==2.0.0`, `cofin/duckdb-oracle`, community `gcs` extension).

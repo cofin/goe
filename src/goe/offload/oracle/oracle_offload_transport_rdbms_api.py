@@ -11,13 +11,10 @@ import oracledb as cxo
 
 from goe.observability.db import build_oracle_client_info_command
 from goe.offload.column_metadata import match_table_column
-from goe.offload.frontend_api import FRONTEND_TRACE_ID
+from goe.offload.frontend_api import FRONTEND_TRACE_ID, FRONTEND_TRACE_MODULE
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.offload_transport_functions import (
-    get_rdbms_connection_for_oracle,
-    split_ranges_for_id_range,
-)
+from goe.offload.offload_transport_functions import split_ranges_for_id_range
 from goe.offload.offload_transport_rdbms_api import (
     OFFLOAD_TRANSPORT_SQL_STATISTICS_TITLE,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_EXTENT,
@@ -48,6 +45,7 @@ from goe.offload.oracle.oracle_dialect import get_oracle_dialect_engine
 from goe.offload.oracle.oracle_offload_source_table import (
     oracle_version_is_smart_scan_unsafe,
 )
+from goe.persistence.registry import OracleDatabaseRegistry
 from goe.util.string_utils import id_generator
 
 if TYPE_CHECKING:
@@ -58,6 +56,7 @@ if TYPE_CHECKING:
 
 
 MAX_UNION_ALL_SPLITS = 1024
+TRANSPORT_SESSION_ACTION = "OffloadTransport"
 
 LOG_SQL_STATS_QUERY_TEXT = """SELECT sql_id,
    child_number,
@@ -92,6 +91,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
             dry_run=dry_run,
         )
         self.debug("OffloadTransportOracleApi setup: (%s, %s)" % (rdbms_owner, rdbms_table_name))
+        self._registry = OracleDatabaseRegistry.for_options(offload_options)
         self._offload_transport_auth_using_oracle_wallet = offload_options.offload_transport_auth_using_oracle_wallet
         self._transport_row_source_query_split_methods = [
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
@@ -134,37 +134,23 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         )
         self.log("Oracle SQL:\n%s" % min_max_qry, detail=VVERBOSE)
         min_max_row = None
-        cx = get_rdbms_connection_for_oracle(
-            self._offload_options.rdbms_app_user,
-            self._offload_options.rdbms_app_pass,
-            self._offload_transport_dsn,
-            self._offload_options.use_oracle_wallet,
-        )
-        ora_cursor = None
-        try:
-            ora_cursor = cx.cursor()
-            min_max_row = ora_cursor.execute(min_max_qry).fetchone()
-            if min_max_row:
-                self.log(
-                    "MIN/MAX: %s (%s)/%s (%s)"
-                    % (
-                        min_max_row[0],
-                        type(min_max_row[0]),
-                        min_max_row[1],
-                        type(min_max_row[1]),
-                    ),
-                    detail=VVERBOSE,
-                )
-        finally:
-            if ora_cursor is not None:
-                try:
-                    ora_cursor.close()
-                except Exception:
-                    pass
+        with self._registry.app_transport_session(FRONTEND_TRACE_MODULE, TRANSPORT_SESSION_ACTION) as connection:
+            ora_cursor = connection.cursor()
             try:
-                cx.close()
-            except Exception:
-                pass
+                min_max_row = ora_cursor.execute(min_max_qry).fetchone()
+            finally:
+                ora_cursor.close()
+        if min_max_row:
+            self.log(
+                "MIN/MAX: %s (%s)/%s (%s)"
+                % (
+                    min_max_row[0],
+                    type(min_max_row[0]),
+                    min_max_row[1],
+                    type(min_max_row[1]),
+                ),
+                detail=VVERBOSE,
+            )
         assert min_max_row is not None
         return min_max_row[0], min_max_row[1]
 
@@ -227,17 +213,18 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         """Return a function that executes the LOG_SQL_STATS_QUERY_TEXT query for a given
         module and action
         """
-        conn = self._get_app_connection()
-        conn.module = rdbms_module
-        if conn_action:
-            conn.action = conn_action
-        cursor = conn.cursor()
+        session_action = conn_action or TRANSPORT_SESSION_ACTION
 
         def stats_function():
-            return cursor.execute(
-                LOG_SQL_STATS_QUERY_TEXT,
-                {"module": rdbms_module, "action": rdbms_action},
-            ).fetchall()
+            with self._registry.app_transport_session(rdbms_module, session_action) as connection:
+                cursor = connection.cursor()
+                try:
+                    return cursor.execute(
+                        LOG_SQL_STATS_QUERY_TEXT,
+                        {"module": rdbms_module, "action": rdbms_action},
+                    ).fetchall()
+                finally:
+                    cursor.close()
 
         return stats_function
 
@@ -630,72 +617,31 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
             self.log("Offload transport SQL stats collection is disabled", detail=VVERBOSE)
             return None
 
-        tot_rows_processed = None
-        try:
-            if payload:
-                sql_info = []
-                row_snapshots = [item for sublist in payload for item in sublist]
-                for sql_id_child_num, row_data in groupby(sorted(row_snapshots), lambda x: "%s:%s" % (x[0], x[1])):
-                    rows = list(row_data)
-                    sql_id, child_number = sql_id_child_num.split(":")
-                    sql_info.append(
-                        (
-                            sql_id,
-                            child_number,
-                            max([_[2] for _ in rows]),
-                            max([_[3] for _ in rows]),
-                            max([_[4] for _ in rows]),
-                            max([_[5] for _ in rows]),
-                        )
+        if payload:
+            sql_info = []
+            row_snapshots = [item for sublist in payload for item in sublist]
+            for sql_id_child_num, row_data in groupby(sorted(row_snapshots), lambda x: "%s:%s" % (x[0], x[1])):
+                rows = list(row_data)
+                sql_id, child_number = sql_id_child_num.split(":")
+                sql_info.append(
+                    (
+                        sql_id,
+                        child_number,
+                        max([_[2] for _ in rows]),
+                        max([_[3] for _ in rows]),
+                        max([_[4] for _ in rows]),
+                        max([_[5] for _ in rows]),
                     )
-            else:
-                q_params = {"module": module, "action": action}
-                self.log(
-                    "Searching for transport SQL matching: %s" % str(q_params),
-                    detail=VVERBOSE,
                 )
-                fn = self.get_offload_transport_sql_stats_function(module, action)
-                sql_info = fn()
-            tot_rows_processed = log_sql_info(sql_info)
-        finally:
-            self._close_app_connection()
-        return tot_rows_processed
-
-    def log_ash_usage(self, start_datetime, module, action):
-        """Retrieve Oracle Active Session History for a given module/action
-        and log it.
-        THIS IS CURRENTLY NOT USED because we don't want to increase our
-        dependency on add-on Oracle packs
-        """
-        self.debug("log_ash_usage()")
-        ora_conn = self._get_adm_connection()
-        ash_q = """SELECT sql_id, NVL(event,'CPU'), COUNT(*) seconds
-FROM  gv$active_session_history
-WHERE user_id = (SELECT user_id FROM dba_users WHERE username = :rdbms_app_user)
-AND   sample_time >= :start_datetime
-AND   module = :module
-AND   action = :action
-GROUP BY sql_id, NVL(event,'CPU')
-ORDER BY seconds DESC"""
-        q_params = {
-            "rdbms_app_user": str((self._offload_options.rdbms_app_user or "").upper()),
-            "start_datetime": start_datetime,
-            "module": module,
-            "action": action,
-        }
-        try:
-            ora_cursor = ora_conn.cursor()
-            ash = ora_cursor.execute(ash_q, q_params).fetchall()
-            if ash:
-                event_width = max([len(_[1]) for _ in ash])
-                row_format = "{0: <15} {1: <" + str(event_width) + "} {2: >8}"
-                self.log("Active Session History", detail=VVERBOSE)
-                self.log(row_format.format("SQL Id", "Event", "Seconds"), detail=VVERBOSE)
-                for sql_id, event, seconds in ash:
-                    self.log(row_format.format(sql_id, event, seconds), detail=VVERBOSE)
-        finally:
-            ora_cursor.close()
-            self._close_adm_connection()
+        else:
+            q_params = {"module": module, "action": action}
+            self.log(
+                "Searching for transport SQL matching: %s" % str(q_params),
+                detail=VVERBOSE,
+            )
+            fn = self.get_offload_transport_sql_stats_function(module, action)
+            sql_info = fn()
+        return log_sql_info(sql_info)
 
     def get_rdbms_canary_query(self):
         return "SELECT dummy FROM dual"
@@ -726,76 +672,37 @@ ORDER BY seconds DESC"""
                 if not self._dry_run:
                     ora_cursor.execute(session_statement)
 
-        cx = get_rdbms_connection_for_oracle(
-            self._offload_options.rdbms_app_user,
-            self._offload_options.rdbms_app_pass,
-            self._offload_transport_dsn,
-            self._offload_options.use_oracle_wallet,
-        )
-        ora_cursor = cx.cursor()
-        cx.outputtypehandler = cx_type_handler
-
-        ora_cursor.arraysize = fetch_size
-
-        self.log(
-            "Importing load data with arraysize=%s, compression=%s" % (ora_cursor.arraysize, compress),
-            detail=VERBOSE,
-        )
-
-        try:
-            setup_rdbms_session(ora_cursor)
-            self.log("Oracle sql: %s" % source_query, detail=VERBOSE)
-            if source_binds:
-                self.log("Bind values: %s" % str(source_binds), detail=VERBOSE)
-            if not self._dry_run:
+        with self._registry.app_transport_session(
+            FRONTEND_TRACE_MODULE, TRANSPORT_SESSION_ACTION, isolate_session=True
+        ) as cx:
+            ora_cursor = cx.cursor()
+            cx.outputtypehandler = cx_type_handler
+            ora_cursor.arraysize = fetch_size
+            self.log(
+                "Importing load data with arraysize=%s, compression=%s" % (ora_cursor.arraysize, compress),
+                detail=VERBOSE,
+            )
+            try:
+                setup_rdbms_session(ora_cursor)
+                self.log("Oracle sql: %s" % source_query, detail=VERBOSE)
                 if source_binds:
-                    ora_cursor.execute(source_query, source_binds)
-                else:
-                    ora_cursor.execute(source_query)
-            yield ora_cursor
-        finally:
-            ora_cursor.close()
-            cx.close()
-
-    def _get_adm_connection(self):
-        if not self._rdbms_adm_conn:
-            self._rdbms_adm_conn = get_rdbms_connection_for_oracle(
-                self._offload_options.ora_adm_user,
-                self._offload_options.ora_adm_pass,
-                self._rdbms_adm_dsn,
-                self._offload_options.use_oracle_wallet,
-            )
-        return self._rdbms_adm_conn
-
-    def _close_adm_connection(self):
-        if self._rdbms_adm_conn:
-            self._rdbms_adm_conn.close()
-        self._rdbms_adm_conn = None
-
-    def _get_app_connection(self):
-        if not self._rdbms_app_conn:
-            self._rdbms_app_conn = get_rdbms_connection_for_oracle(
-                self._offload_options.rdbms_app_user,
-                self._offload_options.rdbms_app_pass,
-                self._offload_transport_dsn,
-                self._offload_options.use_oracle_wallet,
-            )
-        return self._rdbms_app_conn
-
-    def _close_app_connection(self):
-        if self._rdbms_app_conn:
-            self._rdbms_app_conn.close()
-        self._rdbms_app_conn = None
+                    self.log("Bind values: %s" % str(source_binds), detail=VERBOSE)
+                if not self._dry_run:
+                    if source_binds:
+                        ora_cursor.execute(source_query, source_binds)
+                    else:
+                        ora_cursor.execute(source_query)
+                yield ora_cursor
+            finally:
+                ora_cursor.close()
 
     def _get_fixed_goe_parameters(self):
         """GOE-1375"""
         if self._fixed_goe_parameters is None:
-            ora_conn = self._get_adm_connection()
-            if oracle_version_is_smart_scan_unsafe(ora_conn.version):
+            if oracle_version_is_smart_scan_unsafe(self._registry.server_version()):
                 self._fixed_goe_parameters = {"CELL_OFFLOAD_PROCESSING": "FALSE"}
             else:
                 self._fixed_goe_parameters = {}
-            self._close_adm_connection()
         return self._fixed_goe_parameters
 
     def _get_fixed_session_parameters(self, max_ts_scale):

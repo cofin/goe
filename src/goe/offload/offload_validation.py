@@ -39,14 +39,15 @@ from goe.offload.registry import (
     create_backend_api,
     create_backend_table,
     create_frontend_api,
+    create_repository_client,
     create_source_table,
 )
 from goe.offload.sql_engine import ValidationQueryEngineProtocol, ValidationQuerySpec
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
-    OrchestrationMetadata,
+    OffloadMetadata,
 )
 from goe.util.concurrency import ParallelExecutor
 from goe.util.string_utils import is_number, isclose, str_floatlike
@@ -336,11 +337,15 @@ class CrossDbValidator(OffloadMessagesMixin):
         self._messages = messages
 
         if not backend_db and not backend_table:
-            self._offload_metadata = OrchestrationMetadata.from_name(
+            repo_client = create_repository_client(
+                self._connection_options,
+                messages,
+                dry_run=bool(not self._execute),
+                trace_action=self.__class__.__name__,
+            )
+            self._offload_metadata: OffloadMetadata | None = repo_client.get_offload_metadata(
                 self._db_name.upper(),
                 self._table_name.upper(),
-                connection_options=self._connection_options,
-                messages=messages,
             )
         else:
             self._offload_metadata = None

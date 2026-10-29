@@ -18,9 +18,7 @@ from goe.listener.config import settings
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.registry import create_repository_client
 from goe.orchestration.execution_id import ExecutionId
-from goe.persistence.orchestration_repo_client import (
-    OrchestrationRepoClientInterface,
-)
+from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +37,7 @@ class SystemService:
         self.messages = messages or OffloadMessages()
 
     @staticmethod
-    def get_repo(config: OrchestrationConfig, messages: OffloadMessages) -> OrchestrationRepoClientInterface:
+    def get_repo(config: OrchestrationConfig, messages: OffloadMessages) -> OracleRepositoryService:
         """Instantiate an orchestration repository client for metadata queries."""
         return create_repository_client(
             config,
@@ -80,13 +78,13 @@ class SystemService:
     def get_schema_tables(self, schema_name: str) -> list[dict[str, str | Any]]:
         return self.get_repo(self.config, self.messages).get_schema_tables(schema_name)
 
-    def get_table_columns(self, schema_name: str, table_name: str) -> list[dict[str, str | Any]]:
+    def get_table_columns(self, schema_name: str, table_name: str) -> list[Any]:
         return self.get_repo(self.config, self.messages).get_table_columns(schema_name, table_name)
 
-    def get_table_partitions(self, schema_name: str, table_name: str) -> list[dict[str, str | Any]]:
+    def get_table_partitions(self, schema_name: str, table_name: str) -> list[Any]:
         return self.get_repo(self.config, self.messages).get_table_partitions(schema_name, table_name)
 
-    def get_table_subpartitions(self, schema_name: str, table_name: str) -> list[dict[str, str | Any]]:
+    def get_table_subpartitions(self, schema_name: str, table_name: str) -> list[Any]:
         return self.get_repo(self.config, self.messages).get_table_subpartitions(schema_name, table_name)
 
     def get_command_executions(self) -> list[dict[str, str | Any]]:

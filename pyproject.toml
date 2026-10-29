@@ -33,7 +33,7 @@ dependencies = [
     "numpy",
     "msgspec>=0.19.0",
     "opentelemetry-api>=1.40.0",
-    "sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0",
+    "sqlspec[performance,oracledb,adbc,duckdb]>=0.68.0",
     "requests",
     "urllib3",
     # For Cloud storage
@@ -80,13 +80,16 @@ snowflake = [
 ]
 sql_server = [
     # For SQL Server frontend
-    "pymssql",
+    "mssql-python",
+]
+mssql = [
+    "mssql-python",
 ]
 synapse = [
     "pyodbc",
 ]
 sqlspec = [
-    "sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0",
+    "sqlspec[performance,oracledb,adbc,duckdb]>=0.68.0",
 ]
 otel = [
     "opentelemetry-sdk>=1.40.0",
@@ -100,9 +103,9 @@ all = [
     "requests-kerberos",
     "thrift-sasl",
     "snowflake-connector-python",
-    "pymssql",
+    "mssql-python",
     "pyodbc",
-    "sqlspec[performance,oracledb,adbc,duckdb]>=0.61.0",
+    "sqlspec[performance,oracledb,adbc,duckdb]>=0.68.0",
 ]
 
 [dependency-groups]

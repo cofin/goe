@@ -9,12 +9,12 @@
 import datetime
 import inspect
 import logging
+from typing import Any
 
 import oracledb
 from numpy import datetime64
 
 from goe.offload.offload_messages import VERBOSE, OffloadMessagesMixin
-from goe.persistence.oracle_gateway import rows_as_dicts
 
 
 class OracleQueryException(Exception):
@@ -196,7 +196,7 @@ class OracleQuery(OffloadMessagesMixin):
             logger.debug("AS_DICT transformation requested for: %s" % self._retrieve_source_code(cursor_fn))
             ret = []
             if self._cursor.description:
-                ret = rows_as_dicts([_[0] for _ in self._cursor.description], cursor_fn(self._cursor))
+                ret = _rows_as_dicts([_[0] for _ in self._cursor.description], cursor_fn(self._cursor))
         else:
             logger.debug("Passthrough requested for: %s" % self._retrieve_source_code(cursor_fn))
             ret = cursor_fn(self._cursor)
@@ -346,3 +346,8 @@ class OracleQuery(OffloadMessagesMixin):
             logger.debug("Exception: %s when inspecting the code" % e)
 
         return ret
+
+
+def _rows_as_dicts(column_names: list[str], rows: list[Any]) -> list[dict[str, Any]]:
+    """Zip every row with ``column_names`` without changing column-name case."""
+    return [dict(zip(column_names, row)) for row in rows]

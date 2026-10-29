@@ -16,7 +16,7 @@ from goe.offload.source_data.full import OffloadSourceDataFull, OffloadSourceDat
 from goe.offload.source_data.ipa_list import OffloadSourceDataIpaList
 from goe.offload.source_data.ipa_range import OffloadSourceDataIpaListAsRange, OffloadSourceDataIpaRange
 from goe.offload.source_data.predicate import OffloadSourceDataPredicate
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE_AND_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_PREDICATE,

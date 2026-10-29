@@ -19,9 +19,7 @@ from goe.util.string_utils import double_quote_sandwich
 if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages
     from goe.orchestration.execution_id import ExecutionId
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 
 SUPPORTED_CHANGE_TYPES = [ADD_BACKEND_COLUMN, ADD_ORACLE_COLUMN]
@@ -39,7 +37,7 @@ class SchemaSyncProcessor:
         options: Any,
         messages: "OffloadMessages",
         execution_id: "ExecutionId",
-        repo_client: "OrchestrationRepoClientInterface",
+        repo_client: "OracleRepositoryService",
     ) -> None:
         self._messages = messages
         self._options = options

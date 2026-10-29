@@ -29,7 +29,7 @@ from goe.offload.source_data.base import (
     is_default_partition,
     logger,
 )
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )

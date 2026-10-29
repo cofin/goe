@@ -29,7 +29,7 @@ from goe.offload.option_validation import (
 )
 from goe.offload.registry import create_source_table
 from goe.orchestration import command_steps
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPES_WITH_PREDICATE_IN_HV,
     hwm_column_names_from_predicates,
@@ -41,9 +41,7 @@ if TYPE_CHECKING:
     from goe.offload.backend_table import BackendTableInterface
     from goe.offload.offload_source_data import OffloadSourceDataInterface
     from goe.offload.offload_source_table import OffloadSourceTableInterface
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 
 def create_ddl_file_step(
@@ -84,7 +82,7 @@ def drop_backend_table_step(
     table_name: str,
     backend_table: "BackendTableInterface",
     messages: OffloadMessages,
-    repo_client: "OrchestrationRepoClientInterface",
+    repo_client: "OracleRepositoryService",
     execute: Any,
     purge: bool = False,
 ) -> None:

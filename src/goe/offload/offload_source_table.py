@@ -164,14 +164,15 @@ class OffloadSourceTableInterface(metaclass=ABCMeta):
         dry_run=False,
         conn=None,
         do_not_connect=False,
+        db_api=None,
     ):
         self._messages = messages
         self.owner = schema_name
         self.table_name = table_name
         self._dry_run = dry_run
-        self._db_type = connection_options.db_type
-        self._db_api = create_frontend_api(
-            connection_options.db_type,
+        self._db_type = getattr(connection_options, "db_type", None)
+        self._db_api = db_api or create_frontend_api(
+            str(self._db_type or ""),
             connection_options,
             messages,
             existing_connection=conn,

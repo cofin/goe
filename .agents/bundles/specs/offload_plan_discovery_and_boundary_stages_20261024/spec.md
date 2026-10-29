@@ -19,7 +19,7 @@ depends_on:
   - execution_context_and_concurrency_safety_20261024
 research:
   - .agents/bundles/specs/prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/module-by-module-redesign.md
-  - .agents/bundles/specs/prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
+  - .agents/bundles/specs/prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
 ---
 
 # Chapter 10.2: OffloadPlan Discovery and Boundary Stages

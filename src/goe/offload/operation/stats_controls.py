@@ -17,7 +17,7 @@ from goe.offload.offload_messages import VERBOSE, VVERBOSE, OffloadMessages
 from goe.offload.offload_metadata_functions import (
     flatten_lpa_high_values,
 )
-from goe.persistence.orchestration_metadata import (
+from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,

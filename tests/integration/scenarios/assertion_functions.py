@@ -38,9 +38,7 @@ from tests.testlib.test_framework import test_functions
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.offload.offload_messages import OffloadMessages
-    from goe.persistence.orchestration_repo_client import (
-        OrchestrationRepoClientInterface,
-    )
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
     from testlib.test_framework.backend_testing_api import BackendTestingApiInterface
     from testlib.test_framework.frontend_testing_api import FrontendTestingApiInterface
     from testlib.test_framework.offload_test_messages import OffloadTestMessages
@@ -250,7 +248,7 @@ def check_metadata(
     frontend_owner: str,
     frontend_name: str,
     messages: "OffloadMessages",
-    repo_client: "OrchestrationRepoClientInterface",
+    repo_client: "OracleRepositoryService",
     metadata_override=None,
     hadoop_owner=None,
     hadoop_table=None,
@@ -424,7 +422,7 @@ def standard_dimension_assertion(
     config: "OrchestrationConfig",
     backend_api: "BackendTestingApiInterface",
     messages: "OffloadTestMessages",
-    repo_client: "OrchestrationRepoClientInterface",
+    repo_client: "OracleRepositoryService",
     schema: str,
     data_db: str,
     table_name: str,
@@ -471,7 +469,7 @@ def sales_based_fact_assertion(
     backend_api: "BackendTestingApiInterface",
     frontend_api: "FrontendTestingApiInterface",
     messages: "OffloadTestMessages",
-    repo_client: "OrchestrationRepoClientInterface",
+    repo_client: "OracleRepositoryService",
     schema: str,
     data_db: str,
     table_name: str,
