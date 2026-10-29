@@ -13,11 +13,13 @@ import msgspec
 from litestar.di import Provide
 from litestar.testing import TestClient
 
+from goe.listener import exceptions, schemas
 from goe.listener.app import create_app
 from goe.listener.cache import ListenerCache
 from goe.listener.config import settings
 from goe.listener.jobs.store import SqliteJobStore
 from goe.listener.mcp import ConfirmationGate
+from goe.listener.services.operations import ListenerOperationsService
 from goe.listener.services.system import SystemService
 from goe.platform.locking import OrchestrationLockTimeout
 from goe.serializers import decode_json
@@ -430,3 +432,138 @@ def test_mcp_orchestration_resources_log_link_and_mrtr_confirmation_gate(
         assert dry_run_call.status_code == 200
         assert dry_run_call.json()["result"]["resultType"] == "complete"
         assert store.get_active_job_for_table("SH.COSTS") is not None
+
+
+@patch("goe.listener.utils.orchestrate.check_for_running_command")
+def test_mcp_preview_offload_plan_and_token_execution(
+    mock_check: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """Verify preview_offload_plan mints a token that authorizes execute_offload over POST /mcp."""
+    mock_service = MagicMock(spec=SystemService)
+    mock_ops = MagicMock(spec=ListenerOperationsService)
+    gate = ConfirmationGate(secret="preview-to-exec-secret", ttl_seconds=300)
+    challenge = gate.issue_challenge(
+        tool_name="execute_offload",
+        owner_table="SH.CHANNELS",
+        payload={"owner_table": "SH.CHANNELS", "execute": True},
+    )
+    mock_ops.preview_offload.return_value = schemas.OffloadPlanPreview(
+        owner_table="SH.CHANNELS",
+        target_owner="sh",
+        target_table="channels",
+        offload_mode="FULL",
+        offload_type="FULL",
+        nothing_to_offload=False,
+        partition_names=[],
+        chunk_count=1,
+        estimated_row_count=5,
+        estimated_size_bytes=1024,
+        transport_method="DUCKDB",
+        staging_format="PARQUET",
+        ingest_strategy="DIRECT_LOAD",
+        create_backend_table=True,
+        create_table_ddl=["CREATE TABLE sh.channels (CHANNEL_ID INT64);"],
+        alter_table_ddl=[],
+        frontend_where_clause=None,
+        notices=["Dry-run preview"],
+        confirmation_challenge=challenge,
+    )
+
+    cache = ListenerCache()
+    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    app = create_app(
+        dependencies={
+            "system_service": Provide(lambda: mock_service, sync_to_thread=False),
+            "operations_service": Provide(lambda: mock_ops, sync_to_thread=False),
+            "listener_cache": Provide(lambda: cache, sync_to_thread=False),
+            "job_store": Provide(lambda: store, sync_to_thread=False),
+            "confirmation_gate": Provide(lambda: gate, sync_to_thread=False),
+        },
+        enable_background_worker=False,
+    )
+    base_meta = {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+
+    with TestClient(app=app) as client:
+        http_preview = client.post(
+            "/api/orchestration/offload/preview/",
+            json={"owner_table": "SH.CHANNELS", "execute": False},
+        )
+        assert http_preview.status_code in (200, 201)
+        assert http_preview.json()["target_table"] == "channels"
+
+        mcp_preview = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "preview_offload_plan",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 30,
+                "method": "tools/call",
+                "params": {
+                    "name": "preview_offload_plan",
+                    "arguments": {"data": {"owner_table": "SH.CHANNELS", "execute": False}},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert mcp_preview.status_code == 200
+        preview_result = mcp_preview.json()["result"]
+        preview_struct = preview_result.get("structuredContent") or decode_json(preview_result["content"][0]["text"])
+        token = preview_struct["confirmation_challenge"]["confirmation_token"]
+
+        exec_resp = client.post(
+            "/mcp",
+            headers={"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/call", "Mcp-Name": "execute_offload"},
+            json={
+                "jsonrpc": "2.0",
+                "id": 31,
+                "method": "tools/call",
+                "params": {
+                    "name": "execute_offload",
+                    "arguments": {
+                        "data": {
+                            "owner_table": "SH.CHANNELS",
+                            "execute": True,
+                            "confirmation_token": token,
+                        }
+                    },
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert exec_resp.status_code == 200
+        exec_result = exec_resp.json()["result"]
+        assert exec_result["isError"] is False
+        assert store.get_active_job_for_table("SH.CHANNELS") is not None
+
+        mock_ops.preview_offload.side_effect = exceptions.ApplicationError(
+            status_code=404,
+            message="Source table does not exist: SH.MISSING",
+        )
+        missing_resp = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "preview_offload_plan",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 32,
+                "method": "tools/call",
+                "params": {
+                    "name": "preview_offload_plan",
+                    "arguments": {"data": {"owner_table": "SH.MISSING", "execute": False}},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert missing_resp.status_code == 200
+        assert missing_resp.json()["result"]["isError"] is True

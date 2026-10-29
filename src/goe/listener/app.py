@@ -32,6 +32,7 @@ from goe.listener.jobs.store import JobStoreProtocol, create_job_store
 from goe.listener.jobs.worker import DurableJobWorker
 from goe.listener.mcp import ConfirmationGate, build_mcp_config
 from goe.listener.security import build_security_config
+from goe.listener.services.operations import get_operations_service
 from goe.listener.services.system import get_system_service
 from goe.listener.telemetry import build_listener_otel_plugin
 from goe.observability.runtime import ensure_observability
@@ -72,6 +73,7 @@ def create_app(
     telemetry = ensure_observability()
     deps: dict[str, Any] = {
         "system_service": Provide(get_system_service, sync_to_thread=False),
+        "operations_service": Provide(get_operations_service, sync_to_thread=False),
         "listener_cache": Provide(get_listener_cache, sync_to_thread=False),
         "job_store": Provide(get_job_store, sync_to_thread=False),
         "confirmation_gate": Provide(get_confirmation_gate, sync_to_thread=False),

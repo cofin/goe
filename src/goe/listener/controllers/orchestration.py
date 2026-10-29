@@ -25,6 +25,7 @@ from goe.listener.mcp import (
     READ_ONLY_TOOL_ANNOTATIONS,
     ConfirmationGate,
 )
+from goe.listener.services.operations import ListenerOperationsService
 from goe.listener.services.system import SystemService
 from goe.orchestration.execution_id import ExecutionId
 from goe.util.concurrency import async_
@@ -206,6 +207,26 @@ class OrchestrationController(SecureController):
         if record is None:
             raise exceptions.CommandExecutionNotFound(execution_id)
         return schemas.JobStatusResponse.from_record(record)
+
+    @post("/offload/preview/")
+    @mcp_tool(
+        "preview_offload_plan",
+        description="Compute a side-effect-free dry-run OffloadPlanPreview and mint a confirmation_token.",
+        agent_instructions=(
+            "Call this read-only preview tool before execute_offload to inspect target DDL, partitions, "
+            "and estimated row/byte volume, and to obtain a signed confirmation_token."
+        ),
+        when_to_use="Before executing any table offload to verify the staged OffloadPlan and DDL.",
+        returns="OffloadPlanPreview with DDL, partition list, estimates, and signed ConfirmationChallenge.",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
+    async def preview_offload_plan(
+        self,
+        data: JSONBody[schemas.OffloadOptions],
+        operations_service: NamedDependency[ListenerOperationsService],
+    ) -> schemas.OffloadPlanPreview:
+        """Compute a side-effect-free dry-run OffloadPlanPreview off the asyncio event loop."""
+        return await async_(operations_service.preview_offload)(data)
 
     @post("/offload/")
     @mcp_tool(

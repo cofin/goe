@@ -5,8 +5,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 import msgspec
 from msgspec import field
@@ -20,6 +20,9 @@ from goe.listener.jobs.models import JobRecord
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.models import OffloadMetadata
 from goe.typing import FrozenBaseStruct
+
+if TYPE_CHECKING:
+    from goe.orchestration.models import OffloadPlan
 
 __all__ = (
     "ColumnDetail",
@@ -36,6 +39,7 @@ __all__ = (
     "JobStatusResponse",
     "ListenerConfig",
     "OffloadOptions",
+    "OffloadPlanPreview",
     "OffloadableSchema",
     "OffloadableSchemas",
     "PartitionDetail",
@@ -633,6 +637,76 @@ class CommandScheduled(FrozenBaseStruct, frozen=True):
 
     execution_id: str
     status: str = "QUEUED"
+
+
+class OffloadPlanPreview(FrozenBaseStruct, frozen=True):
+    """Side-effect-free dry-run offload blueprint returned by preview_offload_plan."""
+
+    owner_table: str
+    target_owner: str
+    target_table: str
+    offload_mode: str
+    offload_type: str | None
+    nothing_to_offload: bool
+    partition_names: list[str] = field(default_factory=list)
+    chunk_count: int = 0
+    estimated_row_count: int | None = None
+    estimated_size_bytes: int | None = None
+    transport_method: str | None = None
+    staging_format: str | None = None
+    ingest_strategy: str | None = None
+    create_backend_table: bool = False
+    create_table_ddl: list[str] = field(default_factory=list)
+    alter_table_ddl: list[str] = field(default_factory=list)
+    frontend_where_clause: str | None = None
+    notices: list[str] = field(default_factory=list)
+    confirmation_challenge: ConfirmationChallenge | None = None
+
+    @classmethod
+    def from_offload_plan(
+        cls,
+        plan: OffloadPlan,
+        *,
+        owner_table: str,
+        notices: Sequence[str] = (),
+        confirmation_challenge: ConfirmationChallenge | None = None,
+    ) -> OffloadPlanPreview:
+        """Project an immutable OffloadPlan into a serializable OffloadPlanPreview."""
+        slices = plan.boundary.partitions_to_offload
+        part_names = [s.partition_name for s in slices]
+        nothing = bool(plan.has_nothing_to_offload)
+        if slices:
+            est_rows = sum(s.row_count or 0 for s in slices) or plan.discovery.estimated_row_count
+            est_bytes = sum(s.byte_size or 0 for s in slices) or plan.discovery.estimated_size_bytes
+        elif nothing:
+            est_rows = 0
+            est_bytes = 0
+        else:
+            est_rows = plan.discovery.estimated_row_count
+            est_bytes = plan.discovery.estimated_size_bytes
+
+        chunk_cnt = len(plan.boundary.partition_chunks) if plan.boundary.partition_chunks else (0 if nothing else 1)
+        return cls(
+            owner_table=owner_table.strip().upper(),
+            target_owner=plan.schema_plan.target_owner,
+            target_table=plan.schema_plan.target_table_name,
+            offload_mode=plan.boundary.offload_mode,
+            offload_type=plan.boundary.offload_type,
+            nothing_to_offload=nothing,
+            partition_names=part_names,
+            chunk_count=chunk_cnt,
+            estimated_row_count=est_rows,
+            estimated_size_bytes=est_bytes,
+            transport_method=plan.transport_plan.transport_method,
+            staging_format=plan.transport_plan.staging_format,
+            ingest_strategy=plan.load_plan.ingest_strategy,
+            create_backend_table=plan.schema_plan.create_backend_table,
+            create_table_ddl=list(plan.schema_plan.create_table_ddl),
+            alter_table_ddl=list(plan.schema_plan.alter_table_ddl),
+            frontend_where_clause=plan.predicate.frontend_where_clause,
+            notices=list(notices),
+            confirmation_challenge=None if nothing else confirmation_challenge,
+        )
 
 
 class ErrorMessage(FrozenBaseStruct, frozen=True):
