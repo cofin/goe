@@ -3,6 +3,8 @@
 
 """ASGI application entry point for GOE Listener."""
 
+from __future__ import annotations
+
 import os
 
 from goe.config.config_file import load_env

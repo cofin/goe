@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import re
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from goe.exceptions import OffloadException, OffloadOptionError, OptionValueError
@@ -185,3 +186,40 @@ def normalise_verify_options(options):
         options.verify_parallelism = check_opt_is_posint(
             "--verify-parallelism", options.verify_parallelism, allow_zero=True
         )
+
+
+def normalise_less_than_options(options, exc_cls=OffloadException):
+    """Move older-than-date or older-than-days into less_than_value after conflict checks."""
+    if not hasattr(options, "older_than_date"):
+        return
+
+    active_pa_opts = active_data_append_options(options, from_options=True)
+    if len(active_pa_opts) > 1:
+        raise exc_cls(
+            "%s: %s"
+            % (
+                offload_constants.CONFLICTING_DATA_ID_OPTIONS_EXCEPTION_TEXT,
+                ", ".join(active_pa_opts),
+            )
+        )
+
+    if options.reset_hybrid_view and len(active_pa_opts) == 0:
+        raise exc_cls(offload_constants.RESET_HYBRID_VIEW_EXCEPTION_TEXT)
+
+    if options.older_than_date:
+        try:
+            options.less_than_value = parse_yyyy_mm_dd(options.older_than_date)
+            options.older_than_date = None
+        except ValueError as exc:
+            raise exc_cls("option --older-than-date: %s" % str(exc))
+    elif options.older_than_days:
+        options.older_than_days = check_opt_is_posint("--older-than-days", options.older_than_days, allow_zero=True)
+        options.less_than_value = datetime.today() - timedelta(options.older_than_days)
+        options.older_than_days = None
+
+    check_ipa_predicate_type_option_conflicts(options, exc_cls=exc_cls)
+
+
+def parse_yyyy_mm_dd(ds):
+    """Parse a YYYY-MM-DD date string into a datetime."""
+    return datetime.strptime(ds, "%Y-%m-%d")

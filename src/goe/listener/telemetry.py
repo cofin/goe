@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""OpenTelemetry wiring for the GOE Listener: Litestar plugin, litestar-queues tracing, and MCP tool spans."""
+"""OpenTelemetry wiring for the GOE Listener: Litestar plugin and MCP tool spans."""
+
+from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from litestar_queues.observability import ObservabilityConfig as QueueObservabilityConfig
 from opentelemetry import context, trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
@@ -20,7 +21,6 @@ __all__ = (
     "after_mcp_tool_call",
     "before_mcp_tool_call",
     "build_listener_otel_plugin",
-    "build_queue_observability_config",
 )
 
 LISTENER_EXCLUDED_PATHS: list[str] = ["/api/system/status"]
@@ -33,7 +33,7 @@ _LAZY_IMPORTS: LazyImportMap = {
 }
 
 
-def build_listener_otel_plugin(active: ObservabilityRuntime) -> "OpenTelemetryPlugin | None":
+def build_listener_otel_plugin(active: ObservabilityRuntime) -> OpenTelemetryPlugin | None:
     """Return Litestar's OpenTelemetryPlugin bound to GOE providers, or None when telemetry is disabled."""
     if not active.enabled:
         return None
@@ -44,17 +44,6 @@ def build_listener_otel_plugin(active: ObservabilityRuntime) -> "OpenTelemetryPl
             meter_provider=active.meter_provider,
             exclude=LISTENER_EXCLUDED_PATHS,
         )
-    )
-
-
-def build_queue_observability_config(active: ObservabilityRuntime) -> QueueObservabilityConfig | None:
-    """Return litestar-queues observability bound to GOE providers, or None (queue telemetry off) when disabled."""
-    if not active.enabled:
-        return None
-    return QueueObservabilityConfig(
-        enable_otel=True,
-        tracer_provider=active.tracer_provider,
-        meter_provider=active.meter_provider,
     )
 
 

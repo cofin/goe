@@ -3,6 +3,8 @@
 
 """System metadata service for GOE Listener."""
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -12,12 +14,13 @@ from goe.config.orchestration_config import OrchestrationConfig
 from goe.config.settings import GOESettings
 from goe.connect.models import ConnectivityReport
 from goe.connect.runner import ConnectRunner
-from goe.goe import version as goe_version
+from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.listener import utils
 from goe.listener.config import settings
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.registry import create_repository_client
 from goe.orchestration.execution_id import ExecutionId
+from goe.orchestration.logging_init import version as goe_version
 from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 from goe.report.models import TableStatusReport
 from goe.report.service import StatusReportService
@@ -26,6 +29,11 @@ from goe.sync.differ import (
     SchemaSyncService,
     SourceColumnSnapshot,
     TargetColumnSnapshot,
+)
+
+__all__ = (
+    "SystemService",
+    "get_system_service",
 )
 
 logger = logging.getLogger(__name__)
@@ -37,7 +45,7 @@ class SystemService:
     def __init__(self, config: OrchestrationConfig | None = None, messages: OffloadMessages | None = None) -> None:
         if config is None:
             try:
-                self.config = OrchestrationConfig.as_defaults()
+                self.config = OrchestrationConfig.as_defaults(do_not_connect=True)
             except Exception:
                 self.config = None
         else:
@@ -54,10 +62,12 @@ class SystemService:
         )
 
     def generate_listener_group_id(self) -> UUID:
+        """Return deterministic UUID for the configured database listener group."""
         dsn = self.config.rdbms_dsn if self.config else "default"
         return uuid3(NAMESPACE_DNS, f"{dsn}")
 
     def generate_listener_endpoint_id(self) -> UUID:
+        """Return deterministic UUID for this listener endpoint address."""
         dsn = self.config.rdbms_dsn if self.config else "default"
         return uuid3(
             NAMESPACE_DNS,
@@ -65,44 +75,74 @@ class SystemService:
         )
 
     async def get_active_listener_endpoints(self) -> list[Any | None]:
-        _, keys = await utils.cache.scan("goe:listener:endpoints:*")
-        return await utils.cache.mget(keys)
+        """Return active listener endpoint URLs (fallback when JobStore is unused)."""
+        return []
 
     def get_db_unique_name(self) -> str:
+        """Return the frontend database unique name."""
+        assert self.config is not None
         return self.config._get_frontend_connection().get_db_unique_name()
 
     def get_backend_type(self) -> str:
-        return self.config.backend_distribution
+        """Return the configured backend distribution identifier."""
+        return self.config.backend_distribution if self.config else "BIGQUERY"
 
     def get_frontend_type(self) -> str:
-        return self.config.db_type
+        """Return the configured frontend RDBMS type identifier."""
+        return self.config.db_type if self.config else "ORACLE"
 
     def get_version(self) -> str:
+        """Return the GOE package version string."""
         return goe_version()
 
     def get_schemas(self) -> list[dict[str, str | Any]]:
+        """Return offloadable schemas from the repository."""
+        assert self.config is not None
         return self.get_repo(self.config, self.messages).get_offloadable_schemas()
 
     def get_schema_tables(self, schema_name: str) -> list[dict[str, str | Any]]:
+        """Return tables in schema_name from the repository."""
+        assert self.config is not None
         return self.get_repo(self.config, self.messages).get_schema_tables(schema_name)
 
     def get_table_columns(self, schema_name: str, table_name: str) -> list[Any]:
+        """Return column metadata for schema_name.table_name."""
+        assert self.config is not None
         return self.get_repo(self.config, self.messages).get_table_columns(schema_name, table_name)
 
     def get_table_partitions(self, schema_name: str, table_name: str) -> list[Any]:
+        """Return partition metadata for schema_name.table_name."""
+        assert self.config is not None
         return self.get_repo(self.config, self.messages).get_table_partitions(schema_name, table_name)
 
     def get_table_subpartitions(self, schema_name: str, table_name: str) -> list[Any]:
+        """Return subpartition metadata for schema_name.table_name."""
+        assert self.config is not None
         return self.get_repo(self.config, self.messages).get_table_subpartitions(schema_name, table_name)
 
     def get_command_executions(self) -> list[dict[str, str | Any]]:
+        """Return command execution records from the repository."""
+        assert self.config is not None
         return self.get_repo(self.config, self.messages).get_command_executions()
 
     def get_command_execution(self, execution_id: ExecutionId) -> dict[str, Any] | None:
+        """Return a single command execution record by execution_id."""
+        assert self.config is not None
         return self.get_repo(self.config, self.messages).get_command_execution(execution_id)
 
     def get_command_execution_steps(self, execution_id: ExecutionId | None) -> list[dict[str, str | Any]]:
+        """Return command execution steps from the repository."""
+        assert self.config is not None
         return self.get_repo(self.config, self.messages).get_command_execution_steps(execution_id)
+
+    def get_dfs_client(self) -> Any:
+        """Return a GOEDfs client when cloud storage options are configured."""
+        if self.config is None:
+            return None
+        try:
+            return get_dfs_from_options(self.config, messages=self.messages, dry_run=True)
+        except Exception:
+            return None
 
     def check_connectivity(
         self,

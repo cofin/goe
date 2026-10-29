@@ -3,6 +3,8 @@
 
 """Behavior tests for GOE Listener telemetry wiring."""
 
+from __future__ import annotations
+
 from collections.abc import Iterator
 from types import SimpleNamespace
 
@@ -16,7 +18,6 @@ from goe.listener.telemetry import (
     after_mcp_tool_call,
     before_mcp_tool_call,
     build_listener_otel_plugin,
-    build_queue_observability_config,
 )
 from goe.observability import runtime
 from goe.observability.config import ObservabilitySettings
@@ -31,22 +32,21 @@ def memory_runtime() -> Iterator[runtime.ObservabilityRuntime]:
 
 
 def test_builders_disabled() -> None:
+    """Verify build_listener_otel_plugin returns None when telemetry is disabled."""
     noop = runtime.ObservabilityRuntime.noop()
     assert build_listener_otel_plugin(noop) is None
-    assert build_queue_observability_config(noop) is None
 
 
 def test_builders_enabled(memory_runtime: runtime.ObservabilityRuntime) -> None:
+    """Verify build_listener_otel_plugin binds to the active tracer and meter providers."""
     plugin = build_listener_otel_plugin(memory_runtime)
     assert isinstance(plugin, OpenTelemetryPlugin)
     assert plugin.config.tracer_provider is memory_runtime.tracer_provider
-    queue_config = build_queue_observability_config(memory_runtime)
-    assert queue_config.enable_otel is True
-    assert queue_config.tracer_provider is memory_runtime.tracer_provider
 
 
 def test_http_request_emits_server_span(memory_runtime: runtime.ObservabilityRuntime) -> None:
-    with TestClient(app=create_app()) as client:
+    """Verify HTTP requests emit SERVER spans when OpenTelemetry is enabled."""
+    with TestClient(app=create_app(enable_background_worker=False)) as client:
         response = client.post(
             "/mcp",
             headers={
@@ -70,6 +70,7 @@ def test_http_request_emits_server_span(memory_runtime: runtime.ObservabilityRun
 
 
 def test_mcp_hooks_wrap_tool_execution(memory_runtime: runtime.ObservabilityRuntime) -> None:
+    """Verify before/after MCP hooks create a child span under the HTTP span."""
     tracer = memory_runtime.get_tracer("test")
     request = SimpleNamespace(state=SimpleNamespace())
     with tracer.start_as_current_span("http.mcp") as http_span:
@@ -85,6 +86,7 @@ def test_mcp_hooks_wrap_tool_execution(memory_runtime: runtime.ObservabilityRunt
 
 
 def test_mcp_hook_records_failure(memory_runtime: runtime.ObservabilityRuntime) -> None:
+    """Verify after_mcp_tool_call marks the span status as ERROR on exception."""
     request = SimpleNamespace(state=SimpleNamespace())
     before_mcp_tool_call("execute_offload", {}, request)
     after_mcp_tool_call("execute_offload", {}, request, result=None, exception=RuntimeError("denied"), duration=0.0)

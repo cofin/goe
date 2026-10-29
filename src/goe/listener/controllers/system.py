@@ -3,24 +3,27 @@
 
 """System controller for Litestar GOE Listener."""
 
+from __future__ import annotations
+
 import asyncio
 from typing import ClassVar
 
-from litestar import get
+from litestar import get, head
 from litestar.di import NamedDependency
-from litestar.params import FromPath
 from litestar_security import AuthenticationPolicy, SecureController, public, required
 
 from goe.connect.models import ConnectivityReport
-from goe.listener import schemas, utils
+from goe.listener import schemas
+from goe.listener.cache import ListenerCache
+from goe.listener.jobs.store import JobStoreProtocol
 from goe.listener.services.system import SystemService
-from goe.report.models import TableStatusReport
-from goe.sync.differ import SchemaDiff
 from goe.util.concurrency import async_
+
+__all__ = ("SystemController",)
 
 
 class SystemController(SecureController):
-    """Controller for /api/system endpoints."""
+    """Controller for /api/system status, connectivity, and configuration endpoints."""
 
     path = "/api/system"
     tags = ["System"]
@@ -30,6 +33,11 @@ class SystemController(SecureController):
     async def health_check(self) -> schemas.HealthCheck:
         """Run basic application health check."""
         return schemas.HealthCheck(status="OK")
+
+    @head("/status/", auth=public(), status_code=200)
+    async def health_check_head(self) -> None:
+        """Respond to HEAD /api/system/status/ health probes with an empty body."""
+        return None
 
     @get("/connectivity/", mcp_tool="check_connectivity")
     async def check_connectivity(
@@ -43,87 +51,26 @@ class SystemController(SecureController):
     async def get_configuration(
         self,
         system_service: NamedDependency[SystemService],
+        listener_cache: NamedDependency[ListenerCache],
+        job_store: NamedDependency[JobStoreProtocol],
     ) -> schemas.ListenerConfig:
-        """Get listener configuration metadata."""
-        active_listeners = await system_service.get_active_listener_endpoints()
+        """Get listener configuration metadata without blocking the event loop."""
+        heartbeats = await asyncio.to_thread(job_store.list_active_heartbeats)
+        active_urls = [hb.host_url for hb in heartbeats if hb.host_url]
+        if not active_urls and hasattr(system_service, "get_active_listener_endpoints"):
+            fallback_endpoints = await system_service.get_active_listener_endpoints()
+            active_urls = [str(item) for item in (fallback_endpoints or []) if item is not None]
+
+        db_unique_name = await listener_cache.get_or_load(
+            "system:db_unique_name",
+            lambda: async_(system_service.get_db_unique_name)(),
+        )
         return schemas.ListenerConfig(
             endpoint_id=str(system_service.generate_listener_endpoint_id()),
             listener_group_id=str(system_service.generate_listener_group_id()),
-            db_unique_name=system_service.get_db_unique_name(),
-            active_listeners=[str(item) for item in (active_listeners or []) if item is not None],
+            db_unique_name=str(db_unique_name),
+            active_listeners=active_urls,
             version=system_service.get_version(),
             frontend_type=system_service.get_frontend_type(),
             backend_type=system_service.get_backend_type(),
         )
-
-    @get("/schemas/", mcp_tool="get_offloadable_schemas")
-    async def get_offloadable_schemas(
-        self,
-        system_service: NamedDependency[SystemService],
-    ) -> schemas.OffloadableSchemas:
-        """Get list of offloadable schemas."""
-        schemas_list = await async_(system_service.get_schemas)()
-        return schemas.OffloadableSchemas(count=len(schemas_list), results=schemas_list)
-
-    @get("/schemas/{schema_name:str}/", mcp_tool="get_offloadable_tables")
-    async def get_offloadable_tables(
-        self,
-        system_service: NamedDependency[SystemService],
-        schema_name: FromPath[str],
-    ) -> schemas.TableDetails:
-        """Get list of tables for a schema."""
-        tables = await async_(system_service.get_schema_tables)(schema_name)
-        return schemas.TableDetails(count=len(tables), results=tables)
-
-    @get("/schemas/{schema_name:str}/{table_name:str}/columns/", mcp_tool="get_table_columns")
-    async def get_table_columns(
-        self,
-        system_service: NamedDependency[SystemService],
-        schema_name: FromPath[str],
-        table_name: FromPath[str],
-    ) -> schemas.ColumnDetails:
-        """Get list of columns for a table."""
-        columns = await async_(system_service.get_table_columns)(schema_name, table_name)
-        return schemas.ColumnDetails(count=len(columns), results=columns)
-
-    @get("/schemas/{schema_name:str}/{table_name:str}/partitions/", mcp_tool="get_table_partitions")
-    async def get_table_partitions(
-        self,
-        system_service: NamedDependency[SystemService],
-        schema_name: FromPath[str],
-        table_name: FromPath[str],
-    ) -> schemas.PartitionDetails:
-        """Get list of partitions and subpartitions for a table."""
-        partitions = await async_(system_service.get_table_partitions)(schema_name, table_name)
-        subpartitions = await async_(system_service.get_table_subpartitions)(schema_name, table_name)
-        normalized_subpartitions = [
-            item.to_dict() if hasattr(item, "to_dict") else dict(item) for item in (subpartitions or [])
-        ]
-        grouped = utils.groupby(lambda p: p.get("partition_name"), normalized_subpartitions)
-        normalized_partitions = [
-            partition.to_dict() if hasattr(partition, "to_dict") else dict(partition)
-            for partition in (partitions or [])
-        ]
-        for partition in normalized_partitions:
-            partition["subpartitions"] = grouped.get(partition.get("partition_name"), [])
-        return schemas.PartitionDetails(count=len(normalized_partitions), results=normalized_partitions)
-
-    @get("/schemas/{schema_name:str}/{table_name:str}/status/", mcp_tool="get_table_offload_status")
-    async def get_table_offload_status(
-        self,
-        system_service: NamedDependency[SystemService],
-        schema_name: FromPath[str],
-        table_name: FromPath[str],
-    ) -> TableStatusReport:
-        """Return offload status report for a single table."""
-        return await async_(system_service.get_table_offload_status)(schema_name, table_name)
-
-    @get("/schemas/{schema_name:str}/{table_name:str}/drift/", mcp_tool="preview_schema_drift")
-    async def preview_schema_drift(
-        self,
-        system_service: NamedDependency[SystemService],
-        schema_name: FromPath[str],
-        table_name: FromPath[str],
-    ) -> SchemaDiff:
-        """Preview schema drift between source and target for a single table."""
-        return await async_(system_service.preview_schema_drift)(schema_name, table_name)

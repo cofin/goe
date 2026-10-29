@@ -12,37 +12,34 @@ tags:
 
 # Offload Execution Lifecycle
 
-Data offloading in GOE executes through a structured, multi-phase lifecycle implemented in `src/goe/goe.py`.
+Data offloading in GOE executes through a stateless 4-stage pipeline (`OffloadPipeline` in `src/goe/orchestration/pipeline.py` and `src/goe/orchestration/stages/{discovery,boundary,plan_resolution,executor}.py`).
 
 ```
-Phase 1: Pre-Execution Validation & Target Resolution
+Stage 1: DiscoveryStage (`src/goe/orchestration/stages/discovery.py`) -> DiscoveryResult
     │
-Phase 2: Partition Discovery & Scope Analysis (STEP_FIND_OFFLOAD_DATA)
+Stage 2: BoundaryStage (`src/goe/orchestration/stages/boundary.py`) -> BoundaryResult (STEP_FIND_OFFLOAD_DATA)
     │
-Phase 3: Canonical Type Transformation (STEP_ANALYZE_DATA_TYPES)
+Stage 3: PlanResolutionStage (`src/goe/orchestration/stages/plan_resolution.py`) -> OffloadPlan (STEP_ANALYZE_DATA_TYPES)
     │
-Phase 4: Target Table Lifecycle & DDL Execution (STEP_CREATE_TABLE)
-    │
-Phase 5: Staging Setup & Data Transport (STEP_STAGING_TRANSPORT)
-    │
-Phase 6: Staging Validation, Type Casting & Final Load (STEP_FINAL_LOAD)
-    │
-Phase 7: Metadata Persistence & Verification (STEP_SAVE_METADATA & VERIFY)
+Stage 4: OffloadPlanExecutor (`src/goe/orchestration/stages/executor.py`) -> OffloadExecutionResult
+    ├── Target Table Lifecycle & DDL Execution (STEP_CREATE_TABLE)
+    ├── Staging Setup & Data Transport (STEP_STAGING_SETUP, STEP_STAGING_TRANSPORT)
+    ├── Staging Validation, Type Casting & Final Load (STEP_VALIDATE_DATA, STEP_VALIDATE_CASTS, STEP_FINAL_LOAD, STEP_STAGING_CLEANUP)
+    └── Metadata Persistence & Verification (STEP_SAVE_METADATA, STEP_VERIFY_EXPORTED_DATA)
 ```
 
 ## Detailed Phase Walkthrough
 
-### Phase 1: Pre-Execution Validation & Target Resolution
+### Stage 1: Discovery & Pre-Execution Validation (`DiscoveryStage`)
 1. **Component Version Verification**: Compares the Oracle PL/SQL package version (`OFFLOAD.VERSION`) against the local binary build hash.
-2. **Identifier Safety**: Validates database, schema, and table names against target platform reserved keywords and length limits.
-3. **Data Type Compatibility**: Pre-scans source columns to identify unsupported RDBMS datatypes or unsupported timestamp scales.
+2. **Identifier Safety & Data Type Compatibility**: Validates database, schema, and table names against target platform limits and pre-scans source columns into an immutable `DiscoveryResult(FrozenBaseStruct)`.
 
-### Phase 2: Partition Discovery & Scope Analysis (`STEP_FIND_OFFLOAD_DATA`)
-Implemented via `get_offload_data_manager()`:
-- **`OffloadSourceDataIpaRange`**: Range partition append. Queries `ALL_TAB_PARTITIONS`, decodes high values, checks high-water mark (HWM), and identifies active vs dormant partitions.
-- **`OffloadSourceDataIpaList`**: List partition append. Tracks offloaded value sets.
-- **`OffloadSourceDataPredicate`**: Predicate-based offload. Parses arbitrary WHERE clauses using AST parser and injects synthetic partition filters.
-- **Chunking**: Splits large partition sets into manageable chunks based on `--max-offload-chunk-size` (bytes) or `--max-offload-chunk-count` (count).
+### Stage 2: Partition Boundary Calculation (`BoundaryStage`, `STEP_FIND_OFFLOAD_DATA`)
+Implemented in `src/goe/orchestration/stages/boundary.py`:
+- **IPA `RANGE` (`RANGE_HIGH_VALUE`)**: Queries `ALL_TAB_PARTITIONS`, decodes partition high values, resolves the high-water mark (`OffloadBoundaryRule`), and separates offloaded vs append partitions.
+- **IPA `LIST` (`LIST_HIGH_VALUE`)**: Tracks offloaded list value sets and computes incremental partition chunks.
+- **Predicate-Based Offload (`PBO`)**: Compiles `--offload-predicate` AST filters (`GenericPredicate`) and merges prior hybrid predicates without mutating source table instances.
+- **Full-Table (`RBO`) & Chunking**: Computes `100:0` or `90:10` rules and splits large partition sets into bounded `PartitionChunkSpec` slices based on `--max-offload-chunk-size` or `--max-offload-chunk-count`, returning an immutable `BoundaryResult(FrozenBaseStruct)`.
 
 ### Phase 3: Canonical Type Transformation (`STEP_ANALYZE_DATA_TYPES`)
 - Translates source columns to `CanonicalColumn` instances.

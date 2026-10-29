@@ -3,14 +3,29 @@
 
 """Listener Configuration Settings."""
 
+from __future__ import annotations
+
+import os
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import msgspec
 
 from goe.config.config_file import load_env
 from goe.config.orchestration_config import OrchestrationConfig
-from goe.typing import BaseStruct
+from goe.typing import FrozenBaseStruct
+
+__all__ = (
+    "APP_DIR",
+    "BASE_DIR",
+    "CONFIG_DIR",
+    "FRONTEND_DIR",
+    "ListenerSettings",
+    "get_listener_settings",
+    "settings",
+)
 
 BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
 APP_DIR: Path = Path(BASE_DIR / "listener")
@@ -18,8 +33,8 @@ CONFIG_DIR: Path = Path(APP_DIR / "config")
 FRONTEND_DIR: Path = Path(APP_DIR / "web")
 
 
-class ListenerSettings(BaseStruct):
-    """Listener Configuration Object."""
+class ListenerSettings(FrozenBaseStruct, frozen=True):
+    """Immutable Listener runtime and HTTP configuration settings."""
 
     global_config: OrchestrationConfig | None = msgspec.field(default_factory=lambda: _get_default_global_config())
 
@@ -34,21 +49,60 @@ class ListenerSettings(BaseStruct):
     certfile: str | None = None
     keyfile: str | None = None
     ssl_enabled: bool = False
-    heartbeat_interval: int = 60
+    heartbeat_interval: int = 30
+    max_log_bytes: int = 1_048_576
+    topology: Literal["shm", "embedded"] = "shm"
+    threads: int = 1
+    drain_timeout_seconds: int = 30
+    shutdown_timeout_seconds: int = 35
 
     def __post_init__(self) -> None:
         if self.global_config:
             if self.global_config.listener_host:
-                self.host = self.global_config.listener_host
+                msgspec.structs.force_setattr(self, "host", self.global_config.listener_host)
             if self.global_config.listener_port is not None:
-                self.port = int(self.global_config.listener_port)
+                msgspec.structs.force_setattr(self, "port", int(self.global_config.listener_port))
             if self.global_config.listener_shared_token:
-                self.shared_token = str(self.global_config.listener_shared_token)
+                msgspec.structs.force_setattr(self, "shared_token", str(self.global_config.listener_shared_token))
             if self.global_config.listener_heartbeat_interval:
-                self.heartbeat_interval = int(self.global_config.listener_heartbeat_interval)
+                msgspec.structs.force_setattr(
+                    self,
+                    "heartbeat_interval",
+                    int(self.global_config.listener_heartbeat_interval),
+                )
+
+        env_topology = os.environ.get("OFFLOAD_LISTENER_TOPOLOGY", "").strip().lower()
+        if env_topology in ("shm", "embedded"):
+            msgspec.structs.force_setattr(self, "topology", env_topology)
+
+        env_threads = os.environ.get("OFFLOAD_LISTENER_THREADS", "").strip()
+        if env_threads.isdigit():
+            msgspec.structs.force_setattr(self, "threads", max(1, int(env_threads)))
+
+        env_drain = os.environ.get("OFFLOAD_LISTENER_DRAIN_TIMEOUT", "").strip()
+        if env_drain.isdigit():
+            drain_val = max(1, int(env_drain))
+            msgspec.structs.force_setattr(self, "drain_timeout_seconds", drain_val)
+            msgspec.structs.force_setattr(self, "shutdown_timeout_seconds", drain_val + 5)
 
         if self.static_path is None:
-            self.static_path = str(Path(FRONTEND_DIR / "public"))
+            msgspec.structs.force_setattr(self, "static_path", str(Path(FRONTEND_DIR / "public")))
+
+    def to_vertebra_env(self, base_env: Mapping[str, str] | None = None) -> dict[str, str]:
+        """Export Vertebra runtime environment variables while preserving caller-provided VERTEBRA_* keys."""
+        source = dict(os.environ) if base_env is None else dict(base_env)
+        defaults = {
+            "VERTEBRA_HOST": str(self.host),
+            "VERTEBRA_PORT": str(self.port),
+            "VERTEBRA_TOPOLOGY": str(self.topology),
+            "VERTEBRA_WORKERS": str(self.http_workers),
+            "VERTEBRA_THREADS": str(self.threads),
+            "VERTEBRA_DRAIN_TIMEOUT": str(self.drain_timeout_seconds),
+            "VERTEBRA_SHUTDOWN_TIMEOUT": str(self.shutdown_timeout_seconds),
+        }
+        for key, val in defaults.items():
+            source.setdefault(key, val)
+        return source
 
 
 @lru_cache

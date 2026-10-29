@@ -3,10 +3,13 @@
 
 """Unit tests for Listener OffloadOptions, ListenerConfig, and ColumnDetail schema alignment."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+from litestar.di import Provide
 from litestar.testing import TestClient
-from litestar_queues import QueueService
 
 from goe.config.options import (
     EXPECTED_OFFLOAD_ARGS,
@@ -14,8 +17,8 @@ from goe.config.options import (
     LISTENER_OFFLOAD_RENAME_ALIASES,
     OffloadOperationOptions,
 )
-from goe.listener import jobs
 from goe.listener.app import create_app
+from goe.listener.jobs.store import SqliteJobStore
 from goe.listener.schemas import ColumnDetail, ListenerConfig, OffloadOptions
 
 
@@ -81,13 +84,16 @@ def test_offload_options_subpartitions_normalization() -> None:
 
 
 @patch("goe.listener.utils.orchestrate.check_for_running_command")
-@patch.object(QueueService, "enqueue", new_callable=AsyncMock)
 def test_orchestration_post_offload_passes_only_expected_offload_args(
-    mock_enqueue: AsyncMock,
     mock_check: MagicMock,
+    tmp_path: Path,
 ) -> None:
-    """Verify POST /api/orchestration/offload/ passes only EXPECTED_OFFLOAD_ARGS keys to queue_service.enqueue."""
-    app = create_app()
+    """Verify POST /api/orchestration/offload/ passes only EXPECTED_OFFLOAD_ARGS keys to JobStore.enqueue."""
+    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    app = create_app(
+        dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
+        enable_background_worker=False,
+    )
     with TestClient(app=app) as client:
         response = client.post(
             "/api/orchestration/offload/",
@@ -100,9 +106,11 @@ def test_orchestration_post_offload_passes_only_expected_offload_args(
             },
         )
         assert response.status_code in (200, 201)
-    mock_enqueue.assert_awaited_once()
-    assert mock_enqueue.call_args.args[0] is jobs.run_offload_job
-    passed_params = mock_enqueue.call_args.kwargs["params"]
+        exec_id = response.json()["execution_id"]
+
+    job = store.get_job_by_execution_id(exec_id)
+    assert job is not None
+    passed_params = job.decode_payload()
     assert set(passed_params.keys()).issubset(set(EXPECTED_OFFLOAD_ARGS))
     assert passed_params["target_owner_name"] == "prod_sh.sales"
     assert passed_params["partition_names_csv"] == "P1,P2"

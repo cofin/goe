@@ -3,7 +3,6 @@
 
 [raw-json]
 files = [
-    "src/goe/listener/services/periodic_tasks.py",
     "src/goe/offload/staging/avro/avro_staging_file.py",
     "tests/unit/cli/test_cli_root.py",
     "tests/unit/observability/test_log_correlation.py",

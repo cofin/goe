@@ -21,10 +21,6 @@ from goe.filesystem.goe_dfs import (
 )
 from goe.offload import offload_constants
 from goe.offload.backend_api import IMPALA_NOSHUFFLE_HINT, IMPALA_SHUFFLE_HINT
-from goe.offload.offload import (
-    active_data_append_options,
-    normalise_less_than_options,
-)
 from goe.offload.offload_messages import (
     VERBOSE,
     VVERBOSE,
@@ -48,9 +44,11 @@ from goe.offload.operation.partition_controls import (
 )
 from goe.offload.operation.sort_columns import sort_columns_csv_to_sort_columns
 from goe.offload.option_validation import (
+    active_data_append_options,
     check_ipa_predicate_type_option_conflicts,
     check_opt_is_posint,
     normalise_data_sampling_options,
+    normalise_less_than_options,
     normalise_offload_predicate_options,
     normalise_stats_options,
     normalise_verify_options,

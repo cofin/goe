@@ -53,11 +53,9 @@ dependencies = [
     "uvloop",
     "httptools",
     "litestar>=2.8.0",
-    "litestar-granian>=0.4.0",
     "litestar-security>=0.1.0",
     "litestar-autowire>=0.1.0",
     "litestar-mcp>=0.1.0",
-    "litestar-queues>=0.1.0",
 ]
 
 [project.scripts]

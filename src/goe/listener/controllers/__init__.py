@@ -3,7 +3,16 @@
 
 """Controller package for Litestar GOE Listener."""
 
-from goe.listener.controllers.orchestration import OrchestrationController
-from goe.listener.controllers.system import SystemController
+from __future__ import annotations
 
-__all__ = ("OrchestrationController", "SystemController")
+from goe.listener.controllers.orchestration import OrchestrationController
+from goe.listener.controllers.schemas import SchemasController
+from goe.listener.controllers.system import SystemController
+from goe.listener.controllers.tables import TablesController
+
+__all__ = (
+    "OrchestrationController",
+    "SchemasController",
+    "SystemController",
+    "TablesController",
+)
