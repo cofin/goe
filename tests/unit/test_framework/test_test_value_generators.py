@@ -32,7 +32,6 @@ class TestTestValueGenerators(TestCase):
         self.assertIsInstance(TestDecimal.rnd(38, 0), Decimal)
         self.assertTrue(len(remove_chars(str(TestDecimal.rnd(38, 0)), "-.")) <= 38)
         self.assertIsInstance(TestDecimal.rnd(38, 38), Decimal)
-        # Expected length 39 below to allow for leading 0.
         self.assertEqual(len(remove_chars(str(TestDecimal.rnd(38, 38)), "-.")), 39)
 
 

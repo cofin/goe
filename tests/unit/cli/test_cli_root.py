@@ -3,7 +3,6 @@
 
 """Unit tests for the root goe CLI group and environment initialization."""
 
-import json
 import subprocess
 import sys
 from unittest.mock import patch
@@ -15,6 +14,7 @@ from click.testing import CliRunner
 import goe.cli.commands.connect as connect_cmd_module
 import goe.cli.common as common_module
 from goe.cli.main import cli
+from goe.serializers import decode_json
 from goe.util import goe_version
 
 
@@ -81,7 +81,7 @@ def test_cli_help_does_not_import_heavy_backends() -> None:
         "print(json.dumps(loaded))"
     )
     proc = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
-    loaded = json.loads(proc.stdout.strip())
+    loaded = decode_json(proc.stdout.strip())
     assert loaded == [], f"Heavy modules eagerly imported during CLI help rendering: {loaded}"
 
 
@@ -103,5 +103,5 @@ def test_offload_messages_import_does_not_load_litestar_or_gcsfs() -> None:
         "print(json.dumps(loaded))"
     )
     proc = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
-    loaded = json.loads(proc.stdout.strip())
+    loaded = decode_json(proc.stdout.strip())
     assert loaded == [], f"Transitive heavy modules eagerly imported by offload_messages: {loaded}"

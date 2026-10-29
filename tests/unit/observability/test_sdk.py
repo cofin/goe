@@ -6,7 +6,6 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-import msgspec
 import pytest
 from google.auth.credentials import AnonymousCredentials
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as GrpcSpanExporter
@@ -15,6 +14,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from goe.observability import _sdk
 from goe.observability.config import ObservabilitySettings
 from goe.observability.context import bind_execution_context, bind_step_context
+from goe.serializers import decode_json
 
 
 def test_memory_providers_stamp_execution_attributes() -> None:
@@ -42,7 +42,7 @@ def test_jsonl_exporter_writes_decodable_lines(tmp_path: Path) -> None:
         with tracer.start_as_current_span("child"):
             pass
     providers.tracer_provider.shutdown()
-    records = [msgspec.json.decode(line) for line in target.read_bytes().splitlines()]
+    records = [decode_json(line) for line in target.read_bytes().splitlines()]
     child = next(r for r in records if r["name"] == "child")
     parent = next(r for r in records if r["name"] == "parent")
     assert child["trace_id"] == parent["trace_id"]

@@ -345,10 +345,7 @@ branch = true
 concurrency = ["multiprocessing", "thread"]
 omit = [
     "tests/*",
-    "sql/*",
-    "target/*",
     "tools/*",
-    "templates/*",
     ".venv/*",
 ]
 parallel = true

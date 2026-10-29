@@ -24,7 +24,6 @@ ERROR := $(shell printf "$(RED)✖$(NC)")
 .EXPORT_ALL_VARIABLES:
 MAKEFLAGS += --no-print-directory
 
-TARGET_DIR=target/offload
 BUILD_DIR=dist
 OFFLOAD_VERSION=$(shell sed -rn 's/version = "([a-zA-Z0-9.-]+)"/\1/p' pyproject.toml)
 GOE_WHEEL=goe_framework-$(shell echo $(OFFLOAD_VERSION)-py3-none-any.whl)
@@ -122,19 +121,26 @@ build: clean                                        ## Build wheel and source di
 	@uv build
 	@echo "${OK} Build complete in dist/ ✓"
 
+.PHONY: bundle
+bundle:                                             ## Build standalone PyApp distribution
+	@echo "${INFO} Bundling standalone PyApp artifact..."
+	@uv run python tools/bundle_python.py
+	@echo "${OK} Bundle complete ✓"
+
+.PHONY: spark-listener
+spark-listener:                                     ## Build Spark listener JARs
+	@cd tools/spark-listener && make target
+
 # =============================================================================
 # Cleanup Rules
 # =============================================================================
 .PHONY: clean
 clean:                                              ## Clean build and test artifacts
 	@echo "${INFO} Cleaning working directory..."
-	@rm -rf .pytest_cache .ruff_cache .mypy_cache build/ dist/ target/offload target/transport .eggs/ .coverage coverage.xml htmlcov/ >/dev/null 2>&1
+	@rm -rf .pytest_cache .ruff_cache .mypy_cache build/ dist/ .eggs/ .coverage coverage.xml htmlcov/ >/dev/null 2>&1
 	@find . -name '*.egg-info' -exec rm -rf {} + >/dev/null 2>&1
 	@find . -name '*.pyc' -exec rm -f {} + >/dev/null 2>&1
-	@[ ! -d templates/conf ] || (cd templates/conf && make clean >/dev/null 2>&1 || true)
 	@[ ! -d tools/spark-listener ] || (cd tools/spark-listener && make clean >/dev/null 2>&1 || true)
-	@[ ! -d target ] || (cd target && make clean >/dev/null 2>&1 || true)
-	@rm -f goe_[0-9]*.[0-9]*.*.tar.gz >/dev/null 2>&1 || true
 	@echo "${OK} Clean complete ✓"
 
 .PHONY: destroy
@@ -143,65 +149,7 @@ destroy:                                            ## Destroy local .venv envir
 	@rm -rf .venv
 	@echo "${OK} Virtual environment destroyed 🗑️"
 
-.PHONY: python-goe-destroy
-python-goe-destroy: destroy                         ## Backward-compatible alias for destroy
-
-.PHONY: python-goe-clean
-python-goe-clean: clean                             ## Backward-compatible alias for clean
-
 .PHONY: deep-clean
 deep-clean: clean destroy                           ## Clean everything including uv cache
 	@uv cache clean >/dev/null 2>&1 || true
 	@echo "${OK} Deep clean complete ✓"
-
-# =============================================================================
-# Packaging & Sub-Make Orchestration
-# =============================================================================
-.PHONY: python-goe
-python-goe:                                         ## Build Python distribution
-	@uv build
-
-.PHONY: spark-basic-auth
-spark-basic-auth:                                   ## Build Spark basic auth helper
-	@cd spark-basic-auth && make
-
-.PHONY: spark-listener
-spark-listener:                                     ## Build Spark listener package
-	@cd tools/spark-listener && make target
-
-.PHONY: package-spark-standalone
-package-spark-standalone: spark-listener            ## Package Spark transport standalone binaries
-	@cd tools/transport && make spark-target
-	@cd target && make package-spark
-
-.PHONY: offload-env
-offload-env:                                        ## Compile offload configuration templates
-	@cd templates/conf && make
-
-.PHONY: offload-home-check
-offload-home-check:                                 ## Verify OFFLOAD_HOME environment variable
-	@[ "$$OFFLOAD_HOME" ] || (echo "${ERROR} OFFLOAD_HOME is not set" && exit 1)
-
-.PHONY: target
-target: python-goe spark-listener offload-env       ## Compile full runtime target tree
-	@echo "${INFO} Building target distribution in $(TARGET_DIR)..."
-	@mkdir -p $(TARGET_DIR)/tools
-	@rm -rf $(TARGET_DIR)/setup/sql $(TARGET_DIR)/setup/python
-	@mkdir -p $(TARGET_DIR)/cache
-	@mkdir -p $(TARGET_DIR)/setup/sql && cp -a sql/oracle/source/* $(TARGET_DIR)/setup 2>/dev/null || true
-	@mkdir -p $(TARGET_DIR)/lib && cp dist/goe_framework-*.whl $(TARGET_DIR)/lib 2>/dev/null || true
-	@cp LICENSE AUTHORS $(TARGET_DIR)/ 2>/dev/null || true
-	@echo "$(OFFLOAD_VERSION) ($(BUILD))" > $(TARGET_DIR)/version_build
-	@sed -i -e "s/VERSION/$(OFFLOAD_VERSION)/" -e "s/BUILD/$(BUILD)/" $(TARGET_DIR)/setup/sql/{install,upgrade}_env.sql 2>/dev/null || true
-	@sed -i "s/'%s-SNAPSHOT'/'$(OFFLOAD_VERSION) ($(BUILD))'/" $(TARGET_DIR)/setup/sql/create_offload*_package_spec.sql 2>/dev/null || true
-	@mkdir -p $(TARGET_DIR)/templates
-	@cp -r templates/goe_base.html templates/offload_status_report $(TARGET_DIR)/templates/ 2>/dev/null || true
-	@mkdir -p $(TARGET_DIR)/run $(TARGET_DIR)/log
-	@chmod 775 $(TARGET_DIR)/run $(TARGET_DIR)/log 2>/dev/null || true
-	@chmod 640 $(TARGET_DIR)/conf/*offload.env.template 2>/dev/null || true
-	@echo "${OK} Target build complete ✓"
-
-.PHONY: package
-package: target                                     ## Package full GOE release tarball
-	@cd target && make package
-	@echo "${OK} Packaging complete ✓"

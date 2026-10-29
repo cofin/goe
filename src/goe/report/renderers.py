@@ -11,12 +11,10 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
-from goe.goe import (
-    version,
-)
 from goe.offload.offload_messages import (
     SUPPRESS_STDOUT,
 )
+from goe.orchestration.logging_init import version
 from goe.report.models import (
     AAPD_OBJECTS,
     CSV,

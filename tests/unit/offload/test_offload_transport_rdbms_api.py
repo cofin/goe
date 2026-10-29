@@ -93,7 +93,7 @@ def offload_partitions_from_rdbms_partitions(rdbms_partitions):
             _.high_values_individual,
             _.partition_size,
             _.num_rows,
-            None,  # common_partition_literal
+            None,
             _.subpartition_names,
         )
         for _ in rdbms_partitions

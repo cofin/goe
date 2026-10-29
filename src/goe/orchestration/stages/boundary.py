@@ -6,17 +6,22 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from goe.config.options import OffloadOperationOptions
 from goe.exceptions import OffloadException
 from goe.offload import offload_constants
-from goe.offload.offload_messages import VVERBOSE
+from goe.offload.offload_messages import VVERBOSE, OffloadMessages
 from goe.offload.offload_metadata_functions import (
     OFFLOAD_TYPE_FULL,
     OFFLOAD_TYPE_INCREMENTAL,
+    decode_metadata_incremental_high_values_from_metadata,
+    incremental_key_csv_from_part_keys,
 )
+from goe.offload.offload_source_table import OFFLOAD_PARTITION_TYPE_LIST
+from goe.offload.option_validation import active_data_append_options
 from goe.offload.predicates import PredicateCompiler
+from goe.offload.registry import create_source_table
 from goe.orchestration.models import (
     DiscoveryState,
     OffloadMode,
@@ -27,6 +32,16 @@ from goe.orchestration.models import (
     PriorMetadataState,
     SourcePartitionSlice,
 )
+from goe.persistence.models import (
+    INCREMENTAL_PREDICATE_TYPE_LIST,
+    INCREMENTAL_PREDICATE_TYPES_WITH_PREDICATE_IN_HV,
+    hwm_column_names_from_predicates,
+)
+
+if TYPE_CHECKING:
+    from goe.offload.backend_table import BackendTableInterface
+    from goe.offload.offload_source_table import OffloadSourceTableInterface
+    from goe.orchestration.stages.plan_resolution import OffloadOperation
 
 __all__ = [
     "INCREMENTAL_OFFLOAD_DEFAULT_PARTITION_EXCEPTION_TEXT",
@@ -56,9 +71,13 @@ __all__ = [
     "OffloadSourcePartition",
     "OffloadSourcePartitions",
     "chunk_partitions",
+    "get_current_offload_hv",
+    "get_offload_data_manager",
     "get_offload_type_for_config",
+    "get_prior_offloaded_hv",
     "is_default_partition",
     "offload_source_data_factory",
+    "offload_type_force_effects",
 ]
 
 
@@ -566,6 +585,205 @@ class BoundaryResolutionStage:
         )
         predicate = PredicatePlan()
         return boundary, predicate
+
+
+def get_current_offload_hv(
+    offload_source_table: OffloadSourceTableInterface,
+    source_data_client: OffloadSourceDataInterface,
+    offload_operation: Any,
+    messages: OffloadMessages,
+) -> Any:
+    """Identify the high watermark for an incremental partition append offload."""
+    new_hvs = None
+
+    if source_data_client.partitions_to_offload.count() > 0:
+        if offload_operation.ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST:
+            hvs_individual, hvs_python = [], []
+            for p in source_data_client.partitions_to_offload.get_partitions():
+                hvs_individual.append(p.partition_values_individual)
+                hvs_python.append(p.partition_values_python)
+            new_hvs = [hvs_individual, hvs_python]
+        else:
+            max_partition = source_data_client.partitions_to_offload.get_partition_by_index(0)
+            new_hvs = [
+                max_partition.partition_values_individual,
+                max_partition.partition_values_python,
+            ]
+        messages.log(
+            "Identified new_hvs from partitions_to_offload: %s" % str(new_hvs),
+            detail=VVERBOSE,
+        )
+    elif offload_operation.offload_type == "INCREMENTAL" and not offload_operation.reset_backend_table:
+        current_metadata = offload_operation.get_hybrid_metadata()
+        (
+            _,
+            _,
+            partition_literal_hvs,
+        ) = decode_metadata_incremental_high_values_from_metadata(current_metadata, offload_source_table)
+        new_hvs = [partition_literal_hvs, partition_literal_hvs]
+        messages.log("Identified new_hvs from metadata: %s" % str(new_hvs), detail=VVERBOSE)
+
+    return new_hvs
+
+
+def get_prior_offloaded_hv(
+    rdbms_table: OffloadSourceTableInterface,
+    source_data_client: OffloadSourceDataInterface,
+    offload_operation: Any,
+    messages: OffloadMessages,
+) -> Any:
+    """Identify the prior offloaded partition high watermark for a RANGE offload."""
+    prior_hvs = None
+
+    if (
+        offload_operation
+        and offload_operation.pre_offload_hybrid_metadata
+        and offload_operation.pre_offload_hybrid_metadata.incremental_high_value
+    ):
+        messages.log("Assigning prior_hv from pre-offload metadata", detail=VVERBOSE)
+        (
+            _,
+            real_hvs,
+            literal_hvs,
+        ) = decode_metadata_incremental_high_values_from_metadata(
+            offload_operation.pre_offload_hybrid_metadata, rdbms_table
+        )
+        messages.log("pre-offload metadata real values: %s" % str(real_hvs), detail=VVERBOSE)
+        messages.log(
+            "pre-offload metadata rdbms literals: %s" % str(literal_hvs),
+            detail=VVERBOSE,
+        )
+        prior_hvs = [literal_hvs, real_hvs]
+
+    if not prior_hvs and source_data_client:
+        min_offloaded_partition = source_data_client.partitions_to_offload.get_partition_by_index(-1)
+        if min_offloaded_partition:
+            messages.log(
+                "Searching original partitions for partition prior to: %s"
+                % str(min_offloaded_partition.partition_values_python),
+                detail=VVERBOSE,
+            )
+            prior_partition = source_data_client.source_partitions.get_prior_partition(
+                partition=min_offloaded_partition
+            )
+            if prior_partition:
+                prior_hvs = [
+                    prior_partition.partition_values_individual,
+                    prior_partition.partition_values_python,
+                ]
+
+    messages.log("Found prior_hvs: %s" % str(prior_hvs), detail=VVERBOSE)
+    return prior_hvs
+
+
+def get_offload_data_manager(
+    offload_source_table: OffloadSourceTableInterface,
+    offload_target_table: BackendTableInterface,
+    offload_operation: OffloadOperation,
+    offload_options: Any,
+    messages: OffloadMessages,
+    existing_metadata: Any,
+    source_client_type: Any,
+    partition_columns: Any = None,
+    include_col_offload_source_table: bool = False,
+) -> OffloadSourceDataInterface:
+    """Construct and run partition detection on the OffloadSourceDataInterface manager."""
+    if (
+        offload_target_table.exists()
+        and not offload_target_table.is_view()
+        and not offload_operation.reset_backend_table
+    ):
+        messages.log("Pre-offload metadata: " + str(existing_metadata), detail=VVERBOSE)
+
+    if include_col_offload_source_table and existing_metadata:
+        col_offload_source_table_override = create_source_table(
+            existing_metadata.hybrid_owner,
+            existing_metadata.hybrid_view,
+            offload_options,
+            messages,
+            offload_by_subpartition=offload_source_table.offload_by_subpartition,
+        )
+    else:
+        col_offload_source_table_override = None
+
+    source_data_client = offload_source_data_factory(
+        offload_source_table,
+        offload_target_table,
+        offload_operation,
+        existing_metadata,
+        messages,
+        source_client_type,
+        rdbms_partition_columns_override=partition_columns,
+        col_offload_source_table_override=col_offload_source_table_override,
+    )
+
+    source_data_client.offload_data_detection()
+
+    return source_data_client
+
+
+def offload_type_force_effects(
+    hybrid_operation: OffloadOperation,
+    source_data_client: OffloadSourceDataInterface,
+    original_metadata: Any,
+    offload_source_table: OffloadSourceTableInterface,
+    messages: OffloadMessages,
+) -> None:
+    """Validate and apply force flags when switching OFFLOAD_TYPE or incremental keys."""
+    if source_data_client.is_incremental_append_capable():
+        original_offload_type = original_metadata.offload_type
+        new_offload_type = hybrid_operation.offload_type
+        if hybrid_operation.offload_by_subpartition and (
+            original_offload_type,
+            new_offload_type,
+        ) == ("FULL", "INCREMENTAL"):
+            raise OffloadException(offload_constants.OFFLOAD_TYPE_CHANGE_FOR_SUBPART_EXCEPTION_TEXT)
+
+        if hybrid_operation.ipa_predicate_type == INCREMENTAL_PREDICATE_TYPE_LIST and (
+            original_offload_type,
+            new_offload_type,
+        ) == ("FULL", "INCREMENTAL"):
+            active_lpa_opts = active_data_append_options(hybrid_operation, partition_type=OFFLOAD_PARTITION_TYPE_LIST)
+            if active_lpa_opts:
+                messages.notice(
+                    "%s, only the partitions identified by %s will be queried from offloaded data"
+                    % (
+                        offload_constants.OFFLOAD_TYPE_CHANGE_FOR_LIST_MESSAGE_TEXT,
+                        active_lpa_opts[0],
+                    )
+                )
+            else:
+                raise OffloadException(offload_constants.OFFLOAD_TYPE_CHANGE_FOR_LIST_EXCEPTION_TEXT)
+
+        if not hybrid_operation.force:
+            new_inc_key = None
+            original_inc_key = original_metadata.incremental_key
+            if hybrid_operation.hwm_in_hybrid_view and source_data_client.get_incremental_high_values():
+                new_inc_key = incremental_key_csv_from_part_keys(offload_source_table.partition_columns)
+
+            original_pred_cols, new_pred_cols = None, None
+            if hybrid_operation.ipa_predicate_type in INCREMENTAL_PREDICATE_TYPES_WITH_PREDICATE_IN_HV:
+                original_pred_cols = original_metadata.hwm_column_names()
+                new_pred_cols = hwm_column_names_from_predicates(source_data_client.get_post_offload_predicates())
+
+            if original_offload_type != new_offload_type:
+                messages.notice(
+                    'Enabling force option when switching OFFLOAD_TYPE ("%s" -> "%s")'
+                    % (original_offload_type, new_offload_type)
+                )
+                hybrid_operation.force = True
+            elif original_inc_key != new_inc_key:
+                messages.notice(
+                    'Enabling force option when switching INCREMENTAL_KEY ("%s" -> "%s")'
+                    % (original_inc_key, new_inc_key)
+                )
+                hybrid_operation.force = True
+            elif original_pred_cols != new_pred_cols and not source_data_client.nothing_to_offload():
+                messages.notice(
+                    'Enabling force option when columns in INCREMENTAL_PREDICATE_VALUE change ("%s" -> "%s")'
+                    % (original_pred_cols, new_pred_cols)
+                )
+                hybrid_operation.force = True
 
 
 def _get_offload_type_for_stage(

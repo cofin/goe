@@ -15,16 +15,6 @@ import duckdb
 
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.exceptions import OffloadOptionError
-from goe.goe import (
-    get_log_fh,
-    get_log_fh_name,
-    init,
-    init_log,
-    log,
-    log_command_line,
-    log_timestamp,
-    version,
-)
 from goe.offload.backend_api import (
     REPORT_ATTR_BACKEND_DISPLAY_NAME,
     REPORT_ATTR_BACKEND_HOST_INFO,
@@ -42,6 +32,16 @@ from goe.offload.registry import (
     create_repository_client,
 )
 from goe.orchestration import command_steps, orchestration_constants
+from goe.orchestration.logging_init import (
+    get_log_fh,
+    get_log_fh_name,
+    init,
+    init_log,
+    log,
+    log_command_line,
+    log_timestamp,
+    version,
+)
 from goe.report.models import (
     CSV,
     DEFAULT_CSV_DELIMITER,

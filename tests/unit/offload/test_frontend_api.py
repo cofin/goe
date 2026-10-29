@@ -93,14 +93,12 @@ class TestFrontendApi(TestCase):
             pass
 
     def _test_execute_ddl(self):
-        # Make a call without executing just to shake down Python logic
         self.assertIsInstance(
             self.api.execute_ddl("DDL ON A TABLE", query_options=self.test_api.unit_test_query_options()),
             list,
         )
 
     def _test_execute_dml(self):
-        # Make a call without executing just to shake down Python logic
         self.assertIsInstance(
             self.api.execute_dml("DML ON A TABLE", query_options=self.test_api.unit_test_query_options()),
             list,

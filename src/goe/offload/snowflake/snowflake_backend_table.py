@@ -28,6 +28,7 @@ from goe.filesystem.goe_dfs import (
 from goe.offload.backend_table import BackendTableException, BackendTableInterface
 from goe.offload.offload_constants import FILE_STORAGE_FORMAT_AVRO
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.predicates import predicate_to_where_clause
 from goe.offload.schema.column_spec import (
     SNOWFLAKE_TYPE_BINARY,
     SNOWFLAKE_TYPE_TIME,
@@ -36,7 +37,6 @@ from goe.offload.schema.column_spec import (
     ColumnSpec,
     valid_column_list,
 )
-from goe.offload.snowflake import snowflake_predicate
 from goe.offload.sql_ast.dialect_engine import get_dialect_engine
 from goe.util.string_utils import add_suffix_in_same_case
 
@@ -239,12 +239,12 @@ class BackendSnowflakeTable(BackendTableInterface):
 
         sql = "SELECT 1 FROM %s WHERE (%s) LIMIT 1" % (
             self._db_api.enclose_object_reference(self.db_name, self.table_name),
-            snowflake_predicate.predicate_to_where_clause(self.get_columns(), predicate),
+            predicate_to_where_clause(self.get_columns(), predicate, dialect="snowflake"),
         )
         return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
 
     def predicate_to_where_clause(self, predicate, columns_override=None):
-        return snowflake_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
+        return predicate_to_where_clause(columns_override or self.get_columns(), predicate, dialect="snowflake")
 
     def result_cache_area_exists(self):
         return self._result_cache_db_exists()

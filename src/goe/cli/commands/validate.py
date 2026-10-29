@@ -13,15 +13,15 @@ from goe.cli.common import common_options, extract_common_options
 
 if TYPE_CHECKING:
     from goe.config.options import AggValidateOptions
-    from goe.scripts.agg_validate import (
+    from goe.offload.offload_validation import (
         post_process_args,
         run_agg_validate,
     )
 
 _LAZY_IMPORTS: LazyImportMap = {
     "AggValidateOptions": ("goe.config.options", "AggValidateOptions"),
-    "post_process_args": ("goe.scripts.agg_validate", "post_process_args"),
-    "run_agg_validate": ("goe.scripts.agg_validate", "run_agg_validate"),
+    "post_process_args": ("goe.offload.offload_validation", "post_process_args"),
+    "run_agg_validate": ("goe.offload.offload_validation", "run_agg_validate"),
 }
 
 

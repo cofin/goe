@@ -1,20 +1,22 @@
 # SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Characterization tests for orchestration helpers exposed through goe.goe."""
+"""Characterization tests for orchestration helpers in goe.orchestration."""
 
 import pytest
 
 from goe.config.options import OffloadOperationOptions
 from goe.exceptions import OffloadOptionError
-from goe.goe import (
+from goe.orchestration.constants import (
     NLS_LANG_MISSING_CHARACTER_SET_EXCEPTION_TEMPLATE,
     OFFLOAD_OP_NAME,
+)
+from goe.orchestration.logging_init import strict_version_ready
+from goe.orchestration.stages.plan_resolution import (
     nls_lang_exists,
     nls_lang_has_charset,
     normalise_options,
     option_is_in_list,
-    strict_version_ready,
     valid_canonical_decimal_spec,
     verify_json_option,
 )

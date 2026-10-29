@@ -9,7 +9,7 @@ from typing import Any, Final
 
 import msgspec
 
-from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.predicates import GenericPredicate
 from goe.orchestration.execution_id import ExecutionId
 from goe.serializers import decode_json, encode_json
 from goe.typing import FrozenBaseStruct

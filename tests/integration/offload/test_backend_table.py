@@ -14,7 +14,6 @@ import logging
 from datetime import datetime
 from unittest import TestCase, main
 
-from goe.goe import OffloadOperation
 from goe.offload.offload_constants import DBTYPE_IMPALA
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
@@ -33,6 +32,7 @@ from goe.offload.schema.column_spec import (
 from goe.offload.synthetic_partition_literal import SyntheticPartitionLiteral
 from goe.orchestration import orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
+from goe.orchestration.stages.plan_resolution import OffloadOperation
 from tests.integration.test_functions import (
     build_current_options,
     get_default_test_user,

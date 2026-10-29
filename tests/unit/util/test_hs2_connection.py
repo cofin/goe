@@ -23,38 +23,6 @@ except ModuleNotFoundError as e:
 
 
 class TestHs2Connection(TestCase):
-    @staticmethod
-    def _hs2_empty_dict():
-        return {
-            "ldap_user": "a-user",
-            "ldap_password": None,
-            "ldap_password_file": None,
-            "hiveserver2_auth_mechanism": "NOSASL",
-            "kerberos_service": None,
-        }
-
-    @staticmethod
-    def _hs2_ldap_dict():
-        return {
-            "ldap_user": "a-user",
-            "ldap_password": "a-password",
-            "ldap_password_file": "/some/file",
-        }
-
-    @staticmethod
-    def _hs2_plain_dict():
-        return {"hiveserver2_auth_mechanism": "PLAIN"}
-
-    @staticmethod
-    def _hs2_kerberos_dict():
-        return {"kerberos_service": "hive-service"}
-
-    @staticmethod
-    def _merge_dicts(d1, d2):
-        new = d1.copy()
-        new.update(d2)
-        return new
-
     def test_hs2_connect_using_options(self):
         if not hs2_connect_using_options:
             return
@@ -115,7 +83,6 @@ class TestHs2Connection(TestCase):
         ldap_opts = Namespace(**ldap_dict)
         plain_opts = Namespace(**plain_dict)
         krb_opts = Namespace(**krb_dict)
-        # Test with options
         self.assertIsNone(hs2_cursor_user(ldap_opts))
         self.assertIsNone(hs2_cursor_user(plain_opts))
         self.assertIsNone(hs2_cursor_user(krb_opts))
@@ -123,12 +90,42 @@ class TestHs2Connection(TestCase):
         k.start()
         self.assertIsNotNone(hs2_cursor_user(empty_opts))
         k.stop()
-        # Test from env, we can't actually test specifics because we don't know what's in os.environ
-        # Just make sure we can call it without an exception
         k = mock.patch.dict(os.environ, FAKE_ORACLE_HIVE_ENV)
         k.start()
         hs2_cursor_user()
         k.stop()
+
+    @staticmethod
+    def _hs2_empty_dict():
+        return {
+            "ldap_user": "a-user",
+            "ldap_password": None,
+            "ldap_password_file": None,
+            "hiveserver2_auth_mechanism": "NOSASL",
+            "kerberos_service": None,
+        }
+
+    @staticmethod
+    def _hs2_ldap_dict():
+        return {
+            "ldap_user": "a-user",
+            "ldap_password": "a-password",
+            "ldap_password_file": "/some/file",
+        }
+
+    @staticmethod
+    def _hs2_plain_dict():
+        return {"hiveserver2_auth_mechanism": "PLAIN"}
+
+    @staticmethod
+    def _hs2_kerberos_dict():
+        return {"kerberos_service": "hive-service"}
+
+    @staticmethod
+    def _merge_dicts(d1, d2):
+        new = d1.copy()
+        new.update(d2)
+        return new
 
 
 if __name__ == "__main__":

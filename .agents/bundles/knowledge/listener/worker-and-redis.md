@@ -22,7 +22,7 @@ The Listener uses a durable `sqlspec`-backed job queue (`src/goe/listener/jobs/{
   - `JobStatus`: `Literal["QUEUED", "CLAIMED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "DEAD_LETTER"]`.
   - `JobRecord(FrozenBaseStruct)`: Durable job row (`job_id`, `execution_id`, `command_type`, `table_owner`, `table_name`, `status`, `attempt`, `max_attempts`, `lease_owner`, `lease_expires_at`, `heartbeat_at`, `cancel_requested`, `payload_json`, `error_message`, `traceparent`, `tracestate`, `created_at`, `updated_at`, `completed_at`).
   - `JobLease(FrozenBaseStruct)` and `NodeHeartbeat(FrozenBaseStruct)` (`node_id`, `listener_group_id`, `endpoint_id`, `host`, `port`, `active_jobs`, `updated_at`).
-- **Repository DDL (`sql/oracle/source/sql/create_offload_repo_24.sql`) & Named SQL (`src/goe/listener/jobs/sql/job_queue.sql`)**:
+- **Repository DDL (`src/goe/persistence/oracle/ddl/sql/create_offload_repo_24.sql`) & Named SQL (`src/goe/listener/jobs/sql/job_queue.sql`)**:
   - Defines `OFFLOAD_JOB_QUEUE` (with active-table function-based unique index `OFFLOAD_JOB_QUEUE_UK1` on `CASE WHEN STATUS IN ('QUEUED', 'CLAIMED', 'RUNNING') THEN TABLE_OWNER || '.' || TABLE_NAME END`) and `OFFLOAD_NODE_HEARTBEAT`.
 - **`JobStoreProtocol` Implementations (`src/goe/listener/jobs/store.py`)**:
   - `OracleJobStore`: Uses `SELECT ... FROM OFFLOAD_JOB_QUEUE WHERE STATUS = 'QUEUED' ORDER BY CREATED_AT ASC FOR UPDATE SKIP LOCKED` with `cursor.fetchmany(limit)` to claim jobs across multi-node Listener clusters without blocking concurrent workers. Maps `ORA-00001` on `OFFLOAD_JOB_QUEUE_UK1` to `DuplicateActiveTableJobError` (`HTTP 409 Conflict`).

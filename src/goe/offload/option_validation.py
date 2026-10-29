@@ -12,7 +12,7 @@ from goe.offload.offload_source_table import (
     OFFLOAD_PARTITION_TYPE_LIST,
     OFFLOAD_PARTITION_TYPE_RANGE,
 )
-from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.predicates import GenericPredicate
 from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,

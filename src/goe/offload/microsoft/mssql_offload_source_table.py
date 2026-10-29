@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 
 from goe.offload.frontend_api import QueryParameter
 from goe.offload.offload_source_table import OffloadSourceTableInterface
-from goe.offload.predicate_offload import (
+from goe.offload.predicates import (
     get_predicate_dialect_engine,
     resolve_predicate_types,
 )

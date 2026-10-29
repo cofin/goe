@@ -45,7 +45,6 @@ def test_gen_offload_metadata_rpa():
         ColumnSpec(ColumnDialect.ORACLE, partition_key, "DATE"),
     ]
 
-    # First offload
     fake_hybrid_operation = Mock()
     fake_hybrid_operation.owner = "goe_test"
     fake_hybrid_operation.table_name = "sales"
@@ -94,13 +93,9 @@ def test_gen_offload_metadata_rpa():
     }
     assert expected_metadata == generated_metadata.as_dict()
 
-    # Test metadata generation for Offload of second partition.
-    # Capture metadata from previous test to use as input for this one.
     pre_offload_metadata = generated_metadata
     prior_offload_scn = pre_offload_scn
 
-    # Set new operational values.
-    # New execution id, GOE version, SCN and partition high value.
     execution_id = ExecutionId()
     fake_hybrid_operation.owner = "GOE_TEST"
     fake_hybrid_operation.table_name = "SALES"

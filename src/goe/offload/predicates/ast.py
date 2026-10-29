@@ -28,6 +28,7 @@ __all__ = (
     "TypedValue",
     "alias_column_names",
     "column_names",
+    "python_timestamp_to_string",
     "rename_column",
     "to_dsl",
     "with_column_alias",
@@ -170,6 +171,36 @@ def to_dsl(expr: PredicateExpr) -> str:
     if isinstance(expr, LogicalOr):
         return "(" + " OR ".join(to_dsl(child) for child in expr.children) + ")"
     return f"(NOT {to_dsl(expr.child)})"
+
+
+def python_timestamp_to_string(
+    python_ts: np.datetime64 | date | None,
+    with_time: bool = True,
+    subsecond: int = 0,
+) -> str | None:
+    """Convert a Python ``datetime64`` or ``date``/``datetime`` value into a formatted string."""
+    if python_ts is None:
+        return None
+    if isinstance(python_ts, np.datetime64):
+        if with_time and subsecond:
+            np_unit: Literal["ns", "us", "ms"]
+            if subsecond > 6:
+                np_unit = "ns"
+            elif subsecond > 3:
+                np_unit = "us"
+            else:
+                np_unit = "ms"
+            return np.datetime_as_string(python_ts, np_unit).replace("T", " ")
+        if with_time:
+            return np.datetime_as_string(python_ts, "s").replace("T", " ")
+        return np.datetime_as_string(python_ts, "D")
+    if isinstance(python_ts, date):
+        if with_time and subsecond:
+            return python_ts.strftime("%Y-%m-%d %H:%M:%S.%f")
+        if with_time:
+            return python_ts.strftime("%Y-%m-%d %H:%M:%S")
+        return python_ts.strftime("%Y-%m-%d")
+    return None
 
 
 def _iter_columns(expr: PredicateExpr) -> list[ColumnRef]:

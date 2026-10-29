@@ -126,7 +126,6 @@ class TestBackendApi(TestCase):
 
     def _test_backend_version(self):
         if self.connect_to_backend:
-            # Some backends do not expose a version so we cannot assert on this fn
             self.api.backend_version()
 
     def _test_bigquery_dataset_project(self):
@@ -134,7 +133,6 @@ class TestBackendApi(TestCase):
             self.assertEqual(self.api._backend_project_name(), self.config.bigquery_dataset_project)
             self.assertIn(self.config.bigquery_dataset_project, self.api._bq_dataset_id("some-db"))
         elif self.connect_to_backend:
-            # The project should still be set, it will come from the client default.
             self.assertIsNotNone(self.api._backend_project_name())
 
     def _test_check_backend_supporting_objects(self):
@@ -288,7 +286,6 @@ class TestBackendApi(TestCase):
             else:
                 ts_column = [_ for _ in self.api.get_columns(self.db, self.table) if _.is_date_based()]
             if not ts_column:
-                # No date based column available so don't test it
                 return
             use_column = ts_column[0]
             self.api.detect_column_has_fractional_seconds(self.db, self.table, use_column)
@@ -315,7 +312,6 @@ class TestBackendApi(TestCase):
         self.api.enclose_object_reference(self.db, self.table)
 
     def _test_execute_ddl(self):
-        # Make a call without executing just to shake down Python logic
         self.assertIsInstance(
             self.api.execute_ddl(
                 "DDL ON A TABLE",
@@ -627,7 +623,6 @@ class TestBackendApi(TestCase):
         if self.connect_to_backend:
             self.assertIsInstance(self.api.get_table_ddl(self.db, self.table), str)
             self.assertIsInstance(self.api.get_table_ddl(self.db, self.table, as_list=True), list)
-            # All current backends use ; to terminate SQL
             self.api.drop_state()
             self.assertFalse(self.api.get_table_ddl(self.db, self.table, terminate_sql=False).endswith(";"))
             self.api.drop_state()
@@ -669,7 +664,6 @@ class TestBackendApi(TestCase):
 
     def _test_get_table_sort_columns(self):
         if self.connect_to_backend:
-            # In reality this is very unlikely to actually exercise the code, integration tests will properly test it
             sort_cols = self.api.get_table_sort_columns(self.db, self.table)
             if sort_cols:
                 self.assertIsInstance(sort_cols, list)
@@ -706,7 +700,6 @@ class TestBackendApi(TestCase):
         ):
             return
 
-        # Unit test config defines a key.
         self.assertIsNotNone(self.api.kms_key_name())
         self.assertIn(self.config.google_kms_key_ring_location, self.api.kms_key_name())
         self.assertIn(self.config.google_kms_key_ring_name, self.api.kms_key_name())
@@ -771,14 +764,12 @@ class TestBackendApi(TestCase):
             self.assertIsInstance(self.api.list_udfs(self._get_udf_db(), udf_name_filter="*"), list)
             if all_udfs_in_db:
                 row = all_udfs_in_db[0]
-                # Expect 2 fields in a row
                 self.assertEqual(len(row), 2)
                 self.assertIsInstance(self.api.list_udfs(self._get_udf_db(), udf_name_filter=row[0]), list)
                 self.assertIsInstance(
                     self.api.list_udfs(self._get_udf_db(), udf_name_filter=row[0], case_sensitive=False),
                     list,
                 )
-                # While we are here we can test udf_exists() and udf_details() too
                 self.assertTrue(self.api.udf_exists(self._get_udf_db(), row[0]))
                 for details in self.api.udf_details(self._get_udf_db(), row[0]):
                     self.assertIsNotNone(details.db_name)
@@ -836,10 +827,8 @@ class TestBackendApi(TestCase):
         """
         pattern = self.api.regexp_extract_decimal_scale_pattern()
         self.assertIsNotNone(pattern)
-        # Number strings with no scale - expect no match
         for test_str in ["123", "-123", "", "0", "123.123E5", "-123.123E5"]:
             self.assertIsNone(re.match(pattern, test_str))
-        # Number strings with scale - expect match
         for test_str, expected_scale_length in [
             ("123.001", 3),
             ("-123.001", 3),
@@ -864,7 +853,6 @@ class TestBackendApi(TestCase):
         )
         self.assertIsNotNone(regexp_expr)
         if self.connect_to_backend:
-            # Test numbers along with the expected scale
             test_pairs = [
                 ("123", None),
                 ("-123", None),
@@ -915,7 +903,6 @@ class TestBackendApi(TestCase):
     def _test_snowflake_stage_exists(self):
         if self.connect_to_backend:
             self.assertFalse(self.api.snowflake_stage_exists(self.db, "test-no-stage"))
-            # We cannot guarantee the stage exists when unit tests run therefore any bool is fine below
             self.assertIsInstance(
                 self.api.snowflake_stage_exists(self.db, self.config.snowflake_stage),
                 bool,
@@ -950,7 +937,6 @@ class TestBackendApi(TestCase):
 
     def _test_target_version(self):
         if self.connect_to_backend:
-            # Some backends do not expose a version so we cannot assert on this fn
             self.api.target_version()
 
     def _test_to_backend_literal(self):
@@ -959,7 +945,6 @@ class TestBackendApi(TestCase):
             if self.connect_to_backend:
                 self.assertIsNotNone(self.api.execute_query_fetch_one("SELECT %s" % literal))
 
-        # Test without data type qualifier
         self.assertIsNotNone(self.api.to_backend_literal(123))
         self.assertIsNotNone(self.api.to_backend_literal(1.23))
         self.assertIsNotNone(self.api.to_backend_literal(12345678901234567))
@@ -967,7 +952,6 @@ class TestBackendApi(TestCase):
         self.assertIsNotNone(self.api.to_backend_literal("123"))
         self.assertIsNotNone(self.api.to_backend_literal(datetime.now()))
         self.assertIsNotNone(self.api.to_backend_literal(datetime64(datetime.now())))
-        # Test with column data type qualifier
         literal = self.api.to_backend_literal(123456, self.test_api.backend_test_type_canonical_int_8())
         self.assertIn("123456", str(literal))
         test_by_select(literal)
@@ -1106,7 +1090,6 @@ class TestBackendApi(TestCase):
         self._test_max_table_name_length()
         self._test_refresh_table_files()
         try:
-            # Synapse does not support regular expressions
             self._test_regexp_extract_decimal_scale_pattern()
             self._test_regexp_extract_sql_expression()
             self._test_rename_table()
@@ -1123,14 +1106,12 @@ class TestBackendApi(TestCase):
         self._test_transform_null_cast()
         self._test_transform_tokenize_data_type()
         try:
-            # Synapse does not support regular expressions
             self._test_transform_regexp_replace_expression()
         except NotImplementedError:
             pass
         self._test_transform_translate_expression()
         self._test_valid_staging_formats()
         self._test_view_exists()
-        # Engine specific tests
         if self.target == DBTYPE_BIGQUERY:
             self._test_bigquery_dataset_project()
             self._test_google_kms_key_ring_unit()

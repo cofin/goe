@@ -13,7 +13,7 @@ from goe.offload.offload_metadata_functions import (
     OFFLOAD_TYPE_FULL,
     OFFLOAD_TYPE_INCREMENTAL,
 )
-from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.predicates import GenericPredicate
 from goe.offload.registry import create_repository_client
 from goe.orchestration.stages.boundary import (
     PREDICATE_TYPE_INCOMPATIBLE_EXCEPTION_TEXT,

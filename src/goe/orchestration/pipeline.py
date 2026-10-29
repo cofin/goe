@@ -13,16 +13,6 @@ from goe.exceptions import OffloadException, OffloadOptionError
 from goe.filesystem.goe_dfs import OFFLOAD_FS_SCHEME_INHERIT
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.offload import offload_constants
-from goe.offload.offload import (
-    create_ddl_file_step,
-    create_final_backend_table_step,
-    drop_backend_table_step,
-    get_current_offload_hv,
-    get_offload_data_manager,
-    get_prior_offloaded_hv,
-    offload_backend_db_message,
-    offload_type_force_effects,
-)
 from goe.offload.offload_functions import convert_backend_identifier_case, data_db_name
 from goe.offload.offload_messages import (
     VERBOSE,
@@ -39,7 +29,9 @@ from goe.offload.offload_validation import (
 from goe.offload.operation.data_type_controls import (
     offload_source_to_canonical_mappings,
 )
+from goe.offload.operation.ddl_file import write_ddl_to_ddl_file
 from goe.offload.operation.partition_controls import derive_partition_digits
+from goe.offload.operation.sort_columns import check_and_alter_backend_sort_columns
 from goe.offload.operation.table_structure_checks import check_table_structure
 from goe.offload.operation.transport import offload_data_to_target
 from goe.offload.registry import create_backend_table, create_transport
@@ -56,6 +48,10 @@ from goe.orchestration.stages.boundary import (
     OFFLOAD_SOURCE_CLIENT_OFFLOAD,
     BoundaryResolutionStage,
     OffloadSourceDataInterface,
+    get_current_offload_hv,
+    get_offload_data_manager,
+    get_prior_offloaded_hv,
+    offload_type_force_effects,
 )
 from goe.orchestration.stages.discovery import SourceDiscoveryStage
 from goe.orchestration.stages.executor import OffloadPlanExecutor
@@ -73,13 +69,18 @@ from goe.persistence.models import (
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.offload.backend_table import BackendTableInterface
+    from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 __all__ = [
     "SUPPORTED_OFFLOAD_TARGETS",
     "OffloadPipeline",
+    "create_ddl_file_step",
+    "create_final_backend_table_step",
     "derive_execution_settings",
+    "drop_backend_table_step",
     "get_offload_target_table",
     "incremental_offload_partition_overrides",
+    "offload_backend_db_message",
     "offload_data_verification",
     "offload_operation_logic",
     "offload_table",
@@ -194,6 +195,77 @@ class OffloadPipeline:
         )
         resolved_owner, resolved_table = convert_backend_identifier_case(case_opt, raw_owner, raw_table)
         return str(resolved_owner), str(resolved_table)
+
+
+def create_ddl_file_step(
+    offload_target_table: BackendTableInterface,
+    offload_operation: OffloadOperation,
+    config: OrchestrationConfig,
+    messages: OffloadMessages,
+) -> None:
+    """Create a DDL file for the final backend table."""
+    if not offload_operation.ddl_file:
+        return
+
+    def step_fn() -> None:
+        ddl = []
+        if offload_operation.create_backend_db and offload_target_table.create_database_supported():
+            ddl.extend(offload_target_table.create_db(with_terminator=True))
+            ddl.extend(offload_target_table.create_load_db(with_terminator=True))
+        ddl.extend(offload_target_table.create_backend_table(with_terminator=True))
+        assert offload_operation.ddl_file is not None
+        write_ddl_to_ddl_file(offload_operation.ddl_file, ddl, config, messages)
+
+    messages.offload_step(command_steps.STEP_DDL_FILE, step_fn, execute=False)
+
+
+def create_final_backend_table_step(
+    offload_target_table: BackendTableInterface,
+    offload_operation: OffloadOperation,
+) -> None:
+    """Create the final backend table or alter its sort columns."""
+    if not offload_target_table.table_exists() or offload_operation.reset_backend_table:
+        offload_target_table.create_backend_table_step()
+    else:
+        check_and_alter_backend_sort_columns(offload_target_table, offload_operation)
+
+
+def drop_backend_table_step(
+    owner: str,
+    table_name: str,
+    backend_table: BackendTableInterface,
+    messages: OffloadMessages,
+    repo_client: OracleRepositoryService,
+    execute: Any,
+    purge: bool = False,
+) -> None:
+    """Drop the backend table and remove offload metadata."""
+
+    def step_fn() -> None:
+        if backend_table.table_exists():
+            backend_table.drop_table(purge=purge)
+        repo_client.drop_offload_metadata(owner, table_name)
+
+    messages.offload_step(command_steps.STEP_DROP_TABLE, step_fn, execute=execute)
+
+
+def offload_backend_db_message(
+    messages: OffloadMessages,
+    db_type: Any,
+    backend_table: Any,
+    execute_mode: Any,
+) -> None:
+    """Raise an OffloadException in execute mode or emit a warning in preview mode when a backend DB is missing."""
+    if backend_table.create_database_supported():
+        message = (
+            "Offload %s does not exist or is incomplete, please create it or include --create-backend-db option"
+            % db_type
+        )
+    else:
+        message = "Offload %s does not exist or is incomplete, please create it before re-executing command" % db_type
+    if execute_mode:
+        raise OffloadException(message)
+    messages.warning(message, ansi_code="red")
 
 
 def derive_execution_settings(settings: Any, offload_operation: Any) -> Any:

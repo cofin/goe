@@ -25,10 +25,8 @@ def test_offload_transport_file_name():
     )
 
     long_prefix = "db_name".ljust(128, "x") + "." + "table_name".ljust(128, "x")
-    # long_prefix would need to be truncated
     assert module_under_test.offload_transport_file_name(long_prefix) != long_prefix
     assert module_under_test.offload_transport_file_name(long_prefix).startswith(long_prefix[:200])
-    # long_prefix would need to be truncated but extension still honoured
     assert module_under_test.offload_transport_file_name(long_prefix).startswith(long_prefix[:200])
     assert not module_under_test.offload_transport_file_name(long_prefix, extension="").endswith(".dat")
     assert len(module_under_test.offload_transport_file_name(long_prefix, extension="")) == LINUX_FILE_NAME_LENGTH_LIMIT
@@ -83,7 +81,6 @@ def test_split_ranges_for_id_range(inputs, expected_result):
     result = module_under_test.split_ranges_for_id_range(*inputs)
     assert result == expected_result, f"Inputs: min={inputs[0]}, max={inputs[1]}, parallel={inputs[2]}"
     for i in range(inputs[0], inputs[1] + 1):
-        # Assert that for each integer between min/max there is only a single capturing range
         capturing_ranges = [_ for _ in result if _[0] <= i < _[1]]
         assert len(capturing_ranges) == 1, f"Value {i} in capturing ranges = {capturing_ranges}"
 

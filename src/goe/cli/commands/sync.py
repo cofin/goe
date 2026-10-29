@@ -14,10 +14,10 @@ from goe.cli.common import common_options, extract_common_options
 if TYPE_CHECKING:
     from goe.config.options import SchemaSyncOptions
     from goe.config.orchestration_config import OrchestrationConfig
-    from goe.goe import get_log_fh, init, init_log, log_close
     from goe.offload.offload_messages import OffloadMessages
     from goe.offload.registry import create_repository_client
     from goe.orchestration.execution_id import ExecutionId
+    from goe.orchestration.logging_init import get_log_fh, init, init_log, log_close
     from goe.sync.differ import (
         normalise_schema_sync_options,
         run_schema_sync,
@@ -30,10 +30,10 @@ _LAZY_IMPORTS: LazyImportMap = {
     "SchemaSyncOptions": ("goe.config.options", "SchemaSyncOptions"),
     "SchemaSyncService": ("goe.sync.differ", "SchemaSyncService"),
     "create_repository_client": ("goe.offload.registry", "create_repository_client"),
-    "get_log_fh": ("goe.goe", "get_log_fh"),
-    "init": ("goe.goe", "init"),
-    "init_log": ("goe.goe", "init_log"),
-    "log_close": ("goe.goe", "log_close"),
+    "get_log_fh": ("goe.orchestration.logging_init", "get_log_fh"),
+    "init": ("goe.orchestration.logging_init", "init"),
+    "init_log": ("goe.orchestration.logging_init", "init_log"),
+    "log_close": ("goe.orchestration.logging_init", "log_close"),
     "normalise_schema_sync_options": ("goe.sync.differ", "normalise_schema_sync_options"),
     "run_schema_sync": ("goe.sync.differ", "run_schema_sync"),
 }

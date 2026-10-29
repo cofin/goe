@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import rich_click as click
 
 from goe.cli._lazy import LazyImportMap, resolve_lazy_attribute
-from goe.cli.options import common_options
+from goe.cli.common import common_options
 from goe.config.settings import GOESettings
 from goe.connect.runner import ConnectRunner
 from goe.exceptions import GOEError

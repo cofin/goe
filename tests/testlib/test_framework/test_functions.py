@@ -9,14 +9,10 @@ Allows us to share code but also keep scripts trim and healthy.
 
 from contextlib import contextmanager
 
-from goe.goe import (
-    log as offload_log,
-)
-from goe.goe import (
-    normal,
-)
 from goe.offload.offload_functions import convert_backend_identifier_case, data_db_name
 from goe.offload.offload_messages import OffloadMessages
+from goe.orchestration.constants import normal
+from goe.orchestration.logging_init import log as offload_log
 from goe.util.goe_log_fh import GOELogFileHandle
 from tests.testlib.test_framework.factory.backend_testing_api_factory import (
     backend_testing_api_factory,

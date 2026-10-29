@@ -18,7 +18,6 @@ from goe.offload.backend_table import (
     TYPICAL_DATE_GRANULARITY_TERMS,
     BackendTableInterface,
 )
-from goe.offload.hadoop import hadoop_predicate
 from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_AVRO,
     OFFLOAD_STATS_METHOD_HISTORY,
@@ -26,6 +25,7 @@ from goe.offload.offload_constants import (
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_functions import load_db_hdfs_path, schema_path
+from goe.offload.predicates import predicate_to_where_clause
 from goe.offload.schema.column_spec import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_DATE,
@@ -227,12 +227,12 @@ class BackendHadoopTable(BackendTableInterface):
 
         sql = "SELECT 1 FROM %s WHERE (%s) LIMIT 1" % (
             self._db_api.enclose_object_reference(self.db_name, self.table_name),
-            hadoop_predicate.predicate_to_where_clause(self.get_columns(), predicate),
+            predicate_to_where_clause(self.get_columns(), predicate, dialect="hive"),
         )
         return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
 
     def predicate_to_where_clause(self, predicate, columns_override=None):
-        return hadoop_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
+        return predicate_to_where_clause(columns_override or self.get_columns(), predicate, dialect="hive")
 
     def _cleanup_staging_area_impl(self):
         self._drop_load_table(sync=True)

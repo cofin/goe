@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import socket
 from collections.abc import Mapping, Sequence
 from typing import Any
 from uuid import NAMESPACE_DNS, UUID, uuid3
@@ -15,7 +16,6 @@ from goe.config.settings import GOESettings
 from goe.connect.models import ConnectivityReport
 from goe.connect.runner import ConnectRunner
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
-from goe.listener import utils
 from goe.listener.config import settings
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.registry import create_repository_client
@@ -71,7 +71,7 @@ class SystemService:
         dsn = self.config.rdbms_dsn if self.config else "default"
         return uuid3(
             NAMESPACE_DNS,
-            f"{dsn}/{utils.system.get_ip_address()}:{settings.port}",
+            f"{dsn}/{self._get_ip_address()}:{settings.port}",
         )
 
     async def get_active_listener_endpoints(self) -> list[Any | None]:
@@ -197,6 +197,19 @@ class SystemService:
             execute=False,
         )
         return diff
+
+    @staticmethod
+    def _get_ip_address() -> str:
+        """Resolve IPv4 address of the local host via a non-blocking UDP socket."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(0)
+        try:
+            sock.connect(("10.0.0.0", 1))
+            return str(sock.getsockname()[0])
+        except Exception:
+            return "127.0.0.1"
+        finally:
+            sock.close()
 
 
 _default_service: SystemService | None = None

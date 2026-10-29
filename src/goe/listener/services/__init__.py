@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from goe.listener.services.orchestrate import create_orchestration_runner
 from goe.listener.services.system import SystemService
 
-__all__ = ("SystemService", "create_orchestration_runner")
+__all__ = ("SystemService",)
