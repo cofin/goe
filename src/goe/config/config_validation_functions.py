@@ -29,12 +29,12 @@ from goe.offload.offload_constants import (
     HADOOP_BASED_BACKEND_DISTRIBUTIONS,
     VALID_BIGQUERY_LOAD_TABLE_MODES,
 )
-from goe.offload.offload_transport import (
+from goe.offload.transport.constants import (
     SPARK_SUBMIT_SPARK_YARN_MASTER,
     VALID_OFFLOAD_TRANSPORTS,
     VALID_SPARK_SUBMIT_EXECUTABLES,
-    derive_rest_api_verify_value_from_url,
 )
+from goe.offload.transport.spark.polling import derive_rest_api_verify_value_from_url
 from goe.serializers import decode_json
 from goe.util.goe_log_fh import is_valid_path_for_logs
 from goe.util.string_utils import human_size_to_bytes, is_pos_int

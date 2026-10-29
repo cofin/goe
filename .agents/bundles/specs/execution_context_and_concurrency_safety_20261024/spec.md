@@ -22,7 +22,7 @@ depends_on:
   - prd_08_duckdb2_transport_query_import_parity_and_storage_20261024
   - prd_09_composable_backends_and_direct_bigquery_ingestion_20261024
 research:
-  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/module-by-module-redesign.md
+  - .agents/bundles/specs/prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/research/module-by-module-redesign.md
   - .agents/bundles/specs/prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024/research/vertebra-and-runtime-evaluation.md
 ---
 

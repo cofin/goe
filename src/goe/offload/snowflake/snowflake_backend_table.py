@@ -13,7 +13,6 @@ import logging
 from textwrap import dedent
 from typing import Any
 
-from goe.filesystem.goe_azure import azure_fq_container_name
 from goe.filesystem.goe_dfs import (
     AZURE_OFFLOAD_FS_SCHEMES,
     OFFLOAD_FS_SCHEME_ABFS,
@@ -24,6 +23,7 @@ from goe.filesystem.goe_dfs import (
     OFFLOAD_FS_SCHEME_S3A,
     OFFLOAD_FS_SCHEME_WASB,
     OFFLOAD_FS_SCHEME_WASBS,
+    azure_fq_container_name,
 )
 from goe.offload.backend_table import BackendTableException, BackendTableInterface
 from goe.offload.column_metadata import ColumnMetadataInterface, valid_column_list

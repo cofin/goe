@@ -12,17 +12,19 @@ from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
-from goe.offload.offload_transport import (
+from goe.offload.registry import create_repository_client
+from goe.offload.transport.constants import (
     OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
+)
+from goe.offload.transport.selector import (
     is_query_import_available,
     is_spark_gcloud_dataproc_available,
     is_spark_submit_available,
     is_spark_thrift_available,
 )
-from goe.offload.registry import create_repository_client
 from tests.integration.scenarios.assertion_functions import (
     backend_table_exists,
     sales_based_fact_assertion,

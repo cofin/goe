@@ -1,33 +1,26 @@
-/*
- * SPDX-FileCopyrightText: 2016 The GOE Authors
- * SPDX-License-Identifier: Apache-2.0
- */
+package com.gluent.spark
 
-import org.apache.spark.scheduler.{SparkListener, SparkListenerTaskEnd}
-import org.apache.log4j.LogManager
-import org.json4s._
+import org.apache.spark.scheduler._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
+import org.slf4j.{Logger, LoggerFactory}
 
 class GOETaskListener extends SparkListener {
-  override def onTaskEnd(taskEnd: SparkListenerTaskEnd) {
-    val logger = LogManager.getLogger("GOETaskListener")
+  private val logger: Logger = LoggerFactory.getLogger("GOETaskListener")
+
+  override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
     val taskInfo = taskEnd.taskInfo
     val taskMetrics = taskEnd.taskMetrics
-    val launchTime = taskInfo.launchTime
-    val finishTime = taskInfo.finishTime
-    val duration = finishTime - launchTime
-    val recordsWritten = taskMetrics.outputMetrics.recordsWritten
-    val executorRunTime = taskMetrics.executorRunTime
-    val message = compact(render(
-      ("taskInfo.id" ->  taskInfo.id) ~
-      ("taskInfo.taskId" ->  taskInfo.taskId) ~
-      ("taskInfo.launchTime" ->  taskInfo.launchTime) ~
-      ("taskInfo.finishTime" ->  taskInfo.finishTime) ~
-      ("duration" ->  duration) ~
-      ("recordsWritten" ->  recordsWritten) ~
-      ("executorRunTime" -> executorRunTime)
-    ))
-    logger.info(message)
+    val outputMetrics = taskMetrics.outputMetrics
+
+    if (outputMetrics.recordsWritten > 0) {
+      val json = ("stageId" -> taskEnd.stageId) ~
+        ("taskId" -> taskInfo.taskId) ~
+        ("status" -> taskInfo.status) ~
+        ("recordsWritten" -> outputMetrics.recordsWritten) ~
+        ("bytesWritten" -> outputMetrics.bytesWritten)
+
+      logger.info(compact(render(json)))
+    }
   }
 }

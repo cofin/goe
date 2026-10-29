@@ -8,7 +8,7 @@ from collections.abc import Iterator
 import pytest
 from opentelemetry.trace import SpanKind, StatusCode
 
-from goe.filesystem.goe_gcs import GOEGcs
+from goe.filesystem.goe_dfs import CloudStorageDfsAdapter
 from goe.observability import runtime
 from goe.observability.config import ObservabilitySettings
 from goe.observability.storage import traced_storage_call
@@ -57,6 +57,6 @@ def test_disabled_runtime_skips_span() -> None:
     assert FakeStorage().write("gs://bucket/x", "ab") == 2
 
 
-def test_goe_gcs_methods_are_decorated() -> None:
+def test_cloud_storage_adapter_methods_are_decorated() -> None:
     for name in ("copy_from_local", "copy_to_local", "delete", "list_dir", "read", "stat", "write"):
-        assert getattr(getattr(GOEGcs, name), "__goe_storage_operation__", None) == name
+        assert getattr(getattr(CloudStorageDfsAdapter, name), "__goe_storage_operation__", None) == name

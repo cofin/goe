@@ -3,6 +3,7 @@
 
 """OffloadTransportOracleApi: Library for logic/interaction with source Oracle system during offload transport."""
 
+from collections.abc import Sequence
 from contextlib import contextmanager
 from itertools import groupby
 from typing import TYPE_CHECKING, Any
@@ -45,6 +46,7 @@ from goe.offload.oracle.oracle_offload_source_table import (
     oracle_version_is_smart_scan_unsafe,
 )
 from goe.offload.sql_ast.dialect_engine import get_dialect_engine
+from goe.offload.transport.arrow_extractor import ArrowExtractionConfig, OracleArrowStreamExtractor
 from goe.persistence.registry import OracleDatabaseRegistry
 from goe.util.string_utils import id_generator
 
@@ -693,6 +695,68 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
                     else:
                         ora_cursor.execute(source_query)
                 yield ora_cursor
+            finally:
+                ora_cursor.close()
+
+    @contextmanager
+    def arrow_batch_extraction(
+        self,
+        staging_columns: Sequence[Any],
+        source_query: str,
+        source_binds: Any,
+        fetch_size: int,
+        compress: bool,
+        rdbms_session_setup_commands: list[str],
+        *,
+        nan_values_as_null: bool = False,
+        base64_columns: Sequence[str] = (),
+        source_columns: Sequence[Any] = (),
+    ) -> Any:
+        """Execute session setup commands and yield a lazy pyarrow.RecordBatchReader over source_query."""
+        extractor = OracleArrowStreamExtractor(
+            ArrowExtractionConfig(
+                batch_size=int(fetch_size or 65_536),
+                nan_values_as_null=nan_values_as_null,
+                base64_columns=frozenset(base64_columns),
+            )
+        )
+        with self._registry.app_transport_session(
+            FRONTEND_TRACE_MODULE, TRANSPORT_SESSION_ACTION, isolate_session=True
+        ) as cx:
+            ora_cursor = cx.cursor()
+            ora_cursor.arraysize = fetch_size
+            self.log(
+                "Importing load data with arraysize=%s, compression=%s" % (ora_cursor.arraysize, compress),
+                detail=VERBOSE,
+            )
+            try:
+                for session_statement in rdbms_session_setup_commands:
+                    self.log("Oracle sql: %s" % session_statement, detail=VERBOSE)
+                    if not self._dry_run:
+                        ora_cursor.execute(session_statement)
+                self.log("Oracle sql: %s" % source_query, detail=VERBOSE)
+                if source_binds:
+                    self.log("Bind values: %s" % str(source_binds), detail=VERBOSE)
+                if self._dry_run:
+                    yield extractor.empty_reader(staging_columns)
+                elif hasattr(cx, "fetch_df_batches"):
+                    yield extractor.extract_record_batch_reader(
+                        cx,
+                        source_query,
+                        source_binds,
+                        staging_columns,
+                        source_columns=source_columns,
+                    )
+                else:
+                    if source_binds:
+                        ora_cursor.execute(source_query, source_binds)
+                    else:
+                        ora_cursor.execute(source_query)
+                    yield extractor.from_cursor(
+                        ora_cursor,
+                        staging_columns,
+                        source_columns=source_columns,
+                    )
             finally:
                 ora_cursor.close()
 

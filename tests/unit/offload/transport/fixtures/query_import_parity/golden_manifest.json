@@ -1,0 +1,1382 @@
+{
+  "parquet_standard": {
+    "schema": [
+      {
+        "name": "COL_NUM_4_0",
+        "type": "int32",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_9_0",
+        "type": "int32",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_18_0",
+        "type": "int64",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_38_0",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_38_9",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_UNBOUNDED",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_BIN_FLOAT",
+        "type": "float",
+        "nullable": true
+      },
+      {
+        "name": "COL_BIN_DOUBLE",
+        "type": "double",
+        "nullable": true
+      },
+      {
+        "name": "COL_CHAR_10",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NCHAR_10",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_VARCHAR2",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NVARCHAR2",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_RAW",
+        "type": "binary",
+        "nullable": true
+      },
+      {
+        "name": "COL_CLOB",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_BLOB",
+        "type": "binary",
+        "nullable": true
+      },
+      {
+        "name": "COL_DATE",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TS9",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TSTZ",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TSLTZ",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_INT_YM",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_INT_DS",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_XMLTYPE",
+        "type": "string",
+        "nullable": true
+      }
+    ],
+    "compression": "SNAPPY",
+    "row_count": 3,
+    "rows": [
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": 1.5,
+        "COL_BIN_DOUBLE": -2.25,
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      },
+      {
+        "COL_NUM_4_0": -9999,
+        "COL_NUM_9_0": -999999999,
+        "COL_NUM_18_0": -999999999999999999,
+        "COL_NUM_38_0": "-99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "-12345678901234567890123456789.987654321",
+        "COL_NUM_UNBOUNDED": "-0.00000000000000000000000000000000000001",
+        "COL_BIN_FLOAT": "-0.0",
+        "COL_BIN_DOUBLE": "-0.0",
+        "COL_CHAR_10": "A         ",
+        "COL_NCHAR_10": "B         ",
+        "COL_VARCHAR2": "Second row",
+        "COL_NVARCHAR2": "Second national",
+        "COL_RAW": {
+          "__bytes_hex__": "626f756e646172792d7261772d7061796c6f6164"
+        },
+        "COL_CLOB": {
+          "__large_str__": true,
+          "len": 98304,
+          "sha256": "8d0914c0dbecdd7b15706c0ca6d111c81b847f69489924b1bf7510bfdc45c199"
+        },
+        "COL_BLOB": {
+          "__large_bytes__": true,
+          "len": 98304,
+          "sha256": "5cc79720a8824976ce3e45b4cdda534c8598f5fb1d7285a3aa184c4b1d150462"
+        },
+        "COL_DATE": "0001-01-01 00:00:00",
+        "COL_TS9": "1970-01-01 00:00:00.000000001",
+        "COL_TSTZ": "1970-01-01 00:00:00.000000 -08:00",
+        "COL_TSLTZ": "1970-01-01 00:00:00.123456 UTC",
+        "COL_INT_YM": "-0005-11",
+        "COL_INT_DS": "-00001 00:00:00.000001",
+        "COL_XMLTYPE": "<doc/>"
+      },
+      {
+        "COL_NUM_4_0": null,
+        "COL_NUM_9_0": null,
+        "COL_NUM_18_0": null,
+        "COL_NUM_38_0": null,
+        "COL_NUM_38_9": null,
+        "COL_NUM_UNBOUNDED": null,
+        "COL_BIN_FLOAT": null,
+        "COL_BIN_DOUBLE": null,
+        "COL_CHAR_10": null,
+        "COL_NCHAR_10": null,
+        "COL_VARCHAR2": null,
+        "COL_NVARCHAR2": null,
+        "COL_RAW": null,
+        "COL_CLOB": null,
+        "COL_BLOB": null,
+        "COL_DATE": null,
+        "COL_TS9": null,
+        "COL_TSTZ": null,
+        "COL_TSLTZ": null,
+        "COL_INT_YM": null,
+        "COL_INT_DS": null,
+        "COL_XMLTYPE": null
+      }
+    ]
+  },
+  "avro_standard": {
+    "fields": [
+      {
+        "name": "COL_NUM_4_0",
+        "type": [
+          "null",
+          "int"
+        ]
+      },
+      {
+        "name": "COL_NUM_9_0",
+        "type": [
+          "null",
+          "int"
+        ]
+      },
+      {
+        "name": "COL_NUM_18_0",
+        "type": [
+          "null",
+          "long"
+        ]
+      },
+      {
+        "name": "COL_NUM_38_0",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NUM_38_9",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NUM_UNBOUNDED",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_BIN_FLOAT",
+        "type": [
+          "null",
+          "float"
+        ]
+      },
+      {
+        "name": "COL_BIN_DOUBLE",
+        "type": [
+          "null",
+          "double"
+        ]
+      },
+      {
+        "name": "COL_CHAR_10",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NCHAR_10",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_VARCHAR2",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NVARCHAR2",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_RAW",
+        "type": [
+          "null",
+          "bytes"
+        ]
+      },
+      {
+        "name": "COL_CLOB",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_BLOB",
+        "type": [
+          "null",
+          "bytes"
+        ]
+      },
+      {
+        "name": "COL_DATE",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_TS9",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_TSTZ",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_TSLTZ",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_INT_YM",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_INT_DS",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_XMLTYPE",
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    ],
+    "codec": "deflate",
+    "row_count": 3,
+    "rows": [
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": 1.5,
+        "COL_BIN_DOUBLE": -2.25,
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      },
+      {
+        "COL_NUM_4_0": -9999,
+        "COL_NUM_9_0": -999999999,
+        "COL_NUM_18_0": -999999999999999999,
+        "COL_NUM_38_0": "-99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "-12345678901234567890123456789.987654321",
+        "COL_NUM_UNBOUNDED": "-0.00000000000000000000000000000000000001",
+        "COL_BIN_FLOAT": "-0.0",
+        "COL_BIN_DOUBLE": "-0.0",
+        "COL_CHAR_10": "A         ",
+        "COL_NCHAR_10": "B         ",
+        "COL_VARCHAR2": "Second row",
+        "COL_NVARCHAR2": "Second national",
+        "COL_RAW": {
+          "__bytes_hex__": "626f756e646172792d7261772d7061796c6f6164"
+        },
+        "COL_CLOB": {
+          "__large_str__": true,
+          "len": 98304,
+          "sha256": "8d0914c0dbecdd7b15706c0ca6d111c81b847f69489924b1bf7510bfdc45c199"
+        },
+        "COL_BLOB": {
+          "__large_bytes__": true,
+          "len": 98304,
+          "sha256": "5cc79720a8824976ce3e45b4cdda534c8598f5fb1d7285a3aa184c4b1d150462"
+        },
+        "COL_DATE": "0001-01-01 00:00:00",
+        "COL_TS9": "1970-01-01 00:00:00.000000001",
+        "COL_TSTZ": "1970-01-01 00:00:00.000000 -08:00",
+        "COL_TSLTZ": "1970-01-01 00:00:00.123456 UTC",
+        "COL_INT_YM": "-0005-11",
+        "COL_INT_DS": "-00001 00:00:00.000001",
+        "COL_XMLTYPE": "<doc/>"
+      },
+      {
+        "COL_NUM_4_0": null,
+        "COL_NUM_9_0": null,
+        "COL_NUM_18_0": null,
+        "COL_NUM_38_0": null,
+        "COL_NUM_38_9": null,
+        "COL_NUM_UNBOUNDED": null,
+        "COL_BIN_FLOAT": null,
+        "COL_BIN_DOUBLE": null,
+        "COL_CHAR_10": null,
+        "COL_NCHAR_10": null,
+        "COL_VARCHAR2": null,
+        "COL_NVARCHAR2": null,
+        "COL_RAW": null,
+        "COL_CLOB": null,
+        "COL_BLOB": null,
+        "COL_DATE": null,
+        "COL_TS9": null,
+        "COL_TSTZ": null,
+        "COL_TSLTZ": null,
+        "COL_INT_YM": null,
+        "COL_INT_DS": null,
+        "COL_XMLTYPE": null
+      }
+    ]
+  },
+  "parquet_empty": {
+    "schema": [
+      {
+        "name": "COL_NUM_4_0",
+        "type": "int32",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_9_0",
+        "type": "int32",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_18_0",
+        "type": "int64",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_38_0",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_38_9",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_UNBOUNDED",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_BIN_FLOAT",
+        "type": "float",
+        "nullable": true
+      },
+      {
+        "name": "COL_BIN_DOUBLE",
+        "type": "double",
+        "nullable": true
+      },
+      {
+        "name": "COL_CHAR_10",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NCHAR_10",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_VARCHAR2",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NVARCHAR2",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_RAW",
+        "type": "binary",
+        "nullable": true
+      },
+      {
+        "name": "COL_CLOB",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_BLOB",
+        "type": "binary",
+        "nullable": true
+      },
+      {
+        "name": "COL_DATE",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TS9",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TSTZ",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TSLTZ",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_INT_YM",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_INT_DS",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_XMLTYPE",
+        "type": "string",
+        "nullable": true
+      }
+    ],
+    "compression": "SNAPPY",
+    "row_count": 0,
+    "rows": []
+  },
+  "avro_empty": {
+    "fields": [
+      {
+        "name": "COL_NUM_4_0",
+        "type": [
+          "null",
+          "int"
+        ]
+      },
+      {
+        "name": "COL_NUM_9_0",
+        "type": [
+          "null",
+          "int"
+        ]
+      },
+      {
+        "name": "COL_NUM_18_0",
+        "type": [
+          "null",
+          "long"
+        ]
+      },
+      {
+        "name": "COL_NUM_38_0",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NUM_38_9",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NUM_UNBOUNDED",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_BIN_FLOAT",
+        "type": [
+          "null",
+          "float"
+        ]
+      },
+      {
+        "name": "COL_BIN_DOUBLE",
+        "type": [
+          "null",
+          "double"
+        ]
+      },
+      {
+        "name": "COL_CHAR_10",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NCHAR_10",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_VARCHAR2",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NVARCHAR2",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_RAW",
+        "type": [
+          "null",
+          "bytes"
+        ]
+      },
+      {
+        "name": "COL_CLOB",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_BLOB",
+        "type": [
+          "null",
+          "bytes"
+        ]
+      },
+      {
+        "name": "COL_DATE",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_TS9",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_TSTZ",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_TSLTZ",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_INT_YM",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_INT_DS",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_XMLTYPE",
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    ],
+    "codec": "deflate",
+    "row_count": 0,
+    "rows": []
+  },
+  "parquet_nan_as_null": {
+    "schema": [
+      {
+        "name": "COL_NUM_4_0",
+        "type": "int32",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_9_0",
+        "type": "int32",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_18_0",
+        "type": "int64",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_38_0",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_38_9",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_UNBOUNDED",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_BIN_FLOAT",
+        "type": "float",
+        "nullable": true
+      },
+      {
+        "name": "COL_BIN_DOUBLE",
+        "type": "double",
+        "nullable": true
+      },
+      {
+        "name": "COL_CHAR_10",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NCHAR_10",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_VARCHAR2",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NVARCHAR2",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_RAW",
+        "type": "binary",
+        "nullable": true
+      },
+      {
+        "name": "COL_CLOB",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_BLOB",
+        "type": "binary",
+        "nullable": true
+      },
+      {
+        "name": "COL_DATE",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TS9",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TSTZ",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TSLTZ",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_INT_YM",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_INT_DS",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_XMLTYPE",
+        "type": "string",
+        "nullable": true
+      }
+    ],
+    "compression": "SNAPPY",
+    "row_count": 3,
+    "rows": [
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": null,
+        "COL_BIN_DOUBLE": null,
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      },
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": null,
+        "COL_BIN_DOUBLE": null,
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      },
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": null,
+        "COL_BIN_DOUBLE": null,
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      }
+    ]
+  },
+  "parquet_nan_preserved": {
+    "schema": [
+      {
+        "name": "COL_NUM_4_0",
+        "type": "int32",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_9_0",
+        "type": "int32",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_18_0",
+        "type": "int64",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_38_0",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_38_9",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NUM_UNBOUNDED",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_BIN_FLOAT",
+        "type": "float",
+        "nullable": true
+      },
+      {
+        "name": "COL_BIN_DOUBLE",
+        "type": "double",
+        "nullable": true
+      },
+      {
+        "name": "COL_CHAR_10",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NCHAR_10",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_VARCHAR2",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_NVARCHAR2",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_RAW",
+        "type": "binary",
+        "nullable": true
+      },
+      {
+        "name": "COL_CLOB",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_BLOB",
+        "type": "binary",
+        "nullable": true
+      },
+      {
+        "name": "COL_DATE",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TS9",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TSTZ",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_TSLTZ",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_INT_YM",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_INT_DS",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "name": "COL_XMLTYPE",
+        "type": "string",
+        "nullable": true
+      }
+    ],
+    "compression": "SNAPPY",
+    "row_count": 3,
+    "rows": [
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": "__NAN__",
+        "COL_BIN_DOUBLE": "__NAN__",
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      },
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": "__POS_INF__",
+        "COL_BIN_DOUBLE": "__POS_INF__",
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      },
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": "__NEG_INF__",
+        "COL_BIN_DOUBLE": "__NEG_INF__",
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      }
+    ]
+  },
+  "avro_nan_as_null": {
+    "fields": [
+      {
+        "name": "COL_NUM_4_0",
+        "type": [
+          "null",
+          "int"
+        ]
+      },
+      {
+        "name": "COL_NUM_9_0",
+        "type": [
+          "null",
+          "int"
+        ]
+      },
+      {
+        "name": "COL_NUM_18_0",
+        "type": [
+          "null",
+          "long"
+        ]
+      },
+      {
+        "name": "COL_NUM_38_0",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NUM_38_9",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NUM_UNBOUNDED",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_BIN_FLOAT",
+        "type": [
+          "null",
+          "float"
+        ]
+      },
+      {
+        "name": "COL_BIN_DOUBLE",
+        "type": [
+          "null",
+          "double"
+        ]
+      },
+      {
+        "name": "COL_CHAR_10",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NCHAR_10",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_VARCHAR2",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_NVARCHAR2",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_RAW",
+        "type": [
+          "null",
+          "bytes"
+        ]
+      },
+      {
+        "name": "COL_CLOB",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_BLOB",
+        "type": [
+          "null",
+          "bytes"
+        ]
+      },
+      {
+        "name": "COL_DATE",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_TS9",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_TSTZ",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_TSLTZ",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_INT_YM",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_INT_DS",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      {
+        "name": "COL_XMLTYPE",
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    ],
+    "codec": "deflate",
+    "row_count": 3,
+    "rows": [
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": null,
+        "COL_BIN_DOUBLE": null,
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      },
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": null,
+        "COL_BIN_DOUBLE": null,
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      },
+      {
+        "COL_NUM_4_0": 9999,
+        "COL_NUM_9_0": 999999999,
+        "COL_NUM_18_0": 999999999999999999,
+        "COL_NUM_38_0": "99999999999999999999999999999999999999",
+        "COL_NUM_38_9": "12345678901234567890123456789.123456789",
+        "COL_NUM_UNBOUNDED": "3.1415926535897932384626433832795028841971",
+        "COL_BIN_FLOAT": null,
+        "COL_BIN_DOUBLE": null,
+        "COL_CHAR_10": "FIXED10   ",
+        "COL_NCHAR_10": "NFIXED10  ",
+        "COL_VARCHAR2": "Hello UTF-8 漢字 🌍",
+        "COL_NVARCHAR2": "National UTF-8 문자열",
+        "COL_RAW": {
+          "__bytes_hex__": "010203feff"
+        },
+        "COL_CLOB": "Small CLOB payload < 64 KiB",
+        "COL_BLOB": {
+          "__bytes_hex__": "10203040"
+        },
+        "COL_DATE": "1999-12-31 23:59:59",
+        "COL_TS9": "2026-10-24 14:25:36.123456789",
+        "COL_TSTZ": "2026-10-24 14:25:36.123456 +02:00",
+        "COL_TSLTZ": "2026-10-24 14:25:36.123456 UTC",
+        "COL_INT_YM": "+0123-06",
+        "COL_INT_DS": "+00045 12:34:56.654321",
+        "COL_XMLTYPE": "<root><item id='1'>value</item></root>"
+      }
+    ]
+  }
+}

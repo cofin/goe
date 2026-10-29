@@ -7,12 +7,17 @@ import pytest
 
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.offload import offload_constants
+from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
     load_db_name,
 )
-from goe.offload.offload_transport import (
+from goe.offload.offload_transport_rdbms_api import (
+    OFFLOAD_TRANSPORT_SQL_STATISTICS_TITLE,
+)
+from goe.offload.registry import create_repository_client
+from goe.offload.transport.constants import (
     MISSING_ROWS_IMPORTED_WARNING,
     OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
@@ -20,18 +25,15 @@ from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
-    OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED,
     POLLING_VALIDATION_TEXT,
+)
+from goe.offload.transport.selector import (
     is_livy_available,
     is_spark_gcloud_batches_available,
     is_spark_gcloud_dataproc_available,
     is_spark_submit_available,
     is_spark_thrift_available,
 )
-from goe.offload.offload_transport_rdbms_api import (
-    OFFLOAD_TRANSPORT_SQL_STATISTICS_TITLE,
-)
-from goe.offload.registry import create_repository_client
 from tests.integration.scenarios.assertion_functions import (
     backend_table_exists,
     load_table_is_compressed,

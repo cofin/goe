@@ -3,7 +3,6 @@
 
 """OffloadTransportDuckDB batch planning and execution behavior."""
 
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -18,10 +17,10 @@ from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
 )
 from goe.offload.staging.parquet.parquet_column import PARQUET_TYPE_INT64, PARQUET_TYPE_STRING, StagingParquetColumn
-from goe.offload.transport.base import OffloadTransportException
 from goe.offload.transport.constants import TRANSPORT_CXT_BYTES, TRANSPORT_CXT_ROWS
-from goe.offload.transport.duckdb_engine import DuckDBTransportSettings
+from goe.offload.transport.duckdb import DuckDBSessionConfig
 from goe.offload.transport.duckdb_transport import OffloadTransportDuckDB
+from goe.offload.transport.protocol import OffloadTransportException
 
 MODULE = "goe.offload.transport.duckdb_transport"
 SCN = 555666777
@@ -63,77 +62,79 @@ def test_missing_scn_fails_before_any_connection(tmp_path: Path) -> None:
     """A row source without AS OF SCN raises before DuckDB or credentials are touched."""
     transport = _transport(tmp_path)
     transport._get_transport_row_source_query.return_value = 'SELECT "ID" FROM "SH"."SALES"'
-    with patch(f"{MODULE}.open_batch_connection") as open_conn, pytest.raises(ValueError, match="AS OF SCN"):
+    with patch.object(transport, "_open_shared_engine") as open_eng, pytest.raises(ValueError, match="AS OF SCN"):
         transport.transport()
-    open_conn.assert_not_called()
+    open_eng.assert_not_called()
 
 
 def test_dry_run_logs_and_runs_post_transport_without_duckdb(tmp_path: Path) -> None:
     """Dry-run logs extraction SQL, opens no connection and still runs post-transport tasks."""
     transport = _transport(tmp_path, dry_run=True)
-    with patch(f"{MODULE}.open_batch_connection") as open_conn, patch(f"{MODULE}.resolve_gcp_credentials") as creds:
+    with (
+        patch.object(transport, "_open_shared_engine") as open_eng,
+        patch(f"{MODULE}.resolve_gcp_credentials") as creds,
+    ):
         assert transport.transport() is None
-    open_conn.assert_not_called()
+    open_eng.assert_not_called()
     creds.assert_not_called()
     transport._target_table.post_transport_tasks.assert_called_once_with(transport._staging_file)
     logged = " ".join(str(c.args[0]) for c in transport._messages.log.call_args_list)
-    assert "gcss://bucket/goe/sales_load/orders/part-00000.parquet" in logged
+    assert "gs://bucket/goe/sales_load/orders/part-00000.parquet" in logged
 
 
-def test_execute_streams_batches_to_gcss_and_cleans_up(tmp_path: Path) -> None:
-    """Execute mode runs one COPY per batch, sums rows, sets context, redacts secrets and removes spill dirs."""
+def test_execute_streams_batches_to_gcs_and_cleans_up(tmp_path: Path) -> None:
+    """Execute mode runs one COPY per batch over cursors from a single shared DuckDBEngine."""
     transport = _transport(tmp_path)
-    connections: list[MagicMock] = []
+    cursors: list[MagicMock] = []
+    engine = MagicMock()
 
-    def fake_connection(_settings: object, _temp_directory: str) -> MagicMock:
-        conn = MagicMock()
-        conn.execute.return_value.fetchone.return_value = (125,)
-        connections.append(conn)
-        return conn
+    def make_cursor():
+        cur = MagicMock()
+        cur.execute.return_value.fetchone.return_value = (125,)
+        cursors.append(cur)
+        cm = MagicMock()
+        cm.__enter__.return_value = cur
+        cm.__exit__.return_value = False
+        return cm
 
+    engine.cursor.side_effect = make_cursor
     bundle = MagicMock(project="my-project")
     bundle.credentials.token = "test-access-token"
     with (
-        patch(f"{MODULE}.open_batch_connection", side_effect=fake_connection),
-        patch(f"{MODULE}.load_oracle_extension"),
-        patch(f"{MODULE}.load_gcs_extension"),
-        patch(f"{MODULE}.attach_oracle") as attach,
-        patch(f"{MODULE}.create_gcs_token_secret") as gcs_secret,
+        patch.object(transport, "_open_shared_engine", return_value=engine) as open_eng,
         patch(f"{MODULE}.resolve_gcp_credentials", return_value=bundle),
     ):
         assert transport.transport() == 250
-    assert os.environ["ORA_SDTZ"] == "UTC"
-    copies = sorted(
-        c.args[0] for conn in connections for c in conn.execute.call_args_list if c.args[0].startswith("COPY")
-    )
-    assert "TO 'gcss://bucket/goe/sales_load/orders/part-00000.parquet'" in copies[0]
-    assert "TO 'gcss://bucket/goe/sales_load/orders/part-00001.parquet'" in copies[1]
-    assert attach.call_args.args[1:3] == ("goe_app", PASSWORD)
-    gcs_secret.assert_called_with(gcs_secret.call_args.args[0], "test-access-token", "my-project")
+    open_eng.assert_called_once()
+    copies = sorted(c.args[0] for cur in cursors for c in cur.execute.call_args_list if c.args[0].startswith("COPY"))
+    assert "TO 'gs://bucket/goe/sales_load/orders/part-00000.parquet'" in copies[0]
+    assert "TO 'gs://bucket/goe/sales_load/orders/part-00001.parquet'" in copies[1]
     assert transport._transport_context == {TRANSPORT_CXT_ROWS: 250, TRANSPORT_CXT_BYTES: 4096}
     logged = " ".join(str(c.args[0]) for c in transport._messages.log.call_args_list)
     assert PASSWORD not in logged and "test-access-token" not in logged
-    assert all(conn.close.called for conn in connections)
+    engine.close.assert_called_once()
     assert list(Path(transport._duckdb_temp_root).iterdir()) == []
 
 
 def test_batch_failure_raises_transport_exception_and_cleans_up(tmp_path: Path) -> None:
     """A DuckDB error in any batch surfaces as OffloadTransportException and spill dirs are removed."""
     transport = _transport(tmp_path)
-    conn = MagicMock()
-    conn.execute.side_effect = duckdb.IOException("ORA-01555: snapshot too old")
+    engine = MagicMock()
+    cur = MagicMock()
+    cur.execute.side_effect = duckdb.IOException("ORA-01555: snapshot too old")
+    cm = MagicMock()
+    cm.__enter__.return_value = cur
+    cm.__exit__.return_value = False
+    engine.cursor.return_value = cm
     bundle = MagicMock(project=None)
     bundle.credentials.token = "t"
     with (
-        patch(f"{MODULE}.open_batch_connection", return_value=conn),
-        patch(f"{MODULE}.load_oracle_extension"),
-        patch(f"{MODULE}.load_gcs_extension"),
-        patch(f"{MODULE}.attach_oracle"),
-        patch(f"{MODULE}.create_gcs_token_secret"),
+        patch.object(transport, "_open_shared_engine", return_value=engine),
         patch(f"{MODULE}.resolve_gcp_credentials", return_value=bundle),
         pytest.raises(OffloadTransportException, match="ORA-01555"),
     ):
         transport.transport()
+    engine.close.assert_called_once()
     assert list(Path(transport._duckdb_temp_root).iterdir()) == []
 
 
@@ -149,6 +150,7 @@ def _transport(tmp_path: Path, split_type: str = TRANSPORT_ROW_SOURCE_QUERY_SPLI
     """Build an OffloadTransportDuckDB with collaborators replaced by mocks."""
     transport = object.__new__(OffloadTransportDuckDB)
     transport._dry_run = dry_run
+    transport._offload_transport_method = "DUCKDB"
     transport._offload_transport_parallelism = 2
     transport._offload_transport_consistent_read = True
     transport._offload_transport_snapshot = SCN
@@ -179,6 +181,10 @@ def _transport(tmp_path: Path, split_type: str = TRANSPORT_ROW_SOURCE_QUERY_SPLI
     transport._target_table = MagicMock()
     transport._messages = MagicMock()
     transport._messages.offload_step.side_effect = lambda _step, fn, execute=True: fn()
-    transport._duckdb_settings = DuckDBTransportSettings(threads=2, memory_limit="1GB", extension_repository="r")
     transport._duckdb_temp_root = str(tmp_path / "duckdb")
+    transport._session_config = DuckDBSessionConfig(
+        execution_key="test01",
+        parallelism=2,
+        temp_directory=transport._duckdb_temp_root,
+    )
     return transport

@@ -186,7 +186,6 @@ offload-home-check:                                 ## Verify OFFLOAD_HOME envir
 target: python-goe spark-listener offload-env       ## Compile full runtime target tree
 	@echo "${INFO} Building target distribution in $(TARGET_DIR)..."
 	@mkdir -p $(TARGET_DIR)/tools
-	@cp tools/goe-shell-functions.sh $(TARGET_DIR)/tools 2>/dev/null || true
 	@rm -rf $(TARGET_DIR)/setup/sql $(TARGET_DIR)/setup/python
 	@mkdir -p $(TARGET_DIR)/cache
 	@mkdir -p $(TARGET_DIR)/setup/sql && cp -a sql/oracle/source/* $(TARGET_DIR)/setup 2>/dev/null || true

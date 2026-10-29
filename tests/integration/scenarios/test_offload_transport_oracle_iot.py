@@ -11,22 +11,24 @@ from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
-from goe.offload.offload_transport import (
-    OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
-    OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
-    OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
-    OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
-    is_query_import_available,
-    is_spark_gcloud_batches_available,
-    is_spark_gcloud_dataproc_available,
-    is_spark_submit_available,
-)
 from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE,
 )
 from goe.offload.registry import create_repository_client
+from goe.offload.transport.constants import (
+    OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
+    OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
+)
+from goe.offload.transport.selector import (
+    is_query_import_available,
+    is_spark_gcloud_batches_available,
+    is_spark_gcloud_dataproc_available,
+    is_spark_submit_available,
+)
 from tests.integration.scenarios.assertion_functions import standard_dimension_assertion
 from tests.integration.scenarios.scenario_runner import (
     run_offload,

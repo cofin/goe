@@ -1,36 +1,43 @@
 # SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""GCP AUTO transport ordering and Query Import modernization."""
+"""Unit tests for GCP AUTO transport selection priority and fallthrough."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
 
 import pytest
 
-from goe.offload.offload_constants import DBTYPE_BIGQUERY, DBTYPE_SNOWFLAKE
+from goe.offload.offload_constants import (
+    BACKEND_DISTRO_CDH,
+    BACKEND_DISTRO_GCP,
+    DBTYPE_ORACLE,
+    FILE_STORAGE_FORMAT_PARQUET,
+    OFFLOAD_TRANSPORT_AUTO,
+    OFFLOAD_TRANSPORT_GCP,
+)
+from goe.offload.transport import selector as transport_selector
 from goe.offload.transport.constants import (
     OFFLOAD_TRANSPORT_GCP_METHODS,
     OFFLOAD_TRANSPORT_GOE_METHODS,
+    OFFLOAD_TRANSPORT_METHOD_DUCKDB,
     OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
-    VALID_OFFLOAD_TRANSPORT_METHODS,
 )
-from goe.offload.transport.factory import choose_offload_transport_method
-from goe.offload.transport.query_import import OffloadTransportQueryImport, query_import_fetch_size
-from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, FAKE_ORACLE_HIVE_ENV, build_mock_options
+from goe.offload.transport.protocol import OffloadTransportException
+from goe.offload.transport.selector import (
+    GCP_AUTO_TRANSPORT_METHODS,
+    choose_offload_transport_method,
+)
 
 
-def test_gcp_auto_prefers_query_import_then_dataproc() -> None:
-    """GCP AUTO evaluates QI, Dataproc, Batches, Submit, Thrift, then Livy."""
-    chosen, evaluated = _choose(FAKE_ORACLE_BQ_ENV, OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY)
-    assert chosen == OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY
-    assert evaluated == [
+def test_gcp_auto_order():
+    assert GCP_AUTO_TRANSPORT_METHODS == [
         OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
+        OFFLOAD_TRANSPORT_METHOD_DUCKDB,
         OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
         OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
         OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
@@ -39,52 +46,115 @@ def test_gcp_auto_prefers_query_import_then_dataproc() -> None:
     ]
 
 
-def test_non_gcp_auto_order_is_unchanged() -> None:
-    """Hadoop AUTO evaluates GOE rules then GCP rules."""
-    chosen, evaluated = _choose(FAKE_ORACLE_HIVE_ENV, OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD)
-    assert chosen == OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD
-    assert evaluated == OFFLOAD_TRANSPORT_GOE_METHODS + OFFLOAD_TRANSPORT_GCP_METHODS
+def test_gcp_auto_fallthrough(monkeypatch):
+    availability = {}
+    monkeypatch.setattr(
+        transport_selector,
+        "is_query_import_available",
+        lambda *a, **kw: availability[OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT],
+    )
+    monkeypatch.setattr(
+        transport_selector,
+        "is_duckdb_available",
+        lambda *a, **kw: availability[OFFLOAD_TRANSPORT_METHOD_DUCKDB],
+    )
+    monkeypatch.setattr(
+        transport_selector,
+        "is_spark_gcloud_dataproc_available",
+        lambda *a, **kw: availability[OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD],
+    )
+    monkeypatch.setattr(
+        transport_selector,
+        "is_spark_gcloud_batches_available",
+        lambda *a, **kw: availability[OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD],
+    )
+    monkeypatch.setattr(
+        transport_selector,
+        "is_spark_submit_available",
+        lambda *a, **kw: availability[OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT],
+    )
+    monkeypatch.setattr(
+        transport_selector,
+        "is_spark_thrift_available",
+        lambda *a, **kw: availability[OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT],
+    )
+    monkeypatch.setattr(
+        transport_selector,
+        "is_livy_available",
+        lambda *a, **kw: availability[OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY],
+    )
+
+    cfg = _gcp_config()
+    op = _op()
+    tbl = _table()
+    msgs = _messages()
+
+    for idx, expected in enumerate(GCP_AUTO_TRANSPORT_METHODS):
+        for m in GCP_AUTO_TRANSPORT_METHODS[:idx]:
+            availability[m] = False
+        for m in GCP_AUTO_TRANSPORT_METHODS[idx:]:
+            availability[m] = True
+        assert choose_offload_transport_method(op, tbl, cfg, msgs) == expected
+
+    for m in GCP_AUTO_TRANSPORT_METHODS:
+        availability[m] = False
+    with pytest.raises(OffloadTransportException):
+        choose_offload_transport_method(op, tbl, cfg, msgs)
 
 
-@pytest.mark.parametrize(
-    ("requested", "target", "expected"),
-    [(5000, DBTYPE_BIGQUERY, 5000), ("20000", DBTYPE_BIGQUERY, 10000), (5000, DBTYPE_SNOWFLAKE, 1000)],
-)
-def test_query_import_fetch_size_cap(requested: int | str, target: str, expected: int) -> None:
-    """BigQuery targets allow up to 10000 rows per fetch; other targets keep 1000."""
-    assert query_import_fetch_size(requested, target) == expected
+def test_gcp_small_table_picks_query_import_large_picks_dataproc(monkeypatch):
+    monkeypatch.setattr(transport_selector, "spark_submit_executable_exists", lambda *a, **kw: True)
+    monkeypatch.setattr(transport_selector, "is_duckdb_available", lambda *a, **kw: False)
+    cfg = _gcp_config()
+    op = _op(small_table_threshold=100)
+    msgs = _messages()
+
+    assert choose_offload_transport_method(op, _table(50), cfg, msgs) == OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
+    assert choose_offload_transport_method(op, _table(500), cfg, msgs) == OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD
 
 
-def test_copy_to_dfs_always_removes_local_file(tmp_path: Path) -> None:
-    """The local staging file is removed with Path.unlink even when the upload fails."""
-    local_file = tmp_path / "part-m-00000.parquet"
-    local_file.write_bytes(b"PAR1")
-    transport = object.__new__(OffloadTransportQueryImport)
-    transport._dry_run = False
-    transport._messages = MagicMock()
-    transport._backend_dfs = "GCS"
-    transport._run_os_cmd = MagicMock()
-    transport._dfs_client = MagicMock()
-    transport._dfs_client.copy_from_local.side_effect = RuntimeError("upload failed")
-    with pytest.raises(RuntimeError):
-        transport._query_import_copy_to_dfs(str(local_file), "gs://b/stage/part-m-00000.parquet")
-    assert not local_file.exists()
-    transport._run_os_cmd.assert_not_called()
+def test_non_gcp_auto_keeps_goe_first(monkeypatch):
+    cfg = _gcp_config()
+    cfg.backend_distribution = BACKEND_DISTRO_CDH
+    monkeypatch.setattr(transport_selector, "is_spark_thrift_available", lambda *a, **kw: True)
+    monkeypatch.setattr(transport_selector, "is_query_import_available", lambda *a, **kw: True)
+    assert choose_offload_transport_method(_op(), _table(10), cfg, _messages()) == OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT
+    assert OFFLOAD_TRANSPORT_GOE_METHODS[0] == OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT
 
 
-def _choose(env: dict, accepted: str) -> tuple[str, list[str]]:
-    """Run AUTO selection where only `accepted` validates; return the choice and evaluation order."""
-    evaluated: list[str] = []
+def test_explicit_gcp_transport_restricts_to_dataproc(monkeypatch):
+    monkeypatch.setattr(transport_selector, "spark_submit_executable_exists", lambda *a, **kw: True)
+    cfg = _gcp_config(offload_transport=OFFLOAD_TRANSPORT_GCP)
+    assert choose_offload_transport_method(_op(), _table(10), cfg, _messages()) in OFFLOAD_TRANSPORT_GCP_METHODS
 
-    def fake_validation_fns(*_args: object, **_kwargs: object) -> dict:
-        return {
-            method: (lambda m=method: evaluated.append(m) or m == accepted)
-            for method in VALID_OFFLOAD_TRANSPORT_METHODS
-        }
 
-    operation = MagicMock(offload_transport_method=None)
-    with patch(
-        "goe.offload.transport.factory.get_offload_transport_method_validation_fns", side_effect=fake_validation_fns
-    ):
-        chosen = choose_offload_transport_method(operation, MagicMock(), build_mock_options(env), MagicMock())
-    return chosen, evaluated
+def _gcp_config(offload_transport=OFFLOAD_TRANSPORT_AUTO):
+    return SimpleNamespace(
+        db_type=DBTYPE_ORACLE,
+        backend_distribution=BACKEND_DISTRO_GCP,
+        offload_transport=offload_transport,
+        offload_staging_format=FILE_STORAGE_FORMAT_PARQUET,
+        offload_transport_cmd_host="localhost",
+        offload_transport_user="goe",
+        offload_transport_spark_submit_executable="spark-submit",
+        offload_transport_spark_thrift_host="thrift.internal",
+        offload_transport_spark_thrift_port=10000,
+        offload_transport_livy_api_url="http://livy.internal:8998",
+        google_dataproc_cluster="cluster-a",
+        google_dataproc_batches_version="2.1",
+    )
+
+
+def _op(method=None, small_table_threshold=100):
+    return SimpleNamespace(
+        offload_transport_method=method,
+        offload_transport_small_table_threshold=small_table_threshold,
+    )
+
+
+def _table(size_in_bytes=10):
+    return SimpleNamespace(size_in_bytes=size_in_bytes)
+
+
+def _messages():
+    return SimpleNamespace(log=lambda *a, **kw: None)

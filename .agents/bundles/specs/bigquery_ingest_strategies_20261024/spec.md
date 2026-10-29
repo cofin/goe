@@ -18,9 +18,9 @@ parent_prd: prd_09_composable_backends_and_direct_bigquery_ingestion_20261024
 depends_on:
   - backend_capabilities_and_cached_catalog_20261024
 research:
-  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/module-by-module-redesign.md
-  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
-  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/duckdb2-arrow-and-storage-dataplane.md
+  - .agents/bundles/specs/prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/research/module-by-module-redesign.md
+  - .agents/bundles/specs/prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/research/sqlspec-sqlglot-and-caching-architecture.md
+  - .agents/bundles/specs/prd_09_composable_backends_and_direct_bigquery_ingestion_20261024/research/duckdb2-arrow-and-storage-dataplane.md
 ---
 
 # Chapter 9.3: BigQuery Ingest Strategies
