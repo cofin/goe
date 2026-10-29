@@ -18,8 +18,8 @@ from goe.config.options import (
     OffloadOperationOptions,
 )
 from goe.listener.app import create_app
-from goe.listener.jobs.store import SqliteJobStore
 from goe.listener.schemas import ColumnDetail, ListenerConfig, OffloadOptions
+from tests.unit.listener.conftest import make_fake_oracle_job_store
 
 
 def test_offload_options_canonical_keys_and_older_than_days_normalization() -> None:
@@ -89,7 +89,7 @@ def test_orchestration_post_offload_passes_only_expected_offload_args(
     tmp_path: Path,
 ) -> None:
     """Verify POST /api/orchestration/offload/ passes only EXPECTED_OFFLOAD_ARGS keys to JobStore.enqueue."""
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
         enable_background_worker=False,

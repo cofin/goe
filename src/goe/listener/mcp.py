@@ -16,6 +16,7 @@ import msgspec
 from litestar_mcp import (
     MCPConfig,
     MCPInputRequiredResult,
+    MCPTaskConfig,
     get_mcp_request_context,
 )
 from litestar_security.authentication import AUTH_POLICY_OPT_KEY, required
@@ -276,6 +277,7 @@ def build_mcp_config(active_settings: ListenerSettings | None = None) -> MCPConf
         name="GOE Listener MCP",
         instructions=_SERVER_INSTRUCTIONS,
         route_opt={AUTH_POLICY_OPT_KEY: required("console-key")},
+        tasks=MCPTaskConfig(),
         max_blob_bytes=max(1_048_576, cfg.max_log_bytes * 2),
         before_tool_call=before_mcp_tool_call,
         after_tool_call=after_mcp_tool_call,

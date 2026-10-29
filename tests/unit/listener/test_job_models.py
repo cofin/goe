@@ -1,11 +1,10 @@
 # SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for GOE Listener durable job queue models and SQL definitions."""
+"""Unit tests for GOE Listener durable job queue models and Oracle SQL definitions."""
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -14,6 +13,7 @@ import pytest
 from sqlspec.loader import SQLFileLoader
 
 from goe.listener.jobs.models import (
+    JobCancelledError,
     JobRecord,
     JobState,
     NodeHeartbeat,
@@ -80,6 +80,8 @@ def test_job_record_immutability_lease_and_serialization() -> None:
     assert record.status is JobState.PENDING
     assert record.attempt == 0
     assert record.max_attempts == 3
+    assert record.cancel_requested is False
+    assert issubclass(JobCancelledError, Exception)
     assert record.decode_payload() == {"table": "sh.sales", "execute": True}
     assert record.is_lease_expired(now) is False
 
@@ -119,8 +121,8 @@ def test_node_heartbeat_immutability_and_expiration() -> None:
         hb.worker_role = "http"  # type: ignore[misc]
 
 
-def test_job_queue_sql_loader_and_sqlite_unique_index() -> None:
-    """Verify SQLFileLoader parses job_queue.sql and SQLite partial unique index enforces exclusivity."""
+def test_job_queue_sql_loader_and_oracle_exclusivity_ddl() -> None:
+    """Verify SQLFileLoader parses job_queue.sql with only Oracle named queries and function-based unique index."""
     loader = SQLFileLoader()
     loader.load_sql(JOB_QUEUE_SQL_PATH)
 
@@ -134,6 +136,10 @@ def test_job_queue_sql_loader_and_sqlite_unique_index() -> None:
         "oracle_mark_terminal",
         "oracle_reap_expired_to_pending",
         "oracle_reap_expired_to_dead_letter",
+        "oracle_reap_expired_to_cancelled",
+        "oracle_cancel_pending_or_claimed_job",
+        "oracle_request_cancel_running_job",
+        "oracle_mark_cancelled",
         "oracle_get_job",
         "oracle_get_active_job_for_table",
         "oracle_list_jobs",
@@ -143,88 +149,18 @@ def test_job_queue_sql_loader_and_sqlite_unique_index() -> None:
         "oracle_ddl_active_table_uq",
         "oracle_ddl_status_idx",
         "oracle_ddl_endpoints_table",
-        "sqlite_ddl_jobs_table",
-        "sqlite_ddl_active_table_uq",
-        "sqlite_ddl_status_idx",
-        "sqlite_ddl_endpoints_table",
     }
     available_queries = set(loader.list_queries())
-    assert required_queries.issubset(available_queries)
+    assert available_queries == required_queries
+    assert not any(name.startswith("sqlite_") for name in available_queries)
+
+    oracle_ddl = loader.get_sql("oracle_ddl_jobs_table").raw_sql.upper()
+    assert "CANCEL_REQUESTED" in oracle_ddl
 
     oracle_claim_sql = loader.get_sql("oracle_claim_pending_jobs").raw_sql.upper()
     assert "FOR UPDATE SKIP LOCKED" in oracle_claim_sql
+    assert "AND CANCEL_REQUESTED = 0" in oracle_claim_sql
     assert "FETCH FIRST" not in oracle_claim_sql
 
     oracle_uq_sql = loader.get_sql("oracle_ddl_active_table_uq").raw_sql.upper()
     assert "CASE WHEN STATUS IN ('PENDING', 'CLAIMED', 'RUNNING') THEN TABLE_KEY END" in oracle_uq_sql
-
-    conn = sqlite3.connect(":memory:")
-    try:
-        conn.execute(loader.get_sql("sqlite_ddl_jobs_table").raw_sql)
-        conn.execute(loader.get_sql("sqlite_ddl_active_table_uq").raw_sql)
-        conn.execute(loader.get_sql("sqlite_ddl_status_idx").raw_sql)
-        conn.execute(loader.get_sql("sqlite_ddl_endpoints_table").raw_sql)
-
-        insert_sql = loader.get_sql("sqlite_insert_job").raw_sql
-        now_iso = "2026-10-24T12:00:00+00:00"
-        conn.execute(
-            insert_sql,
-            {
-                "job_id": "job-1",
-                "execution_id": "exec-1",
-                "table_key": "SH.SALES",
-                "status": "PENDING",
-                "payload_json": "{}",
-                "attempt": 0,
-                "max_attempts": 3,
-                "created_at": now_iso,
-                "updated_at": now_iso,
-            },
-        )
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                insert_sql,
-                {
-                    "job_id": "job-2",
-                    "execution_id": "exec-2",
-                    "table_key": "SH.SALES",
-                    "status": "RUNNING",
-                    "payload_json": "{}",
-                    "attempt": 1,
-                    "max_attempts": 3,
-                    "created_at": now_iso,
-                    "updated_at": now_iso,
-                },
-            )
-
-        conn.execute("UPDATE goe_listener_jobs SET status = 'SUCCEEDED' WHERE job_id = 'job-1'")
-        conn.execute(
-            insert_sql,
-            {
-                "job_id": "job-3",
-                "execution_id": "exec-3",
-                "table_key": "SH.SALES",
-                "status": "SUCCEEDED",
-                "payload_json": "{}",
-                "attempt": 1,
-                "max_attempts": 3,
-                "created_at": now_iso,
-                "updated_at": now_iso,
-            },
-        )
-        conn.execute(
-            insert_sql,
-            {
-                "job_id": "job-4",
-                "execution_id": "exec-4",
-                "table_key": "SH.SALES",
-                "status": "PENDING",
-                "payload_json": "{}",
-                "attempt": 0,
-                "max_attempts": 3,
-                "created_at": now_iso,
-                "updated_at": now_iso,
-            },
-        )
-    finally:
-        conn.close()

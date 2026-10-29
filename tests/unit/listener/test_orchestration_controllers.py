@@ -17,12 +17,12 @@ from goe.listener import exceptions, schemas
 from goe.listener.app import create_app
 from goe.listener.cache import ListenerCache
 from goe.listener.config import settings
-from goe.listener.jobs.store import SqliteJobStore
 from goe.listener.mcp import ConfirmationGate
 from goe.listener.services.operations import ListenerOperationsService
 from goe.listener.services.system import SystemService
 from goe.platform.locking import OrchestrationLockTimeout
 from goe.serializers import decode_json
+from tests.unit.listener.conftest import make_fake_oracle_job_store
 
 
 def test_orchestration_executions(tmp_path: Path) -> None:
@@ -50,7 +50,7 @@ def test_orchestration_executions(tmp_path: Path) -> None:
     ]
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -79,7 +79,7 @@ def test_orchestration_execution_by_id(tmp_path: Path) -> None:
     }
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -102,7 +102,7 @@ def test_orchestration_execution_not_found(tmp_path: Path) -> None:
     mock_service.get_command_execution.return_value = None
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -129,7 +129,7 @@ def test_orchestration_execution_log_null_or_empty_path(tmp_path: Path) -> None:
     mock_service.get_dfs_client.return_value = None
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -151,7 +151,7 @@ def test_orchestration_execution_log_null_or_empty_path(tmp_path: Path) -> None:
 @patch("goe.listener.utils.orchestrate.check_for_running_command")
 def test_orchestration_post_offload(mock_check: MagicMock, tmp_path: Path) -> None:
     """Verify POST /api/orchestration/offload/ dispatches an offload job into JobStore."""
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
         enable_background_worker=False,
@@ -173,7 +173,7 @@ def test_orchestration_post_offload_lock_timeout_and_invalid_table(
     mock_lock.acquire.side_effect = OrchestrationLockTimeout("locked")
     mock_lock_factory.return_value = mock_lock
 
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
         enable_background_worker=False,
@@ -191,7 +191,7 @@ def test_orchestration_post_offload_lock_timeout_and_invalid_table(
 @patch("goe.listener.utils.orchestrate.check_for_running_command")
 def test_orchestration_console_key_enforcement(mock_check: MagicMock, tmp_path: Path) -> None:
     """Verify POST /api/orchestration/offload/ enforces x-goe-console-key when shared_token is set."""
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
         enable_background_worker=False,
@@ -214,7 +214,7 @@ def test_orchestration_malformed_uuid_and_typed_job_inspection(tmp_path: Path) -
     """Verify malformed UUID returns 400 and /jobs/ + /jobs/{execution_id}/ inspect durable jobs."""
     mock_service = MagicMock(spec=SystemService)
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     exec_id = "00000000-0000-0000-0000-000000000010"
     store.enqueue(execution_id=exec_id, owner_table="SH.SALES", payload={"owner_table": "SH.SALES", "execute": True})
 
@@ -278,7 +278,7 @@ def test_mcp_orchestration_resources_log_link_and_mrtr_confirmation_gate(
     mock_service.get_dfs_client.return_value = None
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     store.enqueue(execution_id=exec_id, owner_table="SH.PROMOTIONS", payload={"owner_table": "SH.PROMOTIONS"})
     gate = ConfirmationGate(secret="test-orch-secret", ttl_seconds=300)
 
@@ -471,7 +471,7 @@ def test_mcp_preview_offload_plan_and_token_execution(
     )
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -594,7 +594,7 @@ def test_sync_and_validate_endpoints_rest_and_mcp_gating(tmp_path: Path) -> None
     )
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     gate = ConfirmationGate(secret="sync-test-secret", ttl_seconds=300)
     app = create_app(
         dependencies={

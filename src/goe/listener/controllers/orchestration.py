@@ -22,6 +22,7 @@ from goe.listener.jobs.models import JobState
 from goe.listener.jobs.store import DuplicateActiveTableJobError, JobStoreProtocol
 from goe.listener.mcp import (
     DESTRUCTIVE_TOOL_ANNOTATIONS,
+    IDEMPOTENT_MUTATION_ANNOTATIONS,
     READ_ONLY_TOOL_ANNOTATIONS,
     ConfirmationGate,
 )
@@ -366,6 +367,34 @@ class OrchestrationController(SecureController):
     ) -> schemas.ValidationResultSummary:
         """Run read-only cross-database validation off the asyncio event loop."""
         return await async_(operations_service.validate_table)(data)
+
+    @post("/executions/{execution_id:str}/cancel/")
+    @mcp_tool(
+        "cancel_offload_job",
+        description="Cancel a PENDING or CLAIMED durable offload job immediately, or request cooperative cancellation of a RUNNING job.",
+        agent_instructions=(
+            "Use this tool to cancel durable background offload jobs in GOE_LISTENER_JOBS by execution_id. "
+            "Use MCP tasks/cancel for in-flight MCP tool tasks created via the io.modelcontextprotocol/tasks extension."
+        ),
+        when_to_use="When aborting a queued or running durable offload job identified by execution_id.",
+        returns="JobStatusResponse reflecting CANCELLED status or cancel_requested=True for RUNNING jobs.",
+        annotations=IDEMPOTENT_MUTATION_ANNOTATIONS,
+    )
+    async def cancel_offload_job(
+        self,
+        job_store: NamedDependency[JobStoreProtocol],
+        execution_id: FromPath[str],
+    ) -> schemas.JobStatusResponse:
+        """Cancel a durable offload job by execution_id or raise 404 when absent."""
+        execution_identifier = _parse_execution_id(execution_id)
+        record = await asyncio.to_thread(
+            job_store.cancel_job,
+            execution_id=execution_identifier.as_str(),
+            reason="Cancelled via Listener API",
+        )
+        if record is None:
+            raise exceptions.CommandExecutionNotFound(execution_id)
+        return schemas.JobStatusResponse.from_record(record)
 
 
 def _parse_execution_id(raw_id: str) -> ExecutionId:

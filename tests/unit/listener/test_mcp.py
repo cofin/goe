@@ -88,6 +88,61 @@ def test_mcp_server_discover_and_tools_list_without_imperative_wrappers() -> Non
         assert "get_table_status_report" not in tool_names
         assert "list_offloaded_tables" not in tool_names
         assert "get_job_status" not in tool_names
+        assert "cancel_offload_job" in tool_names
+        assert "io.modelcontextprotocol/tasks" in data["result"]["capabilities"].get("extensions", {})
+
+        task_call_resp = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "generate_status_report",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "generate_status_report",
+                    "arguments": {"demo": True},
+                    "_meta": {
+                        "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+                        "io.modelcontextprotocol/clientCapabilities": {
+                            "extensions": {"io.modelcontextprotocol/tasks": {}},
+                        },
+                    },
+                },
+            },
+        )
+        assert task_call_resp.status_code == 200
+        task_result = task_call_resp.json()["result"]
+        assert task_result["resultType"] == "task"
+        task_id = task_result["taskId"]
+
+        task_get_resp = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+                "Mcp-Method": "tasks/get",
+                "Mcp-Name": task_id,
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tasks/get",
+                "params": {
+                    "taskId": task_id,
+                    "_meta": {
+                        "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+                        "io.modelcontextprotocol/clientCapabilities": {
+                            "extensions": {"io.modelcontextprotocol/tasks": {}},
+                        },
+                    },
+                },
+            },
+        )
+        assert task_get_resp.status_code == 200
+        assert task_get_resp.json()["result"]["taskId"] == task_id
 
 
 def test_mcp_console_key_authentication_enforcement() -> None:

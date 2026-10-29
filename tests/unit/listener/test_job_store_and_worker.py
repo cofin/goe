@@ -1,134 +1,38 @@
 # SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for OracleJobStore, SqliteJobStore, and DurableJobWorker."""
+"""Unit tests for OracleJobStore and DurableJobWorker."""
 
 from __future__ import annotations
 
 import asyncio
+import threading
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from typing import Any
 
 import pytest
+from litestar.di import Provide
+from litestar.testing import TestClient
 
+from goe.listener.app import create_app
 from goe.listener.jobs.models import JobRecord, JobState
 from goe.listener.jobs.store import (
     DuplicateActiveTableJobError,
     OracleJobStore,
-    SqliteJobStore,
     create_job_store,
 )
-from goe.listener.jobs.worker import DurableJobWorker
+from goe.listener.jobs.worker import DurableJobWorker, _CooperativeCancelSink
+from goe.orchestration.sinks import LogEvent
+from tests.unit.listener.conftest import (
+    FakeOracleConnection,
+    make_fake_oracle_job_store,
+    make_fake_oracle_state,
+)
 
 
-class _FakeOracleCursor:
-    """In-memory fake Oracle cursor for verifying SKIP LOCKED + fetchmany behavior."""
-
-    def __init__(self, state: dict[str, Any]) -> None:
-        self._state = state
-        self.rowcount = 0
-        self._rows: list[tuple[Any, ...]] = []
-
-    def execute(self, sql: str, params: dict[str, Any] | None = None) -> None:
-        """Record executed SQL and simulate responses."""
-        self._state["executed"].append((sql, params))
-        upper_sql = sql.upper()
-        if "FROM ALL_TABLES" in upper_sql:
-            self._rows = [(1 if self._state.get("tables_exist", True) else 0,)]
-            return
-        if "INSERT INTO GOE_LISTENER_JOBS" in upper_sql:
-            assert params is not None
-            table_key = params["table_key"]
-            if table_key in self._state["active_tables"]:
-                raise RuntimeError("ORA-00001: unique constraint (GOE_REPO.GOE_LISTENER_JOBS_ACTIVE_TBL_UQ) violated")
-            self._state["active_tables"][table_key] = params["execution_id"]
-            self.rowcount = 1
-            return
-        if "FOR UPDATE SKIP LOCKED" in upper_sql:
-            self._rows = list(self._state.get("pending_rows", []))
-            return
-        if "SET STATUS           = 'CLAIMED'" in upper_sql:
-            self.rowcount = 1
-            return
-        if "FROM GOE_LISTENER_JOBS" in upper_sql and "TABLE_KEY = :TABLE_KEY" in upper_sql:
-            assert params is not None
-            exec_id = self._state["active_tables"].get(params["table_key"])
-            if exec_id:
-                now = datetime(2026, 10, 24, 12, 0, 0, tzinfo=UTC)
-                self._rows = [
-                    (
-                        "job-existing",
-                        exec_id,
-                        params["table_key"],
-                        "RUNNING",
-                        "{}",
-                        1,
-                        3,
-                        "worker-1",
-                        now,
-                        now + timedelta(seconds=120),
-                        now,
-                        None,
-                        None,
-                        now,
-                        now,
-                    )
-                ]
-            else:
-                self._rows = []
-            return
-
-    def fetchmany(self, size: int = 1) -> list[tuple[Any, ...]]:
-        """Return at most size rows and record the requested limit."""
-        self._state["fetchmany_Grouping_limits"].append(size)
-        batch = self._rows[:size]
-        self._rows = self._rows[size:]
-        return batch
-
-    def fetchone(self) -> tuple[Any, ...] | None:
-        """Return the first row if available."""
-        return self._rows.pop(0) if self._rows else None
-
-    def fetchall(self) -> list[tuple[Any, ...]]:
-        """Return all remaining rows."""
-        rows = list(self._rows)
-        self._rows = []
-        return rows
-
-    def close(self) -> None:
-        """No-op cursor close."""
-
-
-class _FakeOracleConnection:
-    """In-memory fake Oracle connection."""
-
-    def __init__(self, state: dict[str, Any]) -> None:
-        self._state = state
-        self.current_schema: str | None = None
-
-    def cursor(self) -> _FakeOracleCursor:
-        """Return a fake cursor."""
-        return _FakeOracleCursor(self._state)
-
-    def commit(self) -> None:
-        """Record commit."""
-        self._state["commits"] += 1
-
-    def rollback(self) -> None:
-        """Record rollback."""
-        self._state["rollbacks"] += 1
-
-    def close(self) -> None:
-        """No-op connection close."""
-
-
-def test_sqlite_job_store_wal_and_table_exclusivity(tmp_path: Path) -> None:
-    """Verify SqliteJobStore WAL pragma, table exclusivity across active states, and re-enqueue after completion."""
-    db_path = tmp_path / "run" / "listener_jobs.sqlite3"
-    store = SqliteJobStore(db_path=db_path)
-    assert store.backend_name == "sqlite"
-    assert store.journal_mode().lower() == "wal"
+def test_oracle_job_store_table_exclusivity_and_lifecycle() -> None:
+    """Verify OracleJobStore enforces table exclusivity across active states and allows re-enqueue after completion."""
+    store = make_fake_oracle_job_store()
+    assert store.backend_name == "oracle"
 
     now = datetime(2026, 10, 24, 12, 0, 0, tzinfo=UTC)
     first = store.enqueue(
@@ -207,22 +111,15 @@ def test_oracle_job_store_claim_batch_uses_skip_locked_and_fetchmany() -> None:
             None,
             None,
             None,
+            0,
             now,
             now,
         )
         for idx in range(1, 5)
     ]
-    state: dict[str, Any] = {
-        "executed": [],
-        "fetchmany_Grouping_limits": [],
-        "pending_rows": pending_rows,
-        "active_tables": {},
-        "commits": 0,
-        "rollbacks": 0,
-        "tables_exist": True,
-    }
+    state = make_fake_oracle_state(pending_rows=pending_rows)
     store = OracleJobStore(
-        connection_factory=lambda: _FakeOracleConnection(state),
+        connection_factory=lambda: FakeOracleConnection(state),
         repo_user="GOE_REPO",
     )
 
@@ -252,38 +149,24 @@ def test_oracle_job_store_claim_batch_uses_skip_locked_and_fetchmany() -> None:
     assert exc_info.value.existing_execution_id == "exec-dup-1"
 
 
-def test_create_job_store_auto_detection_and_fallback(tmp_path: Path) -> None:
-    """Verify create_job_store selects OracleJobStore when tables exist and falls back to SqliteJobStore otherwise."""
-    ora_state: dict[str, Any] = {
-        "executed": [],
-        "fetchmany_Grouping_limits": [],
-        "pending_rows": [],
-        "active_tables": {},
-        "commits": 0,
-        "rollbacks": 0,
-        "tables_exist": True,
-    }
+def test_create_job_store_returns_oracle_job_store() -> None:
+    """Verify create_job_store always constructs an OracleJobStore."""
+    ora_state = make_fake_oracle_state()
     oracle_store = create_job_store(
-        connection_factory=lambda: _FakeOracleConnection(ora_state),
+        connection_factory=lambda: FakeOracleConnection(ora_state),
         repo_user="GOE_REPO",
-        offload_home=tmp_path,
     )
     assert isinstance(oracle_store, OracleJobStore)
+    assert oracle_store.probe_tables() is True
 
-    ora_state["tables_exist"] = False
-    fallback_store = create_job_store(
-        connection_factory=lambda: _FakeOracleConnection(ora_state),
-        repo_user="GOE_REPO",
-        offload_home=tmp_path,
-    )
-    assert isinstance(fallback_store, SqliteJobStore)
-    assert (tmp_path / "run" / "listener_jobs.sqlite3").exists()
+    default_store = create_job_store()
+    assert isinstance(default_store, OracleJobStore)
 
 
 @pytest.mark.anyio
-async def test_durable_job_worker_renews_lease_during_slow_execution(tmp_path: Path) -> None:
+async def test_durable_job_worker_renews_lease_during_slow_execution() -> None:
     """Verify DurableJobWorker renews the lease periodically while a slow job coroutine executes."""
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     base_now = datetime(2026, 10, 24, 12, 0, 0, tzinfo=UTC)
     enqueued = store.enqueue(
         execution_id="exec-slow",
@@ -323,9 +206,9 @@ async def test_durable_job_worker_renews_lease_during_slow_execution(tmp_path: P
     assert final_record.lease_expires_at is None
 
 
-def test_reap_expired_leases_and_node_heartbeats(tmp_path: Path) -> None:
+def test_reap_expired_leases_and_node_heartbeats() -> None:
     """Verify expired leases transition to PENDING or DEAD_LETTER and node heartbeats filter expired rows."""
-    store = SqliteJobStore(db_path=tmp_path / "reap.sqlite3")
+    store = make_fake_oracle_job_store()
     t0 = datetime(2026, 10, 24, 12, 0, 0, tzinfo=UTC)
 
     job = store.enqueue(
@@ -374,3 +257,156 @@ def test_reap_expired_leases_and_node_heartbeats(tmp_path: Path) -> None:
 
     expired = store.list_active_heartbeats(now=hb.expires_at + timedelta(seconds=1))
     assert expired == []
+
+
+def test_oracle_cancel_job_state_machine_and_reaping() -> None:
+    """Verify pending, claimed, running, and terminal cancellation and expired lease reaping on OracleJobStore."""
+    store = make_fake_oracle_job_store()
+    t0 = datetime(2026, 10, 24, 12, 0, 0, tzinfo=UTC)
+
+    pending_job = store.enqueue(
+        execution_id="00000000-0000-0000-0000-000000000021",
+        owner_table="sh.sales",
+        payload={"owner_table": "sh.sales"},
+        now=t0,
+    )
+    cancelled_pending = store.cancel_job(
+        execution_id=pending_job.execution_id,
+        reason="Cancelled by operator",
+        now=t0 + timedelta(seconds=5),
+    )
+    assert cancelled_pending is not None
+    assert cancelled_pending.status is JobState.CANCELLED
+    assert cancelled_pending.cancel_requested is True
+    assert cancelled_pending.finished_at is not None
+    assert cancelled_pending.lease_expires_at is None
+    assert store.get_active_job_for_table("sh.sales") is None
+    assert store.claim_batch(worker_id="w1", limit=5, now=t0 + timedelta(seconds=6)) == []
+
+    idempotent = store.cancel_job(execution_id=pending_job.execution_id, now=t0 + timedelta(seconds=10))
+    assert idempotent is not None
+    assert idempotent.status is JobState.CANCELLED
+    assert store.cancel_job(execution_id="00000000-0000-0000-0000-000000000099") is None
+
+    running_job = store.enqueue(
+        execution_id="00000000-0000-0000-0000-000000000022",
+        owner_table="sh.sales",
+        payload={"owner_table": "sh.sales"},
+        now=t0 + timedelta(seconds=15),
+    )
+    store.claim_batch(worker_id="w1", limit=1, lease_seconds=30, now=t0 + timedelta(seconds=15))
+    store.mark_running(job_id=running_job.job_id, worker_id="w1", lease_seconds=30, now=t0 + timedelta(seconds=15))
+
+    flagged_running = store.cancel_job(
+        execution_id=running_job.execution_id,
+        reason="Abort long offload",
+        now=t0 + timedelta(seconds=20),
+    )
+    assert flagged_running is not None
+    assert flagged_running.status is JobState.RUNNING
+    assert flagged_running.cancel_requested is True
+
+    reaped = store.reap_expired_leases(now=t0 + timedelta(seconds=60))
+    assert reaped == 1
+    after_reap = store.get_job_by_execution_id(running_job.execution_id)
+    assert after_reap is not None
+    assert after_reap.status is JobState.CANCELLED
+    assert after_reap.lease_expires_at is None
+
+
+@pytest.mark.anyio
+async def test_cooperative_cancel_sink_unwinds_worker_thread_before_mark_cancelled() -> None:
+    """Verify RUNNING job cancellation trips _CooperativeCancelSink and unwinds thread lock before mark_cancelled."""
+    store = make_fake_oracle_job_store()
+    exec_id = "00000000-0000-0000-0000-000000000031"
+    store.enqueue(
+        execution_id=exec_id,
+        owner_table="sh.sales",
+        payload={"owner_table": "sh.sales"},
+    )
+    events_log: list[str] = []
+
+    async def thread_backed_executor(record: JobRecord, cancel_event: threading.Event) -> None:
+        sink = _CooperativeCancelSink(cancel_event)
+
+        def _sync_work() -> None:
+            events_log.append("lock_acquired")
+            try:
+                while True:
+                    sink.emit(LogEvent(line="step tick"))
+                    threading.Event().wait(0.01)
+            finally:
+                events_log.append("lock_released")
+
+        await asyncio.to_thread(_sync_work)
+
+    worker = DurableJobWorker(
+        store=store,
+        executor=thread_backed_executor,
+        worker_id="worker-coop",
+        lease_seconds=120,
+        heartbeat_interval_seconds=0.02,
+        poll_interval_seconds=0.01,
+    )
+
+    async def _trigger_cancel() -> None:
+        await asyncio.sleep(0.03)
+        store.cancel_job(execution_id=exec_id, reason="Operator requested cancel")
+
+    cancel_task = asyncio.create_task(_trigger_cancel())
+    await worker.process_once()
+    await cancel_task
+
+    final = store.get_job_by_execution_id(exec_id)
+    assert final is not None
+    assert final.status is JobState.CANCELLED
+    assert final.cancel_requested is True
+    assert events_log == ["lock_acquired", "lock_released"]
+
+
+def test_cancel_offload_job_endpoint_rest_and_mcp() -> None:
+    """Verify POST /api/orchestration/executions/{execution_id}/cancel/ over REST and MCP."""
+    store = make_fake_oracle_job_store()
+    exec_id = "00000000-0000-0000-0000-000000000041"
+    store.enqueue(execution_id=exec_id, owner_table="SH.SALES", payload={"owner_table": "SH.SALES"})
+
+    app = create_app(
+        dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
+        enable_background_worker=False,
+    )
+    base_meta = {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+    with TestClient(app=app) as client:
+        resp = client.post(f"/api/orchestration/executions/{exec_id}/cancel/")
+        assert resp.status_code in (200, 201)
+        body = resp.json()
+        assert body["status"] == "CANCELLED"
+        assert body["cancel_requested"] is True
+
+        exec_id_2 = "00000000-0000-0000-0000-000000000042"
+        store.enqueue(execution_id=exec_id_2, owner_table="SH.COSTS", payload={"owner_table": "SH.COSTS"})
+        mcp_resp = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "cancel_offload_job",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 50,
+                "method": "tools/call",
+                "params": {
+                    "name": "cancel_offload_job",
+                    "arguments": {"execution_id": exec_id_2},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert mcp_resp.status_code == 200
+        assert mcp_resp.json()["result"]["isError"] is False
+
+        missing = client.post("/api/orchestration/executions/00000000-0000-0000-0000-000000000099/cancel/")
+        assert missing.status_code == 404

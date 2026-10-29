@@ -15,17 +15,17 @@ from litestar.testing import TestClient
 from goe.listener.app import create_app
 from goe.listener.cache import ListenerCache
 from goe.listener.config import settings
-from goe.listener.jobs.store import SqliteJobStore
 from goe.listener.services.system import SystemService
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.models import OffloadMetadata
 from goe.report.models import StatusReportEnvelope, TableStatusReport
 from goe.serializers import decode_json
+from tests.unit.listener.conftest import make_fake_oracle_job_store
 
 
 def test_system_status(tmp_path: Path) -> None:
     """Verify /api/system/status/ returns 200 OK."""
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
         enable_background_worker=False,
@@ -52,7 +52,7 @@ def test_system_config(tmp_path: Path) -> None:
     mock_service.get_active_listener_endpoints = mock_active_endpoints
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -79,7 +79,7 @@ def test_system_schemas(tmp_path: Path) -> None:
     ]
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -105,7 +105,7 @@ def test_system_console_key_enforcement(tmp_path: Path) -> None:
     ]
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -175,7 +175,7 @@ def test_table_metadata_and_status_report_endpoints(tmp_path: Path) -> None:
     mock_service.get_status_report.return_value = sample_envelope
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -240,7 +240,7 @@ def test_mcp_simultaneous_tools_and_goe_resources_discovery(tmp_path: Path) -> N
     )
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
