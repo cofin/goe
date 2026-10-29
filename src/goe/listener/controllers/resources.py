@@ -119,6 +119,21 @@ class GOEResourcesController(SecureController):
         return await async_(system_service.get_status_report)()
 
     @get(
+        "/reports/status/{schema_filter:str}/",
+        mcp_resource="schema_status_report",
+        mcp_resource_template="goe://reports/status/{schema_filter}",
+        mcp_resource_description="GOE Offload Status Report filtered by frontend schema name.",
+        mcp_resource_mime_type="application/json",
+    )
+    async def read_schema_status_report(
+        self,
+        system_service: NamedDependency[SystemService],
+        schema_filter: FromPath[str],
+    ) -> StatusReportEnvelope:
+        """Return goe://reports/status/{schema_filter} templated resource."""
+        return await async_(system_service.get_status_report)(schema_name=schema_filter)
+
+    @get(
         "/schemas/",
         mcp_resource_uri="goe://schemas",
     )

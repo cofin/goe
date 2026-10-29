@@ -1,12 +1,14 @@
 ---
 type: Reference
 title: CLI Utilities Reference
-description: Command-line reference for offload, connect, validate, sync, report, logmgr, and listener tools
+description: Command-line reference for offload, connect, validate, sync, report, logmgr, and listener (Vertebra ASGI, durable worker, and MCP stdio/bridge/inspect) tools
 tags:
   - reference
   - operations
   - cli
+  - mcp
   - tools
+updated_at: "2026-10-29T21:55:00Z"
 ---
 
 # CLI Utilities Reference
@@ -35,7 +37,7 @@ Pre-flight environment and connectivity validation suite powered by `ConnectRunn
 ### Modes & Flags
 - `goe connect`: Runs concurrent pre-flight checks (`run_bounded`) across OS (`/etc/os-release` `PRETTY_NAME`), SSH transport hosts, frontend database, backend cloud platform, and Spark loopback networking.
 - `goe connect --json`: Emits structured `ConnectivityReport` JSON via `goe.serializers`.
-- Listener endpoint: `GET /api/system/connectivity/` (and MCP tool `check_connectivity`) delegates to `ConnectRunner`.
+- Listener endpoint: `GET /api/system/connectivity/` (MCP tool `check_connectivity` and resource `goe://system/connectivity`) delegates to `ConnectRunner`.
 
 ### Exit Codes
 - `0`: Success (all checks passed).
@@ -52,17 +54,18 @@ Cross-database data consistency and aggregation validator powered by `CrossDbVal
 - `--scn <scn>`: Flashback SCN (`AS OF SCN :scn`) on Oracle source.
 - `-f, --filters <where>`: Custom filter predicate validated via `CrossDbValidationBuilder.parse_filter_tuples` / `DialectSqlEngine.transpile_safe_filter`.
 - `--diff`: Stream primary-key and column projections from source and target into an in-memory DuckDB 2.0 relation and run bidirectional `EXCEPT` to isolate row-level discrepancies (`CrossDbValidator.run_row_diff`).
+- Listener endpoint: `POST /api/orchestration/validate/` (MCP tool `validate_table`).
 
 ## 4. `goe sync` & `goe report`
 - `goe sync` (`src/goe/cli/commands/sync.py` -> `SchemaSyncService` in `src/goe/sync/differ.py`):
   - `--include <pattern>`: CSV list of schemas or `schema.table` patterns (default `*.*`).
   - `-x, --execute`: Apply generated `ALTER TABLE` evolution DDL to the target warehouse rather than previewing.
   - `--command-file <path>`: Write generated evolution DDL statements cleanly to a file.
-  - Listener endpoint: `GET /api/system/schemas/{schema_name}/{table_name}/drift/` (`mcp_tool="preview_schema_drift"`).
+  - Listener endpoints: `GET /api/system/schemas/{schema_name}/{table_name}/drift/` (MCP tool `preview_schema_drift` and resource `goe://schemas/{schema_name}/{table_name}/drift`) and `POST /api/orchestration/sync/` (MCP tool `apply_schema_sync`).
 - `goe report` (`src/goe/cli/commands/report.py` -> `StatusReportService` in `src/goe/report/service.py`):
   - Collects source and target partition metrics concurrently (`run_bounded(max_workers=2)`), aggregates table and schema totals via DuckDB 2.0 `GROUP BY ROLLUP`, and renders `HTML`, `TEXT`, `JSON`, `RAW`, or `CSV` at `summary` or `detail` level.
   - `-d, --demo`: Loads the compressed `src/goe/report/fixtures/demo_report.json.gz` fixture into `StatusReportEnvelope` / `OffloadStatusReport`.
-  - Listener endpoint: `GET /api/system/schemas/{schema_name}/{table_name}/status/` (`mcp_tool="get_table_offload_status"`).
+  - Listener endpoints: `GET /api/system/reports/status/` (MCP tool `generate_status_report` and resources `goe://reports/status`, `goe://reports/status/{schema_filter}`) and `GET /api/system/schemas/{schema_name}/{table_name}/status/` (MCP tool `get_table_offload_status` and resource `goe://schemas/{schema_name}/{table_name}/status`).
 
 ## 5. `goe logmgr`
 Log rotation and retention utility designed for scheduled execution.
@@ -70,5 +73,14 @@ Log rotation and retention utility designed for scheduled execution.
 - Archives into `$OFFLOAD_HOME/log/archive/YYYY.MM.DD/`.
 
 ## 6. `goe listener`
-ASGI server and worker runner for the GOE Listener REST and MCP service.
-- Runs the Litestar application (`goe.listener.app:create_app`) via the `litestar-granian` Rust ASGI runtime (`uvloop`) and manages background queue workers.
+Vertebra ASGI server, durable background job worker, and Model Context Protocol (`2026-07-28`) CLI (`src/goe/cli/commands/listener.py`).
+
+### Server & Worker Subcommands
+- `goe listener start`: Verifies the Vertebra runtime gate (`verify_vertebra_runtime_gate()`) and starts the Litestar application (`goe.listener.asgi:app`) via `vertebra run goe.listener.asgi:app --interface asgi --topology shm --workers <N> --threads 1 --drain-timeout 30`.
+- `goe listener start --worker-only`: Runs `DurableJobWorker` against `OracleJobStore` (`GOE_LISTENER_JOBS`) without binding an HTTP socket.
+- `goe listener status`: Probes `GET /api/system/status/` via `httpx2.Client` (normalizing `0.0.0.0`/`::` to `127.0.0.1` and forwarding `x-goe-console-key` when `OFFLOAD_LISTENER_SHARED_TOKEN` is configured), exiting `0` when healthy or `1` when unreachable/unhealthy.
+
+### MCP Subcommands (`goe listener mcp`)
+- `goe listener mcp stdio`: Runs the GOE Listener MCP server in-process over newline-delimited JSON-RPC `stdin`/`stdout` via `litestar_mcp.mcp.stdio.run_stdio` (`ASGIStreamingTransport`), redirecting root `stdout` log handlers to `sys.stderr` and forwarding `x-goe-console-key` when `shared_token` is configured (`--client-id`, `--owner-id`, `--enable-worker / --no-worker`).
+- `goe listener mcp bridge`: Bridges local `stdin`/`stdout` JSON-RPC to a remote Streamable HTTP `POST <endpoint>` (`default: f"{settings.base_url}/mcp"`) via `litestar_mcp.mcp.bridge.run_stdio_streamable_http_bridge` (`--endpoint`, `--token`, `--timeout`, `--sse-read-timeout`).
+- `goe listener mcp inspect`: Prints a structured JSON (`--json`) or Rich table summary of all discovered MCP tools, static resources, RFC 6570 resource templates, prompts, and packaged skills.
