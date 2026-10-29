@@ -27,6 +27,7 @@ __all__ = (
     "CommandExecutionStep",
     "CommandExecutions",
     "CommandScheduled",
+    "ConfirmationChallenge",
     "ErrorMessage",
     "HealthCheck",
     "ListenerConfig",
@@ -384,10 +385,23 @@ class CommandExecutionLog(FrozenBaseStruct, frozen=True):
     message: str = ""
 
 
+class ConfirmationChallenge(FrozenBaseStruct, frozen=True):
+    """Signed confirmation challenge issued by preview or MRTR gating before mutating operations."""
+
+    tool_name: str
+    owner_table: str
+    confirmation_token: str
+    expires_at_epoch: int
+    expires_in_seconds: int
+    instructions: str
+    confirmation_required: bool = True
+
+
 class OffloadOptions(FrozenBaseStruct, frozen=True):
     """Options payload for submitting an offload operation."""
 
     owner_table: str
+    confirmation_token: str | None = None
     allow_decimal_scale_rounding: bool | None = None
     allow_floating_point_conversions: bool | None = None
     allow_nanosecond_timestamp_columns: bool | None = None
@@ -508,6 +522,7 @@ class OffloadOptions(FrozenBaseStruct, frozen=True):
         if "older_than_days" in raw and isinstance(raw["older_than_days"], int):
             raw["older_than_days"] = str(raw["older_than_days"])
 
+        raw.pop("confirmation_token", None)
         raw.pop("quiet", None)
         raw.pop("verbose", None)
         return raw

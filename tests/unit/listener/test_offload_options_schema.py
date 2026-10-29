@@ -146,7 +146,7 @@ def test_listener_config_and_column_detail_optional_fields() -> None:
 def test_offload_options_fields_track_expected_offload_args() -> None:
     """Listener REST fields equal the canonical offload keys plus documented aliases."""
     alias_fields = set(LISTENER_OFFLOAD_RENAME_ALIASES) | set(LISTENER_OFFLOAD_CSV_ALIASES) | {"subpartitions"}
-    rest_fields = set(OffloadOptions.__struct_fields__) - alias_fields - {"quiet", "verbose"}
+    rest_fields = set(OffloadOptions.__struct_fields__) - alias_fields - {"confirmation_token", "quiet", "verbose"}
     assert rest_fields == set(EXPECTED_OFFLOAD_ARGS) - {"operation_name"}
 
 
