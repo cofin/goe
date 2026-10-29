@@ -11,12 +11,14 @@ historical option builders and preserve the defaults expected by downstream cons
 
 import os
 from collections.abc import Mapping
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import msgspec
 
 from goe.config import orchestration_defaults
-from goe.lib.schemas import BaseStruct
+from goe.config.option_registry import listener_alias_map
+from goe.exceptions import ValidationError
+from goe.typing import BaseStruct, FrozenBaseStruct
 
 __all__ = (
     "EXPECTED_OFFLOAD_ARGS",
@@ -27,11 +29,21 @@ __all__ = (
     "CommonOptions",
     "ConnectOptions",
     "OffloadOperationOptions",
+    "OffloadOptions",
+    "OffloadType",
     "SchemaSyncOptions",
+    "StatsMethod",
     "StatusReportOptions",
     "TableOperationOptions",
+    "TestModeFaults",
+    "VerifyMode",
     "default_report_directory",
 )
+
+VerifyMode = Literal["true", "false", "count", "aggregate"]
+OffloadType = Literal["FULL", "INCREMENTAL"]
+StatsMethod = Literal["NATIVE", "NONE", "COPY", "HISTORY"]
+ExporterProtocol = Literal["none", "console", "otlp_grpc", "otlp_http"]
 
 EXPECTED_OFFLOAD_ARGS: tuple[str, ...] = (
     "allow_decimal_scale_rounding",
@@ -104,9 +116,6 @@ EXPECTED_OFFLOAD_ARGS: tuple[str, ...] = (
     "reset_hybrid_view",
     "reuse_backend_table",
     "sort_columns_csv",
-    "sqoop_additional_options",
-    "sqoop_mapreduce_map_memory_mb",
-    "sqoop_mapreduce_map_java_opts",
     "skip",
     "storage_compression",
     "storage_format",
@@ -150,9 +159,9 @@ class BaseOptionStruct(BaseStruct, kw_only=True):
         """Build an instance from a mapping; unknown keys raise TypeError."""
         return cls(**dict(mapping))
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
         """Return every field value in a new dictionary."""
-        return msgspec.structs.asdict(self)
+        return super().to_dict(exclude_unset=exclude_unset)
 
 
 class CommonOptions(BaseOptionStruct, kw_only=True):
@@ -309,11 +318,6 @@ class OffloadOperationOptions(TableOperationOptions, kw_only=True):
     offload_transport_validation_polling_interval: str | int | float = msgspec.field(
         default_factory=orchestration_defaults.offload_transport_validation_polling_interval_default
     )
-    sqoop_additional_options: str | None = msgspec.field(
-        default_factory=orchestration_defaults.sqoop_additional_options_default
-    )
-    sqoop_mapreduce_map_memory_mb: str | int | None = None
-    sqoop_mapreduce_map_java_opts: str | None = None
     verify_row_count: str | bool | None = msgspec.field(default_factory=orchestration_defaults.verify_row_count_default)
     verify_parallelism: int | str | None = msgspec.field(
         default_factory=orchestration_defaults.verify_parallelism_default
@@ -363,3 +367,143 @@ class SchemaSyncOptions(CommonOptions, kw_only=True):
 
     include: str | None = None
     command_file: str | None = None
+
+
+class TestModeFaults(FrozenBaseStruct, frozen=True):
+    """Test-only fault-injection knobs isolated from production options."""
+
+    enabled: bool = False
+    error_before_step: str | None = None
+    error_after_step: str | None = None
+    error_on_token: str | None = None
+    transport_snapshot_override: str | None = None
+
+
+class OffloadOptions(FrozenBaseStruct, frozen=True):
+    """Typed, frozen operational options for a single offload execution."""
+
+    table: str = ""
+    target_owner_name: str | None = None
+    execute: bool = False
+    force: bool = False
+    verbose: bool = False
+    vverbose: bool = False
+    quiet: bool = False
+    ansi: bool = False
+    error_stack: bool = False
+    Suppress_stdout: bool = False
+    preserve_case: bool = False
+    create_backend_db: bool = False
+    reset_backend_table: bool = False
+    reuse_backend_table: bool = False
+    purge_backend_table: bool = False
+    offload_type: OffloadType | None = None
+    older_than_date: str | None = None
+    older_than_days: int | None = None
+    equal_to_values: tuple[str, ...] = ()
+    partition_names_csv: str | None = None
+    offload_predicate: str | None = None
+    offload_predicate_type: str | None = None
+    offload_partition_columns: str | None = None
+    offload_partition_functions: str | None = None
+    offload_partition_granularity: str | None = None
+    offload_partition_lower_value: int | None = None
+    offload_partition_upper_value: int | None = None
+    offload_partition_num_buckets: int | None = None
+    offload_partition_digits: int | None = None
+    sort_columns_csv: str | None = None
+    offload_transport_method: str = "AUTO"
+    offload_transport_small_table_threshold: str | None = None
+    offload_transport_parallelism: int | None = None
+    offload_transport_fetch_size: int | None = None
+    offload_transport_consistent_read: bool = True
+    offload_transport_dsn: str | None = None
+    offload_transport_spark_properties: str | None = None
+    offload_transport_queue_name: str | None = None
+    offload_transport_validation_polling_interval: int = -1
+    compress_load_table: bool = False
+    preserve_load_table: bool = False
+    offload_fs_scheme: str | None = None
+    offload_fs_container: str | None = None
+    offload_fs_prefix: str | None = None
+    integer_1_columns_csv: str | None = None
+    integer_2_columns_csv: str | None = None
+    integer_4_columns_csv: str | None = None
+    integer_8_columns_csv: str | None = None
+    integer_38_columns_csv: str | None = None
+    decimal_columns_csv_list: tuple[str, ...] = ()
+    decimal_columns_type_list: tuple[str, ...] = ()
+    double_columns_csv: str | None = None
+    date_columns_csv: str | None = None
+    timestamp_columns_csv: str | None = None
+    variable_string_columns_csv: str | None = None
+    nanosecond_timestamp_columns_csv: str | None = None
+    time_zone_columns_csv: str | None = None
+    char_semantics_columns_csv: str | None = None
+    unicode_string_columns_csv: str | None = None
+    allow_decimal_scale_rounding: bool = False
+    allow_floating_point_conversions: bool = False
+    allow_nanosecond_timestamp_columns: bool = False
+    column_transformation_list: tuple[str, ...] = ()
+    verify: VerifyMode = "true"
+    verify_parallelism: int = 0
+    compute_load_table_stats: bool = False
+    not_null_columns_csv: str | None = None
+    offload_stats_method: StatsMethod = "NATIVE"
+    hive_column_stats: bool = False
+    skip_steps: str | None = None
+    data_sample_pct: str = "AUTO"
+    data_sample_parallelism: int = 0
+    max_offload_chunk_size: str | None = None
+    max_offload_chunk_count: int = 100
+    ddl_file: str | None = None
+    offload_distribute_enabled: bool = True
+    ora_adm_pass: str | None = None
+    ora_app_user: str | None = None
+    ora_app_pass: str | None = None
+    ora_Override_adm_user: bool = False
+    backend_session_parameters: str | None = None
+    otel_enabled: bool = False
+    otel_service_name: str | None = None
+    otel_exporter_protocol: ExporterProtocol | None = None
+    otel_endpoint: str | None = None
+    otel_sample_ratio: float | None = None
+    test_faults: TestModeFaults = TestModeFaults()
+
+    @property
+    def owner(self) -> str:
+        """Return the parsed source schema owner from table (OWNER.TABLE)."""
+        if "." not in self.table:
+            raise ValidationError(f"Expected OWNER.TABLE in table option, got {self.table!r}")
+        raw_owner, _ = self.table.split(".", 1)
+        if not raw_owner:
+            raise ValidationError(f"Empty owner in table option {self.table!r}")
+        return raw_owner if self.preserve_case else raw_owner.upper()
+
+    @property
+    def table_name(self) -> str:
+        """Return the parsed source table name from table (OWNER.TABLE)."""
+        if "." not in self.table:
+            raise ValidationError(f"Expected OWNER.TABLE in table option, got {self.table!r}")
+        _, raw_table = self.table.split(".", 1)
+        if not raw_table:
+            raise ValidationError(f"Empty table name in table option {self.table!r}")
+        return raw_table if self.preserve_case else raw_table.upper()
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> Self:
+        """Validate and construct OffloadOptions from a CLI or Listener dictionary."""
+        aliases = listener_alias_map()
+        normalized: dict[str, Any] = {}
+        for key, value in raw.items():
+            target_key = aliases.get(key, key)
+            if value is not None:
+                normalized[target_key] = value
+        try:
+            instance = msgspec.convert(normalized, type=cls, strict=False)
+        except msgspec.ValidationError as exc:
+            raise ValidationError(str(exc), details={"option_error": str(exc)}) from exc
+        if instance.table:
+            _ = instance.owner
+            _ = instance.table_name
+        return instance

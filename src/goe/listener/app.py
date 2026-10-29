@@ -27,7 +27,7 @@ from goe.listener.security import build_security_config
 from goe.listener.services.system import get_system_service
 from goe.listener.telemetry import build_listener_otel_plugin, build_queue_observability_config
 from goe.observability.runtime import ensure_observability
-from goe.util.goe_version import goe_version
+from goe.util import goe_version
 
 
 def create_app(dependencies: dict[str, Any] | None = None) -> Litestar:

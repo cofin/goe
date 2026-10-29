@@ -235,9 +235,6 @@ class OffloadOptions(BaseStruct):
     reuse_backend_table: bool | None = None
     skip: list[str] | str | None = None
     sort_columns_csv: str | None = None
-    sqoop_additional_options: str | None = None
-    sqoop_mapreduce_map_java_opts: str | None = None
-    sqoop_mapreduce_map_memory_mb: int | None = None
     storage_compression: str | None = None
     storage_format: str | None = None
     suppress_stdout: bool | None = None

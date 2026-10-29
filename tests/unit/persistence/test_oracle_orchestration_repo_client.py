@@ -11,9 +11,9 @@ from unittest.mock import MagicMock
 import pytest
 
 import goe.persistence
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
 from goe.offload.offload_constants import DBTYPE_ORACLE
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.registry import create_frontend_api
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.oracle.oracle_orchestration_repo_client import OracleOrchestrationRepoClient
 from goe.persistence.oracle_gateway import OracleGateway, load_sql_file
@@ -232,7 +232,7 @@ def _cursor(columns: list[str], rows: list[tuple]) -> MagicMock:
 def _client(columns: list[str], rows: list[tuple]) -> tuple[OracleOrchestrationRepoClient, MagicMock]:
     config = build_mock_options(FAKE_ORACLE_BQ_ENV)
     messages = OffloadMessages()
-    api = frontend_api_factory(DBTYPE_ORACLE, config, messages, dry_run=True, do_not_connect=True)
+    api = create_frontend_api(DBTYPE_ORACLE, config, messages, dry_run=True, do_not_connect=True)
     cursor = _cursor(columns, rows)
     api._db_conn = MagicMock()
     api._db_conn.cursor.return_value = cursor

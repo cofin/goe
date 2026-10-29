@@ -5,11 +5,9 @@
 
 from unittest import TestCase, main
 
+from goe.offload.registry import create_repository_client
 from goe.orchestration import orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
 from goe.persistence.orchestration_metadata import (
     METADATA_ATTRIBUTES,
     OrchestrationMetadata,
@@ -153,7 +151,7 @@ class TestOrchestrationMetadata(TestCase):
         """Tests we can interact with OrchestrationMetadata by client.
         This is more efficient as it will re-use a connection.
         """
-        client = orchestration_repo_client_factory(
+        client = create_repository_client(
             self.config,
             self.messages,
             trace_action="repo_client(test_metadata_by_client)",

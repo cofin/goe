@@ -18,7 +18,6 @@ from goe.offload.transport.constants import (
     OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
-    OFFLOAD_TRANSPORT_SQOOP_METHODS,
     VALID_OFFLOAD_TRANSPORT_METHODS,
 )
 from goe.offload.transport.factory import choose_offload_transport_method
@@ -26,8 +25,8 @@ from goe.offload.transport.query_import import OffloadTransportQueryImport, quer
 from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, FAKE_ORACLE_HIVE_ENV, build_mock_options
 
 
-def test_gcp_auto_prefers_query_import_then_dataproc_and_skips_sqoop() -> None:
-    """GCP AUTO evaluates QI, Dataproc, Batches, Submit, Thrift, Livy and never Sqoop."""
+def test_gcp_auto_prefers_query_import_then_dataproc() -> None:
+    """GCP AUTO evaluates QI, Dataproc, Batches, Submit, Thrift, then Livy."""
     chosen, evaluated = _choose(FAKE_ORACLE_BQ_ENV, OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY)
     assert chosen == OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY
     assert evaluated == [
@@ -41,10 +40,10 @@ def test_gcp_auto_prefers_query_import_then_dataproc_and_skips_sqoop() -> None:
 
 
 def test_non_gcp_auto_order_is_unchanged() -> None:
-    """Hadoop AUTO keeps GOE, then Sqoop, then GCP rule order."""
+    """Hadoop AUTO evaluates GOE rules then GCP rules."""
     chosen, evaluated = _choose(FAKE_ORACLE_HIVE_ENV, OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD)
     assert chosen == OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD
-    assert evaluated == OFFLOAD_TRANSPORT_GOE_METHODS + OFFLOAD_TRANSPORT_SQOOP_METHODS + OFFLOAD_TRANSPORT_GCP_METHODS
+    assert evaluated == OFFLOAD_TRANSPORT_GOE_METHODS + OFFLOAD_TRANSPORT_GCP_METHODS
 
 
 @pytest.mark.parametrize(

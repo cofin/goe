@@ -14,24 +14,21 @@ import oracledb as cxo
 from numpy import datetime64
 
 from goe.offload.column_metadata import ColumnMetadataInterface
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
 from goe.offload.frontend_api import QueryParameter
 from goe.offload.offload_constants import (
     DBTYPE_MSSQL,
     DBTYPE_ORACLE,
-    DBTYPE_TERADATA,
 )
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.registry import create_frontend_api
 from tests.testlib.test_framework.factory.frontend_testing_api_factory import (
     frontend_testing_api_factory,
 )
 from tests.unit.test_functions import (
     FAKE_MSSQL_ENV,
     FAKE_ORACLE_ENV,
-    FAKE_TERADATA_ENV,
     build_mock_options,
     optional_sql_server_dependency_exception,
-    optional_teradata_dependency_exception,
 )
 
 
@@ -49,7 +46,7 @@ class TestFrontendApi(TestCase):
 
     def setUp(self):
         messages = OffloadMessages()
-        self.api = frontend_api_factory(
+        self.api = create_frontend_api(
             self.db_type,
             self.config,
             messages,
@@ -394,21 +391,6 @@ class TestOracleFrontendApi(TestFrontendApi):
         self.api._disconnect.assert_not_called()
         self.api._connect.assert_not_called()
         self.assertEqual(mock_cursor.execute.call_count, 1)
-
-
-class TestTeradataFrontendApi(TestFrontendApi):
-    def setUp(self):
-        self.connect_to_frontend = False
-        self.db_type = DBTYPE_TERADATA
-        self.config = self._get_mock_config(FAKE_TERADATA_ENV)
-        try:
-            super().setUp()
-        except ModuleNotFoundError as e:
-            if not optional_teradata_dependency_exception(e):
-                raise
-
-    def test_all_non_connecting_teradata_tests(self):
-        self._run_all_tests()
 
 
 if __name__ == "__main__":

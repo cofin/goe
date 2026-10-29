@@ -12,10 +12,10 @@ This is split into two categories:
 
 from unittest import TestCase, main
 
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_constants import DBTYPE_ORACLE
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_source_table import OffloadSourceTableException
+from goe.offload.registry import create_source_table
 from tests.integration.test_functions import (
     build_current_options,
     get_default_test_user,
@@ -42,7 +42,7 @@ class TestCurrentOffloadSourceTable(TestCase):
             dry_run=False,
             trace_action="frontend_api(TestCurrentOffloadSourceTable)",
         )
-        self.api = OffloadSourceTable.create(
+        self.api = create_source_table(
             self.db,
             self.table,
             self.config,

@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, patch
 from google.cloud import bigquery
 
 from goe.offload.bigquery.bigquery_load_job import build_staging_load_job_config
-from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.offload_constants import DBTYPE_BIGQUERY, FILE_STORAGE_FORMAT_AVRO, FILE_STORAGE_FORMAT_PARQUET
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.registry import create_backend_table
 from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, build_mock_options
 
 KMS_KEY = "projects/kms-project/locations/US/keyRings/ring-name/cryptoKeys/key-name"
@@ -70,7 +70,7 @@ def test_external_mode_keeps_external_table() -> None:
 def _table(dry_run: bool, mode: str = "NATIVE"):
     """Build a non-connecting BigQuery table with a mocked BigQuery client."""
     config = build_mock_options({**FAKE_ORACLE_BQ_ENV, "BIGQUERY_LOAD_TABLE_MODE": mode})
-    table = backend_table_factory(
+    table = create_backend_table(
         "sales", "orders", DBTYPE_BIGQUERY, config, OffloadMessages(), dry_run=dry_run, do_not_connect=True
     )
     table._db_api._client = MagicMock()

@@ -12,7 +12,7 @@ from litestar.testing import TestClient
 from goe.listener.app import create_app
 from goe.listener.config import settings
 from goe.listener.services.system import SystemService
-from goe.orchestration.orchestration_lock import OrchestrationLockTimeout
+from goe.platform.locking import OrchestrationLockTimeout
 
 
 def test_orchestration_executions() -> None:

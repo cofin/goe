@@ -78,6 +78,8 @@ lint:                                               ## Run Ruff linter and Mypy 
 	@uv run ruff check .
 	@echo "${INFO} Running Mypy typecheck..."
 	@uv run mypy src/goe
+	@echo "${INFO} Running architecture boundary verifier..."
+	@uv run python tools/verify_architecture.py
 	@echo "${OK} Linting and typechecks passed ✓"
 
 .PHONY: format

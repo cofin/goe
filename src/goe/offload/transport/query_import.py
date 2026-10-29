@@ -7,12 +7,12 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from goe.offload.factory.query_import_factory import query_import_factory
 from goe.offload.offload_constants import DBTYPE_BIGQUERY
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
 from goe.offload.offload_transport_functions import (
     get_local_staging_path,
 )
+from goe.offload.registry import create_query_import_encoder
 from goe.offload.transport.base import (
     OffloadTransport,
     convert_nans_to_nulls,
@@ -146,7 +146,7 @@ class OffloadTransportQueryImport(OffloadTransport):
         if self._dry_run:
             self.log("Extraction sql: %s" % source_query, detail=VERBOSE)
         else:
-            encoder = query_import_factory(
+            encoder = create_query_import_encoder(
                 self._staging_file,
                 self._messages,
                 compression=self._compress_load_table,

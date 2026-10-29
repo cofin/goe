@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-from goe.util.goe_version import GOEVersion
+from goe.util import GOEVersion
 
 
 def test_goe_version():

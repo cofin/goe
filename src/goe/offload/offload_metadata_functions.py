@@ -27,7 +27,7 @@ from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_RANGE,
     OrchestrationMetadata,
 )
-from goe.util.misc_functions import csv_split, nvl, unsurround
+from goe.util.string_utils import csv_split, nvl, unsurround
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig

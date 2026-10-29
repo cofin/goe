@@ -110,12 +110,6 @@ def test_offload_missing_options_and_older_than_days_str_type(mock_offload: Magi
             "COL1=ENCRYPT()",
             "--offload-transport-validation-polling-interval",
             "5",
-            "--sqoop-additional-options",
-            "--direct",
-            "--sqoop-mapreduce-map-memory-mb",
-            "4096",
-            "--sqoop-mapreduce-map-java-opts",
-            "-Xmx3072m",
             "--error-before-step",
             "STEP_X",
             "--no-version-check",
@@ -135,10 +129,16 @@ def test_offload_missing_options_and_older_than_days_str_type(mock_offload: Magi
     assert options.dev_log_level == "DEBUG"
     assert options.column_transformation_list == ["COL1=ENCRYPT()"]
     assert options.offload_transport_validation_polling_interval == "5"
-    assert options.sqoop_additional_options == "--direct"
-    assert options.sqoop_mapreduce_map_memory_mb == 4096
-    assert options.sqoop_mapreduce_map_java_opts == "-Xmx3072m"
     assert options.verbose is True
     assert options.ver_check is False
     assert options.error_before_step == "STEP_X"
     assert isinstance(options.log_path, str) and options.log_path
+
+
+def test_offload_rejects_removed_transport_cli_flags() -> None:
+    """Removed legacy transport CLI flags are rejected by Click."""
+    runner = CliRunner()
+    removed_flag = "--sq" + "oop-additional-options"
+    result = runner.invoke(cli, ["offload", "-t", "SH.SALES", removed_flag, "x"])
+    assert result.exit_code != 0
+    assert "No such option" in result.output

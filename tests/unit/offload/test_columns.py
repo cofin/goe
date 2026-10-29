@@ -97,40 +97,6 @@ from goe.offload.snowflake.snowflake_column import (
     SNOWFLAKE_TYPE_TIMESTAMP_TZ,
     SnowflakeColumn,
 )
-from goe.offload.teradata.teradata_column import (
-    TERADATA_TYPE_BIGINT,
-    TERADATA_TYPE_BLOB,
-    TERADATA_TYPE_BYTE,
-    TERADATA_TYPE_BYTEINT,
-    TERADATA_TYPE_CHAR,
-    TERADATA_TYPE_CLOB,
-    TERADATA_TYPE_DATE,
-    TERADATA_TYPE_DECIMAL,
-    TERADATA_TYPE_DOUBLE,
-    TERADATA_TYPE_INTEGER,
-    TERADATA_TYPE_INTERVAL_DH,
-    TERADATA_TYPE_INTERVAL_DM,
-    TERADATA_TYPE_INTERVAL_DS,
-    TERADATA_TYPE_INTERVAL_DY,
-    TERADATA_TYPE_INTERVAL_HM,
-    TERADATA_TYPE_INTERVAL_HR,
-    TERADATA_TYPE_INTERVAL_HS,
-    TERADATA_TYPE_INTERVAL_MI,
-    TERADATA_TYPE_INTERVAL_MO,
-    TERADATA_TYPE_INTERVAL_MS,
-    TERADATA_TYPE_INTERVAL_SC,
-    TERADATA_TYPE_INTERVAL_YM,
-    TERADATA_TYPE_INTERVAL_YR,
-    TERADATA_TYPE_NUMBER,
-    TERADATA_TYPE_SMALLINT,
-    TERADATA_TYPE_TIME,
-    TERADATA_TYPE_TIME_TZ,
-    TERADATA_TYPE_TIMESTAMP,
-    TERADATA_TYPE_TIMESTAMP_TZ,
-    TERADATA_TYPE_VARBYTE,
-    TERADATA_TYPE_VARCHAR,
-    TeradataColumn,
-)
 
 
 class TestColumns(TestCase):
@@ -304,61 +270,6 @@ class TestColumns(TestCase):
             else:
                 data_length = data_precision = data_scale = None
             column = SynapseColumn(
-                "test_column",
-                data_type,
-                data_length=data_length,
-                data_precision=data_precision,
-                data_scale=data_scale,
-            )
-            self._inspect_column_object(column)
-
-    def test_teradata_column(self):
-        for data_type in [
-            TERADATA_TYPE_BIGINT,
-            TERADATA_TYPE_BYTE,
-            TERADATA_TYPE_BLOB,
-            TERADATA_TYPE_BYTEINT,
-            TERADATA_TYPE_CHAR,
-            (TERADATA_TYPE_CHAR, 2, None, None),
-            TERADATA_TYPE_CLOB,
-            TERADATA_TYPE_DATE,
-            TERADATA_TYPE_DECIMAL,
-            (TERADATA_TYPE_DECIMAL, None, 10, None),
-            (TERADATA_TYPE_DECIMAL, None, 20, 2),
-            TERADATA_TYPE_DOUBLE,
-            TERADATA_TYPE_INTEGER,
-            TERADATA_TYPE_INTERVAL_YR,
-            TERADATA_TYPE_INTERVAL_YM,
-            TERADATA_TYPE_INTERVAL_MO,
-            TERADATA_TYPE_INTERVAL_DY,
-            TERADATA_TYPE_INTERVAL_DH,
-            TERADATA_TYPE_INTERVAL_DM,
-            TERADATA_TYPE_INTERVAL_DS,
-            TERADATA_TYPE_INTERVAL_HR,
-            TERADATA_TYPE_INTERVAL_HM,
-            TERADATA_TYPE_INTERVAL_HS,
-            TERADATA_TYPE_INTERVAL_MI,
-            TERADATA_TYPE_INTERVAL_MS,
-            TERADATA_TYPE_INTERVAL_SC,
-            TERADATA_TYPE_NUMBER,
-            (TERADATA_TYPE_NUMBER, None, 10, None),
-            (TERADATA_TYPE_NUMBER, None, 20, 2),
-            TERADATA_TYPE_SMALLINT,
-            TERADATA_TYPE_TIME,
-            (TERADATA_TYPE_TIME, None, None, 3),
-            TERADATA_TYPE_TIMESTAMP,
-            (TERADATA_TYPE_TIMESTAMP, None, None, 3),
-            TERADATA_TYPE_TIME_TZ,
-            TERADATA_TYPE_TIMESTAMP_TZ,
-            TERADATA_TYPE_VARBYTE,
-            TERADATA_TYPE_VARCHAR,
-            (TERADATA_TYPE_VARCHAR, 30, None, None),
-        ]:
-            if isinstance(data_type, tuple):
-                data_type, data_length, data_precision, data_scale = data_type
-            else:
-                data_length = data_precision = data_scale = None
-            column = TeradataColumn(
                 "test_column",
                 data_type,
                 data_length=data_length,

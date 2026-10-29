@@ -8,9 +8,7 @@
 
 from unittest import main
 
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.test_functions import (
     cached_current_options,
 )
@@ -31,7 +29,7 @@ class TestCommandStepsIntegration(TestCommandSteps):
         try:
             config = cached_current_options()
             messages = get_test_messages(config, "TestCommandStepsIntegration")
-            client = orchestration_repo_client_factory(
+            client = create_repository_client(
                 config,
                 messages,
                 trace_action="repo_client(test_command_steps_repo)",

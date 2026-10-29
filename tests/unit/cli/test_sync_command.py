@@ -24,7 +24,7 @@ def test_sync_help() -> None:
 @patch("goe.cli.commands.sync.get_log_fh", create=True)
 @patch("goe.cli.commands.sync.OffloadMessages.from_options")
 @patch("goe.cli.commands.sync.run_schema_sync")
-@patch("goe.cli.commands.sync.orchestration_repo_client_factory")
+@patch("goe.cli.commands.sync.create_repository_client")
 @patch("goe.cli.commands.sync.OrchestrationConfig.from_dict")
 def test_sync_dispatch(
     mock_config,
@@ -68,7 +68,7 @@ def test_sync_dispatch(
 @patch("goe.cli.commands.sync.get_log_fh", create=True)
 @patch("goe.cli.commands.sync.OffloadMessages.from_options")
 @patch("goe.cli.commands.sync.run_schema_sync", return_value=1)
-@patch("goe.cli.commands.sync.orchestration_repo_client_factory")
+@patch("goe.cli.commands.sync.create_repository_client")
 @patch("goe.cli.commands.sync.OrchestrationConfig.from_dict")
 def test_sync_nonzero_exit_code(
     mock_config,

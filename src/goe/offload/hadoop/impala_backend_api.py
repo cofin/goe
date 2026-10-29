@@ -27,6 +27,7 @@ from goe.offload.column_metadata import (
     str_list_of_columns,
     valid_column_list,
 )
+from goe.offload.hadoop.better_impyla import from_impala_size
 from goe.offload.hadoop.hadoop_backend_api import (
     BackendHadoopApi,
 )
@@ -62,8 +63,7 @@ from goe.offload.offload_constants import (
     IMPALA_BACKEND_CAPABILITIES,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.util.better_impyla import from_impala_size
-from goe.util.goe_version import GOEVersion
+from goe.util import GOEVersion
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

@@ -5,7 +5,7 @@
 
 from unittest.mock import MagicMock
 
-from goe.util.ora_query import OracleQuery
+from goe.offload.oracle.ora_query import OracleQuery
 
 
 def test_execute_as_dict_preserves_column_name_case() -> None:

@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 from goe.exceptions import OffloadException
 from goe.offload import offload_constants
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_messages import VVERBOSE, OffloadMessages
 from goe.offload.offload_metadata_functions import (
     decode_metadata_incremental_high_values_from_metadata,
@@ -28,6 +27,7 @@ from goe.offload.option_validation import (
     check_ipa_predicate_type_option_conflicts,
     check_opt_is_posint,
 )
+from goe.offload.registry import create_source_table
 from goe.orchestration import command_steps
 from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
@@ -222,7 +222,7 @@ def get_offload_data_manager(
         messages.log("Pre-offload metadata: " + str(existing_metadata), detail=VVERBOSE)
 
     if include_col_offload_source_table and existing_metadata:
-        col_offload_source_table_override = OffloadSourceTable.create(
+        col_offload_source_table_override = create_source_table(
             existing_metadata.hybrid_owner,
             existing_metadata.hybrid_view,
             offload_options,

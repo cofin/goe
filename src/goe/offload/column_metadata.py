@@ -13,7 +13,7 @@ from abc import ABCMeta, abstractmethod
 from copy import copy
 from typing import Any
 
-from goe.util.misc_functions import str_summary_of_self
+from goe.util.string_utils import str_summary_of_self
 
 
 class ColumnMetadataException(Exception):

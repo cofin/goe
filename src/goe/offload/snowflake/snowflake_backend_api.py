@@ -18,8 +18,11 @@ from textwrap import dedent
 import snowflake.connector
 from numpy import datetime64
 
-from goe.connect.connect_constants import CONNECT_DETAIL, CONNECT_STATUS, CONNECT_TEST
+from goe.config.password_tools import PasswordTools
 from goe.offload.backend_api import (
+    CONNECT_DETAIL,
+    CONNECT_STATUS,
+    CONNECT_TEST,
     FETCH_ACTION_ALL,
     FETCH_ACTION_CURSOR,
     FETCH_ACTION_ONE,
@@ -87,12 +90,11 @@ from goe.offload.snowflake.snowflake_column import (
     SnowflakeColumn,
 )
 from goe.offload.snowflake.snowflake_literal import SnowflakeLiteral
-from goe.util.misc_functions import (
+from goe.util.string_utils import (
     backtick_sandwich,
     format_list_for_logging,
     unsurround,
 )
-from goe.util.password_tools import PasswordTools
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

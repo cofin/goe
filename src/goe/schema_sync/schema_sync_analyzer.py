@@ -14,13 +14,15 @@ from operator import itemgetter
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.goe import log
 from goe.offload.column_metadata import get_column_names
-from goe.offload.factory.backend_api_factory import backend_api_factory
-from goe.offload.factory.backend_table_factory import backend_table_factory
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_messages import VERBOSE
+from goe.offload.oracle.ora_query import OracleQuery, get_oracle_connection
+from goe.offload.registry import (
+    create_backend_api,
+    create_backend_table,
+    create_source_table,
+)
 from goe.schema_sync import schema_sync_constants
-from goe.util.misc_functions import double_quote_sandwich
-from goe.util.ora_query import OracleQuery, get_oracle_connection
+from goe.util.string_utils import double_quote_sandwich
 
 dense = pprint.PrettyPrinter(indent=2)
 normal, verbose, vverbose = list(range(3))
@@ -89,7 +91,7 @@ class SchemaSyncAnalyzer:
             self._orchestration_options.use_oracle_wallet,
         )
         self._ora_adm_conn = OracleQuery.fromconnection(cx_conn)
-        self._backend_api = backend_api_factory(
+        self._backend_api = create_backend_api(
             self._orchestration_options.target,
             self._orchestration_options,
             self._messages,
@@ -168,9 +170,7 @@ class SchemaSyncAnalyzer:
 
     def normalize_rdbms_structure(self, owner, table_name):
         try:
-            offload_source_table = OffloadSourceTable.create(
-                owner, table_name, self._orchestration_options, self._messages
-            )
+            offload_source_table = create_source_table(owner, table_name, self._orchestration_options, self._messages)
             return offload_source_table.columns
         except Exception:
             self._messages.warning("Unable to retrieve details for RDBMS table %s.%s" % (owner, table_name))
@@ -206,7 +206,7 @@ class SchemaSyncAnalyzer:
         If this is an incremental enabled table, then disallow INTERVAL YEAR TO MONTH (GOE-1002)
         """
         is_valid = True
-        offload_source_table = OffloadSourceTable.create(owner, table_name, self._orchestration_options, self._messages)
+        offload_source_table = create_source_table(owner, table_name, self._orchestration_options, self._messages)
 
         for column in columns:
             if column.is_hidden():
@@ -337,7 +337,7 @@ class SchemaSyncAnalyzer:
         hybrid_view_name = include["hybrid_view"]
         hybrid_ext_table_name = include["hybrid_external_table"]
 
-        backend_table = backend_table_factory(
+        backend_table = create_backend_table(
             backend_owner,
             backend_table_name,
             self._orchestration_options.target,

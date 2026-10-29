@@ -30,11 +30,12 @@ Primary CLI for executing data offloading operations.
 - `--no-ansi`: Disable terminal ANSI colors.
 
 ## 2. `goe connect`
-Pre-flight environment and connectivity validation suite.
+Pre-flight environment and connectivity validation suite powered by `ConnectRunner` (`src/goe/connect/runner.py`) and `ConnectivityReport` (`src/goe/connect/models.py`).
 
 ### Modes & Flags
-- `goe connect`: Runs complete pre-flight check across OS, configuration permissions (`640`), frontend database, backend cloud platform, and Spark loopback networking.
-- `goe connect --upgrade-environment-file`: Inspects `offload.env` against reference template and appends missing variables.
+- `goe connect`: Runs concurrent pre-flight checks (`run_bounded`) across OS (`/etc/os-release` `PRETTY_NAME`), SSH transport hosts, frontend database, backend cloud platform, and Spark loopback networking.
+- `goe connect --json`: Emits structured `ConnectivityReport` JSON via `goe.serializers`.
+- Listener endpoint: `GET /api/system/connectivity/` (and MCP tool `check_connectivity`) delegates to `ConnectRunner`.
 
 ### Exit Codes
 - `0`: Success (all checks passed).

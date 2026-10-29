@@ -22,7 +22,7 @@ from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )
-from goe.util.misc_functions import case_insensitive_in
+from goe.util.string_utils import case_insensitive_in
 
 
 def copy_rdbms_stats_to_backend(

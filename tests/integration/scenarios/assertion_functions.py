@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from pyarrow import parquet
 
 from goe.offload.column_metadata import SYNTHETIC_PARTITION_COLUMN_NAME_TEMPLATE
-from goe.offload.factory.backend_table_factory import backend_table_factory
 from goe.offload.offload_constants import (
     DBTYPE_BIGQUERY,
     DBTYPE_ORACLE,
@@ -27,7 +26,8 @@ from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_TYPE_TEXT,
 )
 from goe.offload.oracle.oracle_column import ORACLE_TYPE_TIMESTAMP
-from goe.util.misc_functions import get_temp_path
+from goe.offload.registry import create_backend_table
+from goe.util.string_utils import get_temp_path
 from tests.integration.scenarios.scenario_constants import (
     OFFLOAD_PATTERN_90_10,
     OFFLOAD_PATTERN_100_0,
@@ -354,7 +354,7 @@ def load_table_is_compressed(db_name, table_name, config, dfs_client, messages):
          I cheated and just look for the codec name as a string inside another string.
     """
     messages.log("load_table_is_compressed(%s, %s)" % (db_name, table_name), detail=VERBOSE)
-    backend_table = backend_table_factory(
+    backend_table = create_backend_table(
         db_name,
         table_name,
         config.target,

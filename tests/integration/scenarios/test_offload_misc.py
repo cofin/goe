@@ -10,9 +10,7 @@ from goe.offload.offload_functions import (
 )
 from goe.offload.offload_metadata_functions import OFFLOAD_TYPE_FULL
 from goe.offload.offload_source_data import NO_MAXVALUE_PARTITION_NOTICE_TEXT
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import (
     hint_text_in_log,
@@ -141,7 +139,7 @@ def test_offload_misc_maxvalue_partition(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(

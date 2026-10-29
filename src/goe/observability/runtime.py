@@ -11,7 +11,7 @@ offload.
 
 import atexit
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry import metrics, trace
 from opentelemetry.metrics import Meter, MeterProvider, NoOpMeterProvider
@@ -146,7 +146,7 @@ def ensure_observability(config: Any | None = None) -> ObservabilityRuntime:
     """
     current = _state["runtime"]
     if current is not None:
-        return current
+        return cast(ObservabilityRuntime, current)
     if isinstance(config, ObservabilitySettings):
         return configure_observability(settings=config)
     return configure_observability(config=config)
@@ -159,7 +159,7 @@ def is_observability_configured() -> bool:
 
 def get_observability_runtime() -> ObservabilityRuntime:
     """Return the configured runtime or the shared no-op runtime (without marking the process configured)."""
-    return _state["runtime"] or _NOOP_RUNTIME
+    return cast(ObservabilityRuntime, _state["runtime"]) or _NOOP_RUNTIME
 
 
 def get_tracer(name: str = TRACER_NAME) -> Tracer:

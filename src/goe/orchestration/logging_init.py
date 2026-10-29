@@ -13,7 +13,7 @@ from typing import Any
 from goe.offload.offload_messages import OffloadMessages
 from goe.orchestration.constants import normal, verbose, vverbose
 from goe.util.goe_log_fh import GOELogFileHandle
-from goe.util.misc_functions import standard_log_name
+from goe.util.string_utils import standard_log_name
 
 options: Any = None
 log_fh: Any = None

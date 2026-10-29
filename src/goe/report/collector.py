@@ -30,10 +30,6 @@ from goe.offload.backend_api import (
     REPORT_ATTR_BACKEND_HOST_INFO,
     REPORT_ATTR_BACKEND_HOST_INFO_TYPE,
 )
-from goe.offload.factory.backend_api_factory import backend_api_factory
-from goe.offload.factory.backend_table_factory import backend_table_factory
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_messages import (
     SUPPRESS_STDOUT,
     VERBOSE,
@@ -43,10 +39,15 @@ from goe.offload.offload_messages import (
 from goe.offload.offload_metadata_functions import (
     decode_metadata_incremental_high_values,
 )
-from goe.orchestration import command_steps, orchestration_constants
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
+from goe.offload.oracle.ora_query import OracleQuery, OracleQueryException, get_oracle_connection
+from goe.offload.registry import (
+    create_backend_api,
+    create_backend_table,
+    create_frontend_api,
+    create_repository_client,
+    create_source_table,
 )
+from goe.orchestration import command_steps, orchestration_constants
 from goe.persistence.orchestration_metadata import OrchestrationMetadata
 from goe.report.demo_data import DemoDataMixin
 from goe.report.models import (
@@ -104,8 +105,7 @@ from goe.report.models import (
 )
 from goe.report.renderers import ReportRenderersMixin
 from goe.util.goe_log import log_exception
-from goe.util.misc_functions import plural
-from goe.util.ora_query import OracleQuery, OracleQueryException, get_oracle_connection
+from goe.util.string_utils import plural
 
 
 class OffloadStatusReport(ReportRenderersMixin, DemoDataMixin):
@@ -135,7 +135,7 @@ class OffloadStatusReport(ReportRenderersMixin, DemoDataMixin):
             detail=SUPPRESS_STDOUT,
         )
 
-        self._backend_api = backend_api_factory(
+        self._backend_api = create_backend_api(
             self._orchestration_config.target,
             self._orchestration_config,
             self._messages,
@@ -186,7 +186,7 @@ class OffloadStatusReport(ReportRenderersMixin, DemoDataMixin):
         )
         self._messages.debug("%-50s : %s" % ("ora_db_name", self._ora_db_name), detail=SUPPRESS_STDOUT)
 
-        self._repo_client = orchestration_repo_client_factory(
+        self._repo_client = create_repository_client(
             self._orchestration_config, self._messages, dry_run=(not self._execute)
         )
 
@@ -927,7 +927,7 @@ ORDER  BY
 
         db, table = offloaded_table[OFFLOAD_OWNER], offloaded_table[OFFLOAD_TABLE]
         table_metadata = self._repo_metadata_from_osr_metadata(offloaded_table)
-        offload_table = backend_table_factory(
+        offload_table = create_backend_table(
             db,
             table,
             self._backend_db_type,
@@ -1067,7 +1067,7 @@ ORDER  BY
                 rdbms_dsn=self._oracle_dsn,
                 use_oracle_wallet=self._use_oracle_wallet,
             )
-            return OffloadSourceTable.create(
+            return create_source_table(
                 offloaded_table[SOURCE_OWNER],
                 offloaded_table[SOURCE_TABLE],
                 conn_options,
@@ -1285,7 +1285,7 @@ def offload_status_report_run(options: StatusReportOptions) -> None:
             command_type=orchestration_constants.COMMAND_OSR,
         )
         orchestration_config = OrchestrationConfig.from_dict({"verbose": options.verbose, "vverbose": options.vverbose})
-        frontend_api = frontend_api_factory(
+        frontend_api = create_frontend_api(
             orchestration_config.db_type,
             orchestration_config,
             messages,

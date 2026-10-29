@@ -7,7 +7,6 @@ from goe.offload.offload_constants import (
     ADJUSTED_BACKEND_IDENTIFIER_MESSAGE_TEXT,
     DBTYPE_IMPALA,
     DBTYPE_ORACLE,
-    DBTYPE_TERADATA,
 )
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
@@ -18,18 +17,12 @@ from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
     is_query_import_available,
     is_spark_gcloud_dataproc_available,
     is_spark_submit_available,
     is_spark_thrift_available,
-    is_sqoop_available,
-    is_sqoop_by_query_available,
 )
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios.assertion_functions import (
     backend_table_exists,
     sales_based_fact_assertion,
@@ -71,9 +64,6 @@ def gen_keyword_col_table_ddl(config, frontend_api, schema, table_name) -> list:
         subquery = """SELECT TRUNC(SYSDATE) AS "DATE"
         ,      CAST('ABC' AS VARCHAR2(5))   AS "SELECT"
         FROM   dual"""
-    elif config.db_type == DBTYPE_TERADATA:
-        subquery = """SELECT CURRENT_DATE AS "DATE"
-        ,      CAST('ABC' AS VARCHAR(5))  AS "SELECT" """
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     return frontend_api.gen_ctas_from_subquery(schema, table_name, subquery, with_stats_collection=True)
@@ -129,28 +119,6 @@ def test_identifiers_keyword_column_names(config, schema, data_db):
             options = {
                 "owner_table": schema + "." + KEYWORD_COL_TABLE,
                 "offload_transport_method": OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
-                "reset_backend_table": True,
-                "create_backend_db": True,
-                "execute": True,
-            }
-            run_offload(options, config, messages)
-
-        if is_sqoop_by_query_available(config):
-            # Offload table with keyword column names. No assertions, just checking it runs to completion.
-            options = {
-                "owner_table": schema + "." + KEYWORD_COL_TABLE,
-                "offload_transport_method": OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
-                "reset_backend_table": True,
-                "create_backend_db": True,
-                "execute": True,
-            }
-            run_offload(options, config, messages)
-
-        if is_sqoop_available(None, config):
-            # Offload table with keyword column names. No assertions, just checking it runs to completion.
-            options = {
-                "owner_table": schema + "." + KEYWORD_COL_TABLE,
-                "offload_transport_method": OFFLOAD_TRANSPORT_METHOD_SQOOP,
                 "reset_backend_table": True,
                 "create_backend_db": True,
                 "execute": True,
@@ -324,9 +292,7 @@ def test_identifiers_table_name_change_100_0(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(
-            config, messages, dry_run=False, trace_action=f"repo_client({id})"
-        )
+        repo_client = create_repository_client(config, messages, dry_run=False, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -390,7 +356,7 @@ def test_identifiers_table_name_change_90_10(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(

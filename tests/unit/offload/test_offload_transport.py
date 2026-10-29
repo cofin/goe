@@ -5,13 +5,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from goe.offload.factory.offload_transport_factory import (
-    offload_transport_factory,
-    spark_dataproc_batches_jdbc_connectivity_checker,
-    spark_dataproc_jdbc_connectivity_checker,
-    spark_submit_jdbc_connectivity_checker,
-    sqoop_jdbc_connectivity_checker,
-)
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
@@ -20,8 +13,6 @@ from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
     OffloadTransportException,
     choose_offload_transport_method,
     get_offload_transport_method_validation_fns,
@@ -33,8 +24,14 @@ from goe.offload.oracle.oracle_column import (
     OracleColumn,
 )
 from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
+from goe.offload.registry import create_transport
 from goe.offload.spark.dataproc_offload_transport import DATAPROC_CLUSTER_SERVICE_ACCOUNT_IGNORED
 from goe.offload.transport.duckdb_constants import OFFLOAD_TRANSPORT_METHOD_DUCKDB
+from goe.offload.transport.factory import (
+    spark_dataproc_batches_jdbc_connectivity_checker,
+    spark_dataproc_jdbc_connectivity_checker,
+    spark_submit_jdbc_connectivity_checker,
+)
 from tests.unit.test_functions import (
     FAKE_ORACLE_BQ_ENV,
     build_mock_offload_operation,
@@ -87,7 +84,7 @@ def fake_operation():
 def test_query_import_construct(config, messages, oracle_table, fake_operation):
     fake_dfs_client = Mock()
     fake_target_table = Mock()
-    _ = offload_transport_factory(
+    _ = create_transport(
         OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT,
         oracle_table,
         fake_target_table,
@@ -114,30 +111,10 @@ def test_is_query_import_available(
     assert is_query_import_available(fake_operation, config, oracle_table, messages=messages) == expected_status
 
 
-def test_sqoop_construct(config, messages, oracle_table, fake_operation):
-    fake_dfs_client = Mock()
-    fake_target_table = Mock()
-    _ = offload_transport_factory(
-        OFFLOAD_TRANSPORT_METHOD_SQOOP,
-        oracle_table,
-        fake_target_table,
-        fake_operation,
-        config,
-        messages,
-        fake_dfs_client,
-    )
-
-
-def test_sqoop_canary_construct():
-    config = build_mock_options(FAKE_ORACLE_BQ_ENV)
-    messages = OffloadMessages()
-    _ = sqoop_jdbc_connectivity_checker(config, messages)
-
-
 def test_spark_submit_construct(config, messages, oracle_table, fake_operation):
     fake_dfs_client = Mock()
     fake_target_table = Mock()
-    _ = offload_transport_factory(
+    _ = create_transport(
         OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
         oracle_table,
         fake_target_table,
@@ -158,7 +135,7 @@ def test_dataproc_cmd(config, messages, oracle_table, fake_operation):
     """batch option should NOT be in standard Managed Spark job commands."""
     fake_dfs_client = Mock()
     fake_target_table = Mock()
-    client = offload_transport_factory(
+    client = create_transport(
         OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
         oracle_table,
         fake_target_table,
@@ -185,7 +162,7 @@ def test_dataproc_canary_construct():
 def test_dataproc_batches_cmd(config, messages, oracle_table, fake_operation):
     fake_dfs_client = Mock()
     fake_target_table = Mock()
-    client = offload_transport_factory(
+    client = create_transport(
         OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
         oracle_table,
         fake_target_table,
@@ -209,7 +186,7 @@ def test_dataproc_batches_cmd(config, messages, oracle_table, fake_operation):
 def test_dataproc_batches_describe_cmd(config, messages, oracle_table, fake_operation):
     fake_dfs_client = Mock()
     fake_target_table = Mock()
-    client = offload_transport_factory(
+    client = create_transport(
         OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
         oracle_table,
         fake_target_table,
@@ -355,7 +332,7 @@ def test_dataproc_batch_describe(
 ):
     fake_dfs_client = Mock()
     fake_target_table = Mock()
-    client = offload_transport_factory(
+    client = create_transport(
         OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
         oracle_table,
         fake_target_table,
@@ -445,7 +422,7 @@ def test_dataproc_batches_tune_dataproc_for_parallelism(
     fake_dfs_client = Mock()
     fake_target_table = Mock()
     fake_operation.offload_transport_parallelism = offload_parallelism
-    client = offload_transport_factory(
+    client = create_transport(
         OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
         oracle_table,
         fake_target_table,
@@ -482,7 +459,7 @@ def impersonating_config(no_ambient_impersonation: None):
 def test_dataproc_batches_cmd_separates_runtime_and_caller_identity(
     impersonating_config, messages, oracle_table, fake_operation
 ):
-    client = offload_transport_factory(
+    client = create_transport(
         OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
         oracle_table,
         Mock(),
@@ -501,7 +478,7 @@ def test_dataproc_batches_cmd_separates_runtime_and_caller_identity(
 def test_dataproc_cluster_cmd_impersonates_caller_not_runtime_sa(
     impersonating_config, messages, oracle_table, fake_operation
 ):
-    client = offload_transport_factory(
+    client = create_transport(
         OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
         oracle_table,
         Mock(),
@@ -518,7 +495,7 @@ def test_dataproc_cluster_cmd_impersonates_caller_not_runtime_sa(
 def test_dataproc_cluster_cmd_warns_when_only_runtime_sa_is_set(
     config, messages, oracle_table, fake_operation, no_ambient_impersonation
 ):
-    client = offload_transport_factory(
+    client = create_transport(
         OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
         oracle_table,
         Mock(),
@@ -542,7 +519,7 @@ def test_dataproc_specific_caller_overrides_general_impersonation(
             "GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT": DATAPROC_CALLER_SA,
         }
     )
-    client = offload_transport_factory(
+    client = create_transport(
         OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
         oracle_table,
         Mock(),
@@ -565,8 +542,6 @@ def test_validation_fns_cover_every_selectable_method(config, messages) -> None:
         OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
         OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
         OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
-        OFFLOAD_TRANSPORT_METHOD_SQOOP,
-        OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
     }
 
 
@@ -576,10 +551,18 @@ def test_validate_rejects_unknown_method(config, messages) -> None:
         validate_offload_transport_method("NOT_A_METHOD", config, messages=messages)
 
 
-def test_choose_method_by_frontend_type(messages) -> None:
-    """MSSQL always selects Sqoop and unsupported frontends are refused."""
+@pytest.mark.parametrize("removed_method", ["SQ" + "OOP", "SQ" + "OOP_BY_QUERY"])
+def test_validate_rejects_removed_transport_methods(config, messages, removed_method: str) -> None:
+    """Removed legacy transport methods are rejected as unsupported."""
+    with pytest.raises(OffloadTransportException, match="Unsupported transport method"):
+        validate_offload_transport_method(removed_method, config, messages=messages)
+
+
+def test_choose_method_refuses_mssql(messages) -> None:
+    """MSSQL and other non-Oracle frontends are refused during transport selection."""
     mssql_config = Mock(offload_transport="AUTO", db_type="mssql")
-    assert choose_offload_transport_method(Mock(), None, mssql_config, messages) == OFFLOAD_TRANSPORT_METHOD_SQOOP
+    with pytest.raises(OffloadTransportException, match="Unsupported DB type: mssql"):
+        choose_offload_transport_method(Mock(), None, mssql_config, messages)
     other_config = Mock(offload_transport="AUTO", db_type="snowflake")
     with pytest.raises(OffloadTransportException, match="Unsupported DB type"):
         choose_offload_transport_method(Mock(), None, other_config, messages)

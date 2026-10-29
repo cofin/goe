@@ -23,7 +23,7 @@ from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_PARQUET,
     FILE_STORAGE_FORMAT_PARQUET_IMPALA,
 )
-from goe.util.goe_version import GOEVersion
+from goe.util import GOEVersion
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

@@ -34,12 +34,14 @@ from datetime import datetime
 
 from impala.hiveserver2 import TTransportException
 
-from goe.connect.connect_constants import CONNECT_DETAIL, CONNECT_STATUS, CONNECT_TEST
 from goe.filesystem.goe_dfs import (
     OFFLOAD_FS_SCHEME_S3A,
     get_scheme_from_location_uri,
 )
 from goe.offload.backend_api import (
+    CONNECT_DETAIL,
+    CONNECT_STATUS,
+    CONNECT_TEST,
     FETCH_ACTION_ALL,
     FETCH_ACTION_CURSOR,
     FETCH_ACTION_ONE,
@@ -82,6 +84,11 @@ from goe.offload.column_metadata import (
     is_safe_mapping,
     match_table_column,
 )
+from goe.offload.hadoop.better_impyla import (
+    BetterImpylaException,
+    HiveConnection,
+    HiveTable,
+)
 from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_BINARY,
@@ -103,6 +110,8 @@ from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_VARCHAR,
     HadoopColumn,
 )
+from goe.offload.hadoop.hive_table_stats import HiveTableStats
+from goe.offload.hadoop.hs2_connection import HS2_OPTIONS, hs2_connection
 from goe.offload.offload_constants import (
     DBTYPE_HIVE,
     DBTYPE_IMPALA,
@@ -121,14 +130,7 @@ from goe.offload.offload_constants import (
     PART_COL_GRANULARITY_YEAR,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.util.better_impyla import (
-    BetterImpylaException,
-    HiveConnection,
-    HiveTable,
-)
-from goe.util.hive_table_stats import HiveTableStats
-from goe.util.hs2_connection import HS2_OPTIONS, hs2_connection
-from goe.util.misc_functions import backtick_sandwich
+from goe.util.string_utils import backtick_sandwich
 
 HADOOP_DECIMAL_MAX_PRECISION = 38
 

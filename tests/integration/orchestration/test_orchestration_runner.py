@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.orchestration.orchestration_lock import OrchestrationLockTimeout
 from goe.orchestration.orchestration_runner import OrchestrationRunner
+from goe.platform.locking import OrchestrationLockTimeout
 from goe.schema_sync.schema_sync import SCHEMA_SYNC_LOCKED_MESSAGE_TEXT
 from tests.integration.test_functions import (
     cached_current_options,

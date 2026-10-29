@@ -5,7 +5,7 @@
 
 from contextlib import contextmanager
 
-from goe.offload.offload_constants import DBTYPE_MSSQL, DBTYPE_ORACLE, DBTYPE_TERADATA
+from goe.offload.offload_constants import DBTYPE_MSSQL, DBTYPE_ORACLE
 
 
 def frontend_testing_api_factory(
@@ -28,20 +28,6 @@ def frontend_testing_api_factory(
         )
 
         return OracleFrontendTestingApi(
-            frontend_type,
-            connection_options,
-            messages,
-            existing_connection=existing_connection,
-            dry_run=dry_run,
-            do_not_connect=do_not_connect,
-            trace_action=trace_action,
-        )
-    if frontend_type == DBTYPE_TERADATA:
-        from tests.testlib.test_framework.teradata.teradata_frontend_testing_api import (
-            TeradataFrontendTestingApi,
-        )
-
-        return TeradataFrontendTestingApi(
             frontend_type,
             connection_options,
             messages,

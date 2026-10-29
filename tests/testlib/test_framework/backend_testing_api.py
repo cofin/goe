@@ -21,8 +21,8 @@ from goe.offload.column_metadata import (
     GOE_TYPE_INTEGER_38,
     match_table_column,
 )
-from goe.offload.factory.backend_api_factory import backend_api_factory
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.registry import create_backend_api
 from tests.testlib.test_framework import test_constants
 
 
@@ -136,7 +136,7 @@ class BackendTestingApiInterface(metaclass=ABCMeta):
         self._backend_type = backend_type
         self._messages = messages
         self._dry_run = dry_run
-        self._db_api = backend_api_factory(
+        self._db_api = create_backend_api(
             backend_type,
             self._connection_options,
             self._messages,

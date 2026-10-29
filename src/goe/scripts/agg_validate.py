@@ -29,7 +29,7 @@ from goe.offload.offload_validation import (
 )
 from goe.orchestration import command_steps
 from goe.util.goe_log import log_exception
-from goe.util.misc_functions import (
+from goe.util.string_utils import (
     csv_split,
     is_number,
     is_pos_int,

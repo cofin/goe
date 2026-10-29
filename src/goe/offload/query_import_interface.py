@@ -49,7 +49,7 @@ class QueryImportInterface(metaclass=ABCMeta):
         return lambda x: x.read()
 
     def _get_tsltz_encode_fn(self):
-        """WITH LOCAL TIME ZONE needs UTC suffix to match Sqoop.
+        """WITH LOCAL TIME ZONE needs UTC suffix to match the staging timestamp format.
         Can't achieve with NLS_TIMESTAMP_FORMAT because that impacts normal timestamp format.
         """
         return lambda x: str(x) + " UTC"

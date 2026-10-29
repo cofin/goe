@@ -344,7 +344,7 @@ _LAZY_IMPORTS: LazyImportMap = {
 @click.option(
     "--offload-transport-method",
     "offload_transport_method",
-    help="Transport method override: QUERY_IMPORT, SPARK_SUBMIT, SPARK_THRIFT, SPARK_LIVY, SPARK_DATAPROC_GCLOUD, SPARK_BATCHES_GCLOUD, SQOOP, SQOOP_BY_QUERY, or DUCKDB (opt-in).",
+    help="Transport method override: QUERY_IMPORT, SPARK_SUBMIT, SPARK_THRIFT, SPARK_LIVY, SPARK_DATAPROC_GCLOUD, SPARK_BATCHES_GCLOUD, or DUCKDB (opt-in).",
 )
 @click.option(
     "--offload-transport-parallelism",
@@ -473,22 +473,6 @@ _LAZY_IMPORTS: LazyImportMap = {
     "offload_transport_validation_polling_interval",
     hidden=True,
     help="Polling interval in seconds for transport validation thread.",
-)
-@click.option(
-    "--sqoop-additional-options",
-    "sqoop_additional_options",
-    help="Additional flags passed directly to Sqoop invocation.",
-)
-@click.option(
-    "--sqoop-mapreduce-map-memory-mb",
-    "sqoop_mapreduce_map_memory_mb",
-    type=int,
-    help="MapReduce mapper memory limit in MB for Sqoop transport.",
-)
-@click.option(
-    "--sqoop-mapreduce-map-java-opts",
-    "sqoop_mapreduce_map_java_opts",
-    help="MapReduce mapper JVM options for Sqoop transport.",
 )
 @click.option(
     "--verify",

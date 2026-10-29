@@ -14,7 +14,6 @@ from goe.offload.column_metadata import match_table_column
 from goe.offload.frontend_api import FRONTEND_TRACE_ID
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_VALIDATION_POLLER_DISABLED
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.offload.offload_source_table import OFFLOAD_PARTITION_TYPE_RANGE
 from goe.offload.offload_transport_functions import (
     get_rdbms_connection_for_oracle,
     split_ranges_for_id_range,
@@ -49,7 +48,7 @@ from goe.offload.oracle.oracle_dialect import get_oracle_dialect_engine
 from goe.offload.oracle.oracle_offload_source_table import (
     oracle_version_is_smart_scan_unsafe,
 )
-from goe.util.misc_functions import id_generator
+from goe.util.string_utils import id_generator
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -247,7 +246,6 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         module: Any,
         action: Any,
         custom_session_parameters: Any,
-        include_fixed_sqoop: bool = True,
         for_plsql: bool = False,
         include_semi_colons: bool = False,
         escape_semi_colons: bool = False,
@@ -255,25 +253,24 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
     ) -> list:
         """Returns a list of strings to be executed in the data transport source RDBMS session"""
         assert type(custom_session_parameters) is dict
-        fixed_sqoop_parameters = self._get_fixed_sqoop_parameters(max_ts_scale)
+        fixed_session_parameters = self._get_fixed_session_parameters(max_ts_scale)
 
         commands = []
-        if include_fixed_sqoop:
-            if for_plsql:
-                commands.append("DBMS_APPLICATION_INFO.SET_MODULE('%s','%s');" % (module, action))
-            else:
-                commands.append("BEGIN DBMS_APPLICATION_INFO.SET_MODULE('%s','%s'); END;" % (module, action))
-            client_info_command = build_oracle_client_info_command(for_plsql=for_plsql)
-            if client_info_command:
-                commands.append(client_info_command)
-            commands.extend(
-                self._oracle_alter_session_statements(
-                    fixed_sqoop_parameters,
-                    for_plsql=for_plsql,
-                    include_semi_colons=include_semi_colons,
-                    escape_semi_colons=escape_semi_colons,
-                )
+        if for_plsql:
+            commands.append("DBMS_APPLICATION_INFO.SET_MODULE('%s','%s');" % (module, action))
+        else:
+            commands.append("BEGIN DBMS_APPLICATION_INFO.SET_MODULE('%s','%s'); END;" % (module, action))
+        client_info_command = build_oracle_client_info_command(for_plsql=for_plsql)
+        if client_info_command:
+            commands.append(client_info_command)
+        commands.extend(
+            self._oracle_alter_session_statements(
+                fixed_session_parameters,
+                for_plsql=for_plsql,
+                include_semi_colons=include_semi_colons,
+                escape_semi_colons=escape_semi_colons,
             )
+        )
         commands.extend(
             self._oracle_alter_session_statements(
                 self._get_fixed_goe_parameters(),
@@ -294,7 +291,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
 
     def get_rdbms_session_setup_hint(self, custom_session_parameters, max_ts_scale):
         """Returns a hint containing OPT_PARAM() calls for each optimizer parameter we control.
-        We always include NO_PARALLEL because we handle parallelism in Sqoop/Spark, Oracle queries should be serial.
+        We always include NO_PARALLEL because we handle parallelism in Spark, Oracle queries should be serial.
         """
 
         def enquote(x):
@@ -306,7 +303,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
             if not x:
                 return False
             x = x.upper().strip('"').strip("'")
-            return bool(x and not x.startswith("NLS_") and x not in self._get_fixed_sqoop_parameters(None))
+            return bool(x and not x.startswith("NLS_") and x not in self._get_fixed_session_parameters(None))
 
         def to_opt_param(kv_dict):
             if not kv_dict:
@@ -315,7 +312,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
 
         assert type(custom_session_parameters) is dict
         opt_param_hints = (
-            to_opt_param(self._get_fixed_sqoop_parameters(max_ts_scale))
+            to_opt_param(self._get_fixed_session_parameters(max_ts_scale))
             + " "
             + to_opt_param(self._get_fixed_goe_parameters())
             + " "
@@ -760,55 +757,6 @@ ORDER BY seconds DESC"""
             ora_cursor.close()
             cx.close()
 
-    def sqoop_by_query_boundary_query(self, offload_transport_parallelism):
-        """Return a query providing a value range for Sqoop --boundary-query option."""
-        return f'"SELECT 0, {offload_transport_parallelism - 1} FROM dual"'
-
-    def sqoop_rdbms_specific_jvm_overrides(self, rdbms_session_setup_commands: Any) -> list:
-        oraoop_d_options = [
-            "-Doracle.sessionTimeZone=UTC",
-            "-Doraoop.timestamp.string=true",
-            "-Doraoop.jdbc.url.verbatim=true",
-        ]
-        if rdbms_session_setup_commands:
-            oraoop_d_options += [
-                "-Doraoop.oracle.session.initialization.statements=%s"
-                % self._ssh_cli_safe_value("".join(rdbms_session_setup_commands))
-            ]
-        return oraoop_d_options
-
-    def sqoop_rdbms_specific_options(self) -> list:
-        sqoop_opts = []
-        if not self._offload_options.sqoop_disable_direct:
-            sqoop_opts.append("--direct")
-        return sqoop_opts
-
-    def sqoop_rdbms_specific_jvm_table_options(
-        self, partition_chunk: Any, partition_type: Any = None, is_iot: bool = False, consistent_read: bool = False
-    ) -> list:
-        oraoop_options = []
-        if is_iot and partition_type == OFFLOAD_PARTITION_TYPE_RANGE:
-            oraoop_options += ["-Doraoop.chunk.method=partition"]
-            oraoop_options += ["-Doraoop.import.consistent.read=false"]
-        else:
-            oraoop_options += [
-                "-Doraoop.import.consistent.read={true_or_false}".format(
-                    true_or_false="true" if consistent_read else "false"
-                )
-            ]
-
-        if partition_chunk and partition_chunk.count() > 0:
-            oraoop_options += [
-                "-Doraoop.import.partitions=" + self._ssh_cli_safe_value(",".join(partition_chunk.partition_names()))
-            ]
-        return oraoop_options
-
-    def sqoop_rdbms_specific_table_options(self, rdbms_owner: Any, table_name: Any) -> list:
-        return [
-            "--table",
-            self._ssh_cli_safe_value((rdbms_owner + "." + table_name).upper()),
-        ]
-
     def _get_adm_connection(self):
         if not self._rdbms_adm_conn:
             self._rdbms_adm_conn = get_rdbms_connection_for_oracle(
@@ -850,10 +798,10 @@ ORDER BY seconds DESC"""
             self._close_adm_connection()
         return self._fixed_goe_parameters
 
-    def _get_fixed_sqoop_parameters(self, max_ts_scale):
-        """These are defined to match parameters set by Sqoop/Oraoop
+    def _get_fixed_session_parameters(self, max_ts_scale):
+        """Return fixed Oracle session parameters required for consistent transport extraction.
 
-        Dependency on this TIME_ZONE=UTC with logic for avro_conv_fns appending UTC
+        Dependency on TIME_ZONE=UTC with logic for avro_conv_fns appending UTC.
         """
         ff_scale = self._get_ts_ff_scale(max_ts_scale)
         return {

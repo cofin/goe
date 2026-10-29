@@ -33,8 +33,8 @@ GOE loads environment variables using a 4-tier discovery architecture via `pytho
 - `OFFLOAD_LOGDIR`: Directory for execution log files (local directory or GCS `gs://` URI).
 - `PASSWORD_KEY_FILE`: AES key file used to decrypt encrypted database passwords or tokens.
 
-### Frontend (Oracle) Settings
-- `FRONTEND_DISTRIBUTION`: Source DB type (`ORACLE`, `MSSQL`, `TERADATA`). Default `ORACLE`.
+### Frontend (Oracle & SQL Server) Settings
+- `FRONTEND_DISTRIBUTION`: Source DB type (`ORACLE`, `MSSQL`). Default `ORACLE`.
 - `ORA_CONN`: Oracle TNS connect descriptor (e.g. `host:1521/service`).
 - `ORA_ADM_USER` / `ORA_ADM_PASS`: Administrative user (default `goe_adm`).
 - `ORA_APP_USER` / `ORA_APP_PASS`: Operational user (default `goe_app`).
@@ -60,7 +60,7 @@ GOE loads environment variables using a 4-tier discovery architecture via `pytho
 - `OFFLOAD_STAGING_FORMAT`: Intermediate staging file format (`PARQUET` or `AVRO`).
 
 ### Transport & Spark Settings
-- `OFFLOAD_TRANSPORT`: Transport method (`AUTO`, `GOE`, `GCP`, `SQOOP`).
+- `OFFLOAD_TRANSPORT`: Transport method (`AUTO`, `GOE`, `GCP`).
 - `OFFLOAD_TRANSPORT_PARALLELISM`: Degree of transport query parallelism / executors (default `2`).
 - `OFFLOAD_TRANSPORT_FETCH_SIZE`: JDBC fetch size for batch extraction from Oracle (default `5000`).
 - `OFFLOAD_TRANSPORT_CONSISTENT_READ`: `true` to enforce consistent Flashback SCN snapshot.
@@ -71,7 +71,7 @@ GOE loads environment variables using a 4-tier discovery architecture via `pytho
 - `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT`: Optional service account email for `gcloud dataproc` control-plane caller impersonation (`--impersonate-service-account`, falling back to `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`).
 
 ### Listener Settings (Embedded Architecture)
-- `OFFLOAD_LISTENER_HOST` / `PORT`: Bind host and port (default `0.0.0.0:8085`).
+- `OFFLOAD_LISTENER_HOST` / `PORT`: Bind host and port (default `0.0.0.0:8000`).
 - `OFFLOAD_LISTENER_SHARED_TOKEN`: API key required in `x-goe-console-key` header (when unset, allows unauthenticated local access).
-- `OFFLOAD_LISTENER_HEARTBEAT_INTERVAL`: Periodic endpoint registration interval in seconds (default `30`).
+- `OFFLOAD_LISTENER_HEARTBEAT_INTERVAL`: Periodic endpoint registration interval in seconds (default `60`).
 - `OFFLOAD_LISTENER_WORKERS`: Number of Granian ASGI worker processes (default `1`).

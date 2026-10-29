@@ -12,16 +12,16 @@ import logging
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
 from goe.offload.offload_messages import VVERBOSE
 from goe.offload.offload_source_data import OffloadSourcePartition
+from goe.offload.registry import create_frontend_api
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.orchestration_metadata import (
     ALL_METADATA_ATTRIBUTES,
     OrchestrationMetadata,
 )
-from goe.util.json_tools import deserialize_object, serialize_object
+from goe.serializers import decode_json, encode_json
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -31,12 +31,12 @@ if TYPE_CHECKING:
 
 def type_safe_json_dumps(d: Any) -> str:
     """Serialize object to JSON string using msgspec supporting Decimal, datetime, ExecutionId, and Predicate."""
-    return serialize_object(d)
+    return encode_json(d)
 
 
 def type_safe_json_loads(payload: bytes | str) -> Any:
     """Deserialize JSON payload using msgspec."""
-    return deserialize_object(payload)
+    return decode_json(payload)
 
 
 logger = logging.getLogger(__name__)
@@ -294,7 +294,7 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
         Implemented this way to ensure connection is lazy and not taken when class instantiated.
         """
         if self._frontend_client is None:
-            self._frontend_client = frontend_api_factory(
+            self._frontend_client = create_frontend_api(
                 self._connection_options.db_type,
                 self._connection_options,
                 self._messages,
@@ -309,7 +309,7 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
 
     def _metadata_dict_to_json_string(self, metadata_dict: dict | list) -> str:
         """Encode metadata dictionary to JSON string using msgspec."""
-        return serialize_object(metadata_dict)
+        return encode_json(metadata_dict)
 
     def _metadata_keys_with_positions(self) -> dict:
         return {k: i for i, k in enumerate(ALL_METADATA_ATTRIBUTES)}
@@ -317,5 +317,5 @@ class OrchestrationRepoClientInterface(metaclass=ABCMeta):
     def _prepare_command_parameters(self, parameters: str | dict | None) -> str | None:
         """Ensure PARAMETERS column value is a JSON str."""
         if isinstance(parameters, dict):
-            return serialize_object(parameters)
+            return encode_json(parameters)
         return parameters

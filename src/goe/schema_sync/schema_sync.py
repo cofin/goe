@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING, Any
 
 from goe.goe import log
 from goe.orchestration import command_steps
-from goe.orchestration.orchestration_lock import (
+from goe.platform.locking import (
     OrchestrationLockTimeout,
     orchestration_lock_for_table,
 )
 from goe.schema_sync.schema_sync_analyzer import SchemaSyncAnalyzer
 from goe.schema_sync.schema_sync_command_file import SchemaSyncCommandFile
 from goe.schema_sync.schema_sync_processor import SchemaSyncProcessor
-from goe.util.misc_functions import double_quote_sandwich
+from goe.util.string_utils import double_quote_sandwich
 
 if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages

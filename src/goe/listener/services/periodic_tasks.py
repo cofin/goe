@@ -14,7 +14,7 @@ from goe.listener import schemas, utils
 from goe.listener.config import settings
 from goe.listener.services.system import SystemService, get_system_service
 from goe.orchestration.execution_id import ExecutionId
-from goe.util.sync_tools import async_
+from goe.util.concurrency import async_
 
 logger = logging.getLogger(__name__)
 

@@ -40,9 +40,10 @@ tags:
   - `pyproject.toml` enforces `check_untyped_defs = true`, `disallow_incomplete_defs = true`, `warn_no_return = true`, `warn_redundant_casts = true`, `warn_unused_configs = true`, `warn_unused_ignores = true`, and `disable_error_code = []` across all 245 source files in `src/goe/` (only `tests.*` has `ignore_errors = true`).
   - **Zero `# type: ignore` Directives**: Never add `# type: ignore` in `src/goe/`. Resolve type narrowing via explicit annotations, `isinstance` / `is not None` guards, `assert`, or `typing.cast`.
 
-## Exception Handling
+## Exception Handling & Architecture Boundary Gate
 
-- Derive domain errors from `OffloadException` in [`src/goe/exceptions.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/exceptions.py) (`OptionValueError = OffloadOptionError` is the canonical option validation error).
+- Derive domain errors from `GOEError` in [`src/goe/exceptions.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/exceptions.py) (`ConfigurationError(exit_code=2)`, `ValidationError(exit_code=2)`, `AuthenticationError(exit_code=1)`, `FrontendError(exit_code=1)`, `BackendError(exit_code=1)`, `TransportError(exit_code=1)`, `PersistenceError(exit_code=1)`, `OrchestrationError(exit_code=1)`, plus `OffloadException(GOEError)` and `OptionValueError = OffloadOptionError(ValidationError)`).
 - Never catch generic `Exception` without re-raising or wrapping in a meaningful domain exception with contextual diagnostics.
 - Always clean up external resources (database cursors, files, locks) using `try...finally` blocks or context managers.
+- Run [`tools/verify_architecture.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/tools/verify_architecture.py) (wired into `make lint` and baselined via [`tools/architecture_baseline.toml`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/tools/architecture_baseline.toml)) to enforce `raw-json`, `sqlglot-boundary`, `oracledb-boundary`, `nested-import`, `member-ordering`, `inline-comment`, and `stale-baseline` rules.
 

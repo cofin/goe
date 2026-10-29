@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 import msgspec
 import oracledb
 
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_constants import (
     BACKEND_DISTRO_CDH,
     BACKEND_DISTRO_GCP,
@@ -21,6 +20,7 @@ from goe.offload.offload_constants import (
     BACKEND_DISTRO_SNOWFLAKE,
 )
 from goe.offload.offload_messages import QUIET, VERBOSE, VVERBOSE, OffloadMessages
+from goe.offload.registry import create_source_table
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.oracle_gateway import OracleGateway, load_sql_file
 from goe.persistence.orchestration_metadata import (
@@ -53,7 +53,7 @@ from goe.persistence.schemas import (
     SchemaTableRow,
     SubPartitionDetail,
 )
-from goe.util.json_tools import deserialize_object, serialize_object
+from goe.serializers import decode_json, encode_json
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
@@ -170,7 +170,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             detail=VVERBOSE,
         )
         self._assert_valid_end_step_inputs(command_step_id, status, step_details)
-        step_details_str = serialize_object(step_details) if step_details is not None else None
+        step_details_str = encode_json(step_details) if step_details is not None else None
         self._frontend_api.execute_function(
             "offload_repo.end_command_execution_step",
             arg_list=[command_step_id, step_details_str, status],
@@ -331,7 +331,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         return return_columns
 
     def get_table_partitions(self, schema_name, table_name):
-        frontend_table = OffloadSourceTable.create(
+        frontend_table = create_source_table(
             schema_name.upper(),
             table_name.upper(),
             self._connection_options,
@@ -349,7 +349,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         return []
 
     def get_table_subpartitions(self, schema_name, table_name):
-        frontend_table = OffloadSourceTable.create(
+        frontend_table = create_source_table(
             schema_name.upper(),
             table_name.upper(),
             self._connection_options,
@@ -442,6 +442,19 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
     def _get_ora_type_object_name(self, repo_type_name: str, owner_override: str | None = None) -> str:
         return f'"{(owner_override or self._repo_user or "").upper()}"."{repo_type_name.upper()}"'
 
+    def _set_ora_object_attr(self, obj: Any, attr_name: str, attr_val: Any) -> None:
+        """Assign an attribute on an Oracle ``DbObject``, wrapping ``str`` as a temporary ``CLOB`` when required."""
+        try:
+            setattr(obj, attr_name, attr_val)
+        except oracledb.NotSupportedError:
+            if isinstance(attr_val, str) and self._frontend_api is not None:
+                get_conn = getattr(self._frontend_api, "get_validated_oracle_connection", None)
+                conn = get_conn() if callable(get_conn) else getattr(self._frontend_api, "_db_conn", None)
+                if conn is not None and hasattr(conn, "createlob"):
+                    setattr(obj, attr_name, conn.createlob(oracledb.DB_TYPE_CLOB, attr_val))
+                    return
+            raise
+
     def _metadata_dict_to_ora_object(self, metadata_dict):
         """Used to convert a Python dict of metadata to an Oracle object type ready for saving to the database."""
         logger.debug(f"Converting metadata: {metadata_dict}")
@@ -453,13 +466,17 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
         metadata_obj.OFFLOAD_TYPE = metadata_dict[OFFLOAD_TYPE]
         metadata_obj.OFFLOAD_RANGE_TYPE = metadata_dict[INCREMENTAL_RANGE]
         metadata_obj.OFFLOAD_KEY = metadata_dict[INCREMENTAL_KEY]
-        metadata_obj.OFFLOAD_HIGH_VALUE = metadata_dict[INCREMENTAL_HIGH_VALUE]
+        self._set_ora_object_attr(metadata_obj, "OFFLOAD_HIGH_VALUE", metadata_dict[INCREMENTAL_HIGH_VALUE])
         metadata_obj.OFFLOAD_PREDICATE_TYPE = metadata_dict[INCREMENTAL_PREDICATE_TYPE]
         if metadata_dict[INCREMENTAL_PREDICATE_VALUE] is None:
-            metadata_obj.OFFLOAD_PREDICATE_VALUE = metadata_dict[INCREMENTAL_PREDICATE_VALUE]
+            self._set_ora_object_attr(
+                metadata_obj, "OFFLOAD_PREDICATE_VALUE", metadata_dict[INCREMENTAL_PREDICATE_VALUE]
+            )
         else:
-            metadata_obj.OFFLOAD_PREDICATE_VALUE = self._metadata_dict_to_json_string(
-                metadata_dict[INCREMENTAL_PREDICATE_VALUE]
+            self._set_ora_object_attr(
+                metadata_obj,
+                "OFFLOAD_PREDICATE_VALUE",
+                self._metadata_dict_to_json_string(metadata_dict[INCREMENTAL_PREDICATE_VALUE]),
             )
         metadata_obj.OFFLOAD_SNAPSHOT = metadata_dict[OFFLOAD_SNAPSHOT]
         metadata_obj.OFFLOAD_HASH_COLUMN = metadata_dict[OFFLOAD_BUCKET_COLUMN]
@@ -483,7 +500,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             INCREMENTAL_RANGE: metadata_obj.OFFLOAD_RANGE_TYPE or None,
             INCREMENTAL_PREDICATE_TYPE: metadata_obj.OFFLOAD_PREDICATE_TYPE or None,
             INCREMENTAL_PREDICATE_VALUE: (
-                deserialize_object(metadata_obj.OFFLOAD_PREDICATE_VALUE.read())
+                decode_json(metadata_obj.OFFLOAD_PREDICATE_VALUE.read())
                 if metadata_obj.OFFLOAD_PREDICATE_VALUE
                 else None
             ),
@@ -514,7 +531,7 @@ class OracleOrchestrationRepoClient(OrchestrationRepoClientInterface):
             partition_obj.PARTITION_NAME = partition.partition_name
             partition_obj.PARTITION_LEVEL = offload_partition_level
             partition_obj.PARTITION_BYTES = partition.size_in_bytes
-            partition_obj.PARTITION_BOUNDARY = partition.partition_literal
+            self._set_ora_object_attr(partition_obj, "PARTITION_BOUNDARY", partition.partition_literal)
             partitions_ntt.append(partition_obj)
         return partitions_ntt
 

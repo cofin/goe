@@ -11,11 +11,9 @@ from numpy import datetime64
 
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.offload.offload_source_data import OffloadSourcePartition
+from goe.offload.registry import create_repository_client
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
 from tests.testlib.test_framework.test_functions import (
     get_test_messages,
 )
@@ -34,7 +32,7 @@ class TestOrchestrationRepoClient(TestCase):
         config = OrchestrationConfig.from_dict({"verbose": False})
         execution_id = ExecutionId()
         messages = get_test_messages(config, "test_orchestration_command_logging_cli", execution_id=execution_id)
-        client = orchestration_repo_client_factory(
+        client = create_repository_client(
             config,
             messages,
             dry_run=False,
@@ -158,7 +156,7 @@ class TestOrchestrationRepoClient(TestCase):
         config = OrchestrationConfig.from_dict({"verbose": False})
         execution_id = ExecutionId()
         messages = get_test_messages(config, "test_orchestration_command_logging_api", execution_id=execution_id)
-        client = orchestration_repo_client_factory(
+        client = create_repository_client(
             config,
             messages,
             dry_run=False,

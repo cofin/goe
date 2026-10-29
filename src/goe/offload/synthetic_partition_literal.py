@@ -26,7 +26,7 @@ from goe.offload.offload_constants import (
     PART_COL_GRANULARITY_MONTH,
     PART_COL_GRANULARITY_YEAR,
 )
-from goe.util.misc_functions import MAX_SUPPORTED_PRECISION
+from goe.util.string_utils import MAX_SUPPORTED_PRECISION
 
 
 class SyntheticPartitionLiteralException(Exception):

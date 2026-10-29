@@ -16,7 +16,7 @@ from opentelemetry import trace
 from goe.listener import exceptions, jobs, schemas, utils
 from goe.listener.services.system import SystemService
 from goe.orchestration.execution_id import ExecutionId
-from goe.util.sync_tools import async_
+from goe.util.concurrency import async_
 
 
 class OrchestrationController(SecureController):

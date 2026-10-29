@@ -6,14 +6,17 @@
 import os.path
 from textwrap import dedent
 from unittest import TestCase, main
+from unittest.mock import Mock
 
 from avro.datafile import DataFileReader
 from avro.io import DatumReader
 
+from goe.offload.offload_constants import FILE_STORAGE_FORMAT_AVRO
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.oracle.oracle_column import ORACLE_TYPE_VARCHAR2, OracleColumn
-from goe.util.avro_encoder import AvroEncoder
-from goe.util.misc_functions import get_temp_path
+from goe.offload.registry import create_query_import_encoder
+from goe.offload.staging.avro.avro_encoder import AvroEncoder
+from goe.util.string_utils import get_temp_path
 
 FETCH_SIZE = 5
 # Row count enough to cause two batches and stop mid batch
@@ -55,7 +58,10 @@ class TestAvroEncoder(TestCase):
     def test_avro_encoder(self):
         source_columns = [OracleColumn("COLUMN_NAME", ORACLE_TYPE_VARCHAR2)]
         messages = OffloadMessages()
-        encoder = AvroEncoder(SCHEMA_JSON, messages)
+        staging_file = Mock(file_format=FILE_STORAGE_FORMAT_AVRO)
+        staging_file.get_file_schema_json.return_value = SCHEMA_JSON
+        encoder = create_query_import_encoder(staging_file, messages)
+        self.assertIsInstance(encoder, AvroEncoder)
         extraction_cursor = FakeDb(ROW_COUNT)
         local_staging_path = get_temp_path(prefix="goe-unittest", suffix=".avro")
         rows_imported = encoder.write_from_cursor(local_staging_path, extraction_cursor, source_columns)

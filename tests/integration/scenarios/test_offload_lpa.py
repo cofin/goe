@@ -22,9 +22,7 @@ from goe.offload.offload_source_data import (
     NO_MATCHING_PARTITION_EXCEPTION_TEXT,
 )
 from goe.offload.oracle import oracle_column
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
@@ -253,7 +251,7 @@ def test_offload_lpa_num(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -323,7 +321,7 @@ def test_offload_lpa_vc2(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -391,7 +389,7 @@ def test_offload_lpa_char(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -459,7 +457,7 @@ def test_offload_lpa_date(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -527,7 +525,7 @@ def test_offload_lpa_ts(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -599,7 +597,7 @@ def test_offload_lpa_unicode(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -677,7 +675,7 @@ def test_offload_lpa_fact(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -929,7 +927,7 @@ def test_offload_lpa_part_fn(config, schema, data_db):
         if not backend_api.goe_partition_functions_supported():
             pytest.skip(f"Skipping {id} due to goe_partition_functions_supported() == False")
 
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
         udf = data_db + "." + test_constants.PARTITION_FUNCTION_TEST_FROM_INT8
         udf_synth_name = synthetic_part_col_name("U0", "CAT")
         udf_synth_name = convert_backend_identifier_case(config, udf_synth_name)
@@ -1008,7 +1006,7 @@ def test_offload_lpa_full(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(

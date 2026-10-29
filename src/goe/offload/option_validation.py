@@ -18,7 +18,7 @@ from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_PREDICATE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )
-from goe.util.misc_functions import is_pos_int
+from goe.util.string_utils import is_pos_int
 
 if TYPE_CHECKING:
     from goe.offload.offload_source_table import OffloadSourceTableInterface

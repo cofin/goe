@@ -17,9 +17,7 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP,
     ORACLE_TYPE_VARCHAR2,
 )
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
@@ -332,7 +330,7 @@ def test_offload_list_rpa_num(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -370,7 +368,7 @@ def test_offload_list_rpa_date(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -408,7 +406,7 @@ def test_offload_list_rpa_timestamp(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -446,7 +444,7 @@ def test_offload_list_rpa_varchar(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -484,7 +482,7 @@ def test_offload_list_rpa_num_udf(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -523,7 +521,7 @@ def test_offload_list_rpa_subpart(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(

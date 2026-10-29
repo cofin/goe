@@ -111,5 +111,5 @@ def build_security_config() -> SecurityConfig[str]:
                 ),
             ),
         ],
-        exclude=[r"^/mcp", r"^/\.well-known"],
+        exclude=[r"^/mcp"],
     )

@@ -1,8 +1,9 @@
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """System controller for Litestar GOE Listener."""
 
+import asyncio
 from typing import ClassVar
 
 from litestar import get
@@ -10,9 +11,10 @@ from litestar.di import NamedDependency
 from litestar.params import FromPath
 from litestar_security import AuthenticationPolicy, SecureController, public, required
 
+from goe.connect.models import ConnectivityReport
 from goe.listener import schemas, utils
 from goe.listener.services.system import SystemService
-from goe.util.sync_tools import async_
+from goe.util.concurrency import async_
 
 
 class SystemController(SecureController):
@@ -26,6 +28,14 @@ class SystemController(SecureController):
     async def health_check(self) -> schemas.HealthCheck:
         """Run basic application health check."""
         return schemas.HealthCheck(status="OK")
+
+    @get("/connectivity/", mcp_tool="check_connectivity")
+    async def check_connectivity(
+        self,
+        system_service: NamedDependency[SystemService],
+    ) -> ConnectivityReport:
+        """Run connectivity probes off the ASGI event loop and return the report."""
+        return await asyncio.to_thread(system_service.check_connectivity)
 
     @get("/config/", mcp_tool="get_listener_config")
     async def get_configuration(

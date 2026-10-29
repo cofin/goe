@@ -16,10 +16,8 @@ if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.goe import get_log_fh, init, init_log, log_close
     from goe.offload.offload_messages import OffloadMessages
+    from goe.offload.registry import create_repository_client
     from goe.orchestration.execution_id import ExecutionId
-    from goe.persistence.factory.orchestration_repo_client_factory import (
-        orchestration_repo_client_factory,
-    )
     from goe.schema_sync.schema_sync import (
         normalise_schema_sync_options,
     )
@@ -32,15 +30,12 @@ _LAZY_IMPORTS: LazyImportMap = {
     "OffloadMessages": ("goe.offload.offload_messages", "OffloadMessages"),
     "OrchestrationConfig": ("goe.config.orchestration_config", "OrchestrationConfig"),
     "SchemaSyncOptions": ("goe.config.options", "SchemaSyncOptions"),
+    "create_repository_client": ("goe.offload.registry", "create_repository_client"),
     "get_log_fh": ("goe.goe", "get_log_fh"),
     "init": ("goe.goe", "init"),
     "init_log": ("goe.goe", "init_log"),
     "log_close": ("goe.goe", "log_close"),
     "normalise_schema_sync_options": ("goe.schema_sync.schema_sync", "normalise_schema_sync_options"),
-    "orchestration_repo_client_factory": (
-        "goe.persistence.factory.orchestration_repo_client_factory",
-        "orchestration_repo_client_factory",
-    ),
     "run_schema_sync": ("goe.schema_sync.schema_sync", "schema_sync"),
 }
 
@@ -83,7 +78,7 @@ def sync(ctx: click.Context, **kwargs: Any) -> None:
         config = OrchestrationConfig.from_dict({"verbose": options.verbose, "vverbose": options.vverbose})
         execution_id = ExecutionId()
         messages = OffloadMessages.from_options(options, log_fh=get_log_fh(), execution_id=execution_id)
-        repo_client = orchestration_repo_client_factory(
+        repo_client = create_repository_client(
             config,
             messages,
             dry_run=bool(not options.execute),

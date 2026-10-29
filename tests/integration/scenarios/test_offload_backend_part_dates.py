@@ -14,9 +14,7 @@ from goe.offload.operation.partition_controls import (
     MISSING_PARTITION_GRANULARITY_EXCEPTION_TEXT,
     PARTITION_BY_STRING_NOT_SUPPORTED_EXCEPTION_TEXT,
 )
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
@@ -139,7 +137,7 @@ def fact_as_date_tests(
     else:
         at_least_backend_partitions = 5
 
-    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
+    repo_client = create_repository_client(config, messages, trace_action=f"repo_client({test_id})")
 
     # Setup
     run_setup(
@@ -373,7 +371,7 @@ def test_offload_backend_part_date_as_str(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
         table_name = FACT_DATE_STR
 
         # Setup

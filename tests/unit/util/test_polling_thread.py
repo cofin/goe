@@ -9,7 +9,7 @@ import traceback
 from itertools import groupby
 from unittest import TestCase, main
 
-from goe.util.polling_thread import PollingThread
+from goe.offload.transport.polling_thread import PollingThread
 
 
 class TestPollingThread(TestCase):

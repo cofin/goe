@@ -7,11 +7,11 @@ from unittest import mock
 
 from google.auth.credentials import AnonymousCredentials
 
+from goe.config.gcp_credentials import CREDENTIAL_TYPE_IMPERSONATED, GcpCredentialBundle
 from goe.offload.bigquery import bigquery_backend_api
 from goe.offload.bigquery.bigquery_backend_api import BackendBigQueryApi
 from goe.offload.offload_constants import DBTYPE_BIGQUERY
 from goe.offload.offload_messages import OffloadMessages
-from goe.util.gcp_credentials import CREDENTIAL_TYPE_IMPERSONATED, GcpCredentialBundle
 from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, build_mock_options
 
 TARGET_SA = "goe-sa@job-project.iam.gserviceaccount.com"

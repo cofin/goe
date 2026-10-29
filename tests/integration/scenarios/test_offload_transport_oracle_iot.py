@@ -16,21 +16,17 @@ from goe.offload.offload_transport import (
     OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_DATAPROC_GCLOUD,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP,
     is_query_import_available,
     is_spark_gcloud_batches_available,
     is_spark_gcloud_dataproc_available,
     is_spark_submit_available,
-    is_sqoop_available,
 )
 from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_NATIVE_RANGE,
 )
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios.assertion_functions import standard_dimension_assertion
 from tests.integration.scenarios.scenario_runner import (
     run_offload,
@@ -59,9 +55,6 @@ QI_NUM_DIM = "OT_IOT_NUM_QI_DIM"
 SPARK_SUBMIT_NUM_DIM = "OT_IOT_NUM_SPARKSUBMIT_DIM"
 SPARK_SUBMIT_STR_DIM = "OT_IOT_STR_SPARKSUBMIT_DIM"
 SPARK_SUBMIT_TS_DIM = "OT_IOT_TS_SPARKSUBMIT_DIM"
-SQOOP_NUM_DIM = "OT_IOT_NUM_SQOOP_DIM"
-SQOOP_STR_DIM = "OT_IOT_STR_SQOOP_DIM"
-SQOOP_TS_DIM = "OT_IOT_TS_SQOOP_DIM"
 
 
 @pytest.fixture
@@ -135,7 +128,7 @@ def iot_num_dim_tests(
 ):
     frontend_api = get_frontend_testing_api(config, messages, trace_action=test_id)
     backend_api = get_backend_testing_api(config, messages)
-    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
+    repo_client = create_repository_client(config, messages, trace_action=f"repo_client({test_id})")
 
     # Setup
     run_setup(
@@ -187,7 +180,7 @@ def iot_str_dim_tests(
 ):
     frontend_api = get_frontend_testing_api(config, messages, trace_action=test_id)
     backend_api = get_backend_testing_api(config, messages)
-    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
+    repo_client = create_repository_client(config, messages, trace_action=f"repo_client({test_id})")
 
     # Setup
     run_setup(
@@ -239,7 +232,7 @@ def iot_ts_dim_tests(
 ):
     frontend_api = get_frontend_testing_api(config, messages, trace_action=test_id)
     backend_api = get_backend_testing_api(config, messages)
-    repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({test_id})")
+    repo_client = create_repository_client(config, messages, trace_action=f"repo_client({test_id})")
 
     # Setup
     run_setup(
@@ -370,28 +363,6 @@ def test_offload_transport_oracle_iot_num_spark_submit(config: OrchestrationConf
         )
 
 
-def test_offload_transport_oracle_iot_num_sqoop(config: OrchestrationConfig, schema: str, data_db: str):
-    """Test IOT offload with Sqoop."""
-    id = "test_offload_transport_oracle_iot_num_sqoop"
-    if config.db_type != offload_constants.DBTYPE_ORACLE:
-        pytest.skip(f"Skipping {id} for frontend: {config.db_type}")
-
-    with get_test_messages_ctx(config, id) as messages:
-        if not is_sqoop_available(None, config, messages=messages):
-            pytest.skip(f"Skipping {id} because Sqoop is not configured")
-
-        iot_num_dim_tests(
-            config,
-            schema,
-            data_db,
-            SQOOP_NUM_DIM,
-            OFFLOAD_TRANSPORT_METHOD_SQOOP,
-            messages,
-            id,
-            TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_ID_RANGE,
-        )
-
-
 #
 # IOT with TIMESTAMP PK
 #
@@ -461,28 +432,6 @@ def test_offload_transport_oracle_iot_ts_spark_submit(config: OrchestrationConfi
         )
 
 
-def test_offload_transport_oracle_iot_ts_sqoop(config: OrchestrationConfig, schema: str, data_db: str):
-    """Test IOT offload with Sqoop."""
-    id = "test_offload_transport_oracle_iot_ts_sqoop"
-    if config.db_type != offload_constants.DBTYPE_ORACLE:
-        pytest.skip(f"Skipping {id} for frontend: {config.db_type}")
-
-    with get_test_messages_ctx(config, id) as messages:
-        if not is_sqoop_available(None, config, messages=messages):
-            pytest.skip(f"Skipping {id} because Sqoop is not configured")
-
-        iot_ts_dim_tests(
-            config,
-            schema,
-            data_db,
-            SQOOP_TS_DIM,
-            OFFLOAD_TRANSPORT_METHOD_SQOOP,
-            messages,
-            id,
-            TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD,
-        )
-
-
 #
 # IOT with STRING PK
 #
@@ -546,28 +495,6 @@ def test_offload_transport_oracle_iot_str_spark_submit(config: OrchestrationConf
             data_db,
             SPARK_SUBMIT_STR_DIM,
             OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
-            messages,
-            id,
-            TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD,
-        )
-
-
-def test_offload_transport_oracle_iot_str_sqoop(config: OrchestrationConfig, schema: str, data_db: str):
-    """Test IOT offload with Sqoop."""
-    id = "test_offload_transport_oracle_iot_str_sqoop"
-    if config.db_type != offload_constants.DBTYPE_ORACLE:
-        pytest.skip(f"Skipping {id} for frontend: {config.db_type}")
-
-    with get_test_messages_ctx(config, id) as messages:
-        if not is_sqoop_available(None, config, messages=messages):
-            pytest.skip(f"Skipping {id} because Sqoop is not configured")
-
-        iot_str_dim_tests(
-            config,
-            schema,
-            data_db,
-            SQOOP_STR_DIM,
-            OFFLOAD_TRANSPORT_METHOD_SQOOP,
             messages,
             id,
             TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_MOD,

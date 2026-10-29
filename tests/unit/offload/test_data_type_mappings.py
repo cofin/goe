@@ -44,8 +44,6 @@ from goe.offload.column_metadata import (
     CanonicalColumn,
     match_table_column,
 )
-from goe.offload.factory.backend_api_factory import backend_api_factory
-from goe.offload.factory.staging_file_factory import staging_file_factory
 from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_BIGINT,
     HADOOP_TYPE_BINARY,
@@ -156,6 +154,7 @@ from goe.offload.oracle.oracle_column import (
     OracleColumn,
 )
 from goe.offload.oracle.oracle_offload_source_table import OracleSourceTable
+from goe.offload.registry import create_backend_api, create_staging_file
 from goe.offload.snowflake.snowflake_column import (
     SNOWFLAKE_TYPE_BINARY,
     SNOWFLAKE_TYPE_BOOLEAN,
@@ -646,7 +645,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
     #
     # BigQuery
     def test_bigquery_to_oracle(self):
-        backend_api = backend_api_factory(
+        backend_api = create_backend_api(
             DBTYPE_BIGQUERY,
             self.options,
             OffloadMessages(),
@@ -676,7 +675,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
     # Hive
     def test_hive_to_oracle(self):
         try:
-            backend_api = backend_api_factory(
+            backend_api = create_backend_api(
                 DBTYPE_HIVE,
                 self.options,
                 OffloadMessages(),
@@ -731,7 +730,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
     # Impala
     def test_impala_to_oracle(self):
         try:
-            backend_api = backend_api_factory(
+            backend_api = create_backend_api(
                 DBTYPE_IMPALA,
                 self.options,
                 OffloadMessages(),
@@ -784,7 +783,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
     # Snowflake
     def test_snowflake_to_oracle(self):
         try:
-            backend_api = backend_api_factory(
+            backend_api = create_backend_api(
                 DBTYPE_SNOWFLAKE,
                 self.options,
                 OffloadMessages(),
@@ -861,7 +860,7 @@ class TestOracleDataTypeMappings(TestDataTypeMappings):
     # Synapse
     def test_synapse_to_oracle(self):
         try:
-            backend_api = backend_api_factory(
+            backend_api = create_backend_api(
                 DBTYPE_SYNAPSE,
                 self.options,
                 OffloadMessages(),
@@ -1312,7 +1311,7 @@ class TestBackendHiveDataTypeMappings(TestDataTypeMappings):
         self.options = build_mock_options(FAKE_ORACLE_HIVE_ENV)
         messages = OffloadMessages()
         try:
-            self.test_api = backend_api_factory(
+            self.test_api = create_backend_api(
                 self.options.target,
                 self.options,
                 messages,
@@ -1475,7 +1474,7 @@ class TestBackendImpalaDataTypeMappings(TestDataTypeMappings):
         self.options = build_mock_options(FAKE_ORACLE_IMPALA_ENV)
         messages = OffloadMessages()
         try:
-            self.test_api = backend_api_factory(
+            self.test_api = create_backend_api(
                 self.options.target,
                 self.options,
                 messages,
@@ -1626,7 +1625,7 @@ class TestBackendBigQueryDataTypeMappings(TestDataTypeMappings):
     def setUp(self):
         self.options = build_mock_options(FAKE_ORACLE_BQ_ENV)
         messages = OffloadMessages()
-        self.test_api = backend_api_factory(
+        self.test_api = create_backend_api(
             self.options.target,
             self.options,
             messages,
@@ -1820,7 +1819,7 @@ class TestAvroDataTypeMappings(TestDataTypeMappings):
     def test_canonical_to_avro_on_hive(self):
         messages = OffloadMessages()
         self.options.target = DBTYPE_HIVE
-        staging_file = staging_file_factory(
+        staging_file = create_staging_file(
             "no_db",
             "no_table",
             FILE_STORAGE_FORMAT_AVRO,
@@ -1839,7 +1838,7 @@ class TestAvroDataTypeMappings(TestDataTypeMappings):
     def test_canonical_to_avro_on_impala(self):
         messages = OffloadMessages()
         self.options.target = DBTYPE_IMPALA
-        staging_file = staging_file_factory(
+        staging_file = create_staging_file(
             "no_db",
             "no_table",
             FILE_STORAGE_FORMAT_AVRO,
@@ -1858,7 +1857,7 @@ class TestAvroDataTypeMappings(TestDataTypeMappings):
     def test_canonical_to_avro_for_bigquery(self):
         messages = OffloadMessages()
         self.options.target = DBTYPE_BIGQUERY
-        staging_file = staging_file_factory(
+        staging_file = create_staging_file(
             "no_db",
             "no_table",
             FILE_STORAGE_FORMAT_AVRO,
@@ -1877,7 +1876,7 @@ class TestAvroDataTypeMappings(TestDataTypeMappings):
     def test_canonical_to_avro_for_snowflake(self):
         messages = OffloadMessages()
         self.options.target = DBTYPE_SNOWFLAKE
-        staging_file = staging_file_factory(
+        staging_file = create_staging_file(
             "no_db",
             "no_table",
             FILE_STORAGE_FORMAT_AVRO,
@@ -1965,7 +1964,7 @@ class TestParquetDataTypeMappings(TestDataTypeMappings):
     def test_canonical_to_parquet_for_bigquery(self):
         messages = OffloadMessages()
         self.options.target = DBTYPE_BIGQUERY
-        staging_file = staging_file_factory(
+        staging_file = create_staging_file(
             "no_db",
             "no_table",
             FILE_STORAGE_FORMAT_PARQUET,
@@ -1984,7 +1983,7 @@ class TestParquetDataTypeMappings(TestDataTypeMappings):
     def test_canonical_to_parquet_for_snowflake(self):
         messages = OffloadMessages()
         self.options.target = DBTYPE_SNOWFLAKE
-        staging_file = staging_file_factory(
+        staging_file = create_staging_file(
             "no_db",
             "no_table",
             FILE_STORAGE_FORMAT_PARQUET,
@@ -2003,7 +2002,7 @@ class TestParquetDataTypeMappings(TestDataTypeMappings):
     def test_canonical_to_parquet_for_synapse(self):
         messages = OffloadMessages()
         self.options.target = DBTYPE_SYNAPSE
-        staging_file = staging_file_factory(
+        staging_file = create_staging_file(
             "no_db",
             "no_table",
             FILE_STORAGE_FORMAT_PARQUET,
@@ -2021,7 +2020,7 @@ class TestBackendSnowflakeDataTypeMappings(TestDataTypeMappings):
         self.options = build_mock_options(FAKE_ORACLE_SNOWFLAKE_ENV)
         messages = OffloadMessages()
         try:
-            self.test_api = backend_api_factory(
+            self.test_api = create_backend_api(
                 self.options.target,
                 self.options,
                 messages,
@@ -2166,7 +2165,7 @@ class TestBackendSynapseDataTypeMappings(TestDataTypeMappings):
         self.options = build_mock_options(FAKE_ORACLE_SYNAPSE_ENV)
         messages = OffloadMessages()
         try:
-            self.test_api = backend_api_factory(
+            self.test_api = create_backend_api(
                 self.options.target,
                 self.options,
                 messages,

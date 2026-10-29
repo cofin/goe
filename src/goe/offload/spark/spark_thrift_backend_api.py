@@ -23,9 +23,9 @@ from goe.offload.backend_api import (
 )
 from goe.offload.hadoop.hadoop_backend_api import BackendHadoopApi
 from goe.offload.hadoop.hive_backend_api import BackendHiveApi
+from goe.offload.hadoop.hs2_connection import HS2_OPTIONS
 from goe.offload.offload_constants import SPARK_BACKEND_CAPABILITIES
 from goe.offload.offload_messages import VVERBOSE
-from goe.util.hs2_connection import HS2_OPTIONS
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

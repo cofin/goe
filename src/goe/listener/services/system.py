@@ -1,21 +1,23 @@
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """System metadata service for GOE Listener."""
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 from uuid import NAMESPACE_DNS, UUID, uuid3
 
 from goe.config.orchestration_config import OrchestrationConfig
+from goe.config.settings import GOESettings
+from goe.connect.models import ConnectivityReport
+from goe.connect.runner import ConnectRunner
 from goe.goe import version as goe_version
 from goe.listener import utils
 from goe.listener.config import settings
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.registry import create_repository_client
 from goe.orchestration.execution_id import ExecutionId
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
 from goe.persistence.orchestration_repo_client import (
     OrchestrationRepoClientInterface,
 )
@@ -39,7 +41,7 @@ class SystemService:
     @staticmethod
     def get_repo(config: OrchestrationConfig, messages: OffloadMessages) -> OrchestrationRepoClientInterface:
         """Instantiate an orchestration repository client for metadata queries."""
-        return orchestration_repo_client_factory(
+        return create_repository_client(
             config,
             messages,
             dry_run=False,
@@ -95,6 +97,16 @@ class SystemService:
 
     def get_command_execution_steps(self, execution_id: ExecutionId | None) -> list[dict[str, str | Any]]:
         return self.get_repo(self.config, self.messages).get_command_execution_steps(execution_id)
+
+    def check_connectivity(
+        self,
+        *,
+        settings: GOESettings | None = None,
+        environ: Mapping[str, str] | None = None,
+    ) -> ConnectivityReport:
+        """Execute connectivity probes and return a typed ConnectivityReport."""
+        resolved_settings = settings or GOESettings.from_env(environ=environ)
+        return ConnectRunner(resolved_settings).run()
 
 
 _default_service: SystemService | None = None

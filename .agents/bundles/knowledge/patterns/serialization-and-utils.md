@@ -8,21 +8,28 @@ tags:
   - msgspec
   - sqlspec
   - utilities
-updated_at: "2026-10-12T15:50:00Z"
+updated_at: "2026-10-25T15:50:00Z"
 ---
 
 # Serialization & Utility Re-Export Patterns
 
-## `sqlspec.utils` Module Re-Exports (`src/goe/util/`)
+## Core Typing, Serializers, and Platform Primitives (`src/goe/typing.py`, `src/goe/serializers.py`, `src/goe/util/`, `src/goe/platform/`)
 
-Utility modules under `src/goe/util/` re-export `sqlspec.utils` primitives directly while delegating custom GOE domain object serialization (`ExecutionId`, `.dsl` predicate objects) through `goe.util.json_tools`:
+- [`src/goe/typing.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/typing.py): Canonical struct base classes (`BaseStruct` with `gc=False`, `FrozenBaseStruct` with `frozen=True, gc=False`, `WireFrameStruct` with `frozen=True, gc=False, array_like=True`, and `CamelCaseStruct` with `rename="camel"`), `UNSET` / `UnsetType`, and `convert_data` / `convert_to_dict`.
+- [`src/goe/serializers.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/serializers.py): Canonical JSON module — `encode_json`, `encode_json_bytes`, `encode_json_into`, `format_json`, `decode_json`, `encode_datetime_object`, and `convert_field_to_camel_case` (`msgspec.json.Encoder(enc_hook=_default)` handling `ExecutionId`, `.dsl`, `Decimal`, `datetime`/`date`, and `numpy.ndarray`/`numpy.generic`). Replaced legacy `src/goe/util/json_tools.py`.
+- **Dissolved `src/goe/util/` (7 Modules Only)**:
+  - `__init__.py`, `goe_log.py`, `goe_log_fh.py`
+  - [`src/goe/util/module_loader.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/util/module_loader.py): `import_string`, `module_to_os_path`, `ensure_optional_dependency`, `import_optional_dependency`, and `MissingOptionalDependencyError` (inherits from `(OffloadException, ModuleNotFoundError)`).
+  - [`src/goe/util/string_utils.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/util/string_utils.py): `camel_to_snake`, `snake_to_camel`, `camel_to_kebab`, `kebab_to_pascal`, plus GOE formatting/redaction/size-parsing helpers.
+  - [`src/goe/util/concurrency.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/util/concurrency.py): `async_`, `await_`, `ensure_async_`, `run_`, `CapacityLimiter`, `Portal`, `get_global_portal`, and context-preserving `parallel_map`.
+  - [`src/goe/util/subprocess_utils.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/util/subprocess_utils.py): `run_os_cmd`, `SubprocessError`, and `format_shell_cmd`.
+- [`src/goe/platform/worker.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/platform/worker.py) & [`src/goe/platform/locking.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/platform/locking.py): Host/CPU/memory inspection and `OrchestrationLock` (`filelock` in `$OFFLOAD_HOME/run/`).
 
-- [`src/goe/util/json_tools.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/util/json_tools.py): Canonical JSON module — `serialize_object`, `serialize_object_bytes`, `deserialize_object`, `encode_datetime_object`, `convert_field_to_camel_case` (`msgspec.json.Encoder(enc_hook=_default)` fallback for `.dsl` and `.id`). `DEFAULT_TYPE_ENCODERS` comes from `sqlspec.utils.serializers`.
-- [`src/goe/util/sync_tools.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/util/sync_tools.py): Re-exports `async_`, `await_`, `ensure_async_`, `run_`, and `CapacityLimiter` from `sqlspec.utils.sync_tools`, alongside `Portal` and `get_global_portal` from `sqlspec.utils.portal`.
+## Declarative Settings & Option Registry (`src/goe/config/settings.py`, `src/goe/config/option_registry.py`, `src/goe/config/options.py`)
 
-## Typed `msgspec.Struct` Option Hierarchy (`src/goe/config/options.py`)
-
-[`src/goe/config/options.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/config/options.py) is an acyclic import leaf (importing only stdlib, `msgspec`, `goe.lib.schemas.BaseStruct`, and `goe.config.orchestration_defaults`) that replaces legacy `optparse.OptionParser` builders and `optparse.Values` bags across all CLI commands, orchestration runners, and the Listener service:
+- [`src/goe/config/settings.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/config/settings.py): Frozen `GOESettings(FrozenBaseStruct)` loaded explicitly via `GOESettings.from_env(environ=..., env_file=...)` with backend validation and zero import-time side effects. `OrchestrationConfig` delegates to `GOESettings` without mutating `os.environ` or creating directories at construction time.
+- [`src/goe/config/option_registry.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/config/option_registry.py): Single declarative `OPTION_REGISTRY: tuple[OptionSpec, ...]` deriving `EXPECTED_OFFLOAD_ARGS`, `LISTENER_OFFLOAD_RENAME_ALIASES`, `LISTENER_OFFLOAD_CSV_ALIASES`, and CLI option flags (`src/goe/cli/options.py`).
+- [`src/goe/config/options.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/config/options.py): Acyclic import leaf defining `BaseOptionStruct`, `TestModeFaults`, `OffloadOptions` (combining CLI defaults with Listener wire semantics via `to_params_dict()` and `to_operation_options()`), and the 7 command option structs:
 
 - **`BaseOptionStruct`** (`kw_only=True`, slot-backed without `dict=True`): Provides `from_mapping(cls, mapping: Mapping[str, Any]) -> Self`, `to_dict(self) -> dict[str, Any]` (`msgspec.structs.asdict`), and `__contains__(self, key: object) -> bool`. Because `dict=True` is omitted, undeclared attribute writes raise `AttributeError` and `from_mapping` raises `TypeError` on unknown keys, ensuring `copy.copy`/`copy.deepcopy` preserve 100% of fields.
 - **7 Command Option Structs** (each declares `kw_only=True` and uses `msgspec.field(default_factory=orchestration_defaults.<name>_default)` for environment-backed defaults):
@@ -55,7 +62,7 @@ Calling `item.get(...)` directly on a raw `msgspec.Struct` raises `AttributeErro
 `OffloadOperation.from_dict` (`src/goe/orchestration/operation.py`) enforces an exact whitelist assertion: `all(k in EXPECTED_OFFLOAD_ARGS for k in operation_dict)`. Extraneous keys, diagnostic flags (`quiet`, `verbose`), or UI convenience aliases must be mapped or pruned at the API/CLI boundary via `OffloadOptions.to_params_dict()` before reaching the runner.
 
 ### 3. Domain Object Serialization Fallback
-Standard JSON serializers fail on `ExecutionId` instances and `.dsl` expression trees. `goe.util.json_tools.serialize_object` configures `msgspec.json.Encoder(enc_hook=_default)` to handle:
+Standard JSON serializers fail on `ExecutionId` instances and `.dsl` expression trees. `goe.serializers.encode_json` configures `msgspec.json.Encoder(enc_hook=_default)` to handle:
 - `ExecutionId`: Serialized to standard UUID string representation.
 - Predicates / Generic Predicate: Serialized via `obj.dsl`.
 - `Decimal`, `datetime`, `date`: Serialized to ISO strings / numeric primitives.

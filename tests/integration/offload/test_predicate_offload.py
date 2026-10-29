@@ -10,14 +10,13 @@ from copy import copy
 import pytest
 
 from goe.goe import OffloadOperation
-from goe.offload.factory.backend_table_factory import backend_table_factory
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.registry import create_backend_table, create_source_table
 from tests.integration.test_functions import (
     build_current_options,
     get_default_test_user,
@@ -152,13 +151,13 @@ def test_ida_predicate_render_to_sql_dim(config, schema, data_db):
 
     messages = OffloadMessages.from_options(config, log_fh=test_messages.get_log_fh())
     create_and_offload_dim_table(config, frontend_api, test_messages, schema)
-    frontend_table = OffloadSourceTable.create(schema, DIM_NAME, config, messages, dry_run=True)
+    frontend_table = create_source_table(schema, DIM_NAME, config, messages, dry_run=True)
     operation = OffloadOperation.from_dict(
         {"owner_table": "%s.%s" % (schema, DIM_NAME)},
         config,
         messages,
     )
-    backend_table = backend_table_factory(
+    backend_table = create_backend_table(
         data_db,
         be_dim_table,
         config.target,
@@ -218,7 +217,7 @@ def test_ida_predicate_render_to_sql_fact(config, schema):
 
     messages = OffloadMessages.from_options(config, log_fh=test_messages.get_log_fh())
     create_fact_table(config, frontend_api, test_messages, schema)
-    frontend_table = OffloadSourceTable.create(schema, FACT_NAME, config, messages, dry_run=True)
+    frontend_table = create_source_table(schema, FACT_NAME, config, messages, dry_run=True)
 
     # Setup complete, on to some actual testing.
     pred_expect_equal = frontend_api.expected_sales_offload_predicates()

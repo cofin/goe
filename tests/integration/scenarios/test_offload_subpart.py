@@ -14,9 +14,7 @@ from goe.offload.offload_metadata_functions import (
     OFFLOAD_TYPE_INCREMENTAL,
 )
 from goe.offload.oracle.oracle_column import ORACLE_TYPE_NUMBER
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import sales_based_fact_assertion
 from tests.integration.scenarios.scenario_runner import (
@@ -66,7 +64,7 @@ def test_offload_subpart_lr_range(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -190,7 +188,7 @@ def test_offload_subpart_lr_list(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -259,7 +257,7 @@ def test_offload_subpart_range_range(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -334,7 +332,7 @@ def test_offload_subpart_hash_range(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(

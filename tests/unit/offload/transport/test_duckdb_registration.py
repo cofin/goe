@@ -9,6 +9,7 @@ import pytest
 
 from goe.offload.offload_constants import OFFLOAD_TRANSPORT_DUCKDB
 from goe.offload.oracle.oracle_column import ORACLE_TYPE_CLOB, ORACLE_TYPE_NUMBER, ORACLE_TYPE_VARCHAR2
+from goe.offload.registry import create_transport
 from goe.offload.transport.constants import (
     OFFLOAD_TRANSPORT_GOE_METHODS,
     VALID_OFFLOAD_TRANSPORT_METHODS,
@@ -19,10 +20,15 @@ from goe.offload.transport.duckdb_constants import OFFLOAD_TRANSPORT_METHOD_DUCK
 from goe.offload.transport.factory import (
     GCP_AUTO_TRANSPORT_METHODS,
     choose_offload_transport_method,
-    offload_transport_factory,
     validate_offload_transport_method,
 )
 from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, build_mock_options
+
+
+@pytest.fixture(autouse=True)
+def pin_duckdb_version_to_configured_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the runtime DuckDB version reported to availability checks to the configured default."""
+    monkeypatch.setattr("goe.offload.transport.duckdb_availability.duckdb.__version__", "1.5.5")
 
 
 def test_duckdb_is_registered_but_never_automatic() -> None:
@@ -89,11 +95,11 @@ def test_auto_never_evaluates_duckdb() -> None:
     duckdb_gate.assert_not_called()
 
 
-def test_factory_builds_duckdb_transport() -> None:
-    """offload_transport_factory constructs OffloadTransportDuckDB for the DUCKDB method."""
+def test_registry_builds_duckdb_transport() -> None:
+    """create_transport constructs OffloadTransportDuckDB for the DUCKDB method."""
     args = [MagicMock() for _ in range(6)]
-    with patch("goe.offload.transport.factory.OffloadTransportDuckDB") as transport_cls:
-        assert offload_transport_factory(OFFLOAD_TRANSPORT_METHOD_DUCKDB, *args) is transport_cls.return_value
+    with patch("goe.offload.transport.duckdb_transport.OffloadTransportDuckDB") as transport_cls:
+        assert create_transport(OFFLOAD_TRANSPORT_METHOD_DUCKDB, *args) is transport_cls.return_value
     transport_cls.assert_called_once_with(*args)
 
 

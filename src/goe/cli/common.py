@@ -1,9 +1,11 @@
-# SPDX-FileCopyrightText: 2016 The GOE Authors
+# SPDX-FileCopyrightText: 2026 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """Shared CLI options and context merging helpers for the unified GOE CLI."""
 
+import functools
 import os
+import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -11,7 +13,8 @@ import rich_click as click
 
 from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
 from goe.cli.console import console, heading_console
-from goe.util.goe_version import goe_version
+from goe.exceptions import GOEError
+from goe.util import goe_version
 
 if TYPE_CHECKING:
     from goe.config import orchestration_defaults
@@ -33,8 +36,11 @@ COMMON_OPTION_KEYS: tuple[str, ...] = (
     "error_on_token",
     "suppress_stdout",
     "otel_enabled",
+    "otel_service_name",
     "otel_exporter",
+    "otel_exporter_protocol",
     "otel_endpoint",
+    "otel_sample_ratio",
     "log_format",
 )
 
@@ -140,6 +146,12 @@ def common_options(func: Callable[..., Any]) -> Callable[..., Any]:
             help="Enable OpenTelemetry tracing and metrics (overrides GOE_OTEL_ENABLED).",
         ),
         click.option(
+            "--otel-service-name",
+            "otel_service_name",
+            default=None,
+            help="Override the OpenTelemetry service.name resource attribute.",
+        ),
+        click.option(
             "--otel-exporter",
             "otel_exporter",
             type=click.Choice(["none", "console", "jsonl", "otlp", "gcp", "memory"], case_sensitive=False),
@@ -147,10 +159,23 @@ def common_options(func: Callable[..., Any]) -> Callable[..., Any]:
             help="OpenTelemetry exporter (overrides GOE_OTEL_EXPORTER).",
         ),
         click.option(
+            "--otel-exporter-protocol",
+            "otel_exporter_protocol",
+            type=click.Choice(["none", "console", "otlp_grpc", "otlp_http"], case_sensitive=False),
+            default=None,
+            help="Select the OpenTelemetry exporter protocol.",
+        ),
+        click.option(
             "--otel-endpoint",
             "otel_endpoint",
             default=None,
             help="OTLP collector endpoint (overrides GOE_OTEL_ENDPOINT).",
+        ),
+        click.option(
+            "--otel-sample-ratio",
+            "otel_sample_ratio",
+            default=None,
+            help="Override the OpenTelemetry trace sampling ratio between 0.0 and 1.0.",
         ),
         click.option(
             "--log-format",
@@ -163,6 +188,20 @@ def common_options(func: Callable[..., Any]) -> Callable[..., Any]:
     for option in reversed(options):
         func = option(func)
     return func
+
+
+def handle_cli_exceptions(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Catch GOEError exceptions raised by CLI commands and exit with exc.exit_code."""
+
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return func(*args, **kwargs)
+        except GOEError as exc:
+            click.echo(exc.message, err=True)
+            sys.exit(exc.exit_code)
+
+    return wrapper
 
 
 def extract_common_options(ctx: click.Context | None, kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -209,7 +248,15 @@ def extract_common_options(ctx: click.Context | None, kwargs: dict[str, Any]) ->
     )
     telemetry_overrides = {
         key: popped[key] if popped[key] is not None else parent_obj.get(key)
-        for key in ("otel_enabled", "otel_exporter", "otel_endpoint", "log_format")
+        for key in (
+            "otel_enabled",
+            "otel_service_name",
+            "otel_exporter",
+            "otel_exporter_protocol",
+            "otel_endpoint",
+            "otel_sample_ratio",
+            "log_format",
+        )
     }
     telemetry_overrides = {key: value for key, value in telemetry_overrides.items() if value is not None}
 

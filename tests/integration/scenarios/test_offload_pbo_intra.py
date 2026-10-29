@@ -20,9 +20,7 @@ from goe.offload.offload_source_data import (
     RANGE_AND_PREDICATE_WITHOUT_PART_KEY_EXCEPTION_TEXT,
 )
 from goe.offload.predicate_offload import GenericPredicate
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from goe.persistence.orchestration_metadata import (
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE,
     INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE_AND_PREDICATE,
@@ -107,9 +105,6 @@ def offload_pbo_intra_day_std_range_tests(
         chk_cnt_filter = "time_id >= DATE' %(hv_1)s' AND time_id < DATE' %(hv_2)s' AND channel_id IN (%(channel)s)"
         metadata_chk_hvs = [hv_1, hv_2]
     elif table_name == LAR_TABLE_INTRA:
-        if config.db_type == offload_constants.DBTYPE_TERADATA:
-            messages.log("Skipping LAR tests on Teradata because CASE_N is not yet supported")
-            return
         test_id = "lar"
         inc_key = "YRMON"
         ipa_predicate_type = INCREMENTAL_PREDICATE_TYPE_LIST_AS_RANGE
@@ -427,7 +422,7 @@ def test_offload_pbo_intra_range(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -464,7 +459,7 @@ def test_offload_pbo_intra_lar(config, schema, data_db):
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(

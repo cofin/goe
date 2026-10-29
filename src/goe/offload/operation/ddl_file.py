@@ -10,7 +10,7 @@ from goe.exceptions import OffloadOptionError
 from goe.filesystem.goe_dfs import get_scheme_from_location_uri
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.offload import offload_constants
-from goe.util.misc_functions import standard_file_name
+from goe.util.string_utils import standard_file_name
 
 if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig

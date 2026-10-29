@@ -5,9 +5,6 @@
 
 import pytest
 
-from goe.offload.factory.offload_transport_rdbms_api_factory import (
-    offload_transport_rdbms_api_factory,
-)
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.offload_source_data import (
     OffloadSourcePartition,
@@ -18,12 +15,12 @@ from goe.offload.offload_transport_rdbms_api import (
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_PARTITION,
     TRANSPORT_ROW_SOURCE_QUERY_SPLIT_BY_SUBPARTITION,
 )
+from goe.offload.registry import create_transport_rdbms_api
 from tests.unit.test_functions import (
     FAKE_MSSQL_ENV,
     FAKE_ORACLE_ENV,
     FAKE_ORACLE_LIST_RANGE_PARTITIONS,
     FAKE_ORACLE_PARTITIONS,
-    FAKE_TERADATA_ENV,
     build_fake_oracle_subpartitioned_table,
     build_fake_oracle_table,
     build_mock_options,
@@ -51,18 +48,8 @@ def fake_oracle_subpartitioned_table(oracle_config, messages):
 
 
 def non_connecting_tests(api):
-    def is_list_of_strings(v):
-        assert isinstance(v, list)
-        if v:
-            assert isinstance(v[0], str)
-
     assert isinstance(api.generate_transport_action(), str)
     assert isinstance(api.get_rdbms_canary_query(), str)
-    is_list_of_strings(api.sqoop_rdbms_specific_jvm_overrides([]))
-    is_list_of_strings(api.sqoop_rdbms_specific_jvm_overrides(["abc=123"]))
-    is_list_of_strings(api.sqoop_rdbms_specific_jvm_table_options(None))
-    is_list_of_strings(api.sqoop_rdbms_specific_options())
-    is_list_of_strings(api.sqoop_rdbms_specific_table_options("owner", "table-name"))
     try:
         assert isinstance(api.get_transport_row_source_query_hint_block(), str)
     except NotImplementedError:
@@ -76,7 +63,7 @@ def test_mssql_ot_rdbms_api(messages):
     config = build_mock_options(FAKE_MSSQL_ENV)
     rdbms_owner = "SH_TEST"
     rdbms_table = "SALES"
-    api = offload_transport_rdbms_api_factory(rdbms_owner, rdbms_table, config, messages, dry_run=True)
+    api = create_transport_rdbms_api(rdbms_owner, rdbms_table, config, messages, dry_run=True)
     non_connecting_tests(api)
 
 
@@ -85,20 +72,11 @@ def test_oracle_ot_rdbms_api(oracle_config, messages):
     oracle_config = build_mock_options(FAKE_ORACLE_ENV)
     rdbms_owner = "SH_TEST"
     rdbms_table = "SALES"
-    api = offload_transport_rdbms_api_factory(rdbms_owner, rdbms_table, oracle_config, messages, dry_run=True)
+    api = create_transport_rdbms_api(rdbms_owner, rdbms_table, oracle_config, messages, dry_run=True)
     non_connecting_tests(api)
     assert isinstance(api.get_snapshot_clause(123456, True), str)
     assert "123456" in api.get_snapshot_clause(123456, True)
     assert "123456" not in api.get_snapshot_clause(123456, False)
-
-
-def test_teradata_ot_rdbms_api(messages):
-    """Simple check that we can instantiate the Teradata API"""
-    config = build_mock_options(FAKE_TERADATA_ENV)
-    rdbms_owner = "SH_TEST"
-    rdbms_table = "SALES"
-    api = offload_transport_rdbms_api_factory(rdbms_owner, rdbms_table, config, messages, dry_run=True)
-    non_connecting_tests(api)
 
 
 def offload_partitions_from_rdbms_partitions(rdbms_partitions):
@@ -152,7 +130,7 @@ def test_get_transport_split_type_oracle_heap(
     expected_split_type,
     expected_parallelism,
 ):
-    api = offload_transport_rdbms_api_factory(
+    api = create_transport_rdbms_api(
         fake_oracle_table.owner,
         fake_oracle_table.table_name,
         oracle_config,
@@ -223,7 +201,7 @@ def test_get_transport_split_type_oracle_partitioned(
     expected_split_type,
     expected_parallelism,
 ):
-    api = offload_transport_rdbms_api_factory(
+    api = create_transport_rdbms_api(
         fake_oracle_table.owner,
         fake_oracle_table.table_name,
         oracle_config,
@@ -298,7 +276,7 @@ def test_get_transport_split_type_oracle_subpartitioned(
     expected_split_type,
     expected_parallelism,
 ):
-    api = offload_transport_rdbms_api_factory(
+    api = create_transport_rdbms_api(
         fake_oracle_subpartitioned_table.owner,
         fake_oracle_subpartitioned_table.table_name,
         oracle_config,

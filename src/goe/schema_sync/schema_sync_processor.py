@@ -14,7 +14,7 @@ from goe.schema_sync.schema_sync_constants import (
     ADD_ORACLE_COLUMN,
 )
 from goe.schema_sync.steps import step_builder
-from goe.util.misc_functions import double_quote_sandwich
+from goe.util.string_utils import double_quote_sandwich
 
 if TYPE_CHECKING:
     from goe.offload.offload_messages import OffloadMessages

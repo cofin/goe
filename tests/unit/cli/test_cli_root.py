@@ -15,7 +15,7 @@ from click.testing import CliRunner
 import goe.cli.commands.connect as connect_cmd_module
 import goe.cli.common as common_module
 from goe.cli.main import cli
-from goe.util.goe_version import goe_version
+from goe.util import goe_version
 
 
 def test_cli_help() -> None:

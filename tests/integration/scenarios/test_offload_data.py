@@ -13,9 +13,7 @@ from goe.offload.offload_functions import (
 )
 from goe.offload.offload_metadata_functions import INCREMENTAL_PREDICATE_TYPE_LIST
 from goe.offload.offload_transport import OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.offload.registry import create_repository_client
 from tests.integration.scenarios import scenario_constants
 from tests.integration.scenarios.assertion_functions import sales_based_fact_assertion
 from tests.integration.scenarios.scenario_runner import (
@@ -198,32 +196,6 @@ def gen_offload_nulls_create_ddl(schema, table_name, backend_api, frontend_api, 
                 "interval_ym": interval_ym,
             }
         )
-    elif config.db_type == offload_constants.DBTYPE_TERADATA:
-        # TODO add interval types
-        ddl.append(
-            """CREATE TABLE %(schema)s.%(table)s
-            ( id NUMBER
-            , nmval NUMBER
-            , vcval VARCHAR(10)
-            , chval CHAR(10)
-            , dtval DATE
-            , tmval TIMESTAMP
-            , bfval FLOAT
-            , bdval DOUBLE PRECISION)"""
-            % {"schema": schema, "table": table_name}
-        )
-        ddl.append(
-            """INSERT INTO %(schema)s.%(table)s
-            SELECT 1
-            ,      CAST(NULL as NUMBER)
-            ,      CAST(NULL as VARCHAR(10))
-            ,      CAST(NULL as CHAR(10))
-            ,      CAST(NULL as DATE)
-            ,      CAST(NULL as TIMESTAMP)
-            ,      CAST(NULL as FLOAT)
-            ,      CAST(NULL as DOUBLE PRECISION)"""
-            % {"schema": schema, "table": table_name}
-        )
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     ddl.append(frontend_api.collect_table_stats_sql_text(schema, table_name))
@@ -303,42 +275,6 @@ def gen_large_num_create_ddl(schema, table_name, config, backend_api, frontend_a
                CONNECT BY ROWNUM <= 100"""
             % params
         )
-    elif config.db_type == offload_constants.DBTYPE_TERADATA:
-        if part_type == "LIST":
-            raise NotImplementedError(f"LIST (CASE_N) pending implementation: {config.db_type}")
-        params["step"] = "1".ljust(get_max_decimal_magnitude(backend_api), "0")
-        create_sql = """CREATE TABLE %(schema)s.%(table)s
-                ( id NUMBER(8)
-                , str_data VARCHAR(30)
-                , num_data %(num_data_type)s
-                , tiny_data %(tiny_data_type)s
-                , part_col %(part_col_type)s)
-                PRIMARY INDEX (id)
-                PARTITION BY(
-                    RANGE_N(part_col BETWEEN %(part_lit_1)s AND %(part_lit_3)s EACH %(step)s)
-                ) """
-        ddl.append(create_sql % params)
-        ddl.append(
-            """INSERT INTO %(schema)s.%(table)s
-               (id, str_data, num_data, tiny_data, part_col)
-               SELECT id,'blah'
-               ,      CASE MOD(id,2)
-                      WHEN 0 THEN %(num_data_lit_1)s
-                      ELSE %(num_data_lit_2)s
-                      END AS num_data
-               ,      CASE MOD(id,2)
-                      WHEN 0 THEN %(tiny_data_lit_1)s
-                      ELSE %(tiny_data_lit_2)s
-                      END AS tiny_data
-               ,      CASE MOD(id,3)
-                      WHEN 0 THEN %(part_lit_1)s
-                      WHEN 1 THEN %(part_lit_2)s
-                      ELSE %(part_lit_3)s
-                      END %(part_lit_mod)s AS part_col
-               FROM   %(schema)s.generated_ids
-               WHERE id <= 100"""
-            % params
-        )
     else:
         raise NotImplementedError(f"Unsupported db_type: {config.db_type}")
     ddl.append(frontend_api.collect_table_stats_sql_text(schema, table_name))
@@ -404,15 +340,12 @@ def test_offload_data_partition_by_microsecond(config, schema, data_db):
     """Tests Offload of a microsecond partitioned fact."""
     id = "test_offload_data_partition_by_microsecond"
 
-    if config.db_type == offload_constants.DBTYPE_TERADATA:
-        pytest.skip(f"Skipping {id} on Teradata")
-
     with (
         get_test_messages_ctx(config, id) as messages,
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
         frontend_datetime = frontend_api.test_type_canonical_timestamp()
 
         # Setup
@@ -500,7 +433,7 @@ def test_offload_data_partition_by_nanosecond(config, schema, data_db):
             pytest.skip(f"Skipping {id} on frontend system")
 
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
         frontend_datetime = frontend_api.test_type_canonical_timestamp()
 
         # Setup
@@ -637,7 +570,7 @@ def test_offload_data_oracle_xmltype(config, schema, data_db):
             # Offload XMLTYPE (no Query Import).
             options = {
                 "owner_table": schema + "." + XMLTYPE_TABLE,
-                "offload_transport_method": no_query_import_transport_method(config, no_table_centric_sqoop=True),
+                "offload_transport_method": no_query_import_transport_method(config),
                 "reset_backend_table": True,
                 "execute": True,
             }
@@ -686,7 +619,7 @@ def test_offload_data_nulls_qi(config, schema, data_db):
 
 
 def test_offload_data_nulls_no_qi(config, schema, data_db):
-    """Tests Offload of NULLs in all data types with Spark or Sqoop."""
+    """Tests Offload of NULLs in all data types with Spark."""
     id = "test_offload_data_nulls_no_qi"
 
     if no_query_import_transport_method(config) == OFFLOAD_TRANSPORT_METHOD_QUERY_IMPORT:
@@ -738,14 +671,14 @@ def test_offload_data_large_decimals_lpa(config, schema, data_db):
         if not frontend_api.goe_lpa_supported():
             pytest.skip(f"Skipping {id} because frontend_api.goe_lpa_supported() == false")
 
-        partition_keys_larger_than_bigint_valid = bool(config.db_type != offload_constants.DBTYPE_TERADATA)
+        partition_keys_larger_than_bigint_valid = True
 
         if not partition_keys_larger_than_bigint_valid:
             messages.log(f"Skipping {id} because partition_keys_larger_than_bigint_valid == false")
             pytest.skip(f"Skipping {id} because partition_keys_larger_than_bigint_valid == false")
 
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(
@@ -840,14 +773,14 @@ def test_offload_data_large_decimals_rpa(config, schema, data_db):
         get_test_messages_ctx(config, id) as messages,
         get_frontend_testing_api_ctx(config, messages, trace_action=id) as frontend_api,
     ):
-        partition_keys_larger_than_bigint_valid = bool(config.db_type != offload_constants.DBTYPE_TERADATA)
+        partition_keys_larger_than_bigint_valid = True
 
         if not partition_keys_larger_than_bigint_valid:
             messages.log(f"Skipping {id} because partition_keys_larger_than_bigint_valid == false")
             pytest.skip(f"Skipping {id} because partition_keys_larger_than_bigint_valid == false")
 
         backend_api = get_backend_testing_api(config, messages)
-        repo_client = orchestration_repo_client_factory(config, messages, trace_action=f"repo_client({id})")
+        repo_client = create_repository_client(config, messages, trace_action=f"repo_client({id})")
 
         # Setup
         run_setup(

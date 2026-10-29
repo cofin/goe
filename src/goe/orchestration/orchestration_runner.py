@@ -21,19 +21,19 @@ from goe.goe import (
 )
 from goe.observability.runtime import ensure_observability
 from goe.observability.spans import current_trace_ids, traced_command
-from goe.offload.factory.frontend_api_factory import frontend_api_factory
-from goe.offload.factory.offload_source_table_factory import OffloadSourceTable
 from goe.offload.offload_messages import (
     NORMAL,
     VVERBOSE,
     OffloadMessages,
 )
+from goe.offload.registry import (
+    create_frontend_api,
+    create_repository_client,
+    create_source_table,
+)
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
-from goe.orchestration.orchestration_lock import orchestration_lock_for_table
-from goe.persistence.factory.orchestration_repo_client_factory import (
-    orchestration_repo_client_factory,
-)
+from goe.platform.locking import orchestration_lock_for_table
 
 if TYPE_CHECKING:
     from goe.persistence.orchestration_repo_client import (
@@ -152,7 +152,7 @@ class OrchestrationRunner:
             raise
 
     def _build_offload_source_table(self, operation):
-        return OffloadSourceTable.create(
+        return create_source_table(
             operation.owner,
             operation.table_name,
             self._config,
@@ -161,7 +161,7 @@ class OrchestrationRunner:
         )
 
     def _build_repo_client(self, messages: Any, dry_run: bool = False) -> "OrchestrationRepoClientInterface":
-        return orchestration_repo_client_factory(
+        return create_repository_client(
             self._config,
             messages,
             dry_run=dry_run,
@@ -324,7 +324,7 @@ class OrchestrationRunner:
         By storing self._max_hybrid_name_length in state we should not need to make the connection a second time.
         """
         if self._max_hybrid_name_length is None:
-            frontend_api = frontend_api_factory(
+            frontend_api = create_frontend_api(
                 self._config.db_type,
                 self._config,
                 self._messages,

@@ -17,10 +17,6 @@ from goe.filesystem.goe_dfs import DFS_TYPE_FILE
 from goe.observability.db import build_transport_sql_comment
 from goe.observability.transport import inject_spark_trace_properties
 from goe.offload.column_metadata import match_table_column
-from goe.offload.factory.offload_transport_rdbms_api_factory import (
-    offload_transport_rdbms_api_factory,
-)
-from goe.offload.factory.staging_file_factory import staging_file_factory
 from goe.offload.frontend_api import FRONTEND_TRACE_MODULE
 from goe.offload.offload_constants import (
     DBTYPE_ORACLE,
@@ -45,6 +41,7 @@ from goe.offload.offload_transport_rdbms_api import (
 )
 from goe.offload.offload_xform_functions import apply_transformation
 from goe.offload.operation.data_type_controls import char_semantics_override_map
+from goe.offload.registry import create_staging_file, create_transport_rdbms_api
 from goe.offload.spark.pyspark_literal import PysparkLiteral
 from goe.offload.transport.constants import (
     GOE_LISTENER_JAR,
@@ -54,23 +51,20 @@ from goe.offload.transport.constants import (
     OFFLOAD_TRANSPORT_METHOD_SPARK_LIVY,
     OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
     OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP,
-    OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
     OFFLOAD_TRANSPORT_SPARK_METHODS,
-    OFFLOAD_TRANSPORT_SQOOP_METHODS,
     POLLING_VALIDATION_TEXT,
     SPARK_LOG_ROW_COUNT_PATTERN,
     TRANSPORT_CXT_BYTES,
     TRANSPORT_CXT_ROWS,
     YARN_TRANSPORT_NAME,
 )
-from goe.util.misc_functions import (
+from goe.offload.transport.polling_thread import PollingThread
+from goe.util.string_utils import (
     ansi_c_string_safe,
     bytes_to_human_size,
     get_os_username,
     get_temp_path,
 )
-from goe.util.polling_thread import PollingThread
 
 if TYPE_CHECKING:
     from goe.offload.backend_table import BackendTableInterface
@@ -104,13 +98,10 @@ def convert_nans_to_nulls(offload_target_table, offload_operation):
 def get_offload_transport_value(
     offload_transport_method: str,
     dedicated_value: Any,
-    sqoop_specific_value: Any,
     spark_specific_value: Any,
 ) -> Any:
     if dedicated_value:
         return dedicated_value
-    if offload_transport_method in OFFLOAD_TRANSPORT_SQOOP_METHODS and sqoop_specific_value:
-        return sqoop_specific_value
     if offload_transport_method in OFFLOAD_TRANSPORT_SPARK_METHODS and spark_specific_value:
         return spark_specific_value
     return None
@@ -118,7 +109,7 @@ def get_offload_transport_value(
 
 class OffloadTransport(metaclass=ABCMeta):
     """Interface for classes transporting data from an RDBMS frontend to storage that can be accessed by a backend.
-    Overloads by different transport methods, such a Spark, Sqoop, etc
+    Overloads by different transport methods, such as Spark
     (abstract parent class)
     """
 
@@ -170,13 +161,11 @@ class OffloadTransport(metaclass=ABCMeta):
         self._offload_transport_queue_name = get_offload_transport_value(
             self._offload_transport_method,
             offload_operation.offload_transport_queue_name,
-            offload_options.sqoop_queue_name,
             offload_options.offload_transport_spark_queue_name,
         )
         self._offload_transport_jvm_overrides = get_offload_transport_value(
             self._offload_transport_method,
             offload_operation.offload_transport_jvm_overrides,
-            offload_options.sqoop_overrides,
             offload_options.offload_transport_spark_overrides,
         )
         self._offload_transport_parallelism = int(offload_operation.offload_transport_parallelism)
@@ -196,7 +185,7 @@ class OffloadTransport(metaclass=ABCMeta):
         self._load_db_name = self._target_table.get_load_db_name()
         self._load_table_name = self._target_table.table_name
         self._staging_format = offload_options.offload_staging_format
-        self._staging_file = staging_file_factory(
+        self._staging_file = create_staging_file(
             self._load_db_name,
             self._load_table_name,
             self._staging_format,
@@ -207,7 +196,7 @@ class OffloadTransport(metaclass=ABCMeta):
             dry_run=self._dry_run,
         )
 
-        self._rdbms_api = offload_transport_rdbms_api_factory(
+        self._rdbms_api = create_transport_rdbms_api(
             self._rdbms_owner,
             self._rdbms_table_name,
             self._offload_options,
@@ -291,15 +280,10 @@ class OffloadTransport(metaclass=ABCMeta):
         """Map source RDBMS columns to canonical columns so they can then be converted to staging columns"""
         if not self._canonical_columns:
             assert self._rdbms_table is not None
-            assume_all_staging_columns_nullable = bool(
-                self._offload_transport_method in OFFLOAD_TRANSPORT_SQOOP_METHODS
-            )
             char_semantics_map = char_semantics_override_map(self._unicode_string_columns_csv, self._rdbms_columns)
             canonical_columns = []
             for tab_col in self._rdbms_columns:
                 canonical_column = self._rdbms_table.to_canonical_column(tab_col)
-                if assume_all_staging_columns_nullable:
-                    canonical_column.nullable = True
                 if tab_col.name in char_semantics_map:
                     canonical_column.char_semantics = char_semantics_map[tab_col.name]
                 canonical_columns.append(canonical_column)
@@ -365,7 +349,7 @@ class OffloadTransport(metaclass=ABCMeta):
         return ssh_cmd_prefix(self._offload_options.offload_transport_user, host)
 
     def _ssh_cli_safe_value(self, cmd_option_string):
-        """If we are invoking Sqoop via SSH then we need extra protection for special characters on the command line
+        """If we are invoking commands via SSH then we need extra protection for special characters on the command line
         Without SSH the protection added by subprocess module is sufficient
         """
         if self._ssh_cmd_prefix():
@@ -411,7 +395,6 @@ class OffloadTransport(metaclass=ABCMeta):
 
     def _get_rdbms_session_setup_commands(
         self,
-        include_fixed_sqoop=True,
         for_plsql=False,
         include_semi_colons=False,
         escape_semi_colons=False,
@@ -421,7 +404,6 @@ class OffloadTransport(metaclass=ABCMeta):
             self._rdbms_module,
             self._rdbms_action,
             self._offload_transport_rdbms_session_parameters,
-            include_fixed_sqoop=include_fixed_sqoop,
             for_plsql=for_plsql,
             include_semi_colons=include_semi_colons,
             escape_semi_colons=escape_semi_colons,
@@ -687,14 +669,10 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
 
     def _offload_transport_type_remappings(self, return_as_list=True, remap_sep=" "):
         """Returns a list or string containing a parameter and values, or an empty list/string:
-        Sqoop:
-            ['--map-column-java', 'a value for --map-column-java that maps columns appropriately']
         Spark:
             ['customSchema', 'a value for customSchema that maps columns appropriately']
         """
         assert self._offload_transport_method in (
-            OFFLOAD_TRANSPORT_METHOD_SQOOP,
-            OFFLOAD_TRANSPORT_METHOD_SQOOP_BY_QUERY,
             OFFLOAD_TRANSPORT_METHOD_SPARK_THRIFT,
             OFFLOAD_TRANSPORT_METHOD_SPARK_SUBMIT,
             OFFLOAD_TRANSPORT_METHOD_SPARK_BATCHES_GCLOUD,
@@ -708,10 +686,7 @@ FROM (%(row_source_subquery)s) %(table_alias)s) v2""" % {
                 remap.append((col.staging_file_column_name, java_primitive))
 
         if remap:
-            if self._offload_transport_method in OFFLOAD_TRANSPORT_SQOOP_METHODS:
-                remap_strings = ",".join("%s=%s" % (col_name, remap_type) for col_name, remap_type in remap)
-                remap_prefix = "--map-column-java"
-            elif self._offload_transport_method in OFFLOAD_TRANSPORT_SPARK_METHODS:
+            if self._offload_transport_method in OFFLOAD_TRANSPORT_SPARK_METHODS:
                 remap_strings = "'%s'" % ",".join("%s %s" % (col_name, remap_type) for col_name, remap_type in remap)
                 remap_prefix = "customSchema"
             else:

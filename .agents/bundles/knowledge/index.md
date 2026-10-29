@@ -31,7 +31,6 @@ Canonical setup, development, testing, packaging, and validation workflows with 
 ### 4. [Frontend RDBMS Adapters](frontends/index.md)
 - [Oracle Adapter](frontends/oracle.md) - `oracledb`, SQLSpec `OracleGateway`, named SQL files, custom Oracle dialect AST (`AS OF SCN` / `PARTITION`), PL/SQL packages, and `V$SESSION.CLIENT_INFO` trace tagging.
 - [SQL Server Adapter](frontends/sqlserver.md) - `pymssql`, session initialization, space sizing, and catalog extraction.
-- [Teradata Adapter](frontends/teradata.md) - `pyodbc`, batch parameter streaming, and `RANGE_N` partition parsing.
 
 ### 5. [Backend Cloud DW Adapters](backends/index.md)
 - [Google BigQuery](backends/bigquery.md) - `google-cloud-bigquery`, `BigQuerySqlEngine`, native `load_table_from_uri` ingestion (`BIGQUERY_LOAD_TABLE_MODE`), `INFORMATION_SCHEMA.PARTITIONS`, KMS CMEK, and OpenTelemetry spans/metrics.

@@ -22,7 +22,7 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_INTERVAL_DS,
     ORACLE_TYPE_INTERVAL_YM,
 )
-from goe.util.misc_functions import case_insensitive_in, csv_split
+from goe.util.string_utils import case_insensitive_in, csv_split
 
 
 class OffloadPartitionControlsException(Exception):

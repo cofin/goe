@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.goe import OffloadOperation
-from goe.offload.offload_constants import DBTYPE_MSSQL, DBTYPE_TERADATA
+from goe.offload.offload_constants import DBTYPE_MSSQL
 from goe.offload.offload_messages import VVERBOSE, OffloadMessages
 from goe.orchestration.orchestration_runner import OrchestrationRunner
 from tests.testlib.test_framework.offload_test_messages import OffloadTestMessages
@@ -94,7 +94,4 @@ def run_setup_ddl(
                 else:
                     messages.log(str(exc))
                     raise
-        if config.db_type != DBTYPE_TERADATA:
-            # We have autocommit enabled on Teradata:
-            #   COMMIT WORK not allowed for a DBC/SQL session. (-3706)
-            sh_test_api.execute_ddl("COMMIT")
+        sh_test_api.execute_ddl("COMMIT")

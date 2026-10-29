@@ -18,6 +18,7 @@ from goe.offload.column_metadata import (
     str_list_of_columns,
     valid_column_list,
 )
+from goe.offload.hadoop.better_impyla import HDFS_NULL_PART_KEY_CONSTANT
 from goe.offload.hadoop.hadoop_backend_api import BackendHadoopApi
 from goe.offload.hadoop.hadoop_column import (
     HADOOP_TYPE_BIGINT,
@@ -48,7 +49,6 @@ from goe.offload.offload_constants import (
     HIVE_BACKEND_CAPABILITIES,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.util.better_impyla import HDFS_NULL_PART_KEY_CONSTANT
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())

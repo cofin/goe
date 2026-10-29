@@ -17,8 +17,10 @@ from typing import Any
 import pyodbc
 from numpy import datetime64
 
-from goe.connect.connect_constants import CONNECT_DETAIL, CONNECT_STATUS, CONNECT_TEST
 from goe.offload.backend_api import (
+    CONNECT_DETAIL,
+    CONNECT_STATUS,
+    CONNECT_TEST,
     FETCH_ACTION_ALL,
     FETCH_ACTION_CURSOR,
     FETCH_ACTION_ONE,
@@ -62,6 +64,10 @@ from goe.offload.column_metadata import (
     CanonicalColumn,
     is_safe_mapping,
     valid_column_list,
+)
+from goe.offload.hadoop.hive_table_stats import (
+    parse_stats_into_tab_col,
+    transform_stats_as_tuples,
 )
 from goe.offload.microsoft.synapse_column import (
     SYNAPSE_TYPE_BIGINT,
@@ -107,11 +113,7 @@ from goe.offload.offload_constants import (
     SYNAPSE_BACKEND_CAPABILITIES,
 )
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
-from goe.util.hive_table_stats import (
-    parse_stats_into_tab_col,
-    transform_stats_as_tuples,
-)
-from goe.util.misc_functions import (
+from goe.util.string_utils import (
     add_prefix_in_same_case,
     format_list_for_logging,
     human_size_to_bytes,
@@ -1094,7 +1096,7 @@ FROM   %(from_db_table)s%(where)s""" % {
         if row:
             row_count = row[sp_spaceused.rows.value].strip()
             table_size = human_size_to_bytes(row[sp_spaceused.reserved.value].strip().replace(" ", ""))
-            return (int(table_size), int(row_count))
+            return (int(table_size or 0), int(row_count))
         return (None, None)
 
     def get_table_sort_columns(self, db_name, table_name, as_csv=True):

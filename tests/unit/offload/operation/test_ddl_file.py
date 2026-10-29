@@ -9,7 +9,7 @@ import pytest
 from goe.offload import offload_constants
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.operation import ddl_file as module_under_test
-from goe.util.misc_functions import get_temp_path
+from goe.util.string_utils import get_temp_path
 from tests.unit.test_functions import (
     FAKE_ORACLE_BQ_ENV,
     build_mock_offload_operation,
