@@ -14,7 +14,7 @@ This directory contains specifications and task worksheets for active and planne
 
 ## Active & Planned Flows
 
-None.
+- [Native Litestar-MCP GOE Listener Overhaul](litestar_mcp_listener_overhaul_20261029/spec.md) (`litestar_mcp_listener_overhaul_20261029`, `state: completed`, 10 tasks) — Native `litestar-mcp 0.16.0` stateless protocol (`2026-07-28`), `GOEResourcesController` `goe://` resources and templates, handler-level MRTR + HMAC confirmation gating, dry-run `OffloadPipeline.plan` preview, `CrossDbValidator`, `SchemaSyncService`, Oracle-only `OracleJobStore` with cooperative `GOE_LISTENER_JOBS` cancellation + `MCPTaskConfig`, `GOEPromptController`, `MCPSkillsConfig` operational skills, and `goe listener mcp {stdio,bridge,inspect}` CLI transports.
 
 ## Archived Flows & Roadmaps
 
