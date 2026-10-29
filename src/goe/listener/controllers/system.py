@@ -10,13 +10,17 @@ from typing import ClassVar
 
 from litestar import get, head
 from litestar.di import NamedDependency
+from litestar.params import FromQuery
+from litestar_mcp import mcp_tool
 from litestar_security import AuthenticationPolicy, SecureController, public, required
 
 from goe.connect.models import ConnectivityReport
 from goe.listener import schemas
 from goe.listener.cache import ListenerCache
 from goe.listener.jobs.store import JobStoreProtocol
+from goe.listener.mcp import READ_ONLY_TOOL_ANNOTATIONS
 from goe.listener.services.system import SystemService
+from goe.report.models import StatusReportEnvelope
 from goe.util.concurrency import async_
 
 __all__ = ("SystemController",)
@@ -39,7 +43,14 @@ class SystemController(SecureController):
         """Respond to HEAD /api/system/status/ health probes with an empty body."""
         return None
 
-    @get("/connectivity/", mcp_tool="check_connectivity")
+    @get("/connectivity/")
+    @mcp_tool(
+        "check_connectivity",
+        description="Execute frontend, backend, and staging storage connectivity probes.",
+        when_to_use="Before planning or executing an offload or schema sync to verify database and storage reachability.",
+        returns="ConnectivityReport with overall ok status and per-probe latency and error details.",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
     async def check_connectivity(
         self,
         system_service: NamedDependency[SystemService],
@@ -47,7 +58,14 @@ class SystemController(SecureController):
         """Run connectivity probes off the ASGI event loop and return the report."""
         return await asyncio.to_thread(system_service.check_connectivity)
 
-    @get("/config/", mcp_tool="get_listener_config")
+    @get("/config/")
+    @mcp_tool(
+        "get_listener_config",
+        description="Retrieve GOE Listener endpoint metadata, database unique name, and frontend/backend types.",
+        when_to_use="When inspecting the active GOE environment, frontend RDBMS type, or backend target.",
+        returns="ListenerConfig with endpoint_id, listener_group_id, db_unique_name, active_listeners, and types.",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
     async def get_configuration(
         self,
         system_service: NamedDependency[SystemService],
@@ -73,4 +91,27 @@ class SystemController(SecureController):
             version=system_service.get_version(),
             frontend_type=system_service.get_frontend_type(),
             backend_type=system_service.get_backend_type(),
+        )
+
+    @get("/reports/status/")
+    @mcp_tool(
+        "generate_status_report",
+        description="Generate an aggregated Offload Status Report across schemas or for a specific schema/table.",
+        when_to_use="When auditing offloaded row/byte volumes, reclaimable RDBMS storage, and partition coverage.",
+        returns="StatusReportEnvelope containing database rollup totals and per-table TableStatusReport entries.",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+        task_support="optional",
+    )
+    async def generate_status_report(
+        self,
+        system_service: NamedDependency[SystemService],
+        schema_name: FromQuery[str | None] = None,
+        table_name: FromQuery[str | None] = None,
+        demo: FromQuery[bool] = False,
+    ) -> StatusReportEnvelope:
+        """Generate an Offload Status Report envelope off the event loop."""
+        return await async_(system_service.get_status_report)(
+            schema_name=schema_name,
+            table_name=table_name,
+            demo=demo,
         )

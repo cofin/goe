@@ -17,6 +17,7 @@ from goe.config.options import (
     OffloadOperationOptions,
 )
 from goe.orchestration.execution_id import ExecutionId
+from goe.persistence.models import OffloadMetadata
 from goe.typing import FrozenBaseStruct
 
 __all__ = (
@@ -39,6 +40,7 @@ __all__ = (
     "SubPartitionSummary",
     "TableDetail",
     "TableDetails",
+    "TableOffloadMetadataResponse",
 )
 
 
@@ -395,6 +397,48 @@ class ConfirmationChallenge(FrozenBaseStruct, frozen=True):
     expires_in_seconds: int
     instructions: str
     confirmation_required: bool = True
+
+
+class TableOffloadMetadataResponse(FrozenBaseStruct, frozen=True):
+    """Persisted GOE repository offload metadata for a single hybrid frontend/backend table."""
+
+    offloaded_owner: str
+    offloaded_table: str
+    backend_owner: str
+    backend_table: str
+    offload_type: str
+    incremental_key: str | None = None
+    incremental_high_value: str | None = None
+    incremental_range: str | None = None
+    incremental_predicate_type: str | None = None
+    incremental_predicate_value: list[str] | None = None
+    offload_bucket_column: str | None = None
+    offload_sort_columns: str | None = None
+    offload_snapshot: int | str | None = None
+    offload_partition_functions: str | None = None
+    command_execution: str | None = None
+
+    @classmethod
+    def from_metadata(cls, metadata: OffloadMetadata) -> TableOffloadMetadataResponse:
+        """Convert an OffloadMetadata persistence record into a serializable response schema."""
+        cmd_exec = str(metadata.command_execution) if metadata.command_execution is not None else None
+        return cls(
+            offloaded_owner=metadata.offloaded_owner,
+            offloaded_table=metadata.offloaded_table,
+            backend_owner=metadata.backend_owner,
+            backend_table=metadata.backend_table,
+            offload_type=metadata.offload_type,
+            incremental_key=metadata.incremental_key,
+            incremental_high_value=metadata.incremental_high_value,
+            incremental_range=metadata.incremental_range,
+            incremental_predicate_type=metadata.incremental_predicate_type,
+            incremental_predicate_value=metadata.incremental_predicate_value,
+            offload_bucket_column=metadata.offload_bucket_column,
+            offload_sort_columns=metadata.offload_sort_columns,
+            offload_snapshot=metadata.offload_snapshot,
+            offload_partition_functions=metadata.offload_partition_functions,
+            command_execution=cmd_exec,
+        )
 
 
 class OffloadOptions(FrozenBaseStruct, frozen=True):
