@@ -124,7 +124,43 @@ OPTION_GROUPS: dict[str, list[OptionGroupDict]] = {
                 "--verify-parallelism",
             ],
         },
-    ]
+    ],
+    "goe listener mcp stdio": [
+        {
+            "name": "MCP Stdio Transport Options",
+            "options": [
+                "--client-id",
+                "--owner-id",
+                "--header",
+                "--bearer-env",
+                "--header-name",
+                "--token-prefix",
+                "--sse-read-timeout",
+                "--max-message-size",
+            ],
+        },
+    ],
+    "goe listener mcp bridge": [
+        {
+            "name": "MCP Bridge Options",
+            "options": [
+                "--endpoint",
+                "--header",
+                "--bearer-env",
+                "--header-name",
+                "--token-prefix",
+                "--timeout",
+                "--sse-read-timeout",
+                "--max-message-size",
+            ],
+        },
+    ],
+    "goe listener mcp inspect": [
+        {
+            "name": "Catalog Output Options",
+            "options": ["--json"],
+        },
+    ],
 }
 
 
