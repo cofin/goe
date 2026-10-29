@@ -48,6 +48,8 @@ begin
     -- Follow this pattern for each repo version file in sequence...
     check_version(v_current_version, '1.0.0');
     check_version(v_current_version, '1.0.4');
+    -- @create_offload_repo_24.sql
+    check_version(v_current_version, '2.4');
 
 end;
 /

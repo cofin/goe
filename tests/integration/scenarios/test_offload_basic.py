@@ -18,11 +18,11 @@ from goe.offload.offload_metadata_functions import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPE_RANGE,
 )
-from goe.offload.offload_source_data import MAX_QUERY_OPTIMISTIC_PRUNE_CLAUSE
 from goe.offload.registry import create_repository_client
 from goe.offload.schema.column_spec import match_table_column, str_list_of_columns
 from goe.orchestration import command_steps
 from goe.orchestration.command_steps import step_title
+from goe.orchestration.stages.boundary import MAX_QUERY_OPTIMISTIC_PRUNE_CLAUSE
 from tests.integration.scenarios.assertion_functions import (
     backend_column_exists,
     backend_table_count,

@@ -59,7 +59,7 @@ normalized = [item.to_dict() if hasattr(item, "to_dict") else dict(item) for ite
 Calling `item.get(...)` directly on a raw `msgspec.Struct` raises `AttributeError`.
 
 ### 2. Parameter Whitelisting (`EXPECTED_OFFLOAD_ARGS`)
-`OffloadOperation.from_dict` (`src/goe/orchestration/operation.py`) enforces an exact whitelist assertion: `all(k in EXPECTED_OFFLOAD_ARGS for k in operation_dict)`. Extraneous keys, diagnostic flags (`quiet`, `verbose`), or UI convenience aliases must be mapped or pruned at the API/CLI boundary via `OffloadOptions.to_params_dict()` before reaching the runner.
+`OffloadOperationOptions.from_mapping` (`src/goe/config/options.py`) and `OffloadPipeline` (`src/goe/orchestration/pipeline.py`) enforce an exact whitelist assertion against `EXPECTED_OFFLOAD_ARGS`. Extraneous keys, diagnostic flags (`quiet`, `verbose`), or UI convenience aliases must be mapped or pruned at the API/CLI boundary via `OffloadOptions.to_params_dict()` before reaching the runner.
 
 ### 3. Domain Object Serialization Fallback
 Standard JSON serializers fail on `ExecutionId` instances and `.dsl` expression trees. `goe.serializers.encode_json` configures `msgspec.json.Encoder(enc_hook=_default)` to handle:

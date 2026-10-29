@@ -3,17 +3,17 @@
 
 """Core utility methods and lazy re-exports for the GOE Listener service."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 from goe.cli._lazy import LazyImportMap, resolve_lazy_attribute
 from goe.listener.utils import system
-from goe.listener.utils.cache import cache
-from goe.listener.utils.group_by import groupby
 
 if TYPE_CHECKING:
     from goe.listener.utils import orchestrate
 
-__all__ = ["cache", "groupby", "orchestrate", "system"]
+__all__ = ["orchestrate", "system"]
 
 _LAZY_IMPORTS: LazyImportMap = {
     "orchestrate": ("goe.listener.utils.orchestrate", None),
@@ -21,5 +21,5 @@ _LAZY_IMPORTS: LazyImportMap = {
 
 
 def __getattr__(name: str) -> Any:
-    """Lazily resolve heavy listener orchestration utilities on attribute access."""
+    """Lazily resolve listener orchestration utilities on attribute access."""
     return resolve_lazy_attribute(__name__, _LAZY_IMPORTS, name)

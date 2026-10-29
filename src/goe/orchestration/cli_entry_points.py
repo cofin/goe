@@ -3,7 +3,10 @@
 
 """Functions used as entry points for Orchestration CLI commands."""
 
+from __future__ import annotations
+
 import sys
+from typing import Any
 
 from goe.config.orchestration_config import OrchestrationConfig
 from goe.goe import (
@@ -25,11 +28,8 @@ from goe.orchestration.orchestration_runner import OrchestrationRunner
 from goe.util.goe_log import log_exception
 
 
-def offload_by_cli(options, messages_override=None):
-    """CLI entrypoint for Offload.
-
-    messages_override: Only used during testing to access messages object.
-    """
+def offload_by_cli(options: Any, messages_override: Any = None) -> None:
+    """CLI entrypoint for Offload."""
     ensure_observability(options)
     init(options)
     init_log("offload_%s" % options.owner_table)
@@ -54,8 +54,10 @@ def offload_by_cli(options, messages_override=None):
 
         config.log_connectivity_messages(lambda m: log(m, detail=verbose))
 
-        OrchestrationRunner(config_overrides=config_overrides).offload(
-            options, reuse_log=True, messages_override=messages_override
+        OrchestrationRunner(settings=config).offload(
+            options,
+            reuse_log=True,
+            messages_override=messages_override,
         )
 
         log_close()

@@ -50,8 +50,8 @@ if TYPE_CHECKING:
     from goe.filesystem.goe_dfs import GOEDfs
     from goe.offload.backend_table import BackendTableInterface
     from goe.offload.offload_messages import OffloadMessages
-    from goe.offload.offload_source_data import OffloadSourcePartitions
     from goe.offload.offload_source_table import OffloadSourceTableInterface
+    from goe.orchestration.models import OffloadSourcePartitions
 
 DUCKDB_MIN_ORACLE_CONNECTION_LIMIT = 8
 

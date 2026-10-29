@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 The GOE Authors
+# SPDX-License-Identifier: Apache-2.0
+
+"""Schemas controller for Litestar GOE Listener."""
+
+from __future__ import annotations
+
+from typing import ClassVar
+
+from litestar import get
+from litestar.di import NamedDependency
+from litestar.params import FromPath
+from litestar_security import AuthenticationPolicy, SecureController, required
+
+from goe.listener import schemas
+from goe.listener.cache import ListenerCache
+from goe.listener.services.system import SystemService
+from goe.util.concurrency import async_
+
+__all__ = ("SchemasController",)
+
+
+class SchemasController(SecureController):
+    """Controller for /api/system/schemas endpoints."""
+
+    path = "/api/system/schemas"
+    tags = ["Schemas"]
+    auth: ClassVar[AuthenticationPolicy] = required("console-key")
+
+    @get("/", mcp_tool="get_offloadable_schemas")
+    async def get_offloadable_schemas(
+        self,
+        system_service: NamedDependency[SystemService],
+        listener_cache: NamedDependency[ListenerCache],
+    ) -> schemas.OffloadableSchemas:
+        """Get list of offloadable schemas backed by ListenerCache."""
+        raw_schemas = await listener_cache.get_or_load(
+            "schemas:all",
+            lambda: async_(system_service.get_schemas)(),
+        )
+        typed_results = [schemas.OffloadableSchema.from_item(item) for item in (raw_schemas or [])]
+        return schemas.OffloadableSchemas(count=len(typed_results), results=typed_results)
+
+    @get("/{schema_name:str}/", mcp_tool="get_offloadable_tables")
+    async def get_offloadable_tables(
+        self,
+        system_service: NamedDependency[SystemService],
+        listener_cache: NamedDependency[ListenerCache],
+        schema_name: FromPath[str],
+    ) -> schemas.TableDetails:
+        """Get list of tables for a schema backed by ListenerCache."""
+        cache_key = f"schemas:{schema_name.upper()}:tables"
+        raw_tables = await listener_cache.get_or_load(
+            cache_key,
+            lambda: async_(system_service.get_schema_tables)(schema_name),
+        )
+        typed_results = [schemas.TableDetail.from_item(item) for item in (raw_tables or [])]
+        return schemas.TableDetails(count=len(typed_results), results=typed_results)

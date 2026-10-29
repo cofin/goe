@@ -3,26 +3,36 @@
 
 """Unit tests for SystemController endpoints and console-key authentication."""
 
+from __future__ import annotations
+
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import msgspec
 from litestar.di import Provide
 from litestar.testing import TestClient
 
 from goe.listener.app import create_app
+from goe.listener.cache import ListenerCache
 from goe.listener.config import settings
+from goe.listener.jobs.store import SqliteJobStore
 from goe.listener.services.system import SystemService
 
 
-def test_system_status() -> None:
+def test_system_status(tmp_path: Path) -> None:
     """Verify /api/system/status/ returns 200 OK."""
-    app = create_app()
+    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    app = create_app(
+        dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
+        enable_background_worker=False,
+    )
     with TestClient(app=app) as client:
         response = client.get("/api/system/status/")
         assert response.status_code == 200
         assert response.json() == {"status": "OK"}
 
 
-def test_system_config() -> None:
+def test_system_config(tmp_path: Path) -> None:
     """Verify /api/system/config/ returns listener and database metadata."""
     mock_service = MagicMock(spec=SystemService)
     mock_service.generate_listener_endpoint_id.return_value = "00000000-0000-0000-0000-000000000001"
@@ -37,7 +47,16 @@ def test_system_config() -> None:
 
     mock_service.get_active_listener_endpoints = mock_active_endpoints
 
-    app = create_app(dependencies={"system_service": Provide(lambda: mock_service, sync_to_thread=False)})
+    cache = ListenerCache()
+    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    app = create_app(
+        dependencies={
+            "system_service": Provide(lambda: mock_service, sync_to_thread=False),
+            "listener_cache": Provide(lambda: cache, sync_to_thread=False),
+            "job_store": Provide(lambda: store, sync_to_thread=False),
+        },
+        enable_background_worker=False,
+    )
 
     with TestClient(app=app) as client:
         response = client.get("/api/system/config/")
@@ -48,14 +67,23 @@ def test_system_config() -> None:
         assert data["frontend_type"] == "ORACLE"
 
 
-def test_system_schemas() -> None:
+def test_system_schemas(tmp_path: Path) -> None:
     """Verify /api/system/schemas/ returns offloadable schemas."""
     mock_service = MagicMock(spec=SystemService)
     mock_service.get_schemas.return_value = [
         {"schema_name": "SH", "hybrid_schema_exists": True, "table_count": 5, "schema_size_in_bytes": 1024.0}
     ]
 
-    app = create_app(dependencies={"system_service": Provide(lambda: mock_service, sync_to_thread=False)})
+    cache = ListenerCache()
+    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    app = create_app(
+        dependencies={
+            "system_service": Provide(lambda: mock_service, sync_to_thread=False),
+            "listener_cache": Provide(lambda: cache, sync_to_thread=False),
+            "job_store": Provide(lambda: store, sync_to_thread=False),
+        },
+        enable_background_worker=False,
+    )
 
     with TestClient(app=app) as client:
         response = client.get("/api/system/schemas/")
@@ -65,16 +93,26 @@ def test_system_schemas() -> None:
         assert data["results"][0]["schema_name"] == "SH"
 
 
-def test_system_console_key_enforcement() -> None:
+def test_system_console_key_enforcement(tmp_path: Path) -> None:
     """Verify x-goe-console-key header enforcement when settings.shared_token is configured."""
     mock_service = MagicMock(spec=SystemService)
     mock_service.get_schemas.return_value = [
         {"schema_name": "SH", "hybrid_schema_exists": True, "table_count": 5, "schema_size_in_bytes": 1024.0}
     ]
 
-    app = create_app(dependencies={"system_service": Provide(lambda: mock_service, sync_to_thread=False)})
+    cache = ListenerCache()
+    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    app = create_app(
+        dependencies={
+            "system_service": Provide(lambda: mock_service, sync_to_thread=False),
+            "listener_cache": Provide(lambda: cache, sync_to_thread=False),
+            "job_store": Provide(lambda: store, sync_to_thread=False),
+        },
+        enable_background_worker=False,
+    )
 
-    with patch.object(settings, "shared_token", "secret-token-123"), TestClient(app=app) as client:
+    secured_settings = msgspec.structs.replace(settings, shared_token="secret-token-123")
+    with patch("goe.listener.security.settings", secured_settings), TestClient(app=app) as client:
         status_resp = client.get("/api/system/status/")
         assert status_resp.status_code == 200
 

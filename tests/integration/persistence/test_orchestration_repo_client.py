@@ -10,10 +10,10 @@ from unittest import TestCase, main
 from numpy import datetime64
 
 from goe.config.orchestration_config import OrchestrationConfig
-from goe.offload.offload_source_data import OffloadSourcePartition
 from goe.offload.registry import create_repository_client
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
+from goe.orchestration.models import OffloadSourcePartition
 from tests.testlib.test_framework.test_functions import (
     get_test_messages,
 )

@@ -70,8 +70,12 @@ GOE loads environment variables using a 4-tier discovery architecture via `pytho
 - `GOOGLE_DATAPROC_SERVICE_ACCOUNT`: Workload runtime service account attached to Dataproc Serverless batches (`gcloud dataproc batches submit pyspark --service-account=...`). Does not control `gcloud` caller impersonation.
 - `GOOGLE_DATAPROC_IMPERSONATE_SERVICE_ACCOUNT`: Optional service account email for `gcloud dataproc` control-plane caller impersonation (`--impersonate-service-account`, falling back to `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`).
 
-### Listener Settings (Embedded Architecture)
-- `OFFLOAD_LISTENER_HOST` / `PORT`: Bind host and port (default `0.0.0.0:8000`).
-- `OFFLOAD_LISTENER_SHARED_TOKEN`: API key required in `x-goe-console-key` header (when unset, allows unauthenticated local access).
-- `OFFLOAD_LISTENER_HEARTBEAT_INTERVAL`: Periodic endpoint registration interval in seconds (default `60`).
-- `OFFLOAD_LISTENER_WORKERS`: Number of Granian ASGI worker processes (default `1`).
+### Listener Settings (Vertebra & Durable Job Queue Architecture)
+- `OFFLOAD_LISTENER_HOST` / `OFFLOAD_LISTENER_PORT` (and `PORT` Cloud Run override): Bind host and port (default `0.0.0.0:8000`).
+- `OFFLOAD_LISTENER_SHARED_TOKEN`: API key required in `x-goe-console-key` header across `/api/*` and `/mcp` (when unset, allows unauthenticated local access).
+- `OFFLOAD_LISTENER_HEARTBEAT_INTERVAL`: Periodic node heartbeat and job lease renewal interval in seconds (default `30`).
+- `OFFLOAD_LISTENER_HTTP_WORKERS` (fallback `OFFLOAD_LISTENER_WORKERS`): Number of Vertebra HTTP worker processes (default resolved from `CgroupQuota.detect().recommended_workers`).
+- `OFFLOAD_LISTENER_TOPOLOGY`: Vertebra multi-worker socket/shared-memory topology (`shm` default, or `reuseport`).
+- `OFFLOAD_LISTENER_THREADS`: Blocking worker threads per Vertebra worker process (default `1`).
+- `OFFLOAD_LISTENER_DRAIN_TIMEOUT`: Graceful lame-duck drain timeout in seconds on `SIGTERM`/`SIGINT` (default `30`).
+- `ListenerSettings.to_vertebra_env()` (`src/goe/listener/config/application.py`): Projects `VERTEBRA_HOST`, `VERTEBRA_PORT`, `VERTEBRA_WORKERS`, `VERTEBRA_THREADS`, `VERTEBRA_TOPOLOGY`, and `VERTEBRA_DRAIN_TIMEOUT` into the child process environment.

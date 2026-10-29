@@ -6,7 +6,6 @@
 Ideally these would migrate to better locations in time.
 """
 
-from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from goe.exceptions import OffloadException
@@ -16,7 +15,6 @@ from goe.offload.offload_metadata_functions import (
     decode_metadata_incremental_high_values_from_metadata,
     incremental_key_csv_from_part_keys,
 )
-from goe.offload.offload_source_data import offload_source_data_factory
 from goe.offload.offload_source_table import (
     OFFLOAD_PARTITION_TYPE_LIST,
 )
@@ -24,11 +22,10 @@ from goe.offload.operation.ddl_file import write_ddl_to_ddl_file
 from goe.offload.operation.sort_columns import check_and_alter_backend_sort_columns
 from goe.offload.option_validation import (
     active_data_append_options,
-    check_ipa_predicate_type_option_conflicts,
-    check_opt_is_posint,
 )
 from goe.offload.registry import create_source_table
 from goe.orchestration import command_steps
+from goe.orchestration.stages.boundary import offload_source_data_factory
 from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,
     INCREMENTAL_PREDICATE_TYPES_WITH_PREDICATE_IN_HV,
@@ -39,8 +36,8 @@ if TYPE_CHECKING:
     from goe.config.orchestration_config import OrchestrationConfig
     from goe.goe import OffloadOperation
     from goe.offload.backend_table import BackendTableInterface
-    from goe.offload.offload_source_data import OffloadSourceDataInterface
     from goe.offload.offload_source_table import OffloadSourceTableInterface
+    from goe.orchestration.stages.boundary import OffloadSourceDataInterface
     from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 
 
@@ -331,42 +328,3 @@ def offload_type_force_effects(
                     % (original_pred_cols, new_pred_cols)
                 )
                 hybrid_operation.force = True
-
-
-def normalise_less_than_options(options, exc_cls=OffloadException):
-    """We mustn't be in offload so should just drop out
-
-    move the value into less_than_value
-    """
-    if not hasattr(options, "older_than_date"):
-        return
-
-    active_pa_opts = active_data_append_options(options, from_options=True)
-    if len(active_pa_opts) > 1:
-        raise exc_cls(
-            "%s: %s"
-            % (
-                offload_constants.CONFLICTING_DATA_ID_OPTIONS_EXCEPTION_TEXT,
-                ", ".join(active_pa_opts),
-            )
-        )
-
-    if options.reset_hybrid_view and len(active_pa_opts) == 0:
-        raise exc_cls(offload_constants.RESET_HYBRID_VIEW_EXCEPTION_TEXT)
-
-    if options.older_than_date:
-        try:
-            options.less_than_value = parse_yyyy_mm_dd(options.older_than_date)
-            options.older_than_date = None
-        except ValueError as exc:
-            raise exc_cls("option --older-than-date: %s" % str(exc))
-    elif options.older_than_days:
-        options.older_than_days = check_opt_is_posint("--older-than-days", options.older_than_days, allow_zero=True)
-        options.less_than_value = datetime.today() - timedelta(options.older_than_days)
-        options.older_than_days = None
-
-    check_ipa_predicate_type_option_conflicts(options, exc_cls=exc_cls)
-
-
-def parse_yyyy_mm_dd(ds):
-    return datetime.strptime(ds, "%Y-%m-%d")

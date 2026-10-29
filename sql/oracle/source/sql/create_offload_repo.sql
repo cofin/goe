@@ -8,6 +8,7 @@ begin
     dbms_output.put_line(q'{-- SPDX-FileCopyrightText: 2016 The GOE Authors}');
     dbms_output.put_line(q'{-- SPDX-License-Identifier: Apache-2.0}');
     if '&goe_repo_install' = 'Y' then
+        -- Includes @create_offload_repo_24.sql via install_offload_repo.sql
         dbms_output.put_line('@@install_offload_repo.sql');
     elsif '&goe_repo_upgrade' = 'Y' then
         dbms_output.put_line('@@upgrade_offload_repo.sql');

@@ -8,11 +8,11 @@ from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
-from goe.offload.offload_source_data import (
-    TOO_MANY_PARTITION_NAMES_EXCEPTION_TEXT,
-)
 from goe.offload.registry import create_repository_client
 from goe.offload.schema.column_spec import ORACLE_TYPE_NVARCHAR2
+from goe.orchestration.stages.boundary import (
+    TOO_MANY_PARTITION_NAMES_EXCEPTION_TEXT,
+)
 from tests.integration.scenarios.assertion_functions import (
     sales_based_fact_assertion,
     synthetic_part_col_name,

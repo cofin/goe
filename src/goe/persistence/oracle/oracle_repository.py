@@ -19,10 +19,10 @@ from goe.offload.offload_constants import (
     BACKEND_DISTRO_SNOWFLAKE,
 )
 from goe.offload.offload_messages import QUIET, VERBOSE, VVERBOSE, OffloadMessages
-from goe.offload.offload_source_data import OffloadSourcePartition
 from goe.offload.oracle.catalog import OracleTableSnapshot
 from goe.orchestration import command_steps, orchestration_constants
 from goe.orchestration.execution_id import ExecutionId
+from goe.orchestration.models import OffloadSourcePartition
 from goe.persistence.models import (
     CommandExecutionRecord,
     CommandStepRecord,

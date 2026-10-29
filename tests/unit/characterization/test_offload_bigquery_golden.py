@@ -15,11 +15,6 @@ from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_AVRO,
 )
 from goe.offload.offload_messages import OffloadMessages
-from goe.offload.offload_source_data import (
-    OFFLOAD_SOURCE_CLIENT_OFFLOAD,
-    OffloadSourceDataIpaRange,
-    OffloadSourcePartitions,
-)
 from goe.offload.oracle import oracle_predicate
 from goe.offload.predicate_offload import GenericPredicate
 from goe.offload.registry import create_staging_file
@@ -40,6 +35,11 @@ from goe.offload.schema.column_spec import (
     ColumnDialect,
     ColumnPartitionSpec,
     ColumnSpec,
+)
+from goe.orchestration.stages.boundary import (
+    OFFLOAD_SOURCE_CLIENT_OFFLOAD,
+    OffloadSourceDataIpaRange,
+    OffloadSourcePartitions,
 )
 from tests.unit.test_functions import (
     FAKE_ORACLE_BQ_ENV,

@@ -14,18 +14,19 @@ This directory contains specifications and task worksheets for active and planne
 
 ## Active & Planned Flows
 
-The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024/research/goe-architecture-redesign.md)):
-
-- **[Master PRD 10: Execution Context, Staged OffloadPlan, Durable Job Queue, and the Listener on Vertebra](prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024/spec.md)** (`planned`):
-  - Chapter 10.1: Execution Context and Concurrency Safety ([`execution_context_and_concurrency_safety_20261024`](execution_context_and_concurrency_safety_20261024/spec.md))
-  - Chapter 10.2: `OffloadPlan` Discovery and Boundary Stages ([`offload_plan_discovery_and_boundary_stages_20261024`](offload_plan_discovery_and_boundary_stages_20261024/spec.md))
-  - Chapter 10.3: `OffloadPlan` Resolution and Stateless Executor ([`offload_plan_resolution_and_stateless_executor_20261024`](offload_plan_resolution_and_stateless_executor_20261024/spec.md))
-  - Chapter 10.4: Durable Job Queue, Listener Cache, and MCP ([`durable_job_queue_listener_cache_and_mcp_20261024`](durable_job_queue_listener_cache_and_mcp_20261024/spec.md))
-  - Chapter 10.5: Listener on Vertebra Runtime ([`listener_on_vertebra_runtime_20261024`](listener_on_vertebra_runtime_20261024/spec.md))
+None.
 
 ## Archived Flows & Roadmaps
 
 All previous flows have completed full verification and code review gates and have been synthesized into `.agents/bundles/knowledge/`:
+
+- **Master PRD 10: Execution Context, Staged OffloadPlan, Durable Job Queue, and the Listener on Vertebra (`prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024`, 17 tasks)**:
+  - Chapter 10.1: Execution Context and Concurrency Safety (`execution_context_and_concurrency_safety_20261024`, 4 tasks)
+  - Chapter 10.2: `OffloadPlan` Discovery and Boundary Stages (`offload_plan_discovery_and_boundary_stages_20261024`, 3 tasks)
+  - Chapter 10.3: `OffloadPlan` Resolution and Stateless Executor (`offload_plan_resolution_and_stateless_executor_20261024`, 3 tasks)
+  - Chapter 10.4: Durable Job Queue, Listener Cache, and MCP (`durable_job_queue_listener_cache_and_mcp_20261024`, 4 tasks)
+  - Chapter 10.5: Listener on Vertebra Runtime (`listener_on_vertebra_runtime_20261024`, 3 tasks)
+  - *Synthesized into*: [Orchestration Core Engine](../knowledge/architecture/orchestration.md), [Offload Execution Lifecycle](../knowledge/architecture/offload-lifecycle.md), [GOE Listener REST Service](../knowledge/listener/index.md), [Listener REST API Architecture](../knowledge/listener/rest-api.md), [Listener Durable Job Queue & Bounded Caching](../knowledge/listener/worker-and-redis.md), [Configuration & Environment Variables](../knowledge/operations/configuration-and-env.md), [CLI Architecture](../knowledge/patterns/cli-architecture.md), [Serialization & Utils](../knowledge/patterns/serialization-and-utils.md), [Offload & Typing Gotchas](../knowledge/patterns/offload-and-typing.md).
 
 - **Master PRD 9: Canonical Column Model, Composable Backends, Cached Backend Catalog, and Direct BigQuery Ingestion (`prd_09_composable_backends_and_direct_bigquery_ingestion_20261024`, 13 tasks)**:
   - Chapter 9.1: Canonical Column Model and Type Registry (`canonical_column_model_and_type_registry_20261024`, 4 tasks)

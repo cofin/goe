@@ -91,6 +91,8 @@ def _default_dec_hook(target_type: type[Any], obj: Any) -> Any:
         return Decimal(str(obj))
     if target_type is Path and isinstance(obj, str):
         return Path(obj)
+    if hasattr(target_type, "from_str") and callable(target_type.from_str) and isinstance(obj, str):
+        return target_type.from_str(obj)
     raise TypeError(f"Cannot decode {type(obj).__name__} into {target_type}")
 
 
