@@ -16,7 +16,7 @@ from litestar_security import AuthenticationPolicy, SecureController, required
 from goe.listener import schemas
 from goe.listener.cache import ListenerCache
 from goe.listener.exceptions import TableMetadataNotFound
-from goe.listener.mcp import READ_ONLY_TOOL_ANNOTATIONS
+from goe.listener.mcp import READ_ONLY_TOOL_ANNOTATIONS, ConfirmationGate
 from goe.listener.services.system import SystemService
 from goe.report.models import TableStatusReport
 from goe.sync.differ import SchemaDiff
@@ -120,11 +120,16 @@ class TablesController(SecureController):
     async def preview_schema_drift(
         self,
         system_service: NamedDependency[SystemService],
+        confirmation_gate: NamedDependency[ConfirmationGate],
         schema_name: FromPath[str],
         table_name: FromPath[str],
     ) -> SchemaDiff:
         """Preview schema drift between source and target for a single table."""
-        return await async_(system_service.preview_schema_drift)(schema_name, table_name)
+        return await async_(system_service.preview_schema_drift)(
+            schema_name,
+            table_name,
+            confirmation_gate=confirmation_gate,
+        )
 
     @get("/metadata/")
     @mcp_tool(

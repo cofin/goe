@@ -305,6 +305,68 @@ class OrchestrationController(SecureController):
             )
         return scheduled
 
+    @post("/sync/")
+    @mcp_tool(
+        "apply_schema_sync",
+        description="Synchronize additive schema drift (added/widened columns) from frontend RDBMS to backend.",
+        agent_instructions=(
+            "Run preview_schema_drift first to inspect DDL statements and obtain a confirmation_token, "
+            "or complete the two-round MRTR confirmation challenge when execute=True."
+        ),
+        when_to_use="After preview_schema_drift shows additive column additions or widenings on an offloaded table.",
+        returns="SchemaSyncExecutionResult detailing generated and applied DDL statements.",
+        annotations=DESTRUCTIVE_TOOL_ANNOTATIONS,
+        task_support="optional",
+        task_input_before_start=True,
+    )
+    async def apply_schema_sync(
+        self,
+        data: JSONBody[schemas.SchemaSyncRequest],
+        operations_service: NamedDependency[ListenerOperationsService],
+        listener_cache: NamedDependency[ListenerCache],
+        confirmation_gate: NamedDependency[ConfirmationGate],
+    ) -> schemas.SchemaSyncExecutionResult:
+        """Synchronize schema drift between frontend and backend and invalidate table/schema cache keys."""
+        try:
+            ctx = get_mcp_request_context()
+        except RuntimeError:
+            ctx = None
+
+        normalized_owner_table = data.owner_table.strip().upper()
+        if ctx is not None and data.execute:
+            challenge_result = confirmation_gate.require_mcp_confirmation(
+                tool_name="apply_schema_sync",
+                owner_table=normalized_owner_table,
+                payload={"owner_table": normalized_owner_table, "execute": True},
+                confirmation_token=data.confirmation_token,
+            )
+            if challenge_result is not None:
+                return cast("schemas.SchemaSyncExecutionResult", challenge_result)
+
+        result = await async_(operations_service.synchronize_schema)(data)
+        if "." in normalized_owner_table:
+            owner_part, table_part = normalized_owner_table.split(".", 1)
+            await listener_cache.invalidate_prefix(f"tables:{owner_part.strip()}:{table_part.strip()}:")
+            await listener_cache.invalidate_prefix(f"schemas:{owner_part.strip()}:tables")
+        return result
+
+    @post("/validate/")
+    @mcp_tool(
+        "validate_table",
+        description="Run read-only cross-database aggregate validation and optional DuckDB row diff for a table.",
+        when_to_use="After an offload or schema sync to verify row counts and column aggregates match.",
+        returns="ValidationResultSummary with pass/fail status, aggregate functions, and optional row diffs.",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+        task_support="optional",
+    )
+    async def validate_table(
+        self,
+        data: JSONBody[schemas.ValidateTableRequest],
+        operations_service: NamedDependency[ListenerOperationsService],
+    ) -> schemas.ValidationResultSummary:
+        """Run read-only cross-database validation off the asyncio event loop."""
+        return await async_(operations_service.validate_table)(data)
+
 
 def _parse_execution_id(raw_id: str) -> ExecutionId:
     """Parse raw_id into an ExecutionId or raise HTTP 400 ApplicationError on invalid UUID syntax."""

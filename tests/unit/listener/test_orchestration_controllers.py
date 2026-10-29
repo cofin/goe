@@ -567,3 +567,131 @@ def test_mcp_preview_offload_plan_and_token_execution(
         )
         assert missing_resp.status_code == 200
         assert missing_resp.json()["result"]["isError"] is True
+
+
+def test_sync_and_validate_endpoints_rest_and_mcp_gating(tmp_path: Path) -> None:
+    """Verify /api/orchestration/sync/ (REST un-gated + MCP MRTR/token + cache invalidation) and /validate/."""
+    mock_service = MagicMock(spec=SystemService)
+    mock_ops = MagicMock(spec=ListenerOperationsService)
+    mock_ops.synchronize_schema.side_effect = lambda req: schemas.SchemaSyncExecutionResult(
+        owner_table=req.owner_table.upper(),
+        backend="BIGQUERY",
+        has_drift=True,
+        applied=req.execute,
+        added_columns=["PROMO_CODE"],
+        widened_columns=[],
+        ddl_statements=["ALTER TABLE sh.sales ADD COLUMN PROMO_CODE STRING"],
+        warnings=[],
+    )
+    mock_ops.validate_table.side_effect = lambda req: schemas.ValidationResultSummary(
+        owner_table=req.owner_table.upper(),
+        passed=True,
+        execute=req.execute,
+        aggregate_functions=req.aggregate_functions or ["COUNT", "MIN", "MAX"],
+        safe_boundary_applied=not req.skip_boundary_check,
+        summary_message="Compared aggregations of columns: ID",
+        differing_rows=[],
+    )
+
+    cache = ListenerCache()
+    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    gate = ConfirmationGate(secret="sync-test-secret", ttl_seconds=300)
+    app = create_app(
+        dependencies={
+            "system_service": Provide(lambda: mock_service, sync_to_thread=False),
+            "operations_service": Provide(lambda: mock_ops, sync_to_thread=False),
+            "listener_cache": Provide(lambda: cache, sync_to_thread=False),
+            "job_store": Provide(lambda: store, sync_to_thread=False),
+            "confirmation_gate": Provide(lambda: gate, sync_to_thread=False),
+        },
+        enable_background_worker=False,
+    )
+    base_meta = {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+
+    with TestClient(app=app) as client:
+        rest_sync = client.post(
+            "/api/orchestration/sync/",
+            json={"owner_table": "SH.SALES", "execute": True},
+        )
+        assert rest_sync.status_code in (200, 201)
+        assert rest_sync.json()["applied"] is True
+
+        rest_val = client.post(
+            "/api/orchestration/validate/",
+            json={"owner_table": "SH.SALES", "execute": True, "filters": "ID > 0"},
+        )
+        assert rest_val.status_code in (200, 201)
+        assert rest_val.json()["passed"] is True
+
+        mcp_sync_r1 = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "apply_schema_sync",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 40,
+                "method": "tools/call",
+                "params": {
+                    "name": "apply_schema_sync",
+                    "arguments": {"data": {"owner_table": "SH.SALES", "execute": True}},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert mcp_sync_r1.status_code == 200
+        r1_res = mcp_sync_r1.json()["result"]
+        assert r1_res["resultType"] == "input_required"
+
+        mcp_sync_r2 = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "apply_schema_sync",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 41,
+                "method": "tools/call",
+                "params": {
+                    "name": "apply_schema_sync",
+                    "arguments": {"data": {"owner_table": "SH.SALES", "execute": True}},
+                    "requestState": r1_res["requestState"],
+                    "inputResponses": {"confirm": True},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert mcp_sync_r2.status_code == 200
+        r2_res = mcp_sync_r2.json()["result"]
+        assert r2_res["isError"] is False
+        r2_struct = r2_res.get("structuredContent") or decode_json(r2_res["content"][0]["text"])
+        assert r2_struct["applied"] is True
+
+        mcp_val = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "validate_table",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 42,
+                "method": "tools/call",
+                "params": {
+                    "name": "validate_table",
+                    "arguments": {"data": {"owner_table": "SH.SALES", "execute": True}},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert mcp_val.status_code == 200
+        val_res = mcp_val.json()["result"]
+        assert val_res["isError"] is False

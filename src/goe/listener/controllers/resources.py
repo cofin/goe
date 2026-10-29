@@ -19,6 +19,7 @@ from goe.listener import exceptions, schemas, utils
 from goe.listener.cache import ListenerCache
 from goe.listener.exceptions import TableMetadataNotFound
 from goe.listener.jobs.store import JobStoreProtocol
+from goe.listener.mcp import ConfirmationGate
 from goe.listener.services.system import SystemService
 from goe.orchestration.execution_id import ExecutionId
 from goe.report.models import StatusReportEnvelope, TableStatusReport
@@ -245,11 +246,16 @@ class GOEResourcesController(SecureController):
     async def read_table_drift(
         self,
         system_service: NamedDependency[SystemService],
+        confirmation_gate: NamedDependency[ConfirmationGate],
         schema_name: FromPath[str],
         table_name: FromPath[str],
     ) -> SchemaDiff:
         """Return goe://schemas/{schema_name}/{table_name}/drift templated resource."""
-        return await async_(system_service.preview_schema_drift)(schema_name, table_name)
+        return await async_(system_service.preview_schema_drift)(
+            schema_name,
+            table_name,
+            confirmation_gate=confirmation_gate,
+        )
 
     @get(
         "/schemas/{schema_name:str}/{table_name:str}/metadata/",

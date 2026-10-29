@@ -12,19 +12,24 @@ import msgspec
 
 from goe.config.options import OffloadOperationOptions
 from goe.config.orchestration_config import OrchestrationConfig
-from goe.exceptions import OffloadException, OffloadOptionError, OptionValueError
+from goe.exceptions import OffloadException, OffloadOptionError, OptionValueError, ValidationError
 from goe.listener import exceptions, schemas
 from goe.listener.mcp import ConfirmationGate
+from goe.listener.services.system import SystemService
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.offload_validation import DEFAULT_AGGS, DEFAULT_SELECT_COLS, CrossDbValidator
 from goe.offload.operation.data_type_controls import offload_source_to_canonical_mappings
 from goe.offload.operation.partition_controls import derive_partition_digits
-from goe.offload.predicates import PredicateCompiler
+from goe.offload.predicates import PredicateCompiler, PredicateOffloadException
 from goe.offload.registry import (
+    create_backend_table,
     create_repository_client,
     create_source_table,
 )
 from goe.offload.schema.column_spec import ColumnSpec
+from goe.offload.sql_ast.dialect_engine import SqlDialect
 from goe.offload.transport.selector import choose_offload_transport_method
+from goe.offload.validation.ast_builder import CrossDbValidationBuilder
 from goe.orchestration.execution_id import ExecutionId
 from goe.orchestration.models import (
     DiscoveryState,
@@ -43,6 +48,7 @@ from goe.orchestration.stages.plan_resolution import (
 )
 from goe.persistence.models import OffloadMetadata
 from goe.platform.locking import orchestration_lock_for_table
+from goe.sync.differ import SchemaSyncService
 
 __all__ = (
     "ListenerOperationsService",
@@ -59,11 +65,15 @@ class ListenerOperationsService:
         orchestration_config: OrchestrationConfig | None = None,
         confirmation_gate: ConfirmationGate | None = None,
         plan_builder: Callable[[OffloadOperationOptions], tuple[OffloadPlan, list[str]]] | None = None,
+        sync_runner: Callable[[str, str, bool], schemas.SchemaSyncExecutionResult] | None = None,
+        validator_runner: Callable[[schemas.ValidateTableRequest], schemas.ValidationResultSummary] | None = None,
     ) -> None:
         """Initialize the operations service with configuration, confirmation gate, and optional test hooks."""
         self._config = orchestration_config
         self._confirmation_gate = confirmation_gate or ConfirmationGate()
         self._plan_builder = plan_builder
+        self._sync_runner = sync_runner
+        self._validator_runner = validator_runner
 
     def preview_offload(self, options: schemas.OffloadOptions) -> schemas.OffloadPlanPreview:
         """Build a side-effect-free dry-run OffloadPlanPreview and mint an execute_offload ConfirmationChallenge."""
@@ -97,6 +107,160 @@ class ListenerOperationsService:
             owner_table=options.owner_table,
             notices=notices,
             confirmation_challenge=challenge,
+        )
+
+    def synchronize_schema(self, request: schemas.SchemaSyncRequest) -> schemas.SchemaSyncExecutionResult:
+        """Synchronize schema drift between frontend and backend under orchestration_lock_for_table."""
+        owner, table_name = self._split_owner_table(request.owner_table)
+        try:
+            with orchestration_lock_for_table(owner, table_name, dry_run=not request.execute):
+                if self._sync_runner is not None:
+                    return self._sync_runner(owner, table_name, request.execute)
+                return self._run_live_schema_sync(owner, table_name, request.execute)
+        except exceptions.ApplicationError:
+            raise
+        except (OffloadOptionError, OptionValueError, ValidationError, ValueError) as exc:
+            raise exceptions.ApplicationError(status_code=400, message=str(exc)) from exc
+        except OffloadException as exc:
+            msg = str(exc)
+            status_code = 404 if ("does not exist" in msg.lower() or "not found" in msg.lower()) else 400
+            raise exceptions.ApplicationError(status_code=status_code, message=msg) from exc
+
+    def validate_table(self, request: schemas.ValidateTableRequest) -> schemas.ValidationResultSummary:
+        """Run read-only cross-database aggregate validation and optional DuckDB row diff."""
+        owner, table_name = self._split_owner_table(request.owner_table)
+        parsed_filters: Any = None
+        if request.filters and request.filters.strip():
+            try:
+                parsed_filters = CrossDbValidationBuilder("oracle").parse_filter_tuples(request.filters)
+            except (PredicateOffloadException, ValidationError, OffloadException, ValueError) as exc:
+                raise exceptions.ApplicationError(status_code=400, message=str(exc)) from exc
+
+        try:
+            if self._validator_runner is not None:
+                return self._validator_runner(request)
+            return self._run_live_validation(owner, table_name, request, parsed_filters)
+        except exceptions.ApplicationError:
+            raise
+        except (PredicateOffloadException, ValidationError, OffloadOptionError, OptionValueError, ValueError) as exc:
+            raise exceptions.ApplicationError(status_code=400, message=str(exc)) from exc
+        except OffloadException as exc:
+            msg = str(exc)
+            status_code = 404 if ("does not exist" in msg.lower() or "not found" in msg.lower()) else 400
+            raise exceptions.ApplicationError(status_code=status_code, message=msg) from exc
+
+    @staticmethod
+    def _split_owner_table(owner_table: str) -> tuple[str, str]:
+        """Split OWNER.TABLE into uppercase (owner, table_name) or raise HTTP 400 ApplicationError."""
+        cleaned = (owner_table or "").strip()
+        if "." not in cleaned:
+            raise exceptions.ApplicationError(
+                status_code=400,
+                message=f"Invalid owner_table '{owner_table}': expected SCHEMA.TABLE",
+            )
+        owner, table_name = cleaned.split(".", 1)
+        if not owner.strip() or not table_name.strip():
+            raise exceptions.ApplicationError(
+                status_code=400,
+                message=f"Invalid owner_table '{owner_table}': expected SCHEMA.TABLE",
+            )
+        return owner.strip().upper(), table_name.strip().upper()
+
+    def _run_live_schema_sync(
+        self,
+        owner: str,
+        table_name: str,
+        execute: bool,
+    ) -> schemas.SchemaSyncExecutionResult:
+        """Compute and optionally execute schema evolution DDL against the backend table."""
+        config = self._get_config()
+        messages = OffloadMessages.from_options(config, execution_id=ExecutionId())
+        sys_service = SystemService(config=config, messages=messages)
+        raw_source = sys_service.get_table_columns(owner, table_name) or []
+        source_cols = [SystemService._to_source_column_snapshot(col, idx) for idx, col in enumerate(raw_source, 1)]
+        repo = SystemService.get_repo(config, messages)
+        meta = repo.get_offload_metadata(owner, table_name)
+        target_schema = meta.backend_owner if meta is not None else owner.lower()
+        target_table = meta.backend_table if meta is not None else table_name.lower()
+        backend_table = create_backend_table(
+            target_schema,
+            target_table,
+            config.target,
+            config,
+            messages,
+            dry_run=not execute,
+        )
+        try:
+            raw_target = backend_table.get_columns() or []
+            target_cols = [SystemService._to_target_column_snapshot(col, idx) for idx, col in enumerate(raw_target, 1)]
+            dialect_name = str(config.target or "bigquery").lower()
+            sync_service = SchemaSyncService(dialect=cast("SqlDialect", dialect_name))
+            backend_api = backend_table.get_backend_api() if execute else None
+            diff, statements = sync_service.sync_table(
+                schema_name=owner,
+                table_name=table_name,
+                target_schema=target_schema,
+                target_table=target_table,
+                source_columns=source_cols,
+                target_columns=target_cols,
+                execute=execute,
+                ddl_executor=(lambda stmt: backend_api.execute_ddl(stmt)) if backend_api is not None else None,
+            )
+            return schemas.SchemaSyncExecutionResult(
+                owner_table=f"{owner}.{table_name}",
+                backend=str(config.target or "BIGQUERY").upper(),
+                has_drift=diff.has_changes,
+                applied=bool(execute and statements),
+                added_columns=[col.column_name for col in diff.additions],
+                widened_columns=[col.column_name for col in diff.widenings],
+                ddl_statements=list(statements),
+                warnings=[str(w) for w in (messages.get_warnings() or [])],
+            )
+        finally:
+            if hasattr(backend_table, "close"):
+                backend_table.close()
+
+    def _run_live_validation(
+        self,
+        owner: str,
+        table_name: str,
+        request: schemas.ValidateTableRequest,
+        parsed_filters: Any,
+    ) -> schemas.ValidationResultSummary:
+        """Execute CrossDbValidator.validate and optional run_row_diff against frontend and backend."""
+        config = self._get_config()
+        messages = OffloadMessages.from_options(config, execution_id=ExecutionId())
+        validator = CrossDbValidator(
+            owner,
+            table_name,
+            config,
+            messages=messages,
+            execute=request.execute,
+        )
+        aggs = [fn.lower() for fn in request.aggregate_functions] if request.aggregate_functions else list(DEFAULT_AGGS)
+        selects = request.select_columns if request.select_columns is not None else DEFAULT_SELECT_COLS
+        safe_boundary = not request.skip_boundary_check
+        passed, summary_message = validator.validate(
+            selects=selects,
+            filters=parsed_filters if parsed_filters is not None else request.filters,
+            group_bys=request.group_bys,
+            aggs=aggs,
+            safe=safe_boundary,
+            as_of_scn=request.as_of_scn,
+            execute=request.execute,
+            frontend_parallelism=request.frontend_parallelism,
+        )
+        differing_rows: list[dict[str, Any]] = []
+        if not passed and request.include_row_diff and request.execute:
+            differing_rows = validator.run_row_diff()
+        return schemas.ValidationResultSummary(
+            owner_table=f"{owner}.{table_name}",
+            passed=bool(passed),
+            execute=request.execute,
+            aggregate_functions=[fn.upper() for fn in aggs],
+            safe_boundary_applied=safe_boundary,
+            summary_message=summary_message,
+            differing_rows=differing_rows,
         )
 
     def _get_config(self) -> OrchestrationConfig:

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import socket
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 from uuid import NAMESPACE_DNS, UUID, uuid3
 
 import msgspec
@@ -19,8 +19,10 @@ from goe.connect.models import ConnectivityReport
 from goe.connect.runner import ConnectRunner
 from goe.filesystem.goe_dfs_factory import get_dfs_from_options
 from goe.listener.config import settings
+from goe.listener.mcp import ConfirmationGate
 from goe.offload.offload_messages import OffloadMessages
 from goe.offload.registry import create_backend_table, create_repository_client
+from goe.offload.sql_ast.dialect_engine import SqlDialect
 from goe.orchestration.execution_id import ExecutionId
 from goe.orchestration.logging_init import version as goe_version
 from goe.persistence.models import OffloadMetadata
@@ -236,17 +238,136 @@ class SystemService:
         source_columns: Sequence[SourceColumnSnapshot] = (),
         target_columns: Sequence[TargetColumnSnapshot] = (),
         sync_service: SchemaSyncService | None = None,
+        confirmation_gate: ConfirmationGate | None = None,
     ) -> SchemaDiff:
-        """Preview schema drift for a table via SchemaSyncService without opening unpooled connections."""
-        service = sync_service or SchemaSyncService()
-        diff, _ = service.sync_table(
+        """Preview schema drift for a table via SchemaSyncService with live catalog hydration."""
+        resolved_source = list(source_columns)
+        resolved_target = list(target_columns)
+        target_schema: str | None = None
+        target_table: str | None = None
+
+        if not resolved_source and not resolved_target and self.config is not None:
+            raw_source = self.get_table_columns(schema_name, table_name) or []
+            resolved_source = [self._to_source_column_snapshot(col, idx) for idx, col in enumerate(raw_source, start=1)]
+            repo = self.get_repo(self.config, self.messages)
+            meta = repo.get_offload_metadata(schema_name.upper(), table_name.upper())
+            target_schema = meta.backend_owner if meta is not None else schema_name.lower()
+            target_table = meta.backend_table if meta is not None else table_name.lower()
+            backend_table = create_backend_table(
+                target_schema,
+                target_table,
+                self.config.target,
+                self.config,
+                self.messages,
+                dry_run=True,
+                do_not_connect=True,
+            )
+            raw_target = backend_table.get_columns() or []
+            resolved_target = [self._to_target_column_snapshot(col, idx) for idx, col in enumerate(raw_target, start=1)]
+
+        dialect_name = str(self.config.target or "bigquery").lower() if self.config is not None else "bigquery"
+        service = sync_service or SchemaSyncService(dialect=cast("SqlDialect", dialect_name))
+        diff, statements = service.sync_table(
             schema_name=schema_name,
             table_name=table_name,
-            source_columns=source_columns,
-            target_columns=target_columns,
+            target_schema=target_schema,
+            target_table=target_table,
+            source_columns=resolved_source,
+            target_columns=resolved_target,
             execute=False,
         )
-        return diff
+        challenge: Any = None
+        if statements:
+            gate = confirmation_gate or ConfirmationGate()
+            owner_table = f"{schema_name.upper()}.{table_name.upper()}"
+            challenge = gate.issue_challenge(
+                tool_name="apply_schema_sync",
+                owner_table=owner_table,
+                payload={"owner_table": owner_table, "execute": True},
+            )
+        return msgspec.structs.replace(
+            diff,
+            ddl_statements=tuple(statements),
+            confirmation_challenge=challenge,
+        )
+
+    @staticmethod
+    def _to_source_column_snapshot(item: Any, default_position: int) -> SourceColumnSnapshot:
+        """Convert a repository column dictionary or ColumnSpec into a SourceColumnSnapshot."""
+        if isinstance(item, SourceColumnSnapshot):
+            return item
+        if isinstance(item, Mapping):
+            name = str(item.get("column_name") or item.get("name") or "")
+            data_type = str(item.get("data_type") or "")
+            raw_nullable = item.get("is_nullable") if "is_nullable" in item else item.get("nullable", "Y")
+            nullable = raw_nullable in (True, "Y", "YES", 1)
+            precision = item.get("data_precision", item.get("precision"))
+            scale = item.get("data_scale", item.get("scale"))
+            length = item.get("char_length", item.get("data_length", item.get("length")))
+            pos = int(item.get("column_position") or item.get("column_id") or item.get("position") or default_position)
+            return SourceColumnSnapshot(
+                name=name,
+                data_type=data_type,
+                nullable=bool(nullable),
+                precision=int(precision) if precision is not None else None,
+                scale=int(scale) if scale is not None else None,
+                length=int(length) if length is not None else None,
+                position=pos,
+            )
+        raw_nullable = getattr(item, "is_nullable", getattr(item, "nullable", True))
+        nullable = raw_nullable in (True, "Y", "YES", 1)
+        precision = getattr(item, "data_precision", getattr(item, "precision", None))
+        scale = getattr(item, "data_scale", getattr(item, "scale", None))
+        length = getattr(item, "char_length", getattr(item, "data_length", getattr(item, "length", None)))
+        pos = getattr(item, "column_position", getattr(item, "position", default_position))
+        return SourceColumnSnapshot(
+            name=str(getattr(item, "name", getattr(item, "column_name", ""))),
+            data_type=str(getattr(item, "data_type", "")),
+            nullable=bool(nullable),
+            precision=int(precision) if precision is not None else None,
+            scale=int(scale) if scale is not None else None,
+            length=int(length) if length is not None else None,
+            position=int(pos or default_position),
+        )
+
+    @staticmethod
+    def _to_target_column_snapshot(item: Any, default_position: int) -> TargetColumnSnapshot:
+        """Convert a backend column dictionary or ColumnSpec into a TargetColumnSnapshot."""
+        if isinstance(item, TargetColumnSnapshot):
+            return item
+        if isinstance(item, Mapping):
+            name = str(item.get("column_name") or item.get("name") or "")
+            data_type = str(item.get("data_type") or "")
+            raw_nullable = item.get("is_nullable") if "is_nullable" in item else item.get("nullable", True)
+            nullable = raw_nullable in (True, "Y", "YES", 1)
+            precision = item.get("data_precision", item.get("precision"))
+            scale = item.get("data_scale", item.get("scale"))
+            length = item.get("char_length", item.get("data_length", item.get("length")))
+            pos = int(item.get("column_position") or item.get("position") or default_position)
+            return TargetColumnSnapshot(
+                name=name,
+                data_type=data_type,
+                nullable=bool(nullable),
+                precision=int(precision) if precision is not None else None,
+                scale=int(scale) if scale is not None else None,
+                length=int(length) if length is not None else None,
+                position=pos,
+            )
+        raw_nullable = getattr(item, "is_nullable", getattr(item, "nullable", True))
+        nullable = raw_nullable in (True, "Y", "YES", 1)
+        precision = getattr(item, "data_precision", getattr(item, "precision", None))
+        scale = getattr(item, "data_scale", getattr(item, "scale", None))
+        length = getattr(item, "char_length", getattr(item, "data_length", getattr(item, "length", None)))
+        pos = getattr(item, "column_position", getattr(item, "position", default_position))
+        return TargetColumnSnapshot(
+            name=str(getattr(item, "name", getattr(item, "column_name", ""))),
+            data_type=str(getattr(item, "data_type", "")),
+            nullable=bool(nullable),
+            precision=int(precision) if precision is not None else None,
+            scale=int(scale) if scale is not None else None,
+            length=int(length) if length is not None else None,
+            position=int(pos or default_position),
+        )
 
     def _resolve_report_metadata_list(
         self,

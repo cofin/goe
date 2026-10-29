@@ -105,6 +105,72 @@ def test_preview_offload_maps_missing_table_and_option_errors() -> None:
     assert exc_400.value.status_code == 400
 
 
+def test_synchronize_schema_and_validate_table_services() -> None:
+    """Verify synchronize_schema executes DDL under lock and validate_table runs CrossDbValidator."""
+    executed_ddl: list[str] = []
+
+    def _fake_sync_runner(
+        owner: str,
+        table_name: str,
+        execute: bool,
+    ) -> schemas.SchemaSyncExecutionResult:
+        if execute:
+            executed_ddl.append(f"ALTER TABLE {owner.lower()}.{table_name.lower()} ADD COLUMN PROMO_CODE STRING")
+        return schemas.SchemaSyncExecutionResult(
+            owner_table=f"{owner}.{table_name}",
+            backend="BIGQUERY",
+            has_drift=True,
+            applied=execute,
+            added_columns=["PROMO_CODE"],
+            widened_columns=[],
+            ddl_statements=[f"ALTER TABLE {owner.lower()}.{table_name.lower()} ADD COLUMN PROMO_CODE STRING"],
+            warnings=[],
+        )
+
+    def _fake_validator_runner(
+        request: schemas.ValidateTableRequest,
+    ) -> schemas.ValidationResultSummary:
+        return schemas.ValidationResultSummary(
+            owner_table=request.owner_table.upper(),
+            passed=not request.include_row_diff,
+            execute=request.execute,
+            aggregate_functions=request.aggregate_functions or ["COUNT", "MIN", "MAX"],
+            safe_boundary_applied=not request.skip_boundary_check,
+            summary_message="Compared aggregations of columns: ID",
+            differing_rows=[{"ID": "42"}] if request.include_row_diff else [],
+        )
+
+    service = ListenerOperationsService(
+        sync_runner=_fake_sync_runner,
+        validator_runner=_fake_validator_runner,
+    )
+    sync_preview = service.synchronize_schema(schemas.SchemaSyncRequest(owner_table="SH.SALES", execute=False))
+    assert sync_preview.has_drift is True
+    assert sync_preview.applied is False
+    assert executed_ddl == []
+
+    sync_exec = service.synchronize_schema(schemas.SchemaSyncRequest(owner_table="SH.SALES", execute=True))
+    assert sync_exec.applied is True
+    assert len(executed_ddl) == 1
+
+    val_ok = service.validate_table(schemas.ValidateTableRequest(owner_table="SH.SALES", filters="ID > 10"))
+    assert val_ok.passed is True
+    assert val_ok.safe_boundary_applied is True
+
+    val_diff = service.validate_table(schemas.ValidateTableRequest(owner_table="SH.SALES", include_row_diff=True))
+    assert val_diff.passed is False
+    assert val_diff.differing_rows == [{"ID": "42"}]
+
+    with pytest.raises(exceptions.ApplicationError) as bad_filter_exc:
+        service.validate_table(
+            schemas.ValidateTableRequest(
+                owner_table="SH.SALES",
+                filters="1=1; DROP TABLE SH.SALES",
+            )
+        )
+    assert bad_filter_exc.value.status_code == 400
+
+
 def _sample_plan(*, nothing_to_offload: bool) -> OffloadPlan:
     col = ColumnSpec(dialect=ColumnDialect.ORACLE, name="ID", data_type="NUMBER", nullable=False)
     p1 = SourcePartitionSlice(

@@ -5,12 +5,15 @@
 
 from unittest.mock import MagicMock, patch
 
+from goe.listener.mcp import ConfirmationGate
 from goe.listener.services.system import SystemService
 from goe.offload.offload_messages import OffloadMessages
+from goe.offload.schema.column_spec import ColumnDialect, ColumnSpec
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.models import OffloadMetadata
 from goe.persistence.oracle.oracle_repository import OracleRepositoryService
 from goe.report.models import StatusReportEnvelope
+from goe.sync.differ import SchemaDiff
 from tests.unit.test_functions import FAKE_ORACLE_BQ_ENV, build_mock_options
 
 
@@ -90,3 +93,47 @@ def test_system_service_get_table_offload_metadata_and_status_report() -> None:
         assert live_env.tables[0].table_name == "SALES"
         assert live_env.tables[0].source_rows == 500
         assert live_env.tables[0].source_bytes == 4096
+
+
+def test_system_service_preview_schema_drift_hydrates_live_catalog_and_mints_challenge() -> None:
+    """Verify preview_schema_drift hydrates frontend/backend columns and attaches a ConfirmationChallenge."""
+    config = build_mock_options(FAKE_ORACLE_BQ_ENV)
+    messages = OffloadMessages()
+    service = SystemService(config=config, messages=messages)
+    mock_repo = MagicMock(spec=OracleRepositoryService)
+    mock_repo.get_table_columns.return_value = [
+        {"column_name": "ID", "data_type": "INT64", "is_nullable": False, "column_position": 1},
+        {"column_name": "PROMO_CODE", "data_type": "STRING", "is_nullable": True, "column_position": 2},
+    ]
+    mock_repo.get_offload_metadata.return_value = OffloadMetadata(
+        offloaded_owner="SH",
+        offloaded_table="SALES",
+        backend_owner="sh_bq",
+        backend_table="sales",
+        offload_type="FULL",
+    )
+    mock_backend_table = MagicMock()
+    mock_backend_table.get_columns.return_value = [
+        ColumnSpec(dialect=ColumnDialect.BIGQUERY, name="ID", data_type="INT64", nullable=False),
+    ]
+    gate = ConfirmationGate(secret="drift-preview-secret", ttl_seconds=300)
+
+    with (
+        patch.object(SystemService, "get_repo", return_value=mock_repo),
+        patch("goe.listener.services.system.create_backend_table", return_value=mock_backend_table),
+    ):
+        diff = service.preview_schema_drift("SH", "SALES", confirmation_gate=gate)
+
+    assert isinstance(diff, SchemaDiff)
+    assert diff.has_changes is True
+    assert len(diff.additions) == 1
+    assert diff.additions[0].column_name == "PROMO_CODE"
+    assert len(diff.ddl_statements) == 1
+    assert "PROMO_CODE" in diff.ddl_statements[0]
+    assert diff.confirmation_challenge is not None
+    assert gate.verify_token(
+        token=diff.confirmation_challenge.confirmation_token,
+        tool_name="apply_schema_sync",
+        owner_table="SH.SALES",
+        payload={"owner_table": "SH.SALES", "execute": True},
+    )

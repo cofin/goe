@@ -19,6 +19,7 @@ from goe.config.options import (
 from goe.listener.jobs.models import JobRecord
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.models import OffloadMetadata
+from goe.sync.differ import SchemaDiff
 from goe.typing import FrozenBaseStruct
 
 if TYPE_CHECKING:
@@ -44,10 +45,15 @@ __all__ = (
     "OffloadableSchemas",
     "PartitionDetail",
     "PartitionDetails",
+    "SchemaDriftPreview",
+    "SchemaSyncExecutionResult",
+    "SchemaSyncRequest",
     "SubPartitionSummary",
     "TableDetail",
     "TableDetails",
     "TableOffloadMetadataResponse",
+    "ValidateTableRequest",
+    "ValidationResultSummary",
 )
 
 
@@ -707,6 +713,60 @@ class OffloadPlanPreview(FrozenBaseStruct, frozen=True):
             notices=list(notices),
             confirmation_challenge=None if nothing else confirmation_challenge,
         )
+
+
+class SchemaDriftPreview(SchemaDiff, frozen=True):
+    """Schema drift preview payload extending SchemaDiff with typed ConfirmationChallenge."""
+
+    confirmation_challenge: ConfirmationChallenge | None = None
+
+
+class SchemaSyncRequest(FrozenBaseStruct, frozen=True):
+    """Request payload for previewing or applying schema synchronization."""
+
+    owner_table: str
+    execute: bool = False
+    confirmation_token: str | None = None
+
+
+class SchemaSyncExecutionResult(FrozenBaseStruct, frozen=True):
+    """Response payload returned by apply_schema_sync."""
+
+    owner_table: str
+    backend: str
+    has_drift: bool
+    applied: bool
+    added_columns: list[str] = field(default_factory=list)
+    widened_columns: list[str] = field(default_factory=list)
+    ddl_statements: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+class ValidateTableRequest(FrozenBaseStruct, frozen=True):
+    """Request payload for cross-database table validation."""
+
+    owner_table: str
+    execute: bool = True
+    aggregate_functions: list[str] | None = None
+    select_columns: list[str] | int | None = None
+    filters: str | None = None
+    group_bys: list[str] | None = None
+    skip_boundary_check: bool = False
+    as_of_scn: int | None = None
+    frontend_parallelism: int | None = None
+    include_row_diff: bool = False
+
+
+class ValidationResultSummary(FrozenBaseStruct, frozen=True):
+    """Summary response returned by validate_table."""
+
+    owner_table: str
+    passed: bool
+    execute: bool
+    aggregate_functions: list[str] = field(default_factory=list)
+    safe_boundary_applied: bool = True
+    summary_message: str = ""
+    differing_rows: list[dict[str, Any]] = field(default_factory=list)
 
 
 class ErrorMessage(FrozenBaseStruct, frozen=True):
