@@ -4,9 +4,9 @@
 """Typed msgspec option models for GOE CLI and API entrypoints.
 
 This module is an import leaf. It imports only the standard library, msgspec,
-goe.lib.schemas and goe.config.orchestration_defaults so that goe.cli, goe.listener
-and goe.goe can all import it without circular imports. Field sets mirror the
-historical option builders and preserve the defaults expected by downstream consumers.
+goe.typing, and goe.config.orchestration_defaults so that goe.cli, goe.listener,
+and goe.orchestration can all import it without circular imports. Field sets mirror
+the historical option builders and preserve the defaults expected by downstream consumers.
 """
 
 import os

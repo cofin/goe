@@ -5,7 +5,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+SQL_SOURCE_DIR="${REPO_ROOT}/src/goe/persistence/oracle/ddl"
 
 ORA_SYS_USER="${ORA_SYS_USER:-SYS}"
 ORA_SYS_PASS="${ORA_SYS_PASS:-OracleFree23ai}"
@@ -21,7 +22,7 @@ BUILD_HASH="$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo "
 WORK_SQL_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_SQL_DIR}"' EXIT
 
-cp -r "${SCRIPT_DIR}/." "${WORK_SQL_DIR}/"
+cp -r "${SQL_SOURCE_DIR}/." "${WORK_SQL_DIR}/"
 chmod -R u+w "${WORK_SQL_DIR}"
 
 sed -i -e "s/VERSION/${OFFLOAD_VERSION}/g" -e "s/BUILD/${BUILD_HASH}/g" \

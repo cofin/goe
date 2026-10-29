@@ -15,9 +15,9 @@ from typing import Any
 
 from goe.offload.backend_table import BackendTableInterface
 from goe.offload.hadoop.hadoop_backend_table import COMPUTE_LOAD_TABLE_STATS_LOG_TEXT
-from goe.offload.microsoft import synapse_predicate
 from goe.offload.offload_constants import OFFLOAD_STATS_METHOD_NONE
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.predicates import predicate_to_where_clause
 from goe.offload.schema.column_spec import (
     PARQUET_TYPE_DOUBLE,
     PARQUET_TYPE_FLOAT,
@@ -224,12 +224,12 @@ class BackendSynapseTable(BackendTableInterface):
 
         sql = "SELECT TOP(1) 1 FROM %s WHERE (%s)" % (
             self._db_api.enclose_object_reference(self.db_name, self.table_name),
-            synapse_predicate.predicate_to_where_clause(self.get_columns(), predicate),
+            predicate_to_where_clause(self.get_columns(), predicate, dialect="tsql"),
         )
         return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
 
     def predicate_to_where_clause(self, predicate, columns_override=None):
-        return synapse_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
+        return predicate_to_where_clause(columns_override or self.get_columns(), predicate, dialect="tsql")
 
     def result_cache_area_exists(self):
         return self._result_cache_db_exists()

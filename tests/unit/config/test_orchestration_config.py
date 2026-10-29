@@ -38,7 +38,6 @@ def test_as_defaults():
     k.start()
     config = OrchestrationConfig.as_defaults()
     k.stop()
-    # Check that every expected attribute is represented
     assert not bool(set(EXPECTED_CONFIG_ARGS) - vars(config).keys()), set(EXPECTED_CONFIG_ARGS) - vars(config).keys()
 
 

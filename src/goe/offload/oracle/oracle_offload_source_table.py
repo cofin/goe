@@ -23,7 +23,6 @@ from goe.offload.offload_source_table import (
     RdbmsPartition,
     convert_high_values_to_python,
 )
-from goe.offload.oracle import oracle_predicate
 from goe.offload.oracle.catalog import (
     OracleSessionContext,
     OracleTableSnapshot,
@@ -33,6 +32,10 @@ from goe.offload.oracle.oracle_frontend_api import oracle_column_from_dictionary
 from goe.offload.oracle.oracle_partition import (
     rdbms_partitions_from_snapshot,
     rdbms_subpartitions_from_snapshot,
+)
+from goe.offload.predicates import (
+    predicate_to_where_clause,
+    predicate_to_where_clause_with_binds,
 )
 from goe.offload.schema.column_spec import (
     ORACLE_TIMESTAMP_RE,
@@ -416,10 +419,10 @@ class OracleSourceTable(OffloadSourceTableInterface):
     def predicate_to_where_clause(self, predicate, columns_override=None):
         if not predicate:
             return None
-        return oracle_predicate.predicate_to_where_clause(columns_override or self.columns, predicate)
+        return predicate_to_where_clause(columns_override or self.columns, predicate, dialect="oracle")
 
     def predicate_to_where_clause_with_binds(self, predicate):
-        where_clause, bind_dict = oracle_predicate.predicate_to_where_clause_with_binds(self.columns, predicate)
+        where_clause, bind_dict = predicate_to_where_clause_with_binds(self.columns, predicate, dialect="oracle")
         query_params = [QueryParameter(param_name=k, param_value=v) for k, v in bind_dict.items()]
         return where_clause, query_params
 

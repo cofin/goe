@@ -17,7 +17,6 @@ from goe.offload.backend_table import (
     TYPICAL_DATE_GRANULARITY_TERMS,
     BackendTableInterface,
 )
-from goe.offload.bigquery import bigquery_predicate
 from goe.offload.bigquery.ingest_strategy import (
     BigQueryLoadRequest,
     BigQueryLoadResult,
@@ -26,6 +25,7 @@ from goe.offload.bigquery.ingest_strategy import (
 )
 from goe.offload.offload_constants import BIGQUERY_LOAD_TABLE_MODE_NATIVE, FILE_STORAGE_FORMAT_PARQUET
 from goe.offload.offload_messages import VERBOSE, VVERBOSE
+from goe.offload.predicates import predicate_to_where_clause
 from goe.offload.schema.column_spec import (
     BIGQUERY_TYPE_BIGNUMERIC,
     BIGQUERY_TYPE_DATE,
@@ -210,12 +210,12 @@ class BackendBigQueryTable(BackendTableInterface):
 
         sql = "SELECT 1 FROM %s WHERE (%s) LIMIT 1" % (
             self._db_api.enclose_object_reference(self.db_name, self.table_name),
-            bigquery_predicate.predicate_to_where_clause(self.get_columns(), predicate),
+            predicate_to_where_clause(self.get_columns(), predicate, dialect="bigquery"),
         )
         return bool(self._execute_query_fetch_one(sql, log_level=VERBOSE, not_when_dry_running=False))
 
     def predicate_to_where_clause(self, predicate, columns_override=None):
-        return bigquery_predicate.predicate_to_where_clause(columns_override or self.get_columns(), predicate)
+        return predicate_to_where_clause(columns_override or self.get_columns(), predicate, dialect="bigquery")
 
     def result_cache_area_exists(self):
         return self._result_cache_db_exists()

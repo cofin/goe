@@ -9,8 +9,9 @@ import sys
 from typing import Any
 
 from goe.config.orchestration_config import OrchestrationConfig
-from goe.goe import (
-    OFFLOAD_OP_NAME,
+from goe.observability.runtime import ensure_observability
+from goe.orchestration.constants import OFFLOAD_OP_NAME, verbose
+from goe.orchestration.logging_init import (
     get_log_fh,
     get_log_fh_name,
     init,
@@ -19,12 +20,10 @@ from goe.goe import (
     log_close,
     log_command_line,
     log_timestamp,
-    normalise_options,
-    verbose,
     version,
 )
-from goe.observability.runtime import ensure_observability
 from goe.orchestration.orchestration_runner import OrchestrationRunner
+from goe.orchestration.stages.plan_resolution import normalise_options
 from goe.util.goe_log import log_exception
 
 

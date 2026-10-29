@@ -7,7 +7,6 @@ from unittest import mock
 
 import pytest
 
-from goe.offload.bigquery import bigquery_predicate
 from goe.offload.bigquery.bigquery_backend_api import BackendBigQueryApi
 from goe.offload.bigquery.bigquery_backend_table import BackendBigQueryTable
 from goe.offload.offload_constants import (
@@ -15,8 +14,7 @@ from goe.offload.offload_constants import (
     FILE_STORAGE_FORMAT_AVRO,
 )
 from goe.offload.offload_messages import OffloadMessages
-from goe.offload.oracle import oracle_predicate
-from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.predicates import GenericPredicate, predicate_to_where_clause
 from goe.offload.registry import create_staging_file
 from goe.offload.schema.column_spec import (
     BIGQUERY_TYPE_DATE,
@@ -282,14 +280,14 @@ def test_golden_pbo_predicate_pushdown_oracle_and_bigquery_rendering(bq_config, 
     bq_table.set_columns(bq_cols)
 
     pred_simple = GenericPredicate("column(ID) > numeric(1000)")
-    ora_where_simple = oracle_predicate.predicate_to_where_clause(ora_cols, pred_simple)
+    ora_where_simple = predicate_to_where_clause(ora_cols, pred_simple, dialect="oracle")
     bq_where_simple = bq_table.predicate_to_where_clause(pred_simple)
     assert ora_where_simple == '"ID" > 1000'
     assert bq_where_simple == "`ID` > 1000"
 
     pred_compound = GenericPredicate('(column(STATUS) = string("CLOSED")) and (column(AMOUNT) >= numeric(50.25))')
-    ora_where_compound = oracle_predicate.predicate_to_where_clause(ora_cols, pred_compound)
-    bq_where_compound = bigquery_predicate.predicate_to_where_clause(bq_cols, pred_compound)
+    ora_where_compound = predicate_to_where_clause(ora_cols, pred_compound, dialect="oracle")
+    bq_where_compound = predicate_to_where_clause(bq_cols, pred_compound, dialect="bigquery")
     assert ora_where_compound == '("STATUS" = \'CLOSED\' AND "AMOUNT" >= 50.25)'
     assert bq_where_compound == "(`STATUS` = 'CLOSED' AND `AMOUNT` >= NUMERIC '50.25')"
 

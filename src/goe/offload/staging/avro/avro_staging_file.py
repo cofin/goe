@@ -1,11 +1,8 @@
-#! /usr/bin/env python3
-
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
 """OffloadStagingAvroFile, OffloadStagingAvroImpalaFile: OffloadStagingFile implementations for Avro"""
 
-import json
 import logging
 from typing import ClassVar
 
@@ -35,6 +32,7 @@ from goe.offload.staging.staging_file import (
     JAVA_PRIMITIVE_STRING,
     OffloadStagingFileInterface,
 )
+from goe.serializers import decode_json
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -86,7 +84,7 @@ class OffloadStagingAvroFile(OffloadStagingFileInterface):
 
     def get_file_schema_json(self, as_string=True):
         json_string = self._get_avro_schema_json_string()
-        return json_string if as_string else json.loads(json_string)
+        return json_string if as_string else decode_json(json_string)
 
     def get_java_primitive(self, staging_column):
         return self._get_avro_java_primitive(staging_column)
@@ -159,10 +157,3 @@ class OffloadStagingAvroImpalaFile(OffloadStagingAvroFile):
         logger.info("OffloadStagingAvroImpalaFile setup: (%s, %s)" % (load_db_name, table_name))
         if dry_run:
             logger.info("* Dry run *")
-
-    def get_file_schema_json(self, as_string=True):
-        json_string = self._get_avro_schema_json_string()
-        return json_string if as_string else json.loads(json_string)
-
-    def get_java_primitive(self, staging_column):
-        return self._get_avro_java_primitive(staging_column)

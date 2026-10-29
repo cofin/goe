@@ -13,7 +13,7 @@ from goe.offload.offload_validation import (
     get_validation_query_engine,
     validate_raw_filter_clause,
 )
-from goe.offload.predicate_offload import PredicateOffloadException
+from goe.offload.predicates import PredicateOffloadException
 from goe.offload.sql_engine import ValidationQueryEngineProtocol, ValidationQuerySpec
 
 

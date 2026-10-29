@@ -12,14 +12,6 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from goe.config.orchestration_config import OrchestrationConfig
-from goe.goe import (
-    OffloadOperation,
-    get_log_fh,
-    get_offload_target_table,
-    init,
-    init_log,
-    offload_table,
-)
 from goe.observability.runtime import ensure_observability
 from goe.observability.spans import current_trace_ids, traced_command
 from goe.offload.offload_messages import (
@@ -38,7 +30,10 @@ from goe.orchestration.context import (
     current_execution_context,
 )
 from goe.orchestration.execution_id import ExecutionId
+from goe.orchestration.logging_init import get_log_fh, init, init_log
+from goe.orchestration.pipeline import get_offload_target_table, offload_table
 from goe.orchestration.sinks import ExecutionSink
+from goe.orchestration.stages.plan_resolution import OffloadOperation
 from goe.platform.locking import orchestration_lock_for_table
 
 if TYPE_CHECKING:

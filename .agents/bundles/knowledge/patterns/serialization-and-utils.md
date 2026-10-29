@@ -28,7 +28,7 @@ updated_at: "2026-10-25T15:50:00Z"
 ## Declarative Settings & Option Registry (`src/goe/config/settings.py`, `src/goe/config/option_registry.py`, `src/goe/config/options.py`)
 
 - `src/goe/config/settings.py`: Frozen `GOESettings(FrozenBaseStruct)` loaded explicitly via `GOESettings.from_env(environ=..., env_file=...)` with backend validation and zero import-time side effects. `OrchestrationConfig` delegates to `GOESettings` without mutating `os.environ` or creating directories at construction time.
-- `src/goe/config/option_registry.py`: Single declarative `OPTION_REGISTRY: tuple[OptionSpec, ...]` deriving `EXPECTED_OFFLOAD_ARGS`, `LISTENER_OFFLOAD_RENAME_ALIASES`, `LISTENER_OFFLOAD_CSV_ALIASES`, and CLI option flags (`src/goe/cli/options.py`).
+- `src/goe/config/option_registry.py`: Single declarative `OPTION_REGISTRY: tuple[OptionSpec, ...]` deriving `EXPECTED_OFFLOAD_ARGS`, `LISTENER_OFFLOAD_RENAME_ALIASES`, `LISTENER_OFFLOAD_CSV_ALIASES`, and CLI option flags (`src/goe/cli/common.py`).
 - `src/goe/config/options.py`: Acyclic import leaf defining `BaseOptionStruct`, `TestModeFaults`, `OffloadOptions` (combining CLI defaults with Listener wire semantics via `to_params_dict()` and `to_operation_options()`), and the 7 command option structs:
 
 - **`BaseOptionStruct`** (`kw_only=True`, slot-backed without `dict=True`): Provides `from_mapping(cls, mapping: Mapping[str, Any]) -> Self`, `to_dict(self) -> dict[str, Any]` (`msgspec.structs.asdict`), and `__contains__(self, key: object) -> bool`. Because `dict=True` is omitted, undeclared attribute writes raise `AttributeError` and `from_mapping` raises `TypeError` on unknown keys, ensuring `copy.copy`/`copy.deepcopy` preserve 100% of fields.

@@ -9,14 +9,14 @@ from copy import copy
 
 import pytest
 
-from goe.goe import OffloadOperation
 from goe.offload.offload_functions import (
     convert_backend_identifier_case,
     data_db_name,
 )
 from goe.offload.offload_messages import OffloadMessages
-from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.predicates import GenericPredicate
 from goe.offload.registry import create_backend_table, create_source_table
+from goe.orchestration.stages.plan_resolution import OffloadOperation
 from tests.integration.test_functions import (
     build_current_options,
     get_default_test_user,

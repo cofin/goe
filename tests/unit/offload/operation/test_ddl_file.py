@@ -77,7 +77,6 @@ def test_normalise_ddl_file_path(path: str, expect_exception: bool, config: "Orc
         with pytest.raises(Exception):
             _ = module_under_test.normalise_ddl_file(fake_operation, config, fake_messages)
     else:
-        # No exception expected.
         _ = module_under_test.normalise_ddl_file(fake_operation, config, fake_messages)
 
 
@@ -103,7 +102,5 @@ def test_write_ddl_to_ddl_file(ddl_list: list, config):
     fh = m()
     assert fh.write.mock_calls
     write_arg = fh.write.mock_calls[0].args[0]
-    # Check the header is included in the write call.
     assert module_under_test.DDL_FILE_HEADER in write_arg
-    # Check all lines of the DDL are in the write call.
     assert all(_ in write_arg for _ in ddl_list)

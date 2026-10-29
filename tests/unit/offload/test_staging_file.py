@@ -61,6 +61,27 @@ class FakeOpts:
 
 
 class TestStagingFile(TestCase):
+    def test_oracle_bigquery_avro(self):
+        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_BIGQUERY, FILE_STORAGE_FORMAT_AVRO)
+
+    def test_oracle_bigquery_parquet(self):
+        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_BIGQUERY, FILE_STORAGE_FORMAT_PARQUET)
+
+    def test_oracle_hive_avro(self):
+        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_HIVE, FILE_STORAGE_FORMAT_AVRO)
+
+    def test_oracle_impala_avro(self):
+        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_IMPALA, FILE_STORAGE_FORMAT_AVRO)
+
+    def test_oracle_snowflake_avro(self):
+        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_SNOWFLAKE, FILE_STORAGE_FORMAT_AVRO)
+
+    def test_oracle_snowflake_parquet(self):
+        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_SNOWFLAKE, FILE_STORAGE_FORMAT_PARQUET)
+
+    def test_oracle_synapse_parquet(self):
+        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_SYNAPSE, FILE_STORAGE_FORMAT_PARQUET)
+
     def _canonical_columns(self):
         return [
             ColumnSpec(ColumnDialect.CANONICAL, "COL_FIXED_STR", GOE_TYPE_FIXED_STRING, data_length=10),
@@ -124,24 +145,3 @@ class TestStagingFile(TestCase):
             staging_file.get_file_schema_json(as_string=False),
             dict if staging_file.file_format == FILE_STORAGE_FORMAT_AVRO else list,
         )
-
-    def test_oracle_bigquery_avro(self):
-        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_BIGQUERY, FILE_STORAGE_FORMAT_AVRO)
-
-    def test_oracle_bigquery_parquet(self):
-        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_BIGQUERY, FILE_STORAGE_FORMAT_PARQUET)
-
-    def test_oracle_hive_avro(self):
-        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_HIVE, FILE_STORAGE_FORMAT_AVRO)
-
-    def test_oracle_impala_avro(self):
-        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_IMPALA, FILE_STORAGE_FORMAT_AVRO)
-
-    def test_oracle_snowflake_avro(self):
-        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_SNOWFLAKE, FILE_STORAGE_FORMAT_AVRO)
-
-    def test_oracle_snowflake_parquet(self):
-        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_SNOWFLAKE, FILE_STORAGE_FORMAT_PARQUET)
-
-    def test_oracle_synapse_parquet(self):
-        self._test_staging_file(DBTYPE_ORACLE, DBTYPE_SYNAPSE, FILE_STORAGE_FORMAT_PARQUET)

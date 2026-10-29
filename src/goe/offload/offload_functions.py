@@ -19,7 +19,7 @@ from goe.offload.offload_metadata_functions import (
     flatten_lpa_individual_high_values,
     incremental_hv_csv_from_list,
 )
-from goe.offload.predicate_offload import GenericPredicate, create_or_relation_predicate
+from goe.offload.predicates import GenericPredicate, create_or_relation_predicate
 from goe.offload.schema.column_spec import ColumnSpec, get_column_names, invalid_column_list_message, valid_column_list
 from goe.persistence.models import (
     INCREMENTAL_PREDICATE_TYPE_LIST,

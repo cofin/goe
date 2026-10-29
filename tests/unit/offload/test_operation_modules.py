@@ -61,7 +61,6 @@ class TestOperationDataTypeControls(TestCase):
         self.assertEqual(col_list[0].data_scale, 0)
         col_list = canonical_columns_from_columns_csv(GOE_TYPE_INTEGER_4, "*", [], reference_columns)
         self.assertEqual(len(col_list), len(reference_columns))
-        # Ensure overlaps are caught
         self.assertRaises(
             OffloadDataTypeControlsException,
             lambda: canonical_columns_from_columns_csv(
@@ -87,7 +86,6 @@ class TestOperationNotNullColumns(TestCase):
         messages = OffloadMessages()
         names = [_.name for _ in self.reference_columns]
         new_cols = apply_not_null_columns_csv(self.reference_columns, None, NOT_NULL_PROPAGATION_AUTO, names, messages)
-        # Nullable should be unchanged for AUTO
         for new_col, ref_col in zip(new_cols, self.reference_columns):
             self.assertEqual(new_col.name, ref_col.name)
             self.assertEqual(new_col.nullable, ref_col.nullable)
@@ -96,7 +94,6 @@ class TestOperationNotNullColumns(TestCase):
         messages = OffloadMessages()
         names = [_.name for _ in self.reference_columns]
         new_cols = apply_not_null_columns_csv(self.reference_columns, None, NOT_NULL_PROPAGATION_NONE, names, messages)
-        # Nullable should be True for all columns for NONE
         for new_col, ref_col in zip(new_cols, self.reference_columns):
             self.assertEqual(new_col.name, ref_col.name)
             self.assertTrue(new_col.nullable)
@@ -114,7 +111,6 @@ class TestOperationNotNullColumns(TestCase):
             else:
                 self.assertTrue(new_col.nullable, f"Nullable incorrect for {new_col.name}")
 
-        # Ensure nonsense values are caught.
         self.assertRaises(
             OffloadNotNullControlsException,
             lambda: apply_not_null_columns_csv(

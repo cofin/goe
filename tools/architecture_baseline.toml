@@ -2,12 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [raw-json]
-files = [
-    "src/goe/offload/staging/avro/avro_staging_file.py",
-    "tests/unit/cli/test_cli_root.py",
-    "tests/unit/observability/test_log_correlation.py",
-    "tests/unit/observability/test_sdk.py",
-]
+files = []
 
 [sqlglot-boundary]
 files = []
@@ -19,26 +14,7 @@ files = []
 files = []
 
 [member-ordering]
-files = [
-    "tests/unit/offload/test_staging_file.py",
-    "tests/unit/orchestration/test_command_steps.py",
-    "tests/unit/util/test_hs2_connection.py",
-]
+files = []
 
 [inline-comment]
-files = [
-    "tests/unit/config/test_orchestration_config.py",
-    "tests/unit/offload/operation/test_ddl_file.py",
-    "tests/unit/offload/test_backend_api.py",
-    "tests/unit/offload/test_frontend_api.py",
-    "tests/unit/offload/test_offload_functions.py",
-    "tests/unit/offload/test_offload_metadata_functions.py",
-    "tests/unit/offload/test_offload_transport_functions.py",
-    "tests/unit/offload/test_offload_transport_rdbms_api.py",
-    "tests/unit/offload/test_operation_modules.py",
-    "tests/unit/offload/test_synthetic_partition_literal.py",
-    "tests/unit/test_framework/test_backend_testing_api.py",
-    "tests/unit/test_framework/test_test_value_generators.py",
-    "tests/unit/util/test_hs2_connection.py",
-    "tests/unit/util/test_misc_functions.py",
-]
+files = []

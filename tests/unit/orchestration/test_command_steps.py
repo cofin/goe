@@ -39,13 +39,6 @@ KNOWN_MISSING_STEPS = [
 class TestCommandSteps(TestCase):
     """TestCommandSteps: Unit test constants in command_steps are sound within the module."""
 
-    def _get_step_constants(self):
-        return [
-            v
-            for k, v in vars(command_steps).items()
-            if k.startswith("STEP_") and k != "STEP_TITLES" and k not in KNOWN_MISSING_STEPS
-        ]
-
     def test_command_steps_internal(self):
         """Test the constants are sound within the module."""
         try:
@@ -56,6 +49,13 @@ class TestCommandSteps(TestCase):
                 self.assertIsInstance(command_steps.step_title(step), str)
         except NotImplementedError:
             pass
+
+    def _get_step_constants(self):
+        return [
+            v
+            for k, v in vars(command_steps).items()
+            if k.startswith("STEP_") and k != "STEP_TITLES" and k not in KNOWN_MISSING_STEPS
+        ]
 
 
 if __name__ == "__main__":

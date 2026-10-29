@@ -10,16 +10,20 @@ from typing import Any
 import rich_click as click
 from click.testing import CliRunner
 
-from goe.cli.common import common_options as cli_common_options
-from goe.cli.common import handle_cli_exceptions
-from goe.cli.options import (
+from goe.cli.common import (
     apply_option_specs,
     build_click_options,
     column_transform_options,
-    common_options,
+    handle_cli_exceptions,
     partition_options,
     table_target_options,
     transport_options,
+)
+from goe.cli.common import (
+    common_options as cli_common_options,
+)
+from goe.cli.common import (
+    common_spec_options as common_options,
 )
 from goe.config.option_registry import get_option_specs_for_group
 from goe.exceptions import ConfigurationError, ValidationError

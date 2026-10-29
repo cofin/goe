@@ -54,7 +54,6 @@ class TestMiscFunctions(TestCase):
         self.assertEqual(backtick_sandwich("hello", ch="_"), "_hello_")
 
     def test_case_insensitive_in(self):
-        # With a list
         self.assertEqual(case_insensitive_in("Hello", ["hello", "blah"]), "hello")
         self.assertEqual(case_insensitive_in("Hello", ["HELLO", "blah"]), "HELLO")
         self.assertEqual(case_insensitive_in("Hello", ["Hello", "blah"]), "Hello")
@@ -63,7 +62,6 @@ class TestMiscFunctions(TestCase):
         self.assertFalse(bool(case_insensitive_in("Hello", ["ello", "blah"])))
         self.assertIsNone(case_insensitive_in("Hello", []))
         self.assertIsNone(case_insensitive_in("Hello", None))
-        # With a set
         self.assertEqual(case_insensitive_in("Hello", set(["hello", "blah"])), "hello")
         self.assertEqual(case_insensitive_in("Hello", set(["HELLO", "blah"])), "HELLO")
         self.assertEqual(case_insensitive_in("Hello", set(["Hello", "blah"])), "Hello")
@@ -71,7 +69,6 @@ class TestMiscFunctions(TestCase):
         self.assertIsNone(case_insensitive_in("Hello", set(["ello", "blah"])))
         self.assertFalse(bool(case_insensitive_in("Hello", set(["ello", "blah"]))))
         self.assertIsNone(case_insensitive_in("Hello", set([])))
-        # With a str
         self.assertEqual(case_insensitive_in("Hello", "hello"), "hello")
         self.assertEqual(case_insensitive_in("Hello", "HELLO"), "HELLO")
         self.assertEqual(case_insensitive_in("Hello", "Hello"), "Hello")
@@ -95,7 +92,6 @@ class TestMiscFunctions(TestCase):
 
     def test_truncate_number(self):
         for n, digits, expected_result in [
-            # Regular ints and floats truncating decimal places
             (0, 0, 0),
             (0, 5, 0),
             (1234, 0, 1234),
@@ -120,7 +116,6 @@ class TestMiscFunctions(TestCase):
             (-123456789.123456789, 4, -123456789.1234),
             (0.1, 0, 0),
             (0.1, 10, 0.1),
-            # Larger precision numbers truncating decimal places
             (int("9" * 38), 0, int("9" * 38)),
             (
                 decimal.Decimal("1998849133104929799110640.00301078"),
@@ -145,7 +140,6 @@ class TestMiscFunctions(TestCase):
             (decimal.Decimal("0." + "9" * 38), 0, 0),
             (decimal.Decimal("-0." + "9" * 38), 0, 0),
             (decimal.Decimal("0." + "1" * 37), 5, decimal.Decimal("0." + "1" * 5)),
-            # Regular ints and floats truncating to left of decimal place
             (0, -2, 0),
             (1234, -2, 1200),
             (-1234, -2, -1200),
@@ -157,7 +151,6 @@ class TestMiscFunctions(TestCase):
             (-1234, -20, 0),
             (1234.5678, -20, 0),
             (-1234.5678, -20, 0),
-            # Larger precision numbers truncating to left of decimal place
             (int("9" * 38), -1, int("9" * 37 + "0")),
             (int("9" * 38), -35, int("999" + "0" * 35)),
             (
@@ -191,7 +184,6 @@ class TestMiscFunctions(TestCase):
                 f"Test input: truncate_number({n}, {digits})",
             )
             if not isinstance(n, decimal.Decimal):
-                # Test same value as Decimal input
                 dn = decimal.Decimal(str(n))
                 dexpected = decimal.Decimal(str(expected_result))
                 self.assertEqual(
@@ -335,19 +327,12 @@ class TestMiscFunctions(TestCase):
 
     def test_trunc_with_hash(self):
         test_string = "xyz".ljust(20, "X")
-        # Length 20 string is trimmed to 10
         self.assertEqual(len(trunc_with_hash(test_string, 4, 10)), 10)
-        # Length 10 output with 4 hash chars has 5 of original value then underscore
         self.assertTrue(trunc_with_hash(test_string, 4, 10).startswith(test_string[:5] + "_"))
-        # Length 8 output with 4 hash chars has 3 of original value then underscore
         self.assertTrue(trunc_with_hash(test_string, 4, 8).startswith(test_string[:3] + "_"))
-        # Length 20 string is trimmed to 10 with different number of hash chars
         self.assertEqual(len(trunc_with_hash(test_string, 6, 10)), 10)
-        # Length 10 output with 6 hash chars has 3 of original value then underscore
         self.assertTrue(trunc_with_hash(test_string, 6, 10).startswith(test_string[:3] + "_"))
-        # String shorter than max length is unaffected
         self.assertEqual(trunc_with_hash(test_string, 4, len(test_string) + 1), test_string)
-        # String equal to max length is unaffected
         self.assertEqual(trunc_with_hash(test_string, 4, len(test_string)), test_string)
 
     def test_standard_file_name(self):
@@ -360,7 +345,6 @@ class TestMiscFunctions(TestCase):
             standard_file_name(std_prefix, name_suffix="more", extension=".txt"),
             std_prefix + "_more.txt",
         )
-        # The timestamp will add 22 characters, plus 4 for the extension and 5 for the hash, therefore trim above 31.
         self.assertEqual(
             len(standard_file_name(std_prefix, max_name_length=45, with_datetime=True)),
             45,
@@ -376,15 +360,12 @@ class TestMiscFunctions(TestCase):
             ),
             40,
         )
-        # Length 50 output will have at least 10 characters of the original name
         self.assertTrue(
             standard_file_name(std_prefix, max_name_length=45, with_datetime=True).startswith(std_prefix[:10])
         )
-        # Length 50 output will NOT have 20 characters of the original name
         self.assertFalse(
             standard_file_name(std_prefix, max_name_length=45, with_datetime=True).startswith(std_prefix[:20])
         )
-        # No slashes in file name and other bad inputs
         self.assertRaises(AssertionError, lambda: standard_file_name("file/name"))
         self.assertRaises(AssertionError, lambda: standard_file_name(123))
         self.assertRaises(AssertionError, lambda: standard_file_name(None))
@@ -429,7 +410,6 @@ class TestMiscFunctions(TestCase):
             len(wildcard_matches_in_list("*_*", list_of_names, case_sensitive=False)),
             len(list_of_names),
         )
-        # Ensure other wildcards do not have an effect
         self.assertListEqual(wildcard_matches_in_list("lower?id", list_of_names), [])
         self.assertListEqual(wildcard_matches_in_list(".*id", list_of_names), [])
         self.assertListEqual(wildcard_matches_in_list("*?*", list_of_names), ["QUESTION_MARK_?_"])

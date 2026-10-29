@@ -11,18 +11,20 @@ from unittest import TestCase, main
 import numpy as np
 
 from goe.exceptions import OptionValueError
-from goe.offload import predicate_offload
-from goe.offload.bigquery import bigquery_predicate
-from goe.offload.hadoop import hadoop_predicate
-from goe.offload.microsoft import synapse_predicate
-from goe.offload.oracle import oracle_predicate
-from goe.offload.predicate_offload import (
+from goe.offload import predicates as predicate_pkg
+from goe.offload.predicates import (
+    BinaryComparison,
     GenericPredicate,
     PredicateOffloadException,
+    TypedValue,
     get_predicate_dialect_engine,
     parse_predicate_dsl,
+    predicate_to_where_clause,
+    predicate_to_where_clause_with_binds,
 )
-from goe.offload.predicates.ast import BinaryComparison, TypedValue
+from goe.offload.predicates import (
+    ast as predicate_ast,
+)
 from goe.offload.schema.column_spec import (
     BIGQUERY_TYPE_DATETIME,
     BIGQUERY_TYPE_INT64,
@@ -46,7 +48,6 @@ from goe.offload.schema.column_spec import (
     ColumnDialect,
     ColumnSpec,
 )
-from goe.offload.snowflake import snowflake_predicate
 from goe.offload.sql_engine import PredicateDialectEngineProtocol
 
 BIGQUERY_COLUMNS = [
@@ -342,50 +343,48 @@ class TestIdaPredicateDataTypes(TestCase):
             self.assertRaisesRegex(
                 OptionValueError,
                 "cannot be compared to",
-                oracle_predicate.predicate_to_where_clause,
+                predicate_to_where_clause,
                 ORACLE_COLUMNS,
                 GenericPredicate(predicate_dsl),
+                dialect="oracle",
             )
             self.assertRaisesRegex(
                 OptionValueError,
                 "cannot be compared to",
-                hadoop_predicate.predicate_to_where_clause,
+                predicate_to_where_clause,
                 HADOOP_COLUMNS,
                 GenericPredicate(predicate_dsl),
+                dialect="hive",
             )
             self.assertRaisesRegex(
                 OptionValueError,
                 "cannot be compared to",
-                bigquery_predicate.predicate_to_where_clause,
+                predicate_to_where_clause,
                 BIGQUERY_COLUMNS,
                 GenericPredicate(predicate_dsl),
+                dialect="bigquery",
             )
             self.assertRaisesRegex(
                 OptionValueError,
                 "cannot be compared to",
-                snowflake_predicate.predicate_to_where_clause,
+                predicate_to_where_clause,
                 SNOWFLAKE_COLUMNS,
                 GenericPredicate(predicate_dsl),
+                dialect="snowflake",
             )
             self.assertRaisesRegex(
                 OptionValueError,
                 "cannot be compared to",
-                synapse_predicate.predicate_to_where_clause,
+                predicate_to_where_clause,
                 SYNAPSE_COLUMNS,
                 GenericPredicate(predicate_dsl),
+                dialect="tsql",
             )
 
 
 def test_predicate_modules_have_zero_lark_or_sqlglot_imports() -> None:
-    """Verify predicate_offload and dialect predicate modules do not import lark or sqlglot."""
-    dialect_mods = (
-        oracle_predicate,
-        bigquery_predicate,
-        snowflake_predicate,
-        synapse_predicate,
-        hadoop_predicate,
-    )
-    for mod in (predicate_offload, *dialect_mods):
+    """Verify predicate AST module does not import lark or sqlglot and predicates package does not import lark."""
+    for mod in (predicate_pkg, predicate_ast):
         assert mod.__file__ is not None
         source = Path(mod.__file__).read_text(encoding="utf-8")
         tree = ast.parse(source)
@@ -411,73 +410,75 @@ def test_multi_dialect_predicate_sql_and_bind_rendering_with_nanoseconds() -> No
     ]
     pred_ts = GenericPredicate("column(COL_TS) = datetime(2011-01-01 05:06:07.123456789)")
     assert (
-        oracle_predicate.predicate_to_where_clause(cols, pred_ts)
+        predicate_to_where_clause(cols, pred_ts, dialect="oracle")
         == "\"COL_TS\" = TIMESTAMP '2011-01-01 05:06:07.123456789'"
     )
-    bind_sql, binds = oracle_predicate.predicate_to_where_clause_with_binds(cols, pred_ts)
+    bind_sql, binds = predicate_to_where_clause_with_binds(cols, pred_ts, dialect="oracle")
     assert bind_sql == "\"COL_TS\" = TO_TIMESTAMP(:bind_0, 'YYYY-MM-DD HH24:MI:SS.FF9')"
     assert binds == {"bind_0": "2011-01-01 05:06:07.123456789"}
 
     pred_date = GenericPredicate("column(COL_DATE) = datetime(2011-01-01)")
     assert (
-        oracle_predicate.predicate_to_where_clause(cols, pred_date)
+        predicate_to_where_clause(cols, pred_date, dialect="oracle")
         == "\"COL_DATE\" = TO_DATE('2011-01-01 00:00:00', 'YYYY-MM-DD HH24:MI:SS')"
     )
-    date_bind_sql, date_binds = oracle_predicate.predicate_to_where_clause_with_binds(cols, pred_date)
+    date_bind_sql, date_binds = predicate_to_where_clause_with_binds(cols, pred_date, dialect="oracle")
     assert date_bind_sql == "\"COL_DATE\" = TO_DATE(:bind_0, 'YYYY-MM-DD HH24:MI:SS')"
     assert date_binds == {"bind_0": "2011-01-01 00:00:00"}
 
     pred_dec = GenericPredicate("column(COL_DECIMAL) = numeric(-0.00000000000000000001)")
-    assert oracle_predicate.predicate_to_where_clause(cols, pred_dec) == '"COL_DECIMAL" = -0.00000000000000000001'
+    assert predicate_to_where_clause(cols, pred_dec, dialect="oracle") == '"COL_DECIMAL" = -0.00000000000000000001'
 
     pred_38_dec = GenericPredicate("column(COL_DECIMAL) = numeric(123456789012345678901234567890.12345678)")
     assert (
-        oracle_predicate.predicate_to_where_clause(cols, pred_38_dec)
+        predicate_to_where_clause(cols, pred_38_dec, dialect="oracle")
         == '"COL_DECIMAL" = 123456789012345678901234567890.12345678'
     )
 
     pred_big_int = GenericPredicate("column(COL_INT) = numeric(1234567890123456789012345)")
-    assert oracle_predicate.predicate_to_where_clause(cols, pred_big_int) == '"COL_INT" = 1234567890123456789012345'
+    assert predicate_to_where_clause(cols, pred_big_int, dialect="oracle") == '"COL_INT" = 1234567890123456789012345'
 
     pred_not_in = GenericPredicate('column(COL_STRING) NOT IN (string("A"), string("B"))')
-    assert oracle_predicate.predicate_to_where_clause(cols, pred_not_in) == "\"COL_STRING\" NOT IN ('A', 'B')"
+    assert predicate_to_where_clause(cols, pred_not_in, dialect="oracle") == "\"COL_STRING\" NOT IN ('A', 'B')"
 
     pred_neq = GenericPredicate('column(COL_STRING) != string("A")')
-    assert oracle_predicate.predicate_to_where_clause(cols, pred_neq) == "\"COL_STRING\" != 'A'"
+    assert predicate_to_where_clause(cols, pred_neq, dialect="oracle") == "\"COL_STRING\" != 'A'"
 
     pred_nulls = GenericPredicate("(column(COL_INT) IS NULL) AND (column(COL_INT) IS NOT NULL)")
     assert (
-        oracle_predicate.predicate_to_where_clause(cols, pred_nulls) == '("COL_INT" IS NULL AND "COL_INT" IS NOT NULL)'
+        predicate_to_where_clause(cols, pred_nulls, dialect="oracle") == '("COL_INT" IS NULL AND "COL_INT" IS NOT NULL)'
     )
 
     pred_lit = GenericPredicate(
         "column(COL_DATE) < literal(\"TO_DATE(' 2012-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')\")"
     )
     assert (
-        oracle_predicate.predicate_to_where_clause(cols, pred_lit)
+        predicate_to_where_clause(cols, pred_lit, dialect="oracle")
         == "\"COL_DATE\" < TO_DATE(' 2012-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')"
     )
 
     bq_dt = GenericPredicate("column(COL_DATE) = datetime(1970-01-01 12:13:14)")
     assert (
-        bigquery_predicate.predicate_to_where_clause(BIGQUERY_COLUMNS, bq_dt)
+        predicate_to_where_clause(BIGQUERY_COLUMNS, bq_dt, dialect="bigquery")
         == "`COL_DATE` = DATETIME '1970-01-01 12:13:14'"
     )
     bq_not_in = GenericPredicate('column(COL_STRING) NOT IN (string("A"), string("B"))')
-    assert bigquery_predicate.predicate_to_where_clause(BIGQUERY_COLUMNS, bq_not_in) == "`COL_STRING` NOT IN ('A', 'B')"
+    assert (
+        predicate_to_where_clause(BIGQUERY_COLUMNS, bq_not_in, dialect="bigquery") == "`COL_STRING` NOT IN ('A', 'B')"
+    )
     bq_neq = GenericPredicate("column(COL_INT) != numeric(4)")
-    assert bigquery_predicate.predicate_to_where_clause(BIGQUERY_COLUMNS, bq_neq) == "`COL_INT` != 4"
-    bq_bind_sql, bq_binds = bigquery_predicate.predicate_to_where_clause_with_binds(BIGQUERY_COLUMNS, bq_neq)
+    assert predicate_to_where_clause(BIGQUERY_COLUMNS, bq_neq, dialect="bigquery") == "`COL_INT` != 4"
+    bq_bind_sql, bq_binds = predicate_to_where_clause_with_binds(BIGQUERY_COLUMNS, bq_neq, dialect="bigquery")
     assert bq_bind_sql == "`COL_INT` != @bind_0"
     assert bq_binds == {"bind_0": 4}
 
     assert (
-        snowflake_predicate.predicate_to_where_clause(SNOWFLAKE_COLUMNS, bq_dt)
+        predicate_to_where_clause(SNOWFLAKE_COLUMNS, bq_dt, dialect="snowflake")
         == "\"COL_DATE\" = '1970-01-01 12:13:14'::TIMESTAMP_NTZ"
     )
-    assert synapse_predicate.predicate_to_where_clause(SYNAPSE_COLUMNS, bq_dt) == "[COL_DATE] = '1970-01-01 12:13:14'"
-    assert hadoop_predicate.predicate_to_where_clause(HADOOP_COLUMNS, bq_dt) == "COL_DATE = '1970-01-01 12:13:14'"
-    hadoop_bind_sql, hadoop_binds = hadoop_predicate.predicate_to_where_clause_with_binds(HADOOP_COLUMNS, bq_dt)
+    assert predicate_to_where_clause(SYNAPSE_COLUMNS, bq_dt, dialect="tsql") == "[COL_DATE] = '1970-01-01 12:13:14'"
+    assert predicate_to_where_clause(HADOOP_COLUMNS, bq_dt, dialect="hive") == "COL_DATE = '1970-01-01 12:13:14'"
+    hadoop_bind_sql, hadoop_binds = predicate_to_where_clause_with_binds(HADOOP_COLUMNS, bq_dt, dialect="hive")
     assert hadoop_bind_sql == "COL_DATE = :bind_0"
     assert hadoop_binds == {"bind_0": np.datetime64("1970-01-01T12:13:14")}
 

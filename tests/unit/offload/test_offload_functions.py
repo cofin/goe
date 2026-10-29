@@ -12,7 +12,7 @@ from goe.offload.offload_functions import (
     hybrid_threshold_clauses,
     hybrid_view_list_clauses,
 )
-from goe.offload.predicate_offload import GenericPredicate
+from goe.offload.predicates import GenericPredicate
 from goe.offload.schema.column_spec import GOE_TYPE_INTEGER_2, GOE_TYPE_VARIABLE_STRING, ColumnDialect, ColumnSpec
 
 
@@ -82,20 +82,17 @@ class TestOffloadFunctions(TestCase):
                 clauses[1].count(f"{col_name} NOT IN "),
                 expected_number_of_clauses,
             )
-            # Check that IN list items are same in number as HVs
             in_lists = re.findall(r"IN \(([a-z0-9, \']+)\)", clauses[0], flags=re.IGNORECASE)
             self.assertEqual(sum(len(_.split(",")) for _ in in_lists), len(pretend_hvs))
             in_lists = re.findall(r"NOT IN \(([a-z0-9, \']+)\)", clauses[1], flags=re.IGNORECASE)
             self.assertEqual(sum(len(_.split(",")) for _ in in_lists), len(pretend_hvs))
 
-        # Numeric list
         columns = [ColumnSpec(ColumnDialect.CANONICAL, "COL_NAME", GOE_TYPE_INTEGER_2)]
         pretend_hvs = [(_,) for _ in range(20)]
         check_call(columns, pretend_hvs, 9, 3, '"')
         check_call(columns, pretend_hvs, 10, 2, '"')
         check_call(columns, pretend_hvs, 21, 1, '"')
         check_call(columns, pretend_hvs, 10, 2, "`")
-        # Character list
         columns = [ColumnSpec(ColumnDialect.CANONICAL, "COL_NAME", GOE_TYPE_VARIABLE_STRING)]
         pretend_hvs = [(f"'{_}'",) for _ in range(20)]
         check_call(columns, pretend_hvs, 9, 3, '"')
@@ -125,7 +122,6 @@ class TestOffloadFunctions(TestCase):
             self.assertEqual(lt_clause.count(col_name), expected_lt_col1_count)
             self.assertEqual(gte_clause.count(col_name), expected_gte_col1_count)
             if as_dsl:
-                # Check each DSL parses successfully
                 GenericPredicate(lt_clause)
                 GenericPredicate(gte_clause)
             if len(columns) == 2:
@@ -135,11 +131,9 @@ class TestOffloadFunctions(TestCase):
                 self.assertTrue(lt_clause.count(col_name), expected_lt_col2_count)
                 self.assertTrue(gte_clause.count(col_name), expected_gte_col2_count)
 
-        # Numeric range
         columns = [ColumnSpec(ColumnDialect.CANONICAL, "COL_NAME", GOE_TYPE_INTEGER_2)]
         check_call(columns, (10,), ch='"')
         check_call(columns, (10,), ch="`")
-        # Multi column
         columns = [
             ColumnSpec(ColumnDialect.CANONICAL, "COL_NAME1", GOE_TYPE_INTEGER_2),
             ColumnSpec(ColumnDialect.CANONICAL, "COL_NAME2", GOE_TYPE_INTEGER_2),

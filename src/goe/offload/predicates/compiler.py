@@ -26,6 +26,7 @@ from goe.offload.predicates.ast import (
     to_dsl,
 )
 from goe.offload.predicates.parser import (
+    GenericPredicate,
     PredicateOffloadException,
     parse_predicate_dsl,
     parse_safe_sql_predicate,
@@ -53,6 +54,8 @@ __all__ = (
     "PredicateDialect",
     "PredicateSqlEngine",
     "get_predicate_dialect_engine",
+    "predicate_to_where_clause",
+    "predicate_to_where_clause_with_binds",
     "render_predicate",
 )
 
@@ -194,6 +197,33 @@ class PredicateSqlEngine(PredicateDialectEngineProtocol):
 def get_predicate_dialect_engine(dialect: str) -> PredicateDialectEngineProtocol:
     """Return a cached ``PredicateDialectEngineProtocol`` instance for ``dialect``."""
     return PredicateSqlEngine(dialect)
+
+
+def predicate_to_where_clause(
+    columns: Sequence[Any],
+    predicate: GenericPredicate,
+    *,
+    dialect: PredicateDialect,
+    include_synthetic: bool | None = None,
+) -> str:
+    """Render a ``GenericPredicate`` into a dialect SQL WHERE clause with inline literals."""
+    use_synthetic = (dialect != "oracle") if include_synthetic is None else include_synthetic
+    resolved = resolve_predicate_types(predicate.ast, columns, include_synthetic=use_synthetic)
+    return get_predicate_dialect_engine(dialect).render_literal_sql(resolved, columns)
+
+
+def predicate_to_where_clause_with_binds(
+    columns: Sequence[Any],
+    predicate: GenericPredicate,
+    *,
+    dialect: PredicateDialect,
+    include_synthetic: bool | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Render a ``GenericPredicate`` into a dialect SQL WHERE clause and named bind dictionary."""
+    use_synthetic = (dialect != "oracle") if include_synthetic is None else include_synthetic
+    resolved = resolve_predicate_types(predicate.ast, columns, include_synthetic=use_synthetic)
+    rendered = get_predicate_dialect_engine(dialect).render_bind_sql(resolved, columns)
+    return rendered.sql, rendered.params
 
 
 class _DialectAstBuilder:

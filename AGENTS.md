@@ -3,8 +3,8 @@
 You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)** framework repository. Always adhere to the following guidelines and consult the OKF knowledge bundle at `.agents/bundles/` when researching, planning, and writing code.
 
 ## 1. Project Context & Tech Stack
-- **Core Domain**: High-performance data offloading and copying from Oracle Database to modern cloud data warehouses (Google BigQuery, Snowflake, Azure Synapse, Teradata) and Hadoop.
-- **Supporting Infrastructure**: Relies on Apache Spark, Cloud Storage (GCS, S3, Azure Blob), and Oracle RDBMS.
+- **Core Domain**: High-performance data offloading and copying from Oracle Database and Microsoft SQL Server to modern cloud data warehouses (Google BigQuery, Snowflake, Azure Synapse) and Hadoop.
+- **Supporting Infrastructure**: Relies on Apache Spark, DuckDB 2.0, Cloud Storage (GCS, S3, Azure Blob), and Oracle RDBMS.
 - **Knowledge Bundle Root**: `.agents/bundles/` (OKF v0.2)
 - **Product Overview**: [Product Definition](.agents/bundles/product/product.md) & [Product Guidelines](.agents/bundles/product/product-guidelines.md)
 - **Technology Stack**: [Tech Stack](.agents/bundles/product/tech-stack.md)
@@ -53,12 +53,10 @@ You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)
 - **Internal Design Documents & Walkthroughs**: Place broader architectural proposals, migration plans, and design walkthroughs in `docs/internal/design_docs/` following structured markdown conventions (Executive Summary, Architecture/Analysis, Step-by-Step Plan, Verification, Risks/Mitigation).
 
 ## 4. Repository Structure
-- `src/goe/`: Core Python framework package (orchestration, offload engine, frontend/backend adapters, filesystem, listener REST service).
+- `src/goe/`: Core Python framework package (orchestration, offload engine, frontend/backend adapters, filesystem, listener REST service, packaged report templates in `src/goe/report/templates/`, and packaged Oracle repository DDL in `src/goe/persistence/oracle/ddl/`).
 - `tests/`: Unit tests (`tests/unit/`) and integration test suites (`tests/integration/`).
 - `docs/`: Public documentation and internal design specifications (`docs/internal/design_docs/`).
 - `src/goe/cli/`: Unified `goe` CLI (`[project.scripts] goe = "goe.cli.main:cli"`; subcommands `offload`, `connect`, `validate`, `sync`, `report`, `listener`, `logmgr`). There is no `bin/` directory.
-- `sql/`: Oracle database DDL, packages (`OFFLOAD`, `OFFLOAD_REPO`), and repository tables.
-- `templates/conf/`: Environment configuration templates (`offload.env.template`).
-- `tools/`: Spark listener (Scala/SBT), transport scripts, and shell helper functions.
+- `tools/`: Architecture verification (`tools/verify_architecture.py`), Spark listener (`tools/spark-listener/`, Scala/SBT), and shell/CI helper scripts (`tools/scripts/`).
 - `.agents/bundles/`: Authoritative Flow OKF knowledge bundle (architecture, adapters, storage, operations, standards).
 - `.agents/skills/`: Operational consumer skills (`flow-memory-keeper`).

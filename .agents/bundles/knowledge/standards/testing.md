@@ -29,7 +29,7 @@ tags:
 2. **Integration Tests (`tests/integration/`)**:
    - Full end-to-end tests validating RDBMS extraction, Spark transport, BigQuery/Snowflake ingestion, and hybrid views against active test instances.
    - **Offline Collection**: `tests/integration/conftest.py` registers markers (`oracle`, `bigquery`, `gcs`, `spark`) and skips live suites at runtime when credentials (`ORA_CONN`, `BIGQUERY_DATASET_PROJECT`, `OFFLOAD_FS_CONTAINER`) are absent, ensuring `GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only` always succeeds offline (`147 tests collected`).
-   - **Oracle 23ai Free CI Bootstrap**: `sql/oracle/source/bootstrap_ci.sh` non-interactively provisions `GOE_ADM`, `GOE_APP`, `GOE_REPO`, `GOE_TEST`, and `SH_TEST` inside `gvenzl/oracle-free:23-slim-faststart` (`FREEPDB1`) for the `integration-oracle` GitHub Actions job (`make test-integration-oracle`).
+   - **Oracle 23ai Free CI Bootstrap**: `tools/scripts/bootstrap_oracle_ci.sh` non-interactively provisions `GOE_ADM`, `GOE_APP`, `GOE_REPO`, `GOE_TEST`, and `SH_TEST` from `src/goe/persistence/oracle/ddl/` inside `gvenzl/oracle-free:23-slim-faststart` (`FREEPDB1`) for the `integration-oracle` GitHub Actions job (`make test-integration-oracle`).
    - **Keyless WIF BigQuery CI**: The `integration-bigquery` job in `.github/workflows/test.yaml` authenticates via `google-github-actions/auth@v3` Workload Identity Federation (`make test-integration-gcp`).
    - Run via:
      ```bash

@@ -7,13 +7,13 @@ import logging
 from collections.abc import Iterator
 from pathlib import Path
 
-import msgspec
 import pytest
 
 from goe.observability import runtime
 from goe.observability.config import ObservabilitySettings
 from goe.observability.log_correlation import StructuredLogEntry
 from goe.observability.spans import traced_command
+from goe.serializers import decode_json
 from goe.util.goe_log_fh import GOELogFileHandle
 
 EXEC_ID = "2f1b7c1e-0000-4000-8000-000000000030"
@@ -47,12 +47,12 @@ def test_json_mode_and_sidecar_carry_trace_ids(tmp_path: Path, memory_runtime: r
         sidecar_log.write("plain line\n")
     json_log.close()
     sidecar_log.close()
-    entry = msgspec.json.decode((tmp_path / "a.log").read_bytes().splitlines()[0], type=StructuredLogEntry)
+    entry = decode_json((tmp_path / "a.log").read_bytes().splitlines()[0], target_type=StructuredLogEntry)
     assert entry.level == "WARNING"
     assert entry.execution_id == EXEC_ID
     assert entry.trace_id is not None
     assert (tmp_path / "b.log").read_text() == "plain line\n"
-    sidecar = msgspec.json.decode((tmp_path / "b.log.jsonl").read_bytes().splitlines()[0], type=StructuredLogEntry)
+    sidecar = decode_json((tmp_path / "b.log.jsonl").read_bytes().splitlines()[0], target_type=StructuredLogEntry)
     assert sidecar.message == "plain line"
 
 

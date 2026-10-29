@@ -6,10 +6,10 @@ from functools import cache
 from typing import TYPE_CHECKING
 
 from goe.config.orchestration_config import OrchestrationConfig
-from goe.goe import OffloadOperation
 from goe.offload.offload_constants import DBTYPE_MSSQL
 from goe.offload.offload_messages import VVERBOSE, OffloadMessages
 from goe.orchestration.orchestration_runner import OrchestrationRunner
+from goe.orchestration.stages.plan_resolution import OffloadOperation
 from tests.testlib.test_framework.offload_test_messages import OffloadTestMessages
 
 if TYPE_CHECKING:

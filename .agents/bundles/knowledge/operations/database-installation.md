@@ -12,7 +12,7 @@ tags:
 
 # Database Installation & Object Lifecycle
 
-The database setup scripts in `sql/oracle/source/` manage the installation, upgrade, and maintenance of GOE repository objects in Oracle.
+The database setup scripts packaged in `src/goe/persistence/oracle/ddl/` manage the installation, upgrade, and maintenance of GOE repository objects in Oracle.
 
 ## Schemas & User Privileges
 

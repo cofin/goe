@@ -19,9 +19,8 @@ from goe.config.options import (
     TableOperationOptions,
 )
 from goe.exceptions import OffloadOptionError, OptionValueError
-from goe.goe import EXPECTED_OFFLOAD_ARGS as GOE_EXPECTED_OFFLOAD_ARGS
-from goe.goe import normalise_owner_table_options
 from goe.offload import offload_validation
+from goe.orchestration.stages.plan_resolution import normalise_owner_table_options
 
 
 def test_option_value_error_is_offload_option_error() -> None:
@@ -35,7 +34,6 @@ def test_expected_offload_args_match_orchestration_contract() -> None:
     """EXPECTED_OFFLOAD_ARGS holds the 82 ordered keys accepted by OffloadOperation."""
     assert len(EXPECTED_OFFLOAD_ARGS) == 82
     assert len(set(EXPECTED_OFFLOAD_ARGS)) == 82
-    assert EXPECTED_OFFLOAD_ARGS == tuple(GOE_EXPECTED_OFFLOAD_ARGS)
 
 
 def test_listener_alias_tables() -> None:

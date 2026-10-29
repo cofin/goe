@@ -39,7 +39,7 @@ tags:
   - `PredicateCompiler.render(expr, dialect, bind_style=..., quote_identifiers=...)` compiles `PredicateExpr` trees into `CompiledPredicate(sql, params)` across `oracle`, `bigquery`, `snowflake`, `tsql`, `hive`, `spark`, and `duckdb`, supporting `named_colon` (`:p0`), `named_at` (`@p0`), `pyformat` (`%(p0)s`), `qmark` (`?`), and inline literals.
   - Inside `PredicateCompiler`, 9-digit nanosecond (`FF9`) precision in Oracle `TIMESTAMP(9)` predicates (`TIMESTAMP 'YYYY-MM-DD HH:MM:SS.fffffffff'` and `TO_TIMESTAMP(:p0, 'YYYY-MM-DD HH24:MI:SS.FF9')`) is formatted directly from `numpy.datetime64` without lossy `sqlglot.parse_one` re-parsing.
 - **Safe User Filter Clause Gate (`transpile_safe_filter` & `parse_filter_tuples`)**:
-  - User-supplied `--filters` clauses in `CrossDbValidator` and `agg_validate.py` are validated via `DialectSqlEngine.transpile_safe_filter()` and `CrossDbValidationBuilder.parse_filter_tuples()`, rejecting semicolons, SQL comments (`--`, `/*`), subqueries (`exp.Subquery`, `exp.Select`), set operations (`UNION`, `INTERSECT`, `EXCEPT`), and DDL/DML tokens.
+  - User-supplied `--filters` clauses in `CrossDbValidator` and `offload_validation.py` are validated via `DialectSqlEngine.transpile_safe_filter()` and `CrossDbValidationBuilder.parse_filter_tuples()`, rejecting semicolons, SQL comments (`--`, `/*`), subqueries (`exp.Subquery`, `exp.Select`), set operations (`UNION`, `INTERSECT`, `EXCEPT`), and DDL/DML tokens.
 
 ## Concurrent Cross-Database Validation (`src/goe/offload/validation/`)
 

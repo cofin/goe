@@ -6,18 +6,38 @@
 import functools
 import os
 import sys
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, Any, cast
 
 import rich_click as click
 
 from goe.cli._lazy import LazyImportMap, bind_lazy_imports, resolve_lazy_attribute
 from goe.cli.console import console, heading_console
+from goe.config.option_registry import (
+    OptionGroupName,
+    OptionSpec,
+    get_option_specs_for_group,
+    options_for_command,
+)
 from goe.exceptions import GOEError
 from goe.util import goe_version
 
 if TYPE_CHECKING:
     from goe.config import orchestration_defaults
+
+__all__ = (
+    "COMMON_OPTION_KEYS",
+    "apply_option_specs",
+    "build_click_options",
+    "column_transform_options",
+    "common_options",
+    "common_spec_options",
+    "extract_common_options",
+    "handle_cli_exceptions",
+    "partition_options",
+    "table_target_options",
+    "transport_options",
+)
 
 _LAZY_IMPORTS: LazyImportMap = {
     "orchestration_defaults": ("goe.config.orchestration_defaults", None),
@@ -188,6 +208,68 @@ def common_options(func: Callable[..., Any]) -> Callable[..., Any]:
     for option in reversed(options):
         func = option(func)
     return func
+
+
+def build_click_options(specs: Sequence[OptionSpec]) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Build a Click decorator from an ordered sequence of OptionSpec definitions."""
+
+    def decorator[F: Callable[..., Any]](func: F) -> F:
+        wrapped: Any = func
+        for spec in reversed(specs):
+            option_kwargs: dict[str, Any] = {
+                "default": spec.default,
+                "help": spec.help_text,
+            }
+            if spec.is_flag:
+                option_kwargs["is_flag"] = True
+            if spec.is_multiple:
+                option_kwargs["multiple"] = True
+            if spec.choices is not None:
+                option_kwargs["type"] = click.Choice(list(spec.choices), case_sensitive=False)
+            if spec.env_var is not None:
+                option_kwargs["envvar"] = spec.env_var
+            wrapped = click.option(*spec.cli_flags, spec.name, **option_kwargs)(wrapped)
+        return cast(F, wrapped)
+
+    return decorator
+
+
+def apply_option_specs(
+    command_name: str,
+    *,
+    groups: Sequence[OptionGroupName] | None = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Attach OptionSpec entries registered for command_name, optionally filtered by group."""
+    specs = options_for_command(command_name)
+    if groups is not None:
+        allowed = set(groups)
+        specs = tuple(spec for spec in specs if spec.group in allowed)
+    return build_click_options(specs)
+
+
+def common_spec_options[F: Callable[..., Any]](func: F) -> F:
+    """Attach common CLI options from the canonical OptionSpec registry."""
+    return cast(F, build_click_options(get_option_specs_for_group("common"))(func))
+
+
+def table_target_options[F: Callable[..., Any]](func: F) -> F:
+    """Attach table target options from the canonical OptionSpec registry."""
+    return cast(F, build_click_options(get_option_specs_for_group("table_target"))(func))
+
+
+def partition_options[F: Callable[..., Any]](func: F) -> F:
+    """Attach partitioning options from the canonical OptionSpec registry."""
+    return cast(F, build_click_options(get_option_specs_for_group("partitioning"))(func))
+
+
+def transport_options[F: Callable[..., Any]](func: F) -> F:
+    """Attach transport options from the canonical OptionSpec registry."""
+    return cast(F, build_click_options(get_option_specs_for_group("transport"))(func))
+
+
+def column_transform_options[F: Callable[..., Any]](func: F) -> F:
+    """Attach column transformation options from the canonical OptionSpec registry."""
+    return cast(F, build_click_options(get_option_specs_for_group("column_transform"))(func))
 
 
 def handle_cli_exceptions(func: Callable[..., Any]) -> Callable[..., Any]:

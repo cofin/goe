@@ -64,12 +64,10 @@ class TestBackendTestingApi(TestCase):
         return build_mock_options(mock_env)
 
     def _test_create_table_as_select(self):
-        # CTAS with no source table
         self.assertIsInstance(
             self.test_api.create_table_as_select(self.db, "new_table", "FORMAT", [("123", "COL1"), ("'abc'", "COL2")]),
             list,
         )
-        # CTAS from table
         self.assertIsInstance(
             self.test_api.create_table_as_select(
                 self.db,
