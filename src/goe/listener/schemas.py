@@ -16,6 +16,7 @@ from goe.config.options import (
     LISTENER_OFFLOAD_RENAME_ALIASES,
     OffloadOperationOptions,
 )
+from goe.listener.jobs.models import JobRecord
 from goe.orchestration.execution_id import ExecutionId
 from goe.persistence.models import OffloadMetadata
 from goe.typing import FrozenBaseStruct
@@ -31,6 +32,8 @@ __all__ = (
     "ConfirmationChallenge",
     "ErrorMessage",
     "HealthCheck",
+    "JobListResponse",
+    "JobStatusResponse",
     "ListenerConfig",
     "OffloadOptions",
     "OffloadableSchema",
@@ -385,6 +388,55 @@ class CommandExecutionLog(FrozenBaseStruct, frozen=True):
     name: str
     is_file: bool = False
     message: str = ""
+    log_resource_uri: str | None = None
+
+
+class JobStatusResponse(FrozenBaseStruct, frozen=True):
+    """Durable job queue record response schema."""
+
+    job_id: str
+    execution_id: str
+    table_key: str
+    status: str
+    attempt: int
+    max_attempts: int
+    created_at: str
+    updated_at: str
+    worker_id: str | None = None
+    claimed_at: str | None = None
+    lease_expires_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    error_message: str | None = None
+    cancel_requested: bool = False
+
+    @classmethod
+    def from_record(cls, record: JobRecord) -> JobStatusResponse:
+        """Convert a JobRecord domain model into a serializable JobStatusResponse."""
+        return cls(
+            job_id=record.job_id,
+            execution_id=record.execution_id,
+            table_key=record.table_key,
+            status=str(record.status),
+            attempt=record.attempt,
+            max_attempts=record.max_attempts,
+            created_at=record.created_at.isoformat(),
+            updated_at=record.updated_at.isoformat(),
+            worker_id=record.worker_id,
+            claimed_at=record.claimed_at.isoformat() if record.claimed_at is not None else None,
+            lease_expires_at=record.lease_expires_at.isoformat() if record.lease_expires_at is not None else None,
+            started_at=record.started_at.isoformat() if record.started_at is not None else None,
+            finished_at=record.finished_at.isoformat() if record.finished_at is not None else None,
+            error_message=record.error_message,
+            cancel_requested=bool(getattr(record, "cancel_requested", False)),
+        )
+
+
+class JobListResponse(FrozenBaseStruct, frozen=True):
+    """List of durable job queue records response schema."""
+
+    count: int
+    results: list[JobStatusResponse] = field(default_factory=list)
 
 
 class ConfirmationChallenge(FrozenBaseStruct, frozen=True):

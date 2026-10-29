@@ -15,11 +15,12 @@ from litestar_mcp import mcp_resource
 from litestar_security import AuthenticationPolicy, SecureController, required
 
 from goe.connect.models import ConnectivityReport
-from goe.listener import schemas
+from goe.listener import exceptions, schemas, utils
 from goe.listener.cache import ListenerCache
 from goe.listener.exceptions import TableMetadataNotFound
 from goe.listener.jobs.store import JobStoreProtocol
 from goe.listener.services.system import SystemService
+from goe.orchestration.execution_id import ExecutionId
 from goe.report.models import StatusReportEnvelope, TableStatusReport
 from goe.sync.differ import SchemaDiff
 from goe.util.concurrency import async_
@@ -273,3 +274,125 @@ class GOEResourcesController(SecureController):
         if metadata is None:
             raise TableMetadataNotFound(schema_name, table_name)
         return schemas.TableOffloadMetadataResponse.from_metadata(metadata)
+
+    @get(
+        "/executions/",
+        mcp_resource_uri="goe://executions",
+    )
+    @mcp_resource(
+        "command_executions",
+        description="Recent GOE command executions recorded in the repository.",
+        mime_type="application/json",
+    )
+    async def read_executions(
+        self,
+        system_service: NamedDependency[SystemService],
+        listener_cache: NamedDependency[ListenerCache],
+    ) -> schemas.CommandExecutions:
+        """Return goe://executions list resource."""
+        executions = await listener_cache.get_or_load(
+            "executions:list:steps=0",
+            lambda: async_(system_service.get_command_executions)(),
+        )
+        typed_results = [schemas.CommandExecution.from_item(item) for item in (executions or [])]
+        return schemas.CommandExecutions(count=len(typed_results), results=typed_results)
+
+    @get(
+        "/executions/{execution_id:str}/",
+        mcp_resource="command_execution",
+        mcp_resource_template="goe://executions/{execution_id}",
+        mcp_resource_description="Command execution detail and step records by execution_id.",
+        mcp_resource_mime_type="application/json",
+    )
+    async def read_execution(
+        self,
+        system_service: NamedDependency[SystemService],
+        execution_id: FromPath[str],
+    ) -> schemas.CommandExecution:
+        """Return goe://executions/{execution_id} templated resource."""
+        execution_identifier = _parse_resource_execution_id(execution_id)
+        execution = await async_(system_service.get_command_execution)(execution_identifier)
+        if not execution:
+            raise exceptions.CommandExecutionNotFound(execution_id)
+        return schemas.CommandExecution.from_item(execution)
+
+    @get(
+        "/executions/{execution_id:str}/log/",
+        mcp_resource="command_execution_log",
+        mcp_resource_template="goe://executions/{execution_id}/log",
+        mcp_resource_description="Bounded command execution log tail by execution_id.",
+        mcp_resource_mime_type="application/json",
+    )
+    async def read_execution_log(
+        self,
+        system_service: NamedDependency[SystemService],
+        execution_id: FromPath[str],
+    ) -> schemas.CommandExecutionLog:
+        """Return goe://executions/{execution_id}/log templated resource."""
+        execution_identifier = _parse_resource_execution_id(execution_id)
+        execution = await async_(system_service.get_command_execution)(execution_identifier)
+        if not execution:
+            raise exceptions.CommandExecutionNotFound(execution_id)
+
+        raw_log_path = str(execution.get("command_log_path") or "")
+        dfs_client = getattr(system_service, "get_dfs_client", lambda: None)()
+        file_name, is_file, message = await asyncio.to_thread(
+            utils.orchestrate.read_execution_log_bounded,
+            raw_log_path,
+            execution_id=str(execution_identifier.id),
+            dfs_client=dfs_client,
+        )
+        return schemas.CommandExecutionLog(
+            name=file_name,
+            is_file=is_file,
+            message=message,
+            log_resource_uri=f"goe://executions/{execution_identifier.as_str()}/log",
+        )
+
+    @get(
+        "/jobs/",
+        mcp_resource_uri="goe://jobs",
+    )
+    @mcp_resource(
+        "offload_jobs",
+        description="Durable GOE Listener background offload jobs.",
+        mime_type="application/json",
+    )
+    async def read_jobs(
+        self,
+        job_store: NamedDependency[JobStoreProtocol],
+    ) -> schemas.JobListResponse:
+        """Return goe://jobs list resource."""
+        records = await asyncio.to_thread(job_store.list_jobs, limit=100, status=None)
+        results = [schemas.JobStatusResponse.from_record(rec) for rec in records]
+        return schemas.JobListResponse(count=len(results), results=results)
+
+    @get(
+        "/jobs/{execution_id:str}/",
+        mcp_resource="offload_job",
+        mcp_resource_template="goe://jobs/{execution_id}",
+        mcp_resource_description="Durable background job record by execution_id.",
+        mcp_resource_mime_type="application/json",
+    )
+    async def read_job(
+        self,
+        job_store: NamedDependency[JobStoreProtocol],
+        execution_id: FromPath[str],
+    ) -> schemas.JobStatusResponse:
+        """Return goe://jobs/{execution_id} templated resource."""
+        execution_identifier = _parse_resource_execution_id(execution_id)
+        record = await asyncio.to_thread(job_store.get_job_by_execution_id, execution_identifier.as_str())
+        if record is None:
+            raise exceptions.CommandExecutionNotFound(execution_id)
+        return schemas.JobStatusResponse.from_record(record)
+
+
+def _parse_resource_execution_id(raw_id: str) -> ExecutionId:
+    """Parse raw_id into an ExecutionId or raise HTTP 400 ApplicationError on invalid UUID syntax."""
+    try:
+        return ExecutionId.from_str(raw_id)
+    except (ValueError, TypeError, AssertionError) as exc:
+        raise exceptions.ApplicationError(
+            status_code=400,
+            message=f"Invalid execution_id UUID: {raw_id}",
+        ) from exc
