@@ -9,7 +9,7 @@ status: stable
 state: promoted
 promoted_to: litestar_mcp_listener_overhaul_20261029
 created_at: "2026-10-29T17:40:00Z"
-updated_at: "2026-10-29T18:18:00Z"
+updated_at: "2026-10-29T22:30:00Z"
 ---
 
 # GOE Listener & Domain Services Baseline Audit (`090941a`)
@@ -60,13 +60,13 @@ Audited on `origin/next` (`090941a`) across:
   - Schema evolution execution (`SchemaSyncService` in `src/goe/sync/differ.py`; `OrchestrationRunner.schema_sync` in `src/goe/orchestration/orchestration_runner.py` is retired and raises `OrchestrationRunnerException("Schema Sync no longer exists")`)
   - Multi-table/schema `StatusReportService` (`StatusReportEnvelope` in `src/goe/report/service.py`, wired with `source_fetcher` and `target_fetcher` backed by `self.get_repo(self.config, self.messages)` and `create_backend_table(..., dry_run=True)`)
   - Persisted hybrid `OffloadMetadata` lookup (`self.get_repo(self.config, self.messages).get_offload_metadata(owner, table_name)` in `SystemService`)
-  - Durable job queue HTTP/MCP inspection (`JobStoreProtocol.list_jobs` and `JobStoreProtocol.get_job_by_execution_id` already exist in `src/goe/listener/jobs/store.py` backed by `oracle_list_jobs`/`sqlite_list_jobs` and `oracle_get_job`/`sqlite_get_job`, ready to mount on `OrchestrationController`)
+  - Durable job queue HTTP/MCP inspection (`JobStoreProtocol.list_jobs` and `JobStoreProtocol.get_job_by_execution_id` in `src/goe/listener/jobs/store.py` backed by `oracle_list_jobs` and `oracle_get_job`, ready to mount on `OrchestrationController`)
 
 ### 4. OKF Documentation vs Code Discrepancy on Job Queue & Cancellation (`F-AUD-04`)
 
 - `.agents/bundles/knowledge/listener/rest-api.md` and `.agents/bundles/knowledge/listener/worker-and-redis.md` claim that `POST /api/orchestration/executions/{execution_id}/cancel/`, `cancel_requested`, and table `OFFLOAD_JOB_QUEUE` (`QUEUED` state) already exist.
 - Direct inspection of `src/goe/listener/controllers/orchestration.py`, `src/goe/listener/jobs/{models,store,worker}.py`, `src/goe/listener/jobs/sql/job_queue.sql`, and `src/goe/persistence/oracle/ddl/sql/create_offload_repo_24.sql` proves:
-  1. The real durable queue tables are `GOE_LISTENER_JOBS` and `GOE_LISTENER_ENDPOINTS` (`JobState`: `PENDING`, `CLAIMED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `DEAD_LETTER`).
+  1. The real durable queue tables are `GOE_LISTENER_JOBS` and `GOE_LISTENER_ENDPOINTS` (`JobState`: `PENDING`, `CLAIMED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `DEAD_LETTER`) persisted in the Oracle repository schema via `OracleJobStore` (`D-05`).
   2. Neither `CANCEL_REQUESTED`, `JobStoreProtocol.cancel_job`, `JobStoreProtocol.mark_cancelled`, cooperative cancellation inside `DurableJobWorker._default_execute_job` (`OrchestrationRunner` worker thread holding `orchestration_lock_for_table`), expired-lease reaper awareness of `CANCEL_REQUESTED`, nor `POST /api/orchestration/executions/{execution_id}/cancel/` exists in source code yet.
 
 ### 5. CLI Transport Gaps (`F-AUD-05`)
@@ -77,4 +77,4 @@ Audited on `origin/next` (`090941a`) across:
 ## Confidence & Limitations
 
 - **Confidence**: High — every finding was verified directly against tracked source files on `090941a`.
-- **Limitations**: Live Oracle integration verification requires external database credentials (`GOE_TEST_USER_PASS`); unit and protocol contract suites run hermetically against `SqliteJobStore` and injected gateway doubles.
+- **Limitations**: Live Oracle integration verification requires external database credentials (`GOE_TEST_USER_PASS`); unit and protocol contract suites run hermetically against `make_fake_oracle_job_store()` (`OracleJobStore` backed by `FakeOracleConnection`) and injected gateway doubles.

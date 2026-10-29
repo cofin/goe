@@ -5,12 +5,20 @@ tags:
   - changelog
   - okf
   - flow
-updated_at: "2026-10-28T21:22:00Z"
+updated_at: "2026-10-29T22:30:00Z"
 ---
 
 # Change Log
 
 This file records significant lifecycle operations, structural additions, and major evolutions to the GOE knowledge bundle.
+
+## 2026-10-29
+
+- **Native Litestar-MCP GOE Listener Overhaul & Oracle-Only Durable Job Queue (`litestar_mcp_listener_overhaul_20261029`, 10 tasks)**:
+  - **Phase 1 (`Tasks 1.1–1.2`)**: Aligned `pyproject.toml` dependency lower bounds (`msgspec>=0.22.0`, `litestar>=2.25.0`, `litestar-security>=0.6.0`, `litestar-autowire>=0.2.0`, `litestar-mcp>=0.16.0`, `httpx2>=2.16.0`), cleaned `ListenerSettings` (`src/goe/listener/config/application.py`) with loopback-normalized `client_host`/`base_url` properties and whitespace-safe env parsing (`src/goe/config/orchestration_defaults.py`), replaced imperative `register_tool` wrappers in `src/goe/listener/mcp.py` with native `build_mcp_config()` (`MCPConfig(route_opt={AUTH_POLICY_OPT_KEY: required("console-key")}, task_config=MCPTaskConfig(), skills=MCPSkillsConfig(...))`), and refactored `ConfirmationGate` (`ConfirmationChallenge`, `mint_challenge`, `require_mcp_confirmation`) with ephemeral secret fallback and handler-level `MCPInputRequiredResult` multi-round-trip (MRTR) + signed `confirmation_token` gating.
+  - **Phase 2 (`Tasks 2.1–2.2`)**: Added `TableMetadataNotFound`, `TableOffloadMetadataResponse`, `JobStatusResponse`, `JobListResponse`, and typed `CommandExecution` responses (`src/goe/listener/schemas.py`), extended `SystemService` (`get_table_offload_metadata`, `get_status_report` in `src/goe/listener/services/system.py`), decorated `SystemController`, `SchemasController`, `TablesController`, and `OrchestrationController` with `@mcp_tool` (`READ_ONLY_ANNOTATIONS`, `IDEMPOTENT_WRITE_ANNOTATIONS`, `DESTRUCTIVE_WRITE_ANNOTATIONS`, `task_support`, `task_input_before_start`), added `get_execution_log_link` returning `MCPResourceLink`, and created `GOEResourcesController` (`src/goe/listener/controllers/resources.py`) publishing `goe://` static resources and URI templates (`goe://system/*`, `goe://schemas*`, `goe://reports/status/{schema_filter}`, `goe://executions*`, `goe://jobs*`).
+  - **Phase 3 (`Tasks 3.1–3.3`)**: Implemented `ListenerOperationsService` (`src/goe/listener/services/operations.py`) for dry-run `OffloadPipeline.plan` previews (`POST /api/orchestration/offload/preview/` / `preview_offload_plan` minting `execute_offload` confirmation tokens), live schema drift column hydration + `apply_schema_sync` (`POST /api/orchestration/sync/`), and `validate_table` (`POST /api/orchestration/validate/` over `CrossDbValidator`), removed `SqliteJobStore` and all `sqlite_*` queries from `src/goe/listener/jobs/store.py` and `src/goe/listener/jobs/sql/job_queue.sql` so `OracleJobStore` backed by `OracleDatabaseRegistry.for_options(config)` is the sole durable job store (`D-05`), and implemented cooperative job cancellation (`CANCEL_REQUESTED` in `GOE_LISTENER_JOBS`, `JobStoreProtocol.cancel_job`/`mark_cancelled`, `_CooperativeCancelSink` worker unwinding, and `POST /api/orchestration/executions/{execution_id}/cancel/` / `cancel_offload_job`).
+  - **Phase 4 (`Tasks 4.1–4.3`)**: Created `GOEPromptController` (`src/goe/listener/controllers/prompts.py` with `opt = {AUTH_POLICY_OPT_KEY: required("console-key")}` and 4 guided DBA prompts), packaged 3 operational skills under `src/goe/listener/skills/` (`goe-offload-operations`, `goe-diagnostics-and-recovery`, `goe-schema-drift-and-validation`), added `goe listener mcp {stdio,bridge,inspect}` and authenticated `goe listener status` (`src/goe/cli/commands/listener.py` forwarding `header_name="x-goe-console-key"` and `token_prefix=""`), added `tests/unit/listener/test_mcp_protocol_contract.py`, synchronized OKF Listener/CLI/pattern docs, promoted research files to [Research Registry](research/index.md), and contracted `.agents/bundles/specs/litestar_mcp_listener_overhaul_20261029/`.
 
 ## 2026-10-28
 
