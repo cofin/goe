@@ -3,8 +3,6 @@
 
 """Predicate-based offload source-data implementation."""
 
-from functools import partial
-
 from goe.offload import predicate_offload
 from goe.offload.offload_functions import (
     get_dsl_threshold_clauses,
@@ -329,27 +327,15 @@ class OffloadSourceDataPredicate(OffloadSourceDataInterface):
 
     def _offload_predicate_contains_hwm_cols(self):
         """all HWM columns must have a corresponding predicate, and optionally the value must be < hwm"""
-
-        def is_column_predicate(column_name, tree):
-            if len(tree.children) == 2:
-                lhs, rhs = tree.children
-                if lhs.data == "column" and lhs.children[-1] == column_name.upper():
-                    return True
-                if rhs.data == "column" and rhs.children[-1] == column_name.upper():
-                    return True
-            return False
-
         (
             hv_columns,
-            hv_values,
-            hv_sql_exprs,
+            _,
+            _,
         ) = decode_metadata_incremental_high_values_from_metadata(
             self._pre_offload_hybrid_metadata, self._col_offload_source_table
         )
-        return all(
-            list(self._offload_predicate.ast.find_pred(partial(is_column_predicate, hv_col.name)))
-            for hv_col, hv in zip(hv_columns, hv_values)
-        )
+        predicate_cols = {c.upper() for c in self._offload_predicate.column_names()}
+        return all(hv_col.name.upper() in predicate_cols for hv_col in hv_columns)
 
     def _offload_predicate_in_pre_offload_metadata(self):
         return bool(self._offload_predicate.dsl in (self.get_pre_offload_predicates(as_dsl=True) or []))

@@ -41,10 +41,10 @@ from goe.offload.oracle.oracle_column import (
     ORACLE_TYPE_TIMESTAMP_TZ,
     ORACLE_TYPE_XMLTYPE,
 )
-from goe.offload.oracle.oracle_dialect import get_oracle_dialect_engine
 from goe.offload.oracle.oracle_offload_source_table import (
     oracle_version_is_smart_scan_unsafe,
 )
+from goe.offload.sql_ast.dialect_engine import get_dialect_engine
 from goe.persistence.registry import OracleDatabaseRegistry
 from goe.util.string_utils import id_generator
 
@@ -123,9 +123,9 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         return None
 
     def get_id_range(self, rdbms_col_name: str, predicate_offload_clause: str, partition_chunk: Any = None) -> tuple:
-        """Return the MIN and MAX values for an id column using OracleSqlEngine."""
+        """Return the MIN and MAX values for an id column using DialectSqlEngine."""
         iot_part_name = self._extract_iot_single_partition_name(partition_chunk)
-        min_max_qry = get_oracle_dialect_engine().id_range_query(
+        min_max_qry = get_dialect_engine("oracle").id_range_query(
             owner=self._rdbms_owner,
             table_name=self._rdbms_table_name,
             id_col_name=rdbms_col_name,
@@ -395,7 +395,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
                 f"Using RDBMS snapshot {transport_scn} for consistent data retrieval",
                 detail=VVERBOSE,
             )
-            return f" {get_oracle_dialect_engine().snapshot_scn_clause(transport_scn)}"
+            return f" {get_dialect_engine('oracle').snapshot_scn_clause(transport_scn)}"
         return ""
 
     def get_transport_row_source_query(
@@ -433,7 +433,7 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         else:
             effective_scn = None
         union_all = self._row_source_query_union_all_clause(pad)
-        engine = get_oracle_dialect_engine()
+        engine = get_dialect_engine("oracle")
         iot_part_name = self._extract_iot_single_partition_name(partition_chunk)
         row_source = ""
 
@@ -767,5 +767,5 @@ class OffloadTransportOracleApi(OffloadTransportRdbmsApiInterface):
         """Return PARTITION("partition_name") clause for a single-partition IOT chunk."""
         iot_part_name = self._extract_iot_single_partition_name(partition_chunk)
         if iot_part_name:
-            return f" {get_oracle_dialect_engine().iot_partition_clause(iot_part_name)}"
+            return f" {get_dialect_engine('oracle').iot_partition_clause(iot_part_name)}"
         return ""

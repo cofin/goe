@@ -18,14 +18,14 @@ The GOE Listener (`src/goe/listener/`) exposes metadata, execution status, MCP t
 
 ## Application Architecture
 
-- **Framework**: Litestar (`>=2.8.0`) in [`src/goe/listener/app.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/app.py) with `msgspec.Struct` request/response schemas ([`src/goe/listener/schemas.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/schemas.py)).
-- **ASGI Runtime**: `litestar-granian` (`GranianPlugin`, [`src/goe/listener/asgi.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/asgi.py), [`src/goe/listener/__main__.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/__main__.py), and [`src/goe/cli/commands/listener.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/cli/commands/listener.py)) running on `uvloop`.
+- **Framework**: Litestar (`>=2.8.0`) in `src/goe/listener/app.py` with `msgspec.Struct` request/response schemas (`src/goe/listener/schemas.py`).
+- **ASGI Runtime**: `litestar-granian` (`GranianPlugin`, `src/goe/listener/asgi.py`, `src/goe/listener/__main__.py`, and `src/goe/cli/commands/listener.py`) running on `uvloop`.
 - **Plugins & Middleware**:
   - `SecurityPlugin` (`litestar-security`): Enforces `x-goe-console-key` header authentication via `ConsoleKeySlot` and `ConsoleKeyAuthenticator` (`src/goe/listener/security.py`).
   - `QueuePlugin` (`litestar-queues`): Embedded in-memory task queue (`queue_backend="memory"`, `WorkerConfig(placement="asgi")`, with `ObservabilityConfig(enable_otel=True)` when `GOE_OTEL_ENABLED=true`).
   - `AutowirePlugin` (`litestar-autowire`): Declarative discovery of controllers and `@task` handlers across `domain_packages=["goe.listener"]` with `integrations=["queues"]`.
   - `LitestarMCP` (`litestar-mcp`): Exposes GOE listener routes marked with `mcp_tool=` as MCP tools (`src/goe/listener/mcp.py`), with `before_tool_call` / `after_tool_call` span hooks (`goe.mcp.tool.<name>`).
-  - `OpenTelemetryPlugin` (`litestar.plugins.opentelemetry`, lazily bound in [`src/goe/listener/telemetry.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/listener/telemetry.py)): Enabled when `GOE_OTEL_ENABLED=true` and `opentelemetry-instrumentation-asgi` is installed, propagating W3C trace context across HTTP requests, background `run_offload_job` queue workers (`_trace_carrier`), and MCP tool calls.
+  - `OpenTelemetryPlugin` (`litestar.plugins.opentelemetry`, lazily bound in `src/goe/listener/telemetry.py`): Enabled when `GOE_OTEL_ENABLED=true` and `opentelemetry-instrumentation-asgi` is installed, propagating W3C trace context across HTTP requests, background `run_offload_job` queue workers (`_trace_carrier`), and MCP tool calls.
   - `CompressionConfig`: Gzip response compression.
   - `CORSConfig`: Cross-origin policies across `/api/*` endpoints.
 

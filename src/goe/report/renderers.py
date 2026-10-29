@@ -3,10 +3,10 @@
 
 """Report rendering mixin for the Offload Status Report."""
 
-import json
 import os
 import traceback
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
@@ -76,6 +76,7 @@ from goe.report.models import (
     OffloadStatusReportException,
     divider,
 )
+from goe.serializers import encode_json, format_json
 from goe.util.string_utils import backtick_sandwich, format_json_list
 
 
@@ -789,8 +790,8 @@ class ReportRenderersMixin:
 
     def _gen_html_report(self, data):
         """Generates a fully-rich report in HTML format."""
-        this_dir = os.path.dirname(os.path.abspath(__file__))
-        j2_env = Environment(loader=FileSystemLoader(this_dir + "/../templates/"), trim_blocks=True)
+        template_dir = Path(__file__).resolve().parent / "templates"
+        j2_env = Environment(loader=FileSystemLoader(str(template_dir)), trim_blocks=True)
         report_data = [
             j2_env.get_template("offload_status_report/goe_offload_status_report.html").render(
                 data=data, metadata=self.metadata
@@ -801,7 +802,7 @@ class ReportRenderersMixin:
 
     def _gen_json_report(self, data):
         """Generates a report in JSON format (simple conversion of Python dict to JSON)."""
-        status = self._save_report(json.dumps(data), JSON)
+        status = self._save_report(format_json(encode_json(data), indent=0), JSON)
         return status
 
     def _gen_raw_report(self, data):

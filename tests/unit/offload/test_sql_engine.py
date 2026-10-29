@@ -5,14 +5,15 @@
 
 import ast
 from pathlib import Path
+from typing import get_args
 
 import msgspec
 import pytest
 
 import goe.offload.sql_engine as sql_engine_mod
+from goe.offload.sql_ast.dialect_engine import SqlDialect, get_dialect_engine
 from goe.offload.sql_engine import (
-    BigQueryDialectEngineProtocol,
-    OracleExtractionQueryProtocol,
+    DialectSqlEngineProtocol,
     PredicateDialectEngineProtocol,
     RenderedSQL,
     ValidationQueryEngineProtocol,
@@ -56,8 +57,14 @@ def test_rendered_sql_and_validation_query_spec_are_frozen_structs() -> None:
 
 
 def test_protocols_are_runtime_checkable() -> None:
-    """Verify all four SQL engine protocols support runtime isinstance checks."""
-    assert getattr(BigQueryDialectEngineProtocol, "_is_runtime_protocol", False) is True
-    assert getattr(OracleExtractionQueryProtocol, "_is_runtime_protocol", False) is True
+    """Verify all three SQL engine protocols support runtime isinstance checks."""
+    assert getattr(DialectSqlEngineProtocol, "_is_runtime_protocol", False) is True
     assert getattr(PredicateDialectEngineProtocol, "_is_runtime_protocol", False) is True
     assert getattr(ValidationQueryEngineProtocol, "_is_runtime_protocol", False) is True
+
+
+def test_dialect_engine_satisfies_protocol() -> None:
+    """Verify get_dialect_engine instances satisfy DialectSqlEngineProtocol for all supported dialects."""
+    dialects: tuple[SqlDialect, ...] = get_args(SqlDialect.__value__)
+    for dialect in dialects:
+        assert isinstance(get_dialect_engine(dialect), DialectSqlEngineProtocol)

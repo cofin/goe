@@ -9,7 +9,7 @@ import concurrent.futures
 import logging
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, cast, overload
 
 from sqlspec.utils.portal import (
     Portal,
@@ -172,20 +172,41 @@ class ParallelExecutor:
         self._tasks = {}
 
 
+@overload
+def run_bounded[R](
+    items: Sequence[Callable[[], R]],
+    fn: None = None,
+    *,
+    max_workers: int = 4,
+) -> list[R]: ...
+
+
+@overload
 def run_bounded[T, R](
     items: Sequence[T],
     fn: Callable[[T], R],
+    *,
+    max_workers: int = 4,
+) -> list[R]: ...
+
+
+def run_bounded[T, R](
+    items: Sequence[T],
+    fn: Callable[[T], R] | None = None,
     *,
     max_workers: int = 4,
 ) -> list[R]:
     """Execute fn over items with a bounded ThreadPoolExecutor, preserving input order."""
     if not items:
         return []
+    worker_fn: Callable[[T], R] = (
+        fn if fn is not None else cast(Callable[[T], R], lambda item: cast(Callable[[], R], item)())
+    )
     worker_count = max(1, min(max_workers, len(items)))
     if worker_count == 1:
-        return [fn(item) for item in items]
+        return [worker_fn(item) for item in items]
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = [executor.submit(fn, item) for item in items]
+        futures = [executor.submit(worker_fn, item) for item in items]
         try:
             return [future.result() for future in futures]
         except BaseException:

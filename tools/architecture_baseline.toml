@@ -8,21 +8,13 @@ files = [
     "src/goe/offload/spark/livy_offload_transport.py",
     "src/goe/offload/staging/avro/avro_staging_file.py",
     "src/goe/offload/transport/base.py",
-    "src/goe/orchestration/operation.py",
-    "src/goe/report/collector.py",
-    "src/goe/report/renderers.py",
     "tests/unit/cli/test_cli_root.py",
     "tests/unit/observability/test_log_correlation.py",
     "tests/unit/observability/test_sdk.py",
 ]
 
 [sqlglot-boundary]
-files = [
-    "src/goe/offload/bigquery/bigquery_sql.py",
-    "src/goe/offload/offload_validation.py",
-    "src/goe/offload/oracle/oracle_dialect.py",
-    "src/goe/offload/predicate_offload.py",
-]
+files = []
 
 [oracledb-boundary]
 files = []
@@ -44,7 +36,6 @@ files = [
 
 [inline-comment]
 files = [
-    "src/goe/schema_sync/schema_sync_analyzer.py",
     "tests/unit/config/test_orchestration_config.py",
     "tests/unit/filesystem/test_goe_dfs.py",
     "tests/unit/offload/operation/test_ddl_file.py",

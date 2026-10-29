@@ -31,8 +31,6 @@ from goe.orchestration.operation import nls_lang_has_charset as nls_lang_has_cha
 from goe.orchestration.operation import normalise_options as normalise_options
 from goe.orchestration.operation import normalise_owner_table_options as normalise_owner_table_options
 from goe.orchestration.operation import option_is_in_list as option_is_in_list
-from goe.orchestration.operation import oracle_connection as oracle_connection
-from goe.orchestration.operation import oracle_offload_transport_connection as oracle_offload_transport_connection
 from goe.orchestration.operation import set_nls_lang_default as set_nls_lang_default
 from goe.orchestration.operation import valid_canonical_decimal_spec as valid_canonical_decimal_spec
 from goe.orchestration.operation import verify_json_option as verify_json_option

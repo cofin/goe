@@ -11,7 +11,7 @@ tags:
 
 # Configuration & Environment Variables
 
-GOE loads environment variables using a 4-tier discovery architecture via `python-dotenv` ([`src/goe/config/config_file.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/src/goe/config/config_file.py)), merged and validated by `OrchestrationConfig`.
+GOE loads environment variables using a 4-tier discovery architecture via `python-dotenv` (`src/goe/config/config_file.py`), merged and validated by `OrchestrationConfig`.
 
 ## Multi-Tier Configuration Discovery (`src/goe/config/config_file.py`)
 

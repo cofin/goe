@@ -16,7 +16,7 @@ tags:
 
 1. **Unit & Golden Characterization Tests (`tests/unit/`)**:
    - Fast, in-memory execution testing discrete components without requiring live database connections or cloud credentials.
-   - Includes the offline Oracle-to-BigQuery golden dry-run (`dry_run=True, do_not_connect=True`) characterization suite in [`tests/unit/characterization/test_offload_bigquery_golden.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/tests/unit/characterization/test_offload_bigquery_golden.py) covering RBO DDL/staging/casts, IPA `RANGE` native and synthetic numeric `RANGE_BUCKET` partitioning + chunking, IPA `LIST`/`RANGE` subpartition discovery, PBO `GenericPredicate` Oracle/BigQuery `WHERE` rendering, and BigQuery `add_columns` schema evolution.
+   - Includes the offline Oracle-to-BigQuery golden dry-run (`dry_run=True, do_not_connect=True`) characterization suite in `tests/unit/characterization/test_offload_bigquery_golden.py` covering RBO DDL/staging/casts, IPA `RANGE` native and synthetic numeric `RANGE_BUCKET` partitioning + chunking, IPA `LIST`/`RANGE` subpartition discovery, PBO `GenericPredicate` Oracle/BigQuery `WHERE` rendering, and BigQuery `add_columns` schema evolution.
    - Run via:
      ```bash
      export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
@@ -28,8 +28,8 @@ tags:
 
 2. **Integration Tests (`tests/integration/`)**:
    - Full end-to-end tests validating RDBMS extraction, Spark transport, BigQuery/Snowflake ingestion, and hybrid views against active test instances.
-   - **Offline Collection**: [`tests/integration/conftest.py`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/tests/integration/conftest.py) registers markers (`oracle`, `bigquery`, `gcs`, `spark`) and skips live suites at runtime when credentials (`ORA_CONN`, `BIGQUERY_DATASET_PROJECT`, `OFFLOAD_FS_CONTAINER`) are absent, ensuring `GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only` always succeeds offline (`147 tests collected`).
-   - **Oracle 23ai Free CI Bootstrap**: [`sql/oracle/source/bootstrap_ci.sh`](file:///usr/local/google/home/codyfincher/code/gluent/next-goe/sql/oracle/source/bootstrap_ci.sh) non-interactively provisions `GOE_ADM`, `GOE_APP`, `GOE_REPO`, `GOE_TEST`, and `SH_TEST` inside `gvenzl/oracle-free:23-slim-faststart` (`FREEPDB1`) for the `integration-oracle` GitHub Actions job (`make test-integration-oracle`).
+   - **Offline Collection**: `tests/integration/conftest.py` registers markers (`oracle`, `bigquery`, `gcs`, `spark`) and skips live suites at runtime when credentials (`ORA_CONN`, `BIGQUERY_DATASET_PROJECT`, `OFFLOAD_FS_CONTAINER`) are absent, ensuring `GOE_NO_AUTOLOAD_ENV=1 uv run pytest tests/integration --collect-only` always succeeds offline (`147 tests collected`).
+   - **Oracle 23ai Free CI Bootstrap**: `sql/oracle/source/bootstrap_ci.sh` non-interactively provisions `GOE_ADM`, `GOE_APP`, `GOE_REPO`, `GOE_TEST`, and `SH_TEST` inside `gvenzl/oracle-free:23-slim-faststart` (`FREEPDB1`) for the `integration-oracle` GitHub Actions job (`make test-integration-oracle`).
    - **Keyless WIF BigQuery CI**: The `integration-bigquery` job in `.github/workflows/test.yaml` authenticates via `google-github-actions/auth@v3` Workload Identity Federation (`make test-integration-gcp`).
    - Run via:
      ```bash

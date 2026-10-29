@@ -1,51 +1,31 @@
-#! /usr/bin/env python3
-
 # SPDX-FileCopyrightText: 2016 The GOE Authors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Offload predicate specialisations for Synapse SQL dialect.
+"""Offload predicate specialisation for Synapse T-SQL."""
 
-Includes transformer for inserting synthetic partition predicates.
-"""
+from typing import Any
 
-import numpy as np
-
-from goe.offload import predicate_offload
-from goe.offload.microsoft.synapse_literal import SynapseLiteral
-
-
-def predicate_to_template(backend_columns):
-    generic_to_typed = predicate_offload.GenericPredicateToTyped(backend_columns)
-    insert_synthetic_partition_clauses = predicate_offload.InsertSyntheticPartitionClauses(backend_columns)
-    return generic_to_typed * insert_synthetic_partition_clauses * TypedPredicateToSynapseTemplate()
+from goe.offload.predicate_offload import (
+    GenericPredicate,
+    get_predicate_dialect_engine,
+    resolve_predicate_types,
+)
 
 
-def predicate_to_where_clause(backend_columns, predicate):
-    with predicate_offload.handle_parse_errors():
-        to_literal_ast = predicate_to_template(backend_columns) * TypedPredicateToSynapseLiterals()
-        to_sql = GenericPredicateToSynapseSQL()
-        return (to_literal_ast * to_sql).transform(predicate.ast)
+def predicate_to_where_clause(
+    synapse_columns: list[Any],
+    predicate: GenericPredicate,
+) -> str:
+    """Render a GenericPredicate into a Synapse T-SQL WHERE clause with synthetic partition clauses."""
+    resolved = resolve_predicate_types(predicate.ast, synapse_columns, include_synthetic=True)
+    return get_predicate_dialect_engine("tsql").render_literal_sql(resolved, synapse_columns)
 
 
-class GenericPredicateToSynapseSQL(predicate_offload.GenericPredicateToSQL):
-    def column(self, items):
-        return ".".join("[%s]" % i for i in items)
-
-
-class TypedPredicateToSynapseTemplate(predicate_offload.TypedPredicateToTemplate):
-    pass
-
-
-class TypedPredicateToSynapseLiterals(predicate_offload.TypedPredicateToLiterals):
-    def datetime_value(self, items):
-        value, data_type = items[0].value
-        assert isinstance(value, np.datetime64)
-        return SynapseLiteral.format_literal(value, data_type)
-
-    def numeric_value(self, items):
-        value, data_type = items[0].value
-        return SynapseLiteral.format_literal(value, data_type)
-
-    def string_value(self, items, quote="'"):
-        value, data_type = items[0].value
-        return SynapseLiteral.format_literal(value, data_type)
+def predicate_to_where_clause_with_binds(
+    synapse_columns: list[Any],
+    predicate: GenericPredicate,
+) -> tuple[str, dict[str, Any]]:
+    """Render a GenericPredicate into a Synapse T-SQL WHERE clause and named bind dictionary."""
+    resolved = resolve_predicate_types(predicate.ast, synapse_columns, include_synthetic=True)
+    rendered = get_predicate_dialect_engine("tsql").render_bind_sql(resolved, synapse_columns)
+    return rendered.sql, rendered.params

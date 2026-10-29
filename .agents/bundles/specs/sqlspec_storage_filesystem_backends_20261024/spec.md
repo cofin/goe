@@ -23,7 +23,7 @@ depends_on:
   - transport_decomposition_and_auto_selection_20261024
 research:
   - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/duckdb2-arrow-and-storage-dataplane.md
-  - .agents/bundles/specs/prd_05_foundation_typing_settings_and_adapter_reduction_20261024/research/module-by-module-redesign.md
+  - .agents/bundles/specs/prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/module-by-module-redesign.md
 ---
 
 # Chapter 8.4: SQLSpec Storage Filesystem Backends and HDFS Consolidation

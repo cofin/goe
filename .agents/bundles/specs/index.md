@@ -14,13 +14,8 @@ This directory contains specifications and task worksheets for active and planne
 
 ## Active & Planned Flows
 
-The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/research/goe-architecture-redesign.md)):
+The GOE architecture redesign is planned as six sequenced Master PRDs (research: [redesign dossier](prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/research/goe-architecture-redesign.md)):
 
-- **[Master PRD 7: Native SQLGlot Dialect Engine, PredicateIR, Concurrent Validation, Schema Sync, and Status Report](prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024/spec.md)** (`planned`):
-  - Chapter 7.1: Native SQLGlot Dialect Engine ([`native_sqlglot_dialect_engine_20261024`](native_sqlglot_dialect_engine_20261024/spec.md))
-  - Chapter 7.2: `PredicateIR` Compiler ([`predicate_ir_compiler_20261024`](predicate_ir_compiler_20261024/spec.md))
-  - Chapter 7.3: Concurrent Cross-Database Validation ([`concurrent_cross_db_validation_20261024`](concurrent_cross_db_validation_20261024/spec.md))
-  - Chapter 7.4: Schema Sync and Status Report Redesign ([`schema_sync_and_status_report_redesign_20261024`](schema_sync_and_status_report_redesign_20261024/spec.md))
 - **[Master PRD 8: DuckDB 2.0 Data Plane, QUERY_IMPORT Parity Replacement, Transport Decomposition, and SQLSpec Storage](prd_08_duckdb2_transport_query_import_parity_and_storage_20261024/spec.md)** (`planned`):
   - Chapter 8.1: DuckDB 2.0 Engine Hardening ([`duckdb2_engine_hardening_20261024`](duckdb2_engine_hardening_20261024/spec.md))
   - Chapter 8.2: Arrow Extraction and `QUERY_IMPORT` Parity ([`arrow_extraction_and_query_import_parity_20261024`](arrow_extraction_and_query_import_parity_20261024/spec.md))
@@ -41,6 +36,13 @@ The GOE architecture redesign is planned as six sequenced Master PRDs (research:
 ## Archived Flows & Roadmaps
 
 All previous flows have completed full verification and code review gates and have been synthesized into `.agents/bundles/knowledge/`:
+
+- **Master PRD 7: Native SQLGlot Dialect Engine, PredicateIR, Concurrent Validation, Schema Sync, and Status Report (`prd_07_sqlglot_engine_predicates_validation_sync_and_report_20261024`, 13 tasks)**:
+  - Chapter 7.1: Native SQLGlot Dialect Engine (`native_sqlglot_dialect_engine_20261024`, 4 tasks)
+  - Chapter 7.2: `PredicateIR` Compiler (`predicate_ir_compiler_20261024`, 3 tasks)
+  - Chapter 7.3: Concurrent Cross-Database Validation (`concurrent_cross_db_validation_20261024`, 3 tasks)
+  - Chapter 7.4: Schema Sync and Status Report Redesign (`schema_sync_and_status_report_redesign_20261024`, 3 tasks)
+  - *Synthesized into*: [Database & SQL Standards](../knowledge/standards/database-and-sql.md), [Schema Evolution](../knowledge/architecture/schema-evolution.md), [CLI Tools](../knowledge/operations/cli-tools.md), [Offload & Typing Gotchas](../knowledge/patterns/offload-and-typing.md).
 
 - **Master PRD 6: Pooled SQLSpec Oracle Data Layer, Repository Service, Catalog Cache, and MSSQL Frontend (`prd_06_sqlspec_oracle_data_layer_and_catalog_cache_20261024`, 13 tasks)**:
   - Chapter 6.1: `OracleDatabaseRegistry` and Session Tracing (`oracle_database_registry_and_session_tracing_20261024`, 4 tasks)
