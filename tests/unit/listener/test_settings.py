@@ -94,12 +94,15 @@ def test_listener_settings_env_overrides(monkeypatch: pytest.MonkeyPatch) -> Non
     ],
 )
 def test_listener_settings_client_host_and_base_url_normalization(
+    monkeypatch: pytest.MonkeyPatch,
     host: str,
     ssl_enabled: bool,
     expected_client_host: str,
     expected_base_url: str,
 ) -> None:
     """Verify client_host and base_url normalize wildcard bind addresses and respect ssl_enabled."""
+    monkeypatch.delenv("OFFLOAD_LISTENER_PORT", raising=False)
+    monkeypatch.delenv("OFFLOAD_LISTENER_HOST", raising=False)
     cfg = ListenerSettings(global_config=None, host=host, port=8000, ssl_enabled=ssl_enabled)
     assert cfg.client_host == expected_client_host
     assert cfg.base_url == expected_base_url

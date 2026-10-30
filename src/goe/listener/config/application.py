@@ -69,24 +69,6 @@ class ListenerSettings(FrozenBaseStruct, frozen=True):
                     int(self.global_config.listener_heartbeat_interval),
                 )
 
-        if self.global_config is None:
-            env_host = (os.environ.get("OFFLOAD_LISTENER_HOST") or "").strip()
-            if env_host:
-                msgspec.structs.force_setattr(self, "host", env_host)
-            msgspec.structs.force_setattr(
-                self,
-                "port",
-                _parse_int_env("OFFLOAD_LISTENER_PORT", self.port, minimum=1),
-            )
-            msgspec.structs.force_setattr(
-                self,
-                "heartbeat_interval",
-                _parse_int_env("OFFLOAD_LISTENER_HEARTBEAT_INTERVAL", self.heartbeat_interval, minimum=1),
-            )
-            env_token = (os.environ.get("OFFLOAD_LISTENER_SHARED_TOKEN") or "").strip()
-            if env_token and self.shared_token is None:
-                msgspec.structs.force_setattr(self, "shared_token", env_token)
-
         msgspec.structs.force_setattr(
             self,
             "http_workers",

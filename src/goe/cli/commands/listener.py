@@ -21,7 +21,7 @@ from goe.cli.common import common_options, extract_common_options
 from goe.cli.console import console, print_info, print_success, print_warning
 
 if TYPE_CHECKING:
-    import httpx2
+    import httpx2 as httpx
     from litestar_mcp import LitestarMCP
     from litestar_mcp.mcp.bridge import run_stdio_streamable_http_bridge
     from litestar_mcp.mcp.stdio import MCPStdioContext, run_stdio
@@ -53,6 +53,7 @@ _LAZY_IMPORTS: LazyImportMap = {
     "create_app": ("goe.listener.app", "create_app"),
     "create_job_store": ("goe.listener.jobs.store", "create_job_store"),
     "encode_json": ("goe.serializers", "encode_json"),
+    "httpx": ("httpx2", None),
     "httpx2": ("httpx2", None),
     "run_stdio": ("litestar_mcp.mcp.stdio", "run_stdio"),
     "run_stdio_streamable_http_bridge": ("litestar_mcp.mcp.bridge", "run_stdio_streamable_http_bridge"),
@@ -246,11 +247,11 @@ def status(ctx: click.Context, **kwargs: Any) -> None:
     url = f"{base_url}/api/system/status/"
     print_info(f"Checking GOE Listener status at {url}...")
     try:
-        response = httpx2.get(url, timeout=2.0)
+        response = httpx.get(url, timeout=2.0)
         config_status = 200
         if response.status_code == 200 and settings.shared_token:
             config_url = f"{base_url}/api/system/config/"
-            config_resp = httpx2.get(
+            config_resp = httpx.get(
                 config_url,
                 headers={"x-goe-console-key": settings.shared_token},
                 timeout=2.0,

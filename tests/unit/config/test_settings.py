@@ -154,6 +154,7 @@ def test_config_file_discovery_precedence_and_autoload_bypass(
     monkeypatch.delenv("GOE_NO_AUTOLOAD_ENV", raising=False)
     settings_loaded = GOESettings.from_env(env_file=str(env_file))
     assert settings_loaded.listener.port == 8123
+    monkeypatch.delenv("OFFLOAD_LISTENER_PORT", raising=False)
 
 
 def test_with_dfs_override_and_redacted_dict() -> None:
