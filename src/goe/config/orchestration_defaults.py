@@ -810,15 +810,15 @@ def preserve_load_table_default() -> bool:
 
 
 def listener_host_default() -> str | None:
-    return os.environ.get("OFFLOAD_LISTENER_HOST")
+    return (os.environ.get("OFFLOAD_LISTENER_HOST") or "").strip() or None
 
 
 def listener_port_default() -> int:
-    return int(os.environ.get("OFFLOAD_LISTENER_PORT") or 8000)
+    return int((os.environ.get("OFFLOAD_LISTENER_PORT") or "").strip() or 8000)
 
 
 def listener_heartbeat_interval_default() -> int:
-    return int(os.environ.get("OFFLOAD_LISTENER_HEARTBEAT_INTERVAL") or 60)
+    return int((os.environ.get("OFFLOAD_LISTENER_HEARTBEAT_INTERVAL") or "").strip() or 60)
 
 
 def listener_shared_token_default() -> str | None:

@@ -13,12 +13,16 @@ import msgspec
 from litestar.di import Provide
 from litestar.testing import TestClient
 
+from goe.listener import exceptions, schemas
 from goe.listener.app import create_app
 from goe.listener.cache import ListenerCache
 from goe.listener.config import settings
-from goe.listener.jobs.store import SqliteJobStore
+from goe.listener.mcp import ConfirmationGate
+from goe.listener.services.operations import ListenerOperationsService
 from goe.listener.services.system import SystemService
 from goe.platform.locking import OrchestrationLockTimeout
+from goe.serializers import decode_json
+from tests.unit.listener.conftest import make_fake_oracle_job_store
 
 
 def test_orchestration_executions(tmp_path: Path) -> None:
@@ -46,7 +50,7 @@ def test_orchestration_executions(tmp_path: Path) -> None:
     ]
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -75,7 +79,7 @@ def test_orchestration_execution_by_id(tmp_path: Path) -> None:
     }
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -98,7 +102,7 @@ def test_orchestration_execution_not_found(tmp_path: Path) -> None:
     mock_service.get_command_execution.return_value = None
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -125,7 +129,7 @@ def test_orchestration_execution_log_null_or_empty_path(tmp_path: Path) -> None:
     mock_service.get_dfs_client.return_value = None
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),
@@ -147,7 +151,7 @@ def test_orchestration_execution_log_null_or_empty_path(tmp_path: Path) -> None:
 @patch("goe.listener.utils.orchestrate.check_for_running_command")
 def test_orchestration_post_offload(mock_check: MagicMock, tmp_path: Path) -> None:
     """Verify POST /api/orchestration/offload/ dispatches an offload job into JobStore."""
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
         enable_background_worker=False,
@@ -169,7 +173,7 @@ def test_orchestration_post_offload_lock_timeout_and_invalid_table(
     mock_lock.acquire.side_effect = OrchestrationLockTimeout("locked")
     mock_lock_factory.return_value = mock_lock
 
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
         enable_background_worker=False,
@@ -187,7 +191,7 @@ def test_orchestration_post_offload_lock_timeout_and_invalid_table(
 @patch("goe.listener.utils.orchestrate.check_for_running_command")
 def test_orchestration_console_key_enforcement(mock_check: MagicMock, tmp_path: Path) -> None:
     """Verify POST /api/orchestration/offload/ enforces x-goe-console-key when shared_token is set."""
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
         enable_background_worker=False,
@@ -204,3 +208,490 @@ def test_orchestration_console_key_enforcement(mock_check: MagicMock, tmp_path: 
         )
         assert auth.status_code in (200, 201)
         assert "execution_id" in auth.json()
+
+
+def test_orchestration_malformed_uuid_and_typed_job_inspection(tmp_path: Path) -> None:
+    """Verify malformed UUID returns 400 and /jobs/ + /jobs/{execution_id}/ inspect durable jobs."""
+    mock_service = MagicMock(spec=SystemService)
+    cache = ListenerCache()
+    store = make_fake_oracle_job_store()
+    exec_id = "00000000-0000-0000-0000-000000000010"
+    store.enqueue(execution_id=exec_id, owner_table="SH.SALES", payload={"owner_table": "SH.SALES", "execute": True})
+
+    app = create_app(
+        dependencies={
+            "system_service": Provide(lambda: mock_service, sync_to_thread=False),
+            "listener_cache": Provide(lambda: cache, sync_to_thread=False),
+            "job_store": Provide(lambda: store, sync_to_thread=False),
+        },
+        enable_background_worker=False,
+    )
+
+    with TestClient(app=app) as client:
+        bad_exec = client.get("/api/orchestration/executions/not-a-uuid/")
+        assert bad_exec.status_code == 400
+        assert "Invalid execution_id UUID" in bad_exec.json()["detail"]
+
+        bad_log = client.get("/api/orchestration/executions/not-a-uuid/execution-log/")
+        assert bad_log.status_code == 400
+
+        bad_link = client.get("/api/orchestration/executions/not-a-uuid/execution-log/link/")
+        assert bad_link.status_code == 400
+
+        jobs_resp = client.get("/api/orchestration/jobs/", params={"status": "PENDING", "limit": 10})
+        assert jobs_resp.status_code == 200
+        jobs_body = jobs_resp.json()
+        assert jobs_body["count"] == 1
+        assert jobs_body["results"][0]["execution_id"] == exec_id
+        assert jobs_body["results"][0]["table_key"] == "SH.SALES"
+        assert jobs_body["results"][0]["status"] == "PENDING"
+
+        bad_status = client.get("/api/orchestration/jobs/", params={"status": "INVALID_STATE"})
+        assert bad_status.status_code == 400
+
+        job_detail = client.get(f"/api/orchestration/jobs/{exec_id}/")
+        assert job_detail.status_code == 200
+        assert job_detail.json()["execution_id"] == exec_id
+
+        missing_job = client.get("/api/orchestration/jobs/00000000-0000-0000-0000-000000000099/")
+        assert missing_job.status_code == 404
+
+
+@patch("goe.listener.utils.orchestrate.check_for_running_command")
+def test_mcp_orchestration_resources_log_link_and_mrtr_confirmation_gate(
+    mock_check: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """Verify goe://executions* and goe://jobs* resources, get_execution_log_link, and MRTR offload gating."""
+    exec_id = "00000000-0000-0000-0000-000000000011"
+    mock_service = MagicMock(spec=SystemService)
+    mock_service.get_command_executions.return_value = [
+        {"execution_id": exec_id, "command_type_code": "OFFLOAD", "status_code": "SUCCESS", "status": "SUCCESS"}
+    ]
+    mock_service.get_command_execution.return_value = {
+        "execution_id": exec_id,
+        "command_type_code": "OFFLOAD",
+        "status_code": "SUCCESS",
+        "status": "SUCCESS",
+        "command_log_path": None,
+    }
+    mock_service.get_dfs_client.return_value = None
+
+    cache = ListenerCache()
+    store = make_fake_oracle_job_store()
+    store.enqueue(execution_id=exec_id, owner_table="SH.PROMOTIONS", payload={"owner_table": "SH.PROMOTIONS"})
+    gate = ConfirmationGate(secret="test-orch-secret", ttl_seconds=300)
+
+    app = create_app(
+        dependencies={
+            "system_service": Provide(lambda: mock_service, sync_to_thread=False),
+            "listener_cache": Provide(lambda: cache, sync_to_thread=False),
+            "job_store": Provide(lambda: store, sync_to_thread=False),
+            "confirmation_gate": Provide(lambda: gate, sync_to_thread=False),
+        },
+        enable_background_worker=False,
+    )
+
+    base_meta = {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+
+    with TestClient(app=app) as client:
+        openapi_resp = client.get("/schema/openapi.json")
+        assert openapi_resp.status_code == 200
+
+        res_list = client.post(
+            "/mcp",
+            headers={"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "resources/list"},
+            json={"jsonrpc": "2.0", "id": 1, "method": "resources/list", "params": {"_meta": base_meta}},
+        )
+        assert res_list.status_code == 200
+        uris = {r["uri"] for r in res_list.json()["result"]["resources"]}
+        assert {"goe://executions", "goe://jobs"}.issubset(uris)
+
+        tmpl_list = client.post(
+            "/mcp",
+            headers={"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "resources/templates/list"},
+            json={"jsonrpc": "2.0", "id": 2, "method": "resources/templates/list", "params": {"_meta": base_meta}},
+        )
+        assert tmpl_list.status_code == 200
+        tmpls = {t["uriTemplate"] for t in tmpl_list.json()["result"]["resourceTemplates"]}
+        assert {
+            "goe://executions/{execution_id}",
+            "goe://executions/{execution_id}/log",
+            "goe://jobs/{execution_id}",
+        }.issubset(tmpls)
+
+        for req_id, uri in enumerate(
+            (
+                "goe://executions",
+                f"goe://executions/{exec_id}",
+                f"goe://executions/{exec_id}/log",
+                "goe://jobs",
+                f"goe://jobs/{exec_id}",
+            ),
+            start=10,
+        ):
+            r_resp = client.post(
+                "/mcp",
+                headers={"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "resources/read", "Mcp-Name": uri},
+                json={
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "method": "resources/read",
+                    "params": {"uri": uri, "_meta": base_meta},
+                },
+            )
+            assert r_resp.status_code == 200
+            text_body = r_resp.json()["result"]["contents"][0]["text"]
+            assert isinstance(decode_json(text_body), dict)
+
+        link_call = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "get_execution_log_link",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 20,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_execution_log_link",
+                    "arguments": {"execution_id": exec_id},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert link_call.status_code == 200
+        link_block = link_call.json()["result"]["content"][0]
+        assert link_block["type"] == "resource_link"
+        assert link_block["uri"] == f"goe://executions/{exec_id}/log"
+
+        round1_call = client.post(
+            "/mcp",
+            headers={"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/call", "Mcp-Name": "execute_offload"},
+            json={
+                "jsonrpc": "2.0",
+                "id": 21,
+                "method": "tools/call",
+                "params": {
+                    "name": "execute_offload",
+                    "arguments": {"data": {"owner_table": "SH.SALES", "execute": True}},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert round1_call.status_code == 200
+        r1_result = round1_call.json()["result"]
+        assert r1_result["resultType"] == "input_required"
+        assert "confirm" in r1_result["inputRequests"]
+        assert store.get_active_job_for_table("SH.SALES") is None
+
+        round2_call = client.post(
+            "/mcp",
+            headers={"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/call", "Mcp-Name": "execute_offload"},
+            json={
+                "jsonrpc": "2.0",
+                "id": 22,
+                "method": "tools/call",
+                "params": {
+                    "name": "execute_offload",
+                    "arguments": {"data": {"owner_table": "SH.SALES", "execute": True}},
+                    "requestState": r1_result["requestState"],
+                    "inputResponses": {"confirm": True},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert round2_call.status_code == 200
+        r2_result = round2_call.json()["result"]
+        assert r2_result["isError"] is False
+        scheduled_id = r2_result["structuredContent"]["execution_id"]
+        assert store.get_job_by_execution_id(scheduled_id) is not None
+        content_uris = {b.get("uri") for b in r2_result["content"] if b.get("type") == "resource_link"}
+        assert f"goe://jobs/{scheduled_id}" in content_uris
+        assert f"goe://executions/{scheduled_id}/log" in content_uris
+
+        dry_run_call = client.post(
+            "/mcp",
+            headers={"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/call", "Mcp-Name": "execute_offload"},
+            json={
+                "jsonrpc": "2.0",
+                "id": 23,
+                "method": "tools/call",
+                "params": {
+                    "name": "execute_offload",
+                    "arguments": {"data": {"owner_table": "SH.COSTS", "execute": False}},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert dry_run_call.status_code == 200
+        assert dry_run_call.json()["result"]["resultType"] == "complete"
+        assert store.get_active_job_for_table("SH.COSTS") is not None
+
+
+@patch("goe.listener.utils.orchestrate.check_for_running_command")
+def test_mcp_preview_offload_plan_and_token_execution(
+    mock_check: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """Verify preview_offload_plan mints a token that authorizes execute_offload over POST /mcp."""
+    mock_service = MagicMock(spec=SystemService)
+    mock_ops = MagicMock(spec=ListenerOperationsService)
+    gate = ConfirmationGate(secret="preview-to-exec-secret", ttl_seconds=300)
+    challenge = gate.issue_challenge(
+        tool_name="execute_offload",
+        owner_table="SH.CHANNELS",
+        payload={"owner_table": "SH.CHANNELS", "execute": True},
+    )
+    mock_ops.preview_offload.return_value = schemas.OffloadPlanPreview(
+        owner_table="SH.CHANNELS",
+        target_owner="sh",
+        target_table="channels",
+        offload_mode="FULL",
+        offload_type="FULL",
+        nothing_to_offload=False,
+        partition_names=[],
+        chunk_count=1,
+        estimated_row_count=5,
+        estimated_size_bytes=1024,
+        transport_method="DUCKDB",
+        staging_format="PARQUET",
+        ingest_strategy="DIRECT_LOAD",
+        create_backend_table=True,
+        create_table_ddl=["CREATE TABLE sh.channels (CHANNEL_ID INT64);"],
+        alter_table_ddl=[],
+        frontend_where_clause=None,
+        notices=["Dry-run preview"],
+        confirmation_challenge=challenge,
+    )
+
+    cache = ListenerCache()
+    store = make_fake_oracle_job_store()
+    app = create_app(
+        dependencies={
+            "system_service": Provide(lambda: mock_service, sync_to_thread=False),
+            "operations_service": Provide(lambda: mock_ops, sync_to_thread=False),
+            "listener_cache": Provide(lambda: cache, sync_to_thread=False),
+            "job_store": Provide(lambda: store, sync_to_thread=False),
+            "confirmation_gate": Provide(lambda: gate, sync_to_thread=False),
+        },
+        enable_background_worker=False,
+    )
+    base_meta = {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+
+    with TestClient(app=app) as client:
+        http_preview = client.post(
+            "/api/orchestration/offload/preview/",
+            json={"owner_table": "SH.CHANNELS", "execute": False},
+        )
+        assert http_preview.status_code in (200, 201)
+        assert http_preview.json()["target_table"] == "channels"
+
+        mcp_preview = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "preview_offload_plan",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 30,
+                "method": "tools/call",
+                "params": {
+                    "name": "preview_offload_plan",
+                    "arguments": {"data": {"owner_table": "SH.CHANNELS", "execute": False}},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert mcp_preview.status_code == 200
+        preview_result = mcp_preview.json()["result"]
+        preview_struct = preview_result.get("structuredContent") or decode_json(preview_result["content"][0]["text"])
+        token = preview_struct["confirmation_challenge"]["confirmation_token"]
+
+        exec_resp = client.post(
+            "/mcp",
+            headers={"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/call", "Mcp-Name": "execute_offload"},
+            json={
+                "jsonrpc": "2.0",
+                "id": 31,
+                "method": "tools/call",
+                "params": {
+                    "name": "execute_offload",
+                    "arguments": {
+                        "data": {
+                            "owner_table": "SH.CHANNELS",
+                            "execute": True,
+                            "confirmation_token": token,
+                        }
+                    },
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert exec_resp.status_code == 200
+        exec_result = exec_resp.json()["result"]
+        assert exec_result["isError"] is False
+        assert store.get_active_job_for_table("SH.CHANNELS") is not None
+
+        mock_ops.preview_offload.side_effect = exceptions.ApplicationError(
+            status_code=404,
+            message="Source table does not exist: SH.MISSING",
+        )
+        missing_resp = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "preview_offload_plan",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 32,
+                "method": "tools/call",
+                "params": {
+                    "name": "preview_offload_plan",
+                    "arguments": {"data": {"owner_table": "SH.MISSING", "execute": False}},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert missing_resp.status_code == 200
+        assert missing_resp.json()["result"]["isError"] is True
+
+
+def test_sync_and_validate_endpoints_rest_and_mcp_gating(tmp_path: Path) -> None:
+    """Verify /api/orchestration/sync/ (REST un-gated + MCP MRTR/token + cache invalidation) and /validate/."""
+    mock_service = MagicMock(spec=SystemService)
+    mock_ops = MagicMock(spec=ListenerOperationsService)
+    mock_ops.synchronize_schema.side_effect = lambda req: schemas.SchemaSyncExecutionResult(
+        owner_table=req.owner_table.upper(),
+        backend="BIGQUERY",
+        has_drift=True,
+        applied=req.execute,
+        added_columns=["PROMO_CODE"],
+        widened_columns=[],
+        ddl_statements=["ALTER TABLE sh.sales ADD COLUMN PROMO_CODE STRING"],
+        warnings=[],
+    )
+    mock_ops.validate_table.side_effect = lambda req: schemas.ValidationResultSummary(
+        owner_table=req.owner_table.upper(),
+        passed=True,
+        execute=req.execute,
+        aggregate_functions=req.aggregate_functions or ["COUNT", "MIN", "MAX"],
+        safe_boundary_applied=not req.skip_boundary_check,
+        summary_message="Compared aggregations of columns: ID",
+        differing_rows=[],
+    )
+
+    cache = ListenerCache()
+    store = make_fake_oracle_job_store()
+    gate = ConfirmationGate(secret="sync-test-secret", ttl_seconds=300)
+    app = create_app(
+        dependencies={
+            "system_service": Provide(lambda: mock_service, sync_to_thread=False),
+            "operations_service": Provide(lambda: mock_ops, sync_to_thread=False),
+            "listener_cache": Provide(lambda: cache, sync_to_thread=False),
+            "job_store": Provide(lambda: store, sync_to_thread=False),
+            "confirmation_gate": Provide(lambda: gate, sync_to_thread=False),
+        },
+        enable_background_worker=False,
+    )
+    base_meta = {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+
+    with TestClient(app=app) as client:
+        rest_sync = client.post(
+            "/api/orchestration/sync/",
+            json={"owner_table": "SH.SALES", "execute": True},
+        )
+        assert rest_sync.status_code in (200, 201)
+        assert rest_sync.json()["applied"] is True
+
+        rest_val = client.post(
+            "/api/orchestration/validate/",
+            json={"owner_table": "SH.SALES", "execute": True, "filters": "ID > 0"},
+        )
+        assert rest_val.status_code in (200, 201)
+        assert rest_val.json()["passed"] is True
+
+        mcp_sync_r1 = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "apply_schema_sync",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 40,
+                "method": "tools/call",
+                "params": {
+                    "name": "apply_schema_sync",
+                    "arguments": {"data": {"owner_table": "SH.SALES", "execute": True}},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert mcp_sync_r1.status_code == 200
+        r1_res = mcp_sync_r1.json()["result"]
+        assert r1_res["resultType"] == "input_required"
+
+        mcp_sync_r2 = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "apply_schema_sync",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 41,
+                "method": "tools/call",
+                "params": {
+                    "name": "apply_schema_sync",
+                    "arguments": {"data": {"owner_table": "SH.SALES", "execute": True}},
+                    "requestState": r1_res["requestState"],
+                    "inputResponses": {"confirm": True},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert mcp_sync_r2.status_code == 200
+        r2_res = mcp_sync_r2.json()["result"]
+        assert r2_res["isError"] is False
+        r2_struct = r2_res.get("structuredContent") or decode_json(r2_res["content"][0]["text"])
+        assert r2_struct["applied"] is True
+
+        mcp_val = client.post(
+            "/mcp",
+            headers={
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "validate_table",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 42,
+                "method": "tools/call",
+                "params": {
+                    "name": "validate_table",
+                    "arguments": {"data": {"owner_table": "SH.SALES", "execute": True}},
+                    "_meta": base_meta,
+                },
+            },
+        )
+        assert mcp_val.status_code == 200
+        val_res = mcp_val.json()["result"]
+        assert val_res["isError"] is False

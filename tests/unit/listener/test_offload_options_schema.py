@@ -18,8 +18,8 @@ from goe.config.options import (
     OffloadOperationOptions,
 )
 from goe.listener.app import create_app
-from goe.listener.jobs.store import SqliteJobStore
 from goe.listener.schemas import ColumnDetail, ListenerConfig, OffloadOptions
+from tests.unit.listener.conftest import make_fake_oracle_job_store
 
 
 def test_offload_options_canonical_keys_and_older_than_days_normalization() -> None:
@@ -89,7 +89,7 @@ def test_orchestration_post_offload_passes_only_expected_offload_args(
     tmp_path: Path,
 ) -> None:
     """Verify POST /api/orchestration/offload/ passes only EXPECTED_OFFLOAD_ARGS keys to JobStore.enqueue."""
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
         enable_background_worker=False,
@@ -146,7 +146,7 @@ def test_listener_config_and_column_detail_optional_fields() -> None:
 def test_offload_options_fields_track_expected_offload_args() -> None:
     """Listener REST fields equal the canonical offload keys plus documented aliases."""
     alias_fields = set(LISTENER_OFFLOAD_RENAME_ALIASES) | set(LISTENER_OFFLOAD_CSV_ALIASES) | {"subpartitions"}
-    rest_fields = set(OffloadOptions.__struct_fields__) - alias_fields - {"quiet", "verbose"}
+    rest_fields = set(OffloadOptions.__struct_fields__) - alias_fields - {"confirmation_token", "quiet", "verbose"}
     assert rest_fields == set(EXPECTED_OFFLOAD_ARGS) - {"operation_name"}
 
 

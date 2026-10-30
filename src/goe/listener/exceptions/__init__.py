@@ -10,6 +10,7 @@ from goe.listener.exceptions.handlers import (
     DatabaseConnectivityError,
     HybridViewMetadataNotFoundError,
     LogFileNotFoundError,
+    TableMetadataNotFound,
     generic_exception_handler,
     http_exception_handler,
 )
@@ -21,6 +22,7 @@ __all__ = (
     "DatabaseConnectivityError",
     "HybridViewMetadataNotFoundError",
     "LogFileNotFoundError",
+    "TableMetadataNotFound",
     "generic_exception_handler",
     "http_exception_handler",
 )

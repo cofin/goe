@@ -13,11 +13,16 @@ from goe.serializers import decode_json, encode_json
 from goe.typing import FrozenBaseStruct
 
 __all__ = (
+    "JobCancelledError",
     "JobRecord",
     "JobState",
     "NodeHeartbeat",
     "normalize_table_key",
 )
+
+
+class JobCancelledError(Exception):
+    """Raised inside a worker thread when cooperative cancellation is requested for an active job."""
 
 
 class JobState(StrEnum):
@@ -74,6 +79,7 @@ class JobRecord(FrozenBaseStruct, frozen=True):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error_message: str | None = None
+    cancel_requested: bool = False
 
     @classmethod
     def create_pending(

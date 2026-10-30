@@ -16,9 +16,9 @@ from litestar.testing import TestClient
 
 from goe.listener.app import create_app
 from goe.listener.cache import ListenerCache, ListenerCacheSink
-from goe.listener.jobs.store import SqliteJobStore
 from goe.listener.services.system import SystemService
 from goe.platform.locking import OrchestrationLockTimeout
+from tests.unit.listener.conftest import make_fake_oracle_job_store
 
 
 @pytest.mark.anyio
@@ -66,7 +66,7 @@ async def test_listener_cache_lru_ttl_singleflight_and_sink_invalidation() -> No
 
 def test_post_offload_enqueues_durable_job_and_returns_409_on_conflict(tmp_path: Path) -> None:
     """Verify POST /api/orchestration/offload/ enqueues into JobStore and returns 409 on lock or duplicate job."""
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     cache = ListenerCache()
     app = create_app(
         dependencies={
@@ -113,7 +113,7 @@ def test_execution_log_path_containment_bounded_read_and_gcs_support(
     mock_dfs = MagicMock()
     mock_service.get_dfs_client.return_value = mock_dfs
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
 
     app = create_app(
         dependencies={
@@ -195,7 +195,7 @@ def test_split_system_schemas_and_tables_controllers(tmp_path: Path) -> None:
     ]
 
     cache = ListenerCache()
-    store = SqliteJobStore(db_path=tmp_path / "jobs.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={
             "system_service": Provide(lambda: mock_service, sync_to_thread=False),

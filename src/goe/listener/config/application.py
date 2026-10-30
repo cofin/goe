@@ -21,7 +21,6 @@ __all__ = (
     "APP_DIR",
     "BASE_DIR",
     "CONFIG_DIR",
-    "FRONTEND_DIR",
     "ListenerSettings",
     "get_listener_settings",
     "settings",
@@ -30,11 +29,10 @@ __all__ = (
 BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
 APP_DIR: Path = Path(BASE_DIR / "listener")
 CONFIG_DIR: Path = Path(APP_DIR / "config")
-FRONTEND_DIR: Path = Path(APP_DIR / "web")
 
 
 class ListenerSettings(FrozenBaseStruct, frozen=True):
-    """Immutable Listener runtime and HTTP configuration settings."""
+    """Immutable Listener runtime, HTTP, and MCP configuration settings."""
 
     global_config: OrchestrationConfig | None = msgspec.field(default_factory=lambda: _get_default_global_config())
 
@@ -42,9 +40,6 @@ class ListenerSettings(FrozenBaseStruct, frozen=True):
     port: int = 8000
     http_workers: int = 2
     reload: bool = False
-    static_url: str = "/"
-    static_path: str | None = None
-    background_workers: int = 2
     shared_token: str | None = None
     certfile: str | None = None
     keyfile: str | None = None
@@ -55,11 +50,14 @@ class ListenerSettings(FrozenBaseStruct, frozen=True):
     threads: int = 1
     drain_timeout_seconds: int = 30
     shutdown_timeout_seconds: int = 35
+    confirmation_ttl_seconds: int = 300
+    mcp_skills_enabled: bool = True
+    mcp_task_ttl_seconds: int = 3600
 
     def __post_init__(self) -> None:
         if self.global_config:
             if self.global_config.listener_host:
-                msgspec.structs.force_setattr(self, "host", self.global_config.listener_host)
+                msgspec.structs.force_setattr(self, "host", str(self.global_config.listener_host).strip())
             if self.global_config.listener_port is not None:
                 msgspec.structs.force_setattr(self, "port", int(self.global_config.listener_port))
             if self.global_config.listener_shared_token:
@@ -71,22 +69,80 @@ class ListenerSettings(FrozenBaseStruct, frozen=True):
                     int(self.global_config.listener_heartbeat_interval),
                 )
 
-        env_topology = os.environ.get("OFFLOAD_LISTENER_TOPOLOGY", "").strip().lower()
+        msgspec.structs.force_setattr(
+            self,
+            "http_workers",
+            _parse_int_env("OFFLOAD_LISTENER_HTTP_WORKERS", self.http_workers, minimum=1),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "max_log_bytes",
+            _parse_int_env("OFFLOAD_LISTENER_MAX_LOG_BYTES", self.max_log_bytes, minimum=1024),
+        )
+
+        env_topology = (os.environ.get("OFFLOAD_LISTENER_TOPOLOGY") or "").strip().lower()
         if env_topology in ("shm", "embedded"):
             msgspec.structs.force_setattr(self, "topology", env_topology)
 
-        env_threads = os.environ.get("OFFLOAD_LISTENER_THREADS", "").strip()
-        if env_threads.isdigit():
-            msgspec.structs.force_setattr(self, "threads", max(1, int(env_threads)))
+        threads_val = _parse_int_env(
+            "OFFLOAD_LISTENER_THREADS",
+            _parse_int_env("VERTEBRA_THREADS", self.threads, minimum=1),
+            minimum=1,
+        )
+        msgspec.structs.force_setattr(self, "threads", threads_val)
 
-        env_drain = os.environ.get("OFFLOAD_LISTENER_DRAIN_TIMEOUT", "").strip()
-        if env_drain.isdigit():
-            drain_val = max(1, int(env_drain))
+        raw_drain = (os.environ.get("OFFLOAD_LISTENER_DRAIN_TIMEOUT") or "").strip()
+        raw_vtb_drain = (os.environ.get("VERTEBRA_DRAIN_TIMEOUT") or "").strip()
+        if raw_drain.isdigit() or raw_vtb_drain.isdigit():
+            drain_val = _parse_int_env(
+                "OFFLOAD_LISTENER_DRAIN_TIMEOUT",
+                _parse_int_env("VERTEBRA_DRAIN_TIMEOUT", self.drain_timeout_seconds, minimum=1),
+                minimum=1,
+            )
             msgspec.structs.force_setattr(self, "drain_timeout_seconds", drain_val)
-            msgspec.structs.force_setattr(self, "shutdown_timeout_seconds", drain_val + 5)
+            msgspec.structs.force_setattr(
+                self,
+                "shutdown_timeout_seconds",
+                _parse_int_env("VERTEBRA_SHUTDOWN_TIMEOUT", drain_val + 5, minimum=1),
+            )
+        else:
+            msgspec.structs.force_setattr(
+                self,
+                "shutdown_timeout_seconds",
+                _parse_int_env("VERTEBRA_SHUTDOWN_TIMEOUT", self.shutdown_timeout_seconds, minimum=1),
+            )
 
-        if self.static_path is None:
-            msgspec.structs.force_setattr(self, "static_path", str(Path(FRONTEND_DIR / "public")))
+        msgspec.structs.force_setattr(
+            self,
+            "confirmation_ttl_seconds",
+            _parse_int_env("OFFLOAD_LISTENER_CONFIRMATION_TTL_SECONDS", self.confirmation_ttl_seconds, minimum=30),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "mcp_skills_enabled",
+            _parse_bool_env("OFFLOAD_LISTENER_MCP_SKILLS_ENABLED", self.mcp_skills_enabled),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "mcp_task_ttl_seconds",
+            _parse_int_env("OFFLOAD_LISTENER_MCP_TASK_TTL_SECONDS", self.mcp_task_ttl_seconds, minimum=60),
+        )
+
+    @property
+    def client_host(self) -> str:
+        """Return a client-connectable host derived from the configured bind address."""
+        normalized = (self.host or "").strip()
+        if normalized in ("", "0.0.0.0", "::", "[::]"):
+            return "127.0.0.1"
+        if ":" in normalized and not normalized.startswith("["):
+            return f"[{normalized}]"
+        return normalized
+
+    @property
+    def base_url(self) -> str:
+        """Return the base HTTP(S) URL for local probes and MCP Streamable HTTP bridging."""
+        scheme = "https" if self.ssl_enabled else "http"
+        return f"{scheme}://{self.client_host}:{self.port}"
 
     def to_vertebra_env(self, base_env: Mapping[str, str] | None = None) -> dict[str, str]:
         """Export Vertebra runtime environment variables while preserving caller-provided VERTEBRA_* keys."""
@@ -109,6 +165,32 @@ class ListenerSettings(FrozenBaseStruct, frozen=True):
 def get_listener_settings() -> ListenerSettings:
     """Get cached ListenerSettings."""
     return ListenerSettings()
+
+
+def _parse_int_env(name: str, default: int, *, minimum: int | None = None) -> int:
+    """Parse an integer environment variable, falling back to default when unset, blank, or invalid."""
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return default
+    if minimum is not None:
+        return max(minimum, parsed)
+    return parsed
+
+
+def _parse_bool_env(name: str, default: bool) -> bool:
+    """Parse a boolean environment variable, falling back to default when unset or blank."""
+    raw = (os.environ.get(name) or "").strip().lower()
+    if not raw:
+        return default
+    if raw in ("1", "true", "yes", "y", "on"):
+        return True
+    if raw in ("0", "false", "no", "n", "off"):
+        return False
+    return default
 
 
 def _get_default_global_config() -> OrchestrationConfig | None:

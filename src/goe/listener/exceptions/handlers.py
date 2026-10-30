@@ -63,6 +63,16 @@ class CommandExecutionNotFound(NotFoundException):
         super().__init__(detail=f"Command Execution {execution_id} was not found")
 
 
+class TableMetadataNotFound(ApplicationError):
+    """Offload metadata not found for table."""
+
+    def __init__(self, owner: str, table_name: str) -> None:
+        super().__init__(
+            status_code=404,
+            message=f"Offload metadata not found for {owner.upper()}.{table_name.upper()}.",
+        )
+
+
 def generic_exception_handler(request: Any, exc: Exception) -> Response:
     """Handle generic unhandled exceptions."""
     detail = str(exc)

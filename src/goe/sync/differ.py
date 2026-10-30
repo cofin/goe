@@ -101,6 +101,8 @@ class SchemaDiff(FrozenBaseStruct, frozen=True):
     widenings: tuple[TypeWidening, ...] = ()
     nullability_relaxations: tuple[NullabilityRelaxation, ...] = ()
     partition_drops: tuple[PartitionDrop, ...] = ()
+    ddl_statements: tuple[str, ...] = ()
+    confirmation_challenge: Any = None
 
     @property
     def has_changes(self) -> bool:

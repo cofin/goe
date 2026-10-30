@@ -5,6 +5,11 @@
 
 from __future__ import annotations
 
+from goe.listener.services.operations import ListenerOperationsService, get_operations_service
 from goe.listener.services.system import SystemService
 
-__all__ = ("SystemService",)
+__all__ = (
+    "ListenerOperationsService",
+    "SystemService",
+    "get_operations_service",
+)

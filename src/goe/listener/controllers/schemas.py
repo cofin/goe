@@ -10,10 +10,12 @@ from typing import ClassVar
 from litestar import get
 from litestar.di import NamedDependency
 from litestar.params import FromPath
+from litestar_mcp import mcp_tool
 from litestar_security import AuthenticationPolicy, SecureController, required
 
 from goe.listener import schemas
 from goe.listener.cache import ListenerCache
+from goe.listener.mcp import READ_ONLY_TOOL_ANNOTATIONS
 from goe.listener.services.system import SystemService
 from goe.util.concurrency import async_
 
@@ -27,7 +29,14 @@ class SchemasController(SecureController):
     tags = ["Schemas"]
     auth: ClassVar[AuthenticationPolicy] = required("console-key")
 
-    @get("/", mcp_tool="get_offloadable_schemas")
+    @get("/")
+    @mcp_tool(
+        "get_offloadable_schemas",
+        description="List database schemas eligible for GOE offload along with hybrid schema existence and sizes.",
+        when_to_use="When discovering schemas available for table offloading or readiness auditing.",
+        returns="OffloadableSchemas with count and per-schema OffloadableSchema details.",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
     async def get_offloadable_schemas(
         self,
         system_service: NamedDependency[SystemService],
@@ -41,7 +50,14 @@ class SchemasController(SecureController):
         typed_results = [schemas.OffloadableSchema.from_item(item) for item in (raw_schemas or [])]
         return schemas.OffloadableSchemas(count=len(typed_results), results=typed_results)
 
-    @get("/{schema_name:str}/", mcp_tool="get_offloadable_tables")
+    @get("/{schema_name:str}/")
+    @mcp_tool(
+        "get_offloadable_tables",
+        description="List tables in a frontend schema with offload status, partitioning, and byte sizes.",
+        when_to_use="When inspecting candidate or already-offloaded tables within a specific schema.",
+        returns="TableDetails with count and per-table TableDetail metadata.",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
     async def get_offloadable_tables(
         self,
         system_service: NamedDependency[SystemService],

@@ -18,6 +18,7 @@ from litestar.exceptions import HTTPException
 from litestar.openapi.config import OpenAPIConfig
 from litestar.openapi.plugins import SwaggerRenderPlugin
 from litestar_autowire import AutowireConfig, AutowirePlugin
+from litestar_mcp import LitestarMCP
 from litestar_security import SecurityPlugin
 
 from goe.config.config_file import load_env
@@ -29,8 +30,9 @@ from goe.listener.exceptions.handlers import (
 )
 from goe.listener.jobs.store import JobStoreProtocol, create_job_store
 from goe.listener.jobs.worker import DurableJobWorker
-from goe.listener.mcp import build_mcp_plugin
+from goe.listener.mcp import ConfirmationGate, build_mcp_config
 from goe.listener.security import build_security_config
+from goe.listener.services.operations import get_operations_service
 from goe.listener.services.system import get_system_service
 from goe.listener.telemetry import build_listener_otel_plugin
 from goe.observability.runtime import ensure_observability
@@ -40,6 +42,7 @@ from goe.util.module_loader import import_optional
 __all__ = (
     "app",
     "create_app",
+    "get_confirmation_gate",
     "get_job_store",
 )
 
@@ -54,6 +57,11 @@ def get_job_store() -> JobStoreProtocol:
     return _default_job_store
 
 
+def get_confirmation_gate() -> ConfirmationGate:
+    """Return a ConfirmationGate bound to active ListenerSettings."""
+    return ConfirmationGate()
+
+
 def create_app(
     dependencies: dict[str, Any] | None = None,
     *,
@@ -65,8 +73,10 @@ def create_app(
     telemetry = ensure_observability()
     deps: dict[str, Any] = {
         "system_service": Provide(get_system_service, sync_to_thread=False),
+        "operations_service": Provide(get_operations_service, sync_to_thread=False),
         "listener_cache": Provide(get_listener_cache, sync_to_thread=False),
         "job_store": Provide(get_job_store, sync_to_thread=False),
+        "confirmation_gate": Provide(get_confirmation_gate, sync_to_thread=False),
     }
     if dependencies:
         deps.update(dependencies)
@@ -80,7 +90,7 @@ def create_app(
 
     plugins.extend(
         [
-            build_mcp_plugin(),
+            LitestarMCP(build_mcp_config()),
             AutowirePlugin(AutowireConfig(domain_packages=["goe.listener"])),
         ]
     )

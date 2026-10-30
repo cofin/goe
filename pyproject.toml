@@ -30,7 +30,7 @@ dependencies = [
     "filelock",
     "jinja2>=3.1.4",
     "numpy",
-    "msgspec>=0.19.0",
+    "msgspec>=0.22.0",
     "opentelemetry-api>=1.40.0",
     "sqlspec[performance,oracledb,adbc,duckdb]>=0.68.0",
     "requests",
@@ -52,10 +52,11 @@ dependencies = [
     # GOE Listener packages
     "uvloop",
     "httptools",
-    "litestar>=2.8.0",
-    "litestar-security>=0.1.0",
-    "litestar-autowire>=0.1.0",
-    "litestar-mcp>=0.1.0",
+    "httpx2>=2.16.0",
+    "litestar>=2.25.0",
+    "litestar-security>=0.6.0",
+    "litestar-autowire>=0.2.0",
+    "litestar-mcp>=0.16.0",
 ]
 
 [project.scripts]

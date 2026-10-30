@@ -19,8 +19,8 @@ from litestar.testing import AsyncTestClient
 from goe.listener.app import create_app
 from goe.listener.cache import ListenerCache
 from goe.listener.config.application import ListenerSettings
-from goe.listener.jobs.store import SqliteJobStore
 from goe.listener.services.system import SystemService
+from tests.unit.listener.conftest import make_fake_oracle_job_store
 
 
 def test_listener_settings_to_vertebra_env_preserves_caller_vars(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -47,9 +47,9 @@ def test_listener_settings_to_vertebra_env_preserves_caller_vars(monkeypatch: py
 
 
 @pytest.mark.anyio
-async def test_asgi_lifespan_startup_shutdown_and_failure_refusal(tmp_path: Path) -> None:
+async def test_asgi_lifespan_startup_shutdown_and_failure_refusal() -> None:
     """Verify create_app populates app.state during lifespan and aborts startup when a startup_hook raises."""
-    store = SqliteJobStore(db_path=tmp_path / "lifespan.sqlite3")
+    store = make_fake_oracle_job_store()
     with patch("goe.listener.app._default_job_store", store):
         app = create_app(enable_background_worker=True)
         async with AsyncTestClient(app=app) as client:
@@ -73,9 +73,9 @@ async def test_asgi_lifespan_startup_shutdown_and_failure_refusal(tmp_path: Path
 
 
 @pytest.mark.anyio
-async def test_cors_options_preflight_and_head_status_probe(tmp_path: Path) -> None:
+async def test_cors_options_preflight_and_head_status_probe() -> None:
     """Verify OPTIONS /api/orchestration/offload/ returns CORS preflight headers and HEAD /api/system/status/ returns 200."""
-    store = SqliteJobStore(db_path=tmp_path / "cors.sqlite3")
+    store = make_fake_oracle_job_store()
     app = create_app(
         dependencies={"job_store": Provide(lambda: store, sync_to_thread=False)},
         enable_background_worker=False,
@@ -106,7 +106,7 @@ async def test_bounded_log_response_and_64_way_concurrent_requests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Verify bounded log responses and 64 concurrent requests across Listener routes complete within 5s with zero 500s."""
-    store = SqliteJobStore(db_path=tmp_path / "concurrent.sqlite3")
+    store = make_fake_oracle_job_store()
     cache = ListenerCache()
     log_dir = tmp_path / "logs"
     log_dir.mkdir(parents=True)

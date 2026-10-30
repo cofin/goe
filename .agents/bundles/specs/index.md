@@ -20,6 +20,13 @@ None.
 
 All previous flows have completed full verification and code review gates and have been synthesized into `.agents/bundles/knowledge/`:
 
+- **Native Litestar-MCP GOE Listener Overhaul (`litestar_mcp_listener_overhaul_20261029`, 10 tasks)**:
+  - Phase 1: Packaging, `ListenerSettings`, and Native `LitestarMCP` Foundation (`Tasks 1.1–1.2`)
+  - Phase 2: Declarative `@mcp_tool` Surface, `GOEResourcesController` `goe://` Resources, and MRTR / HMAC Confirmation Gate (`Tasks 2.1–2.2`)
+  - Phase 3: Domain Operational Endpoints & Tools (Dry-Run `OffloadPipeline.plan` Preview, `CrossDbValidator`, `SchemaSyncService`, Oracle-Only `OracleJobStore` with Cooperative Cancellation + `MCPTaskConfig`, `Tasks 3.1–3.3`)
+  - Phase 4: `GOEPromptController`, Packaged `MCPSkillsConfig` Skills, `goe listener mcp` CLI Suite (`stdio`, `bridge`, `inspect`), and Protocol Contract Verification (`Tasks 4.1–4.3`)
+  - *Synthesized into*: [GOE Listener REST Service](../knowledge/listener/index.md), [Listener REST API Architecture](../knowledge/listener/rest-api.md), [Listener Durable Job Queue & Bounded Caching](../knowledge/listener/worker-and-redis.md), [CLI Tools](../knowledge/operations/cli-tools.md), [Offload & Typing Gotchas](../knowledge/patterns/offload-and-typing.md), [Tech Stack](../product/tech-stack.md).
+
 - **Master PRD 10: Execution Context, Staged OffloadPlan, Durable Job Queue, and the Listener on Vertebra (`prd_10_staged_orchestration_durable_jobs_and_vertebra_listener_20261024`, 17 tasks)**:
   - Chapter 10.1: Execution Context and Concurrency Safety (`execution_context_and_concurrency_safety_20261024`, 4 tasks)
   - Chapter 10.2: `OffloadPlan` Discovery and Boundary Stages (`offload_plan_discovery_and_boundary_stages_20261024`, 3 tasks)

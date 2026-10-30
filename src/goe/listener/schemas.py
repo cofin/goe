@@ -5,8 +5,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 import msgspec
 from msgspec import field
@@ -16,8 +16,14 @@ from goe.config.options import (
     LISTENER_OFFLOAD_RENAME_ALIASES,
     OffloadOperationOptions,
 )
+from goe.listener.jobs.models import JobRecord
 from goe.orchestration.execution_id import ExecutionId
+from goe.persistence.models import OffloadMetadata
+from goe.sync.differ import SchemaDiff
 from goe.typing import FrozenBaseStruct
+
+if TYPE_CHECKING:
+    from goe.orchestration.models import OffloadPlan
 
 __all__ = (
     "ColumnDetail",
@@ -27,17 +33,27 @@ __all__ = (
     "CommandExecutionStep",
     "CommandExecutions",
     "CommandScheduled",
+    "ConfirmationChallenge",
     "ErrorMessage",
     "HealthCheck",
+    "JobListResponse",
+    "JobStatusResponse",
     "ListenerConfig",
     "OffloadOptions",
+    "OffloadPlanPreview",
     "OffloadableSchema",
     "OffloadableSchemas",
     "PartitionDetail",
     "PartitionDetails",
+    "SchemaDriftPreview",
+    "SchemaSyncExecutionResult",
+    "SchemaSyncRequest",
     "SubPartitionSummary",
     "TableDetail",
     "TableDetails",
+    "TableOffloadMetadataResponse",
+    "ValidateTableRequest",
+    "ValidationResultSummary",
 )
 
 
@@ -382,12 +398,116 @@ class CommandExecutionLog(FrozenBaseStruct, frozen=True):
     name: str
     is_file: bool = False
     message: str = ""
+    log_resource_uri: str | None = None
+
+
+class JobStatusResponse(FrozenBaseStruct, frozen=True):
+    """Durable job queue record response schema."""
+
+    job_id: str
+    execution_id: str
+    table_key: str
+    status: str
+    attempt: int
+    max_attempts: int
+    created_at: str
+    updated_at: str
+    worker_id: str | None = None
+    claimed_at: str | None = None
+    lease_expires_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    error_message: str | None = None
+    cancel_requested: bool = False
+
+    @classmethod
+    def from_record(cls, record: JobRecord) -> JobStatusResponse:
+        """Convert a JobRecord domain model into a serializable JobStatusResponse."""
+        return cls(
+            job_id=record.job_id,
+            execution_id=record.execution_id,
+            table_key=record.table_key,
+            status=str(record.status),
+            attempt=record.attempt,
+            max_attempts=record.max_attempts,
+            created_at=record.created_at.isoformat(),
+            updated_at=record.updated_at.isoformat(),
+            worker_id=record.worker_id,
+            claimed_at=record.claimed_at.isoformat() if record.claimed_at is not None else None,
+            lease_expires_at=record.lease_expires_at.isoformat() if record.lease_expires_at is not None else None,
+            started_at=record.started_at.isoformat() if record.started_at is not None else None,
+            finished_at=record.finished_at.isoformat() if record.finished_at is not None else None,
+            error_message=record.error_message,
+            cancel_requested=bool(getattr(record, "cancel_requested", False)),
+        )
+
+
+class JobListResponse(FrozenBaseStruct, frozen=True):
+    """List of durable job queue records response schema."""
+
+    count: int
+    results: list[JobStatusResponse] = field(default_factory=list)
+
+
+class ConfirmationChallenge(FrozenBaseStruct, frozen=True):
+    """Signed confirmation challenge issued by preview or MRTR gating before mutating operations."""
+
+    tool_name: str
+    owner_table: str
+    confirmation_token: str
+    expires_at_epoch: int
+    expires_in_seconds: int
+    instructions: str
+    confirmation_required: bool = True
+
+
+class TableOffloadMetadataResponse(FrozenBaseStruct, frozen=True):
+    """Persisted GOE repository offload metadata for a single hybrid frontend/backend table."""
+
+    offloaded_owner: str
+    offloaded_table: str
+    backend_owner: str
+    backend_table: str
+    offload_type: str
+    incremental_key: str | None = None
+    incremental_high_value: str | None = None
+    incremental_range: str | None = None
+    incremental_predicate_type: str | None = None
+    incremental_predicate_value: list[str] | None = None
+    offload_bucket_column: str | None = None
+    offload_sort_columns: str | None = None
+    offload_snapshot: int | str | None = None
+    offload_partition_functions: str | None = None
+    command_execution: str | None = None
+
+    @classmethod
+    def from_metadata(cls, metadata: OffloadMetadata) -> TableOffloadMetadataResponse:
+        """Convert an OffloadMetadata persistence record into a serializable response schema."""
+        cmd_exec = str(metadata.command_execution) if metadata.command_execution is not None else None
+        return cls(
+            offloaded_owner=metadata.offloaded_owner,
+            offloaded_table=metadata.offloaded_table,
+            backend_owner=metadata.backend_owner,
+            backend_table=metadata.backend_table,
+            offload_type=metadata.offload_type,
+            incremental_key=metadata.incremental_key,
+            incremental_high_value=metadata.incremental_high_value,
+            incremental_range=metadata.incremental_range,
+            incremental_predicate_type=metadata.incremental_predicate_type,
+            incremental_predicate_value=metadata.incremental_predicate_value,
+            offload_bucket_column=metadata.offload_bucket_column,
+            offload_sort_columns=metadata.offload_sort_columns,
+            offload_snapshot=metadata.offload_snapshot,
+            offload_partition_functions=metadata.offload_partition_functions,
+            command_execution=cmd_exec,
+        )
 
 
 class OffloadOptions(FrozenBaseStruct, frozen=True):
     """Options payload for submitting an offload operation."""
 
     owner_table: str
+    confirmation_token: str | None = None
     allow_decimal_scale_rounding: bool | None = None
     allow_floating_point_conversions: bool | None = None
     allow_nanosecond_timestamp_columns: bool | None = None
@@ -508,6 +628,7 @@ class OffloadOptions(FrozenBaseStruct, frozen=True):
         if "older_than_days" in raw and isinstance(raw["older_than_days"], int):
             raw["older_than_days"] = str(raw["older_than_days"])
 
+        raw.pop("confirmation_token", None)
         raw.pop("quiet", None)
         raw.pop("verbose", None)
         return raw
@@ -522,6 +643,130 @@ class CommandScheduled(FrozenBaseStruct, frozen=True):
 
     execution_id: str
     status: str = "QUEUED"
+
+
+class OffloadPlanPreview(FrozenBaseStruct, frozen=True):
+    """Side-effect-free dry-run offload blueprint returned by preview_offload_plan."""
+
+    owner_table: str
+    target_owner: str
+    target_table: str
+    offload_mode: str
+    offload_type: str | None
+    nothing_to_offload: bool
+    partition_names: list[str] = field(default_factory=list)
+    chunk_count: int = 0
+    estimated_row_count: int | None = None
+    estimated_size_bytes: int | None = None
+    transport_method: str | None = None
+    staging_format: str | None = None
+    ingest_strategy: str | None = None
+    create_backend_table: bool = False
+    create_table_ddl: list[str] = field(default_factory=list)
+    alter_table_ddl: list[str] = field(default_factory=list)
+    frontend_where_clause: str | None = None
+    notices: list[str] = field(default_factory=list)
+    confirmation_challenge: ConfirmationChallenge | None = None
+
+    @classmethod
+    def from_offload_plan(
+        cls,
+        plan: OffloadPlan,
+        *,
+        owner_table: str,
+        notices: Sequence[str] = (),
+        confirmation_challenge: ConfirmationChallenge | None = None,
+    ) -> OffloadPlanPreview:
+        """Project an immutable OffloadPlan into a serializable OffloadPlanPreview."""
+        slices = plan.boundary.partitions_to_offload
+        part_names = [s.partition_name for s in slices]
+        nothing = bool(plan.has_nothing_to_offload)
+        if slices:
+            est_rows = sum(s.row_count or 0 for s in slices) or plan.discovery.estimated_row_count
+            est_bytes = sum(s.byte_size or 0 for s in slices) or plan.discovery.estimated_size_bytes
+        elif nothing:
+            est_rows = 0
+            est_bytes = 0
+        else:
+            est_rows = plan.discovery.estimated_row_count
+            est_bytes = plan.discovery.estimated_size_bytes
+
+        chunk_cnt = len(plan.boundary.partition_chunks) if plan.boundary.partition_chunks else (0 if nothing else 1)
+        return cls(
+            owner_table=owner_table.strip().upper(),
+            target_owner=plan.schema_plan.target_owner,
+            target_table=plan.schema_plan.target_table_name,
+            offload_mode=plan.boundary.offload_mode,
+            offload_type=plan.boundary.offload_type,
+            nothing_to_offload=nothing,
+            partition_names=part_names,
+            chunk_count=chunk_cnt,
+            estimated_row_count=est_rows,
+            estimated_size_bytes=est_bytes,
+            transport_method=plan.transport_plan.transport_method,
+            staging_format=plan.transport_plan.staging_format,
+            ingest_strategy=plan.load_plan.ingest_strategy,
+            create_backend_table=plan.schema_plan.create_backend_table,
+            create_table_ddl=list(plan.schema_plan.create_table_ddl),
+            alter_table_ddl=list(plan.schema_plan.alter_table_ddl),
+            frontend_where_clause=plan.predicate.frontend_where_clause,
+            notices=list(notices),
+            confirmation_challenge=None if nothing else confirmation_challenge,
+        )
+
+
+class SchemaDriftPreview(SchemaDiff, frozen=True):
+    """Schema drift preview payload extending SchemaDiff with typed ConfirmationChallenge."""
+
+    confirmation_challenge: ConfirmationChallenge | None = None
+
+
+class SchemaSyncRequest(FrozenBaseStruct, frozen=True):
+    """Request payload for previewing or applying schema synchronization."""
+
+    owner_table: str
+    execute: bool = False
+    confirmation_token: str | None = None
+
+
+class SchemaSyncExecutionResult(FrozenBaseStruct, frozen=True):
+    """Response payload returned by apply_schema_sync."""
+
+    owner_table: str
+    backend: str
+    has_drift: bool
+    applied: bool
+    added_columns: list[str] = field(default_factory=list)
+    widened_columns: list[str] = field(default_factory=list)
+    ddl_statements: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+class ValidateTableRequest(FrozenBaseStruct, frozen=True):
+    """Request payload for cross-database table validation."""
+
+    owner_table: str
+    execute: bool = True
+    aggregate_functions: list[str] | None = None
+    select_columns: list[str] | int | None = None
+    filters: str | None = None
+    group_bys: list[str] | None = None
+    skip_boundary_check: bool = False
+    as_of_scn: int | None = None
+    frontend_parallelism: int | None = None
+    include_row_diff: bool = False
+
+
+class ValidationResultSummary(FrozenBaseStruct, frozen=True):
+    """Summary response returned by validate_table."""
+
+    owner_table: str
+    passed: bool
+    execute: bool
+    aggregate_functions: list[str] = field(default_factory=list)
+    safe_boundary_applied: bool = True
+    summary_message: str = ""
+    differing_rows: list[dict[str, Any]] = field(default_factory=list)
 
 
 class ErrorMessage(FrozenBaseStruct, frozen=True):

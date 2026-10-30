@@ -9,18 +9,23 @@ import asyncio
 import inspect
 import logging
 import socket
+import threading
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from goe.listener.jobs.models import JobRecord, NodeHeartbeat
+from goe.listener.jobs.models import JobCancelledError, JobRecord, JobState, NodeHeartbeat
 from goe.listener.jobs.store import JobStoreProtocol
 from goe.orchestration.execution_id import ExecutionId
 from goe.orchestration.orchestration_runner import OrchestrationRunner
+from goe.orchestration.sinks import ExecutionEvent, ExecutionSink
 
-__all__ = ("DurableJobWorker",)
+__all__ = (
+    "DurableJobWorker",
+    "_CooperativeCancelSink",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +37,7 @@ class DurableJobWorker:
         self,
         *,
         store: JobStoreProtocol,
-        executor: Callable[[JobRecord], Awaitable[Any] | Any] | None = None,
+        executor: Callable[..., Awaitable[Any] | Any] | None = None,
         worker_id: str | None = None,
         endpoint_id: str | None = None,
         listener_group_id: str = "default",
@@ -148,38 +153,90 @@ class DurableJobWorker:
             lease_seconds=self._lease_seconds,
         )
         done_event = asyncio.Event()
-        renewal_task = asyncio.create_task(self._lease_renewal_loop(record.job_id, done_event))
+        cancel_event = threading.Event()
+        renewal_task = asyncio.create_task(
+            self._lease_renewal_loop(record.job_id, record.execution_id, done_event, cancel_event)
+        )
         try:
-            outcome = self._executor(record)
+            outcome = self._invoke_executor(record, cancel_event)
             if inspect.isawaitable(outcome):
                 await outcome
+            if cancel_event.is_set():
+                await asyncio.to_thread(
+                    self._store.mark_cancelled,
+                    job_id=record.job_id,
+                    worker_id=self._worker_id,
+                    reason="Cancelled by operator",
+                )
+            else:
+                await asyncio.to_thread(
+                    self._store.mark_succeeded,
+                    job_id=record.job_id,
+                    worker_id=self._worker_id,
+                )
+        except (JobCancelledError, asyncio.CancelledError) as exc:
             await asyncio.to_thread(
-                self._store.mark_succeeded,
+                self._store.mark_cancelled,
                 job_id=record.job_id,
                 worker_id=self._worker_id,
+                reason=str(exc) or "Cancelled by operator",
             )
         except Exception as exc:
-            logger.exception("Durable offload job %s (%s) failed", record.job_id, record.execution_id)
-            dead_letter = record.attempt >= record.max_attempts
-            await asyncio.to_thread(
-                self._store.mark_failed,
-                job_id=record.job_id,
-                worker_id=self._worker_id,
-                error_message=str(exc),
-                dead_letter=dead_letter,
-            )
+            if cancel_event.is_set():
+                await asyncio.to_thread(
+                    self._store.mark_cancelled,
+                    job_id=record.job_id,
+                    worker_id=self._worker_id,
+                    reason=str(exc) or "Cancelled by operator",
+                )
+            else:
+                logger.exception("Durable offload job %s (%s) failed", record.job_id, record.execution_id)
+                dead_letter = record.attempt >= record.max_attempts
+                await asyncio.to_thread(
+                    self._store.mark_failed,
+                    job_id=record.job_id,
+                    worker_id=self._worker_id,
+                    error_message=str(exc),
+                    dead_letter=dead_letter,
+                )
         finally:
             done_event.set()
             renewal_task.cancel()
             with suppress(asyncio.CancelledError):
                 await renewal_task
 
-    async def _lease_renewal_loop(self, job_id: str, done_event: asyncio.Event) -> None:
-        """Periodically extend the lease of an active job until done_event is set."""
+    def _invoke_executor(self, record: JobRecord, cancel_event: threading.Event) -> Any:
+        """Invoke self._executor with (record, cancel_event) when supported, or (record,) for 1-arg callables."""
+        try:
+            sig = inspect.signature(self._executor)
+            pos_params = [
+                p
+                for p in sig.parameters.values()
+                if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            ]
+            has_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in sig.parameters.values())
+            if has_varargs or len(pos_params) >= 2:
+                return self._executor(record, cancel_event)
+        except (TypeError, ValueError):
+            pass
+        return self._executor(record)
+
+    async def _lease_renewal_loop(
+        self,
+        job_id: str,
+        execution_id: str,
+        done_event: asyncio.Event,
+        cancel_event: threading.Event,
+    ) -> None:
+        """Periodically extend the lease of an active job and check for cooperative cancellation."""
         while not done_event.is_set():
             with suppress(TimeoutError):
                 await asyncio.wait_for(done_event.wait(), timeout=self._heartbeat_interval_seconds)
             if done_event.is_set():
+                return
+            current = await asyncio.to_thread(self._store.get_job_by_execution_id, execution_id)
+            if current is not None and (current.cancel_requested or current.status is JobState.CANCELLED):
+                cancel_event.set()
                 return
             await asyncio.to_thread(
                 self._store.renew_lease,
@@ -197,15 +254,24 @@ class DurableJobWorker:
             with suppress(TimeoutError):
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self._heartbeat_interval_seconds)
 
-    async def _default_execute_job(self, record: JobRecord) -> None:
+    async def _default_execute_job(
+        self,
+        record: JobRecord,
+        cancel_event: threading.Event | None = None,
+    ) -> None:
         """Execute an offload or present job payload via OrchestrationRunner in a worker thread."""
         payload = record.decode_payload()
         command_type = str(payload.get("command_type", "offload")).lower()
         params = dict(payload.get("params", payload))
-        sinks = self._sinks_factory(record) if self._sinks_factory is not None else ()
+        base_sinks = list(self._sinks_factory(record)) if self._sinks_factory is not None else []
+        if cancel_event is not None:
+            base_sinks.append(_CooperativeCancelSink(cancel_event))
+        sinks = tuple(base_sinks)
         execution_id_obj = ExecutionId.from_str(record.execution_id)
 
         def _invoke() -> None:
+            if cancel_event is not None and cancel_event.is_set():
+                raise JobCancelledError("Durable job cancelled before execution start")
             runner = OrchestrationRunner(sinks=sinks)
             present_fn = getattr(runner, "present", None)
             if command_type == "present" and callable(present_fn):
@@ -214,3 +280,18 @@ class DurableJobWorker:
                 runner.offload(params, execution_id=execution_id_obj)
 
         await asyncio.to_thread(_invoke)
+
+
+class _CooperativeCancelSink(ExecutionSink):
+    """ExecutionSink that checks a threading.Event on each event and raises JobCancelledError inside the worker."""
+
+    def __init__(self, cancel_event: threading.Event) -> None:
+        self._cancel_event = cancel_event
+
+    def emit(self, event: ExecutionEvent) -> None:
+        """Raise JobCancelledError when cancellation has been requested."""
+        if self._cancel_event.is_set():
+            raise JobCancelledError("Durable job cancelled by operator")
+
+    def close(self) -> None:
+        """No-op close for stateless cooperative cancel sink."""
