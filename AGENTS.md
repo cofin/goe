@@ -1,62 +1,52 @@
-# AI Agent Instructions (Flow Framework)
+# Gluent Offload Engine (GOE) — Agent Context & Routing
 
-You are an AI coding assistant helping develop the **GOE (Gluent Offload Engine)** framework repository. Always adhere to the following guidelines and consult the OKF knowledge bundle at `.agents/bundles/` when researching, planning, and writing code.
+This repository follows the Flow specification-driven development workflow with an Open Knowledge Format (`OKF v0.2`) knowledge bundle under [`.agents/bundles/`](.agents/bundles/index.md).
 
-## 1. Project Context & Tech Stack
-- **Core Domain**: High-performance data offloading and copying from Oracle Database and Microsoft SQL Server to modern cloud data warehouses (Google BigQuery, Snowflake, Azure Synapse) and Hadoop.
-- **Supporting Infrastructure**: Relies on Apache Spark, DuckDB 2.0, Cloud Storage (GCS, S3, Azure Blob), and Oracle RDBMS.
-- **Knowledge Bundle Root**: `.agents/bundles/` (OKF v0.2)
-- **Product Overview**: [Product Definition](.agents/bundles/product/product.md) & [Product Guidelines](.agents/bundles/product/product-guidelines.md)
-- **Technology Stack**: [Tech Stack](.agents/bundles/product/tech-stack.md)
-- **Workflow & Commands**: [Workflow](.agents/bundles/knowledge/workflow.md)
-- **Patterns & Gotchas**: [Patterns](.agents/bundles/knowledge/patterns/index.md)
+## Canonical Context & Routing
 
-## 2. Core Operational Invariants
-- **Language**: Python >= 3.12.
-- **Environment & Dependency Management**:
-  - Development virtual environment is managed with `uv` in `.venv/` (activate via `source .venv/bin/activate`).
-  - Initialize and sync dependencies via `make install` (uses `uv sync --all-extras --dev`).
-  - Run commands with `uv run` where applicable (`uv run pytest tests/unit`).
-  - Build backend is `hatchling.build` and dependencies are managed via PEP 735 `[dependency-groups]` in `pyproject.toml` with lockfile `uv.lock`.
-  - Runtime configuration (`src/goe/config/config_file.py`) automatically discovers and loads `offload.env` (`interpolate=True`, `override=False`) across 4 tiers: `GOE_CONFIG_FILE` / `OFFLOAD_ENV_FILE`, `$OFFLOAD_HOME/conf/offload.env`, upward `dotenv.find_dotenv()`, and `/opt/goe/offload/conf/offload.env` / `/u01/app/goe/offload/conf/offload.env`, auto-exporting `OFFLOAD_HOME` when unset and bypassing auto-load when `PYTEST_CURRENT_TEST` or `GOE_NO_AUTOLOAD_ENV=1` is present.
-- **Code Style & Formatting**:
-  - Format all code with `ruff` (`line-length = 120`). Run `make format` (`uv run ruff format` and `uv run ruff check --fix`) and `make lint` (`uv run ruff check` and `uv run mypy src/goe`).
-  - Always place all imports at the top of the file, rather than within function scopes.
-  - Adhere to PEP 257 docstrings (one-line summary, blank line, and detailed description for multi-line docstrings).
-  - Use PEP 585 built-in collection types (`list`, `dict`, etc.) and PEP 604 union syntax (`str | None`).
-  - **Copyright & License Headers**: All source files must start with the standard 2-line SPDX header (`# SPDX-FileCopyrightText: <year> The GOE Authors` and `# SPDX-License-Identifier: Apache-2.0`), automatically enforced via Ruff `CPY001`.
-  - **Never** use in-line comments in Python functions; place explanations in docstrings.
-- **Testing Requirements**:
-  - New features and bug fixes must be covered by corresponding unit tests in `tests/unit/`.
-  - Prior to running tests, export client certificate suppression:
-    ```bash
-    export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
-    ```
-  - **Unit Tests**:
-    ```bash
-    uv run pytest tests/unit
-    # or via Makefile
-    make test-unit
-    ```
-  - **Integration Tests**: Require an active database, credentials, and project config (e.g. `GOE_TEST_USER_PASS`, `GOOGLE_CLOUD_PROJECT`):
-    ```bash
-    export GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOE_TEST_USER_PASS="<password>"
-    uv run pytest tests/integration -n 4
-    # or via Makefile
-    make test-integration
-    ```
-- **Concurrency & Locking**: Always acquire table locks via `OrchestrationLockInterface` (`filelock` in `$OFFLOAD_HOME/run/`).
-- **Data Integrity**: Use canonical column types (`column_metadata.py`) and snapshot-consistent reads (`FLASHBACK ANY TABLE` / SCN).
+- **Bundle Manifest**: [`.agents/bundles/index.md`](.agents/bundles/index.md)
+- **Product Charter & Invariants**: [`.agents/bundles/product/product.md`](.agents/bundles/product/product.md) and [`.agents/bundles/product/product-guidelines.md`](.agents/bundles/product/product-guidelines.md)
+- **Technology Stack**: [`.agents/bundles/product/tech-stack.md`](.agents/bundles/product/tech-stack.md)
+- **Developer Workflow & Commands**: [`.agents/bundles/knowledge/workflow.md`](.agents/bundles/knowledge/workflow.md)
+- **System Knowledge Base**: [`.agents/bundles/knowledge/index.md`](.agents/bundles/knowledge/index.md) (`domains/`, `decisions/`, `architecture/`, `frontends/`, `backends/`, `transport/`, `storage/`, `listener/`, `operations/`, `patterns/`, `standards/`, `testing/`, `gotchas/`)
+- **Active & Archived Specifications**: [`.agents/bundles/specs/index.md`](.agents/bundles/specs/index.md)
+- **Project-Local Skills & Subagents**: [`.agents/skills/index.md`](.agents/skills/index.md)
 
-## 3. Planning & Design Documentation
-- **Flow Specs**: Active flow planning worksheets reside in `.agents/bundles/specs/<flow_id>/`.
-- **Internal Design Documents & Walkthroughs**: Place broader architectural proposals, migration plans, and design walkthroughs in `docs/internal/design_docs/` following structured markdown conventions (Executive Summary, Architecture/Analysis, Step-by-Step Plan, Verification, Risks/Mitigation).
+## Domain Skills & Subagents
 
-## 4. Repository Structure
-- `src/goe/`: Core Python framework package (orchestration, offload engine, frontend/backend adapters, filesystem, listener REST service, packaged report templates in `src/goe/report/templates/`, and packaged Oracle repository DDL in `src/goe/persistence/oracle/ddl/`).
-- `tests/`: Unit tests (`tests/unit/`) and integration test suites (`tests/integration/`).
-- `docs/`: Public documentation and internal design specifications (`docs/internal/design_docs/`).
-- `src/goe/cli/`: Unified `goe` CLI (`[project.scripts] goe = "goe.cli.main:cli"`; subcommands `offload`, `connect`, `validate`, `sync`, `report`, `listener`, `logmgr`). There is no `bin/` directory.
-- `tools/`: Architecture verification (`tools/verify_architecture.py`), Spark listener (`tools/spark-listener/`, Scala/SBT), and shell/CI helper scripts (`tools/scripts/`).
-- `.agents/bundles/`: Authoritative Flow OKF knowledge bundle (architecture, adapters, storage, operations, standards).
-- `.agents/skills/`: Operational consumer skills (`flow-memory-keeper`).
+| Domain | Prefix | Implementation Skill | Review Skill | Subagents |
+| :--- | :--- | :--- | :--- | :--- |
+| **Core Orchestration, Typing, Settings & CLI** | `ORCH` | [`core-orchestration`](.agents/skills/core-orchestration/SKILL.md) | [`review-core-orchestration`](.agents/skills/review-core-orchestration/SKILL.md) | `core-orchestration-{specialist,reviewer}` |
+| **SQLSpec Data Layer, SQLGlot AST Seam & Predicates** | `SQL` | [`sqlspec-and-sql-ast`](.agents/skills/sqlspec-and-sql-ast/SKILL.md) | [`review-sqlspec-and-sql-ast`](.agents/skills/review-sqlspec-and-sql-ast/SKILL.md) | `sqlspec-and-sql-ast-{specialist,reviewer}` |
+| **Canonical Typing, Cloud Backends, DuckDB 2.0, Arrow & Storage** | `DPL` | [`offload-backends-and-dataplane`](.agents/skills/offload-backends-and-dataplane/SKILL.md) | [`review-offload-backends-and-dataplane`](.agents/skills/review-offload-backends-and-dataplane/SKILL.md) | `offload-backends-and-dataplane-{specialist,reviewer}` |
+| **Litestar Listener, Vertebra Runtime, Durable Jobs, MCP & OpenTelemetry** | `LST` | [`listener-and-observability`](.agents/skills/listener-and-observability/SKILL.md) | [`review-listener-and-observability`](.agents/skills/review-listener-and-observability/SKILL.md) | `listener-and-observability-{specialist,reviewer}` |
+
+## Quick Verification Commands
+
+```bash
+# Unit test suite (disable workstation mTLS helper)
+export GOOGLE_API_USE_CLIENT_CERTIFICATE=false
+make test-unit
+
+# Static linting, strict mypy, and AST/token architecture gate
+make lint
+uv run python tools/verify_architecture.py
+
+# OKF v0.2 bundle validation
+python3 ~/.gemini/config/plugins/flow/tools/validate.py --bundle .agents/bundles
+```
+
+<!-- project-customization: start -->
+## Non-Negotiable Repository Guardrails
+
+- Target Python >= 3.12 (`uv run`, PEP 585 `dict`/`list`, PEP 604 `X | None`, 2-line SPDX header `CPY001`, `ruff` `line-length = 120`, strict `mypy src/goe`).
+- Use `FrozenBaseStruct(..., frozen=True)` / `BaseStruct` (`src/goe/typing.py`, `gc=False`) instead of `@dataclass`; repeat `frozen=True` on concrete `FrozenBaseStruct` subclasses for strict `mypy`.
+- Enforce all 6 zero-baseline rules in `tools/verify_architecture.py`:
+  1. `raw-json`: Route all JSON encoding/decoding through `src/goe/serializers.py`.
+  2. `sqlglot-boundary`: Restrict `import sqlglot` to `src/goe/offload/sql_ast/` and `src/goe/offload/predicates/`.
+  3. `oracledb-boundary`: Restrict `import oracledb` to `src/goe/persistence/oracle/`, `src/goe/offload/oracle/`, and `src/goe/persistence/registry.py`.
+  4. `nested-import`: Keep all imports at module top-level (or `if TYPE_CHECKING:` / `import_optional_dependency`).
+  5. `member-ordering`: Order public functions/methods and dunders before private `_` helpers.
+  6. `inline-comment`: Zero inline `#` comments inside function/method bodies; put rationale in Google-style docstrings.
+- Direct Markdown + Git continuity: Task worksheets (`.agents/bundles/specs/<flow_id>/tasks/<id>-<slug>.md`) and `spec.md` checklists are the sole state authority. Never auto-push or create Git tags.
+<!-- project-customization: end -->

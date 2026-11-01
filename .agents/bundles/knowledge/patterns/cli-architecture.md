@@ -1,16 +1,39 @@
 ---
-type: Reference
+type: pattern
 title: Centralized Rich-Click CLI
-description: Unified rich-click goe CLI architecture in src/goe/cli/ (sole entrypoint)
+description: Unified rich-click goe CLI architecture in src/goe/cli/ (sole entrypoint).
+status: stable
 tags:
   - pattern
   - cli
   - rich-click
   - entrypoints
-updated_at: "2026-10-11T15:09:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: cli-lazy
+    resource: src/goe/cli/_lazy.py::bind_lazy_imports
+    title: Zero-Type-Loss Lazy Import Binder
+  - id: cli-cfg
+    resource: src/goe/cli/config.py::configure_rich_click
+    title: Borderless Rich-Click Global Configuration
+  - id: cli-common
+    resource: src/goe/cli/common.py::common_options
+    title: Shared Click Option Decorator
 ---
 
 # Centralized Rich-Click CLI
+
+<!-- truth: start -->
+- `src/goe/cli/_lazy.py` (`resolve_lazy_attribute` + `bind_lazy_imports`) keeps `goe --help` startup at ~170ms while preserving static types under `if TYPE_CHECKING:` and honoring `@patch` mocks already present in `module.__dict__`.[^cli-lazy]
+- `configure_rich_click()` (`src/goe/cli/config.py`) passes `command_groups` and `option_groups` into `RichHelpConfiguration(...)` and calls `.dump_to_globals()` for `rich-click` 1.9+ compatibility.[^cli-cfg]
+- Keep `from goe.cli.main import cli, main` eager in `src/goe/cli/__init__.py` so `goe.cli.main` submodule resolution never collides with lazy `__getattr__`.[^cli-common]
+<!-- truth: end -->
 
 ## Single Authoritative CLI Entrypoint (`src/goe/cli/`)
 
@@ -72,5 +95,6 @@ for group in click.rich_click.OPTION_GROUPS["goe offload"]:
 3. **Repeatable Options (Tuple to List)**: Click converts options with `multiple=True` (e.g. `--transform-column`) to tuples. Downstream GOE orchestration expects lists for concatenation and iteration; convert via `isinstance(v, tuple): options_dict[k] = list(v)`.
 4. **Environment Variable Fallback with `default=None`**: When a CLI option provides an environment variable fallback (e.g. `LOG_MV_MINS` in `goe logmgr`), the Click option default must be `default=None` so the CLI parser can distinguish between an omitted option and an explicit argument.
 
-
-
+[^cli-lazy]: `src/goe/cli/_lazy.py::bind_lazy_imports` — Zero-Type-Loss Lazy Import Binder.
+[^cli-cfg]: `src/goe/cli/config.py::configure_rich_click` — Borderless Rich-Click Global Configuration.
+[^cli-common]: `src/goe/cli/common.py::common_options` — Shared Click Option Decorator.

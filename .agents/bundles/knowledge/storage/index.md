@@ -1,13 +1,6 @@
 ---
-type: Reference
 title: Multi-Cloud Storage Abstraction
 description: Unified DFS abstraction layer supporting GCS, S3, Azure Blob / ADLS Gen2, and HDFS
-tags:
-  - reference
-  - storage
-  - dfs
-  - multi-cloud
-  - index
 ---
 
 # Multi-Cloud Storage Abstraction

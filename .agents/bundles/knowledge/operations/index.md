@@ -1,14 +1,6 @@
 ---
-type: Reference
 title: Operations & Tooling
 description: CLI entrypoints, runtime layout, environment configuration, OpenTelemetry observability, database installation, and container deployment
-tags:
-  - reference
-  - operations
-  - tooling
-  - observability
-  - deployment
-  - index
 ---
 
 # Operations & Tooling

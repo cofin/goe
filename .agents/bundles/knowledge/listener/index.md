@@ -1,17 +1,6 @@
 ---
-type: Reference
 title: GOE Listener REST & MCP Service
 description: Asynchronous REST and MCP 2026-07-28 service powered by Litestar, Vertebra ASGI runtime, litestar-mcp 0.16.0, Oracle durable job queue, OpenTelemetry instrumentation, and bounded LRU + singleflight caching
-tags:
-  - reference
-  - listener
-  - api
-  - mcp
-  - litestar
-  - vertebra
-  - opentelemetry
-  - index
-updated_at: "2026-10-29T21:55:00Z"
 ---
 
 # GOE Listener REST & MCP Service

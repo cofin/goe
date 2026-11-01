@@ -1,15 +1,35 @@
 ---
-type: Architecture
+type: architecture
 title: Schema Evolution & Synchronization
-description: Pure-value single-pass schema drift detection and DialectSqlEngine DDL generation via goe.sync
+description: Pure-value single-pass schema drift detection and DialectSqlEngine DDL generation via goe.sync.
+status: stable
 tags:
   - architecture
   - schema-sync
   - evolution
-  - ddl
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: sync-svc
+    resource: src/goe/sync/differ.py::SchemaSyncService
+    title: Single-Pass Schema Drift Detection and Evolution Service
+  - id: dialect-engine
+    resource: src/goe/offload/sql_ast/dialect_engine.py::DialectSqlEngine
+    title: Multi-Dialect SQLGlot DDL Compiler
 ---
 
 # Schema Evolution & Synchronization
+
+<!-- truth: start -->
+- `SchemaSyncService` (`src/goe/sync/differ.py`) computes `SchemaDiff` (`ColumnAddition`, `TypeWidening`, `NullabilityRelaxation`, `PartitionDrop`) in a single pass over `SourceColumnSnapshot` and `TargetColumnSnapshot`.[^sync-svc]
+- `SchemaSyncService.generate_ddl()` delegates `ALTER TABLE` generation to `DialectSqlEngine` (`src/goe/offload/sql_ast/dialect_engine.py`).[^dialect-engine]
+- Both `goe sync` (`src/goe/cli/commands/sync.py`) and Listener `/api/orchestration/sync/` (`apply_schema_sync`) invoke `SchemaSyncService` directly (`OrchestrationRunner.schema_sync` is retired).
+<!-- truth: end -->
 
 The **Schema Sync** package (`src/goe/sync/differ.py`) detects structural drift between source RDBMS tables and target cloud data warehouses in a single pass and emits dialect-aware evolution DDL via `DialectSqlEngine`.
 
@@ -41,3 +61,6 @@ The **Schema Sync** package (`src/goe/sync/differ.py`) detects structural drift 
 5. DDL Generation: DialectSqlEngine renders dialect-specific ALTER TABLE statements
 6. Execution / Command File: Apply DDL via ddl_executor (when -x) and record clean SQL to --command-file
 ```
+
+[^sync-svc]: `src/goe/sync/differ.py::SchemaSyncService` — Single-Pass Schema Drift Detection and Evolution Service.
+[^dialect-engine]: `src/goe/offload/sql_ast/dialect_engine.py::DialectSqlEngine` — Multi-Dialect SQLGlot DDL Compiler.

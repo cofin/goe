@@ -1,7 +1,8 @@
 ---
-type: Reference
+type: concept
 title: Apache Hadoop, Impala & Hive Backend Adapter
-description: HiveServer2 Thrift connectivity, HIVE/IMPALA/SPARK_CAPABILITIES, CachedBackendCatalog, DialectSqlEngine, Parquet/ORC storage, and stats computation
+description: HiveServer2 Thrift connectivity, HIVE/IMPALA/SPARK_CAPABILITIES, CachedBackendCatalog, DialectSqlEngine, Parquet/ORC storage, and stats computation.
+status: stable
 tags:
   - reference
   - backends
@@ -9,10 +10,31 @@ tags:
   - impala
   - hive
   - spark
-updated_at: "2026-10-26T22:40:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: hive-api
+    resource: src/goe/offload/hadoop/hive_backend_api.py::BackendHiveApi
+    title: Apache Hive Backend API Adapter
+  - id: impala-api
+    resource: src/goe/offload/hadoop/impala_backend_api.py::BackendImpalaApi
+    title: Apache Impala Backend API Adapter
+  - id: spark-api
+    resource: src/goe/offload/spark/spark_thrift_backend_api.py::BackendSparkThriftApi
+    title: Spark Thrift Backend API Adapter
 ---
 
 # Apache Hadoop, Impala & Hive Backend Adapter
+
+<!-- truth: start -->
+- `BackendHiveApi` (`src/goe/offload/hadoop/hive_backend_api.py`), `BackendImpalaApi` (`src/goe/offload/hadoop/impala_backend_api.py`), and `BackendSparkThriftApi` (`src/goe/offload/spark/spark_thrift_backend_api.py`) expose `HIVE_CAPABILITIES`, `IMPALA_CAPABILITIES`, and `SPARK_CAPABILITIES` with `CachedBackendCatalog` caching.[^hive-api][^impala-api][^spark-api]
+- Optional `better_impyla` / Kerberos dependencies are loaded lazily via `import_optional_dependency` so base unit tests run without Hadoop extras installed.
+<!-- truth: end -->
 
 The Hadoop and Spark Thrift backend adapters (`src/goe/offload/hadoop/` and `src/goe/offload/spark/`) manage tables, partitions, and queries on Apache Hive, Impala, and Spark Thrift Server.
 
@@ -38,3 +60,7 @@ The Hadoop and Spark Thrift backend adapters (`src/goe/offload/hadoop/` and `src
 - **Statistics**:
   - Impala: `COMPUTE INCREMENTAL STATS table [PARTITION (...)]`.
   - Hive: `ANALYZE TABLE table [PARTITION (...)] COMPUTE STATISTICS FOR COLUMNS`.
+
+[^hive-api]: `src/goe/offload/hadoop/hive_backend_api.py::BackendHiveApi` — Apache Hive Backend API Adapter.
+[^impala-api]: `src/goe/offload/hadoop/impala_backend_api.py::BackendImpalaApi` — Apache Impala Backend API Adapter.
+[^spark-api]: `src/goe/offload/spark/spark_thrift_backend_api.py::BackendSparkThriftApi` — Spark Thrift Backend API Adapter.

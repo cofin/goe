@@ -1,14 +1,6 @@
 ---
-type: Reference
 title: Data Transport, Spark & DuckDB Engines
-description: PySpark extraction, Dataproc Serverless, opt-in DuckDB transport, Spark listener metrics, and serialization codecs
-tags:
-  - reference
-  - transport
-  - spark
-  - dataproc
-  - duckdb
-  - index
+description: PySpark extraction, Dataproc Serverless, DuckDB 2.0 transport, Spark listener metrics, and staging serialization codecs
 ---
 
 # Data Transport, Spark & DuckDB Engines

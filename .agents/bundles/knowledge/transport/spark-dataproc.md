@@ -1,7 +1,8 @@
 ---
-type: Reference
+type: concept
 title: Dataproc, Spark, DuckDB & Query Import Execution Engines
-description: Cost-based TransportSelector, decomposed transport packages, Dataproc Serverless Batches, Livy REST, Query Import Arrow Parquet streaming, and OpenTelemetry transport spans
+description: Cost-based TransportSelector, decomposed transport packages, Dataproc Serverless Batches, Livy REST, Query Import Arrow Parquet streaming, and OpenTelemetry transport spans.
+status: stable
 tags:
   - reference
   - transport
@@ -10,10 +11,28 @@ tags:
   - duckdb
   - livy
   - opentelemetry
-updated_at: "2026-10-26T18:05:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: selector
+    resource: src/goe/offload/transport/selector.py::select_transport_method
+    title: Cost-Based Offload Transport Selector
+  - id: dataproc
+    resource: src/goe/offload/transport/spark/dataproc.py::OffloadTransportSparkDataprocGcloud
+    title: Dataproc Serverless and Cluster Transport
 ---
 
 # Dataproc, Spark, DuckDB & Query Import Execution Engines
+
+<!-- truth: start -->
+- `select_transport_method` (`src/goe/offload/transport/selector.py`) selects `QUERY_IMPORT` (`<= 5 GiB`), `DUCKDB` (`5 GiB < size <= 100 GiB`), and Spark/Dataproc transports (`> 100 GiB`).[^selector]
+- Dataproc transports (`src/goe/offload/transport/spark/dataproc.py`) separate workload runtime SA (`GOOGLE_DATAPROC_SERVICE_ACCOUNT` -> `--service-account`) from caller control-plane impersonation (`resolve_gcloud_impersonation_principal` -> `--impersonate-service-account`).[^dataproc]
+<!-- truth: end -->
 
 The transport layer (`src/goe/offload/transport/` & `src/goe/offload/transport/spark/`) orchestrates data extraction from source RDBMS to cloud storage staging files.
 
@@ -83,3 +102,6 @@ To distribute data extraction across workers, GOE slices source tables via `Orac
 - **Subprocess & Spark W3C Trace Propagation**:
   - `run_os_cmd()` (`src/goe/offload/offload_transport_functions.py`) wraps subprocess invocations in `traced_os_cmd(cmd)` (`goe.os_cmd.<executable>`) and injects `TRACEPARENT`, `TRACESTATE`, and `GOE_EXECUTION_ID` into the child environment when OpenTelemetry is enabled.
   - Spark transports (`spark-submit`, Dataproc Gcloud, Dataproc Batches) merge `spark_trace_conf_overrides()` (`spark.executorEnv.TRACEPARENT`, `spark.executorEnv.GOE_EXECUTION_ID`, `spark.yarn.appMasterEnv.TRACEPARENT`, `spark.dataproc.driverEnv.TRACEPARENT`) and append spec-compliant Google SQLCommenter comments (`build_transport_sql_comment()`) to JDBC extraction queries when OpenTelemetry is enabled.
+
+[^selector]: `src/goe/offload/transport/selector.py::select_transport_method` — Cost-Based Offload Transport Selector.
+[^dataproc]: `src/goe/offload/transport/spark/dataproc.py::OffloadTransportSparkDataprocGcloud` — Dataproc Serverless and Cluster Transport.

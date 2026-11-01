@@ -1,12 +1,6 @@
 ---
-type: Reference
 title: Backend Cloud DW Adapters
 description: Target database engines, DDL generation, staging ingestion, partitioning, and query optimization
-tags:
-  - reference
-  - backends
-  - data-warehouse
-  - index
 ---
 
 # Backend Cloud DW Adapters

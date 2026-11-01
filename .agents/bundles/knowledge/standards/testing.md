@@ -1,16 +1,36 @@
 ---
-type: Guide
+type: testing
 title: Testing & Quality Assurance Standards
-description: Unit testing guidelines, integration test harness, concurrency testing, and verification strategies
+description: Unit testing guidelines, integration test harness, concurrency testing, and verification strategies.
+status: stable
 tags:
   - guide
   - standards
   - testing
   - pytest
-  - quality
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: int-conftest
+    resource: tests/integration/conftest.py::pytest_collection_modifyitems
+    title: Offline-Safe Integration Test Collection Hook
+  - id: listener-conftest
+    resource: tests/unit/listener/conftest.py::FakeOracleConnection
+    title: Offline Oracle Job Store Test Doubles
 ---
 
 # Testing & Quality Assurance Standards
+
+<!-- truth: start -->
+- Always export `GOOGLE_API_USE_CLIENT_CERTIFICATE=false` before running `uv run pytest` so Google Cloud client imports do not invoke workstation mTLS helpers.
+- `tests/integration/conftest.py` keeps `pytest --collect-only` 100% offline-safe without `ORA_CONN` or live GCP credentials.[^int-conftest]
+- `tests/unit/listener/conftest.py` provides `FakeOracleConnection` and `FakeOracleCursor` for deterministic unit testing of `OracleJobStore`.[^listener-conftest]
+<!-- truth: end -->
 
 ## Test Hierarchy
 
@@ -54,3 +74,6 @@ When implementing new features or bug fixes, choose the appropriate verification
 | `characterization` | Behavior-preserving refactoring | Passing baseline unit tests before and after code changes. |
 | `static_validation` | Configuration, DDL, templates | Lint, schema validation, and dry-run execution checks. |
 | `integration_acceptance` | Cross-system workflows | End-to-end offload test with verification (`goe validate`). |
+
+[^int-conftest]: `tests/integration/conftest.py::pytest_collection_modifyitems` — Offline-Safe Integration Test Collection Hook.
+[^listener-conftest]: `tests/unit/listener/conftest.py::FakeOracleConnection` — Offline Oracle Job Store Test Doubles.

@@ -1,12 +1,6 @@
 ---
-type: Reference
 title: Frontend RDBMS Adapters
 description: Database connection lifecycle, catalog metadata, partitioning, and SQL dialects for source RDBMS
-tags:
-  - reference
-  - frontends
-  - database
-  - index
 ---
 
 # Frontend RDBMS Adapters

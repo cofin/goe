@@ -1,52 +1,72 @@
 ---
-type: Reference
-title: DuckDB & duckdb-oracle Offload Transport
-description: Zero-JVM DuckDB 2.0 transport engine using sqlspec DuckDBConfig, cgroup resource bounding, cofin/duckdb-oracle, and community gcs extension for Oracle-to-BigQuery Parquet offloads
+type: concept
+title: DuckDB 2.0 & duckdb-oracle Offload Transport
+description: Zero-JVM DuckDB 2.0 transport engine using sqlspec DuckDBConfig, cgroup resource bounding, cofin/duckdb-oracle, and built-in httpfs secrets for Oracle-to-Parquet offloads.
+status: stable
 tags:
-  - reference
   - transport
   - duckdb
   - oracle
   - gcs
   - parquet
   - opentelemetry
-updated_at: "2026-10-26T18:05:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: duckdb-engine
+    resource: src/goe/offload/transport/duckdb/engine.py::DuckDBEngine
+    title: DuckDB 2.0 Session and Cloud Secret Engine
+  - id: oracle-pushdown
+    resource: src/goe/offload/transport/duckdb/oracle_pushdown.py::attach_oracle
+    title: Oracle Extension Attachment and SCN Invariant Check
+  - id: parquet-writer
+    resource: src/goe/offload/transport/duckdb/parquet_writer.py::copy_to_parquet
+    title: DuckDB Target-Typed Parquet Copy Writer
+  - id: duckdb-transport
+    resource: src/goe/offload/transport/duckdb_transport.py::OffloadTransportDuckDB
+    title: DuckDB Offload Transport Implementation
 ---
 
-# DuckDB & `duckdb-oracle` Offload Transport
+# DuckDB 2.0 & `duckdb-oracle` Offload Transport
 
-`OffloadTransportDuckDB` (`src/goe/offload/transport/duckdb_transport.py` and `src/goe/offload/transport/duckdb/`) is a zero-JVM local offload transport engine (`--offload-transport-method=DUCKDB` / `OFFLOAD_TRANSPORT=DUCKDB`, and included in `GCP_AUTO_TRANSPORT_METHODS` for tables `5 GiB < estimated_bytes <= 100 GiB`) that streams Oracle rows directly to Google Cloud Storage (`gcss://`) or local Parquet files as Snappy-compressed Parquet files using `duckdb==1.5.5`, `sqlspec.adapters.duckdb.DuckDBConfig`, `cofin/duckdb-oracle` (`oracle_execute`), and the DuckDB community `gcs` extension (`northpolesec/duckdb-gcs`).
+<!-- truth: start -->
+- `OffloadTransportDuckDB` (`src/goe/offload/transport/duckdb_transport.py`) targets `duckdb>=2.0.0` (`MIN_SUPPORTED_DUCKDB_VERSION = "2.0.0"` in `src/goe/offload/transport/duckdb_constants.py`), using the signed community `oracle` extension (`cofin/duckdb-oracle`) and built-in `httpfs` `TEMPORARY SECRET` over `gs://`, `s3://`, and `abfss://`.[^duckdb-engine][^duckdb-transport]
+- `TransportSelector` (`src/goe/offload/transport/selector.py`) automatically selects `QUERY_IMPORT` for `<= 5 GiB`, `DUCKDB` for `5 GiB < estimated_bytes <= 100 GiB`, and Spark transports above `100 GiB`.
+- `DuckDBSessionConfig` (`src/goe/offload/transport/duckdb/engine.py`) clamps `memory_limit` to 75% of effective cgroup v1/v2 or host RAM (`CgroupQuota.detect()`) and sets `preserve_insertion_order=False` and `parquet_metadata_cache=True`.[^duckdb-engine]
+- `verify_batch_scn_invariant(query, scn)` (`src/goe/offload/transport/duckdb/oracle_pushdown.py`) verifies that `AS OF SCN <scn>` is present in the extraction SQL before opening any DuckDB connection.[^oracle-pushdown]
+- When `cloud_secret is None` (local filesystem staging), `DuckDBEngine` skips `LOAD httpfs` unless an `httpfs`-backed URI (`gs://`, `s3://`, `abfss://`) is targeted.
+<!-- truth: end -->
 
 ## Key Modules (`src/goe/offload/transport/duckdb/`)
 
 - **`engine.py` (`src/goe/offload/transport/duckdb/engine.py`)**:
-  - `CgroupQuota(FrozenBaseStruct)` and `read_cgroup_quota()`: Reads Linux cgroup v2 (`/sys/fs/cgroup/memory.max`, `/sys/fs/cgroup/cpu.max`) and cgroup v1 (`/sys/fs/cgroup/memory/memory.limit_in_bytes`, `/sys/fs/cgroup/cpu/cpu.cfs_quota_us` + `cpu.cfs_period_us`) limits and host physical RAM.
-  - `DuckDBSessionConfig(FrozenBaseStruct)` and `build_session_config()`: Clamps `memory_limit_bytes` to 75% of effective cgroup/host RAM (warning when the operator's requested `--duckdb-memory-limit` exceeds the 75% ceiling) and `threads` to effective cgroup CPU cores (`min(requested, cgroup_cores, 8)`), setting `database=":memory:goe_<execution_key>"`, `preserve_insertion_order=False`, `parquet_metadata_cache=True`, and `temp_directory`.
-  - `DuckDBEngine`: Wraps `sqlspec.adapters.duckdb.DuckDBConfig` and manages per-session `CREATE OR REPLACE TEMPORARY SECRET` registration for Oracle (`TYPE oracle`) and GCS (`TYPE gcs`, `credential_chain` or `access_token` with 600s token refresh margin via `refresh_gcs_secret_if_expiring()`).
-- **`oracle_scan.py` (`src/goe/offload/transport/duckdb/oracle_scan.py`)**:
-  - `attach_oracle()`: Builds EZConnect DSN (`host:port/service_name`) via `parse_oracle_dsn()`, issues `CREATE OR REPLACE TEMPORARY SECRET ... (TYPE oracle, ...)` and `ATTACH '<dsn>' AS goe_ora (TYPE ORACLE, SECRET ..., READ_ONLY)`, and attempts `CALL oracle_clear_cache()` and `SET oracle_enable_pushdown = true`.
+  - `DuckDBSessionConfig(FrozenBaseStruct, frozen=True)` and `build_session_config()`: Clamps `memory_limit_bytes` to 75% of `CgroupQuota.detect()` and `threads` to `min(requested, cgroup_cores, 8)`, setting `database=":memory:goe_<execution_key>"`, `preserve_insertion_order=False`, and `parquet_metadata_cache=True`.
+  - `DuckDBEngine`: Wraps `sqlspec.adapters.duckdb.DuckDBConfig` and manages per-session `CREATE OR REPLACE TEMPORARY SECRET` registration for Oracle (`TYPE oracle`) and cloud storage (`CloudStorageSecretSpec` over `httpfs` for `gs://`, `s3://`, and `abfss://`, with 600s OAuth token refresh margin on GCS `BEARER_TOKEN` secrets).[^duckdb-engine]
+- **`oracle_pushdown.py` (`src/goe/offload/transport/duckdb/oracle_pushdown.py`)**:
+  - `attach_oracle()`: Builds EZConnect DSN (`host:port/service_name`) via `parse_oracle_dsn()`, issues `CREATE OR REPLACE TEMPORARY SECRET ... (TYPE oracle, ...)` and `ATTACH '<dsn>' AS goe_ora (TYPE ORACLE, SECRET ..., READ_ONLY)`, and configures `SET oracle_enable_pushdown = true`.
   - `verify_batch_scn_invariant(query, scn)`: Enforces that `AS OF SCN <scn>` is present in the extraction SQL before any DuckDB connection opens.
-  - `build_oracle_scan_sql()`: Wraps the Oracle extraction query in `oracle_query('goe_ora', '...')` or `FROM goe_ora.<owner>.<table>` with predicate pushdown.
+  - `build_oracle_scan_sql()`: Wraps the Oracle extraction query in `oracle_query('goe_ora', '...')`.[^oracle-pushdown]
 - **`parquet_writer.py` (`src/goe/offload/transport/duckdb/parquet_writer.py`)**:
-  - `build_cast_projection()`: Generates target-typed SQL `CAST` expressions (`DECIMAL(38, s)`, `BIGINT`, `DOUBLE`, `VARCHAR`, `BLOB`, `DATE`, `TIMESTAMP`, plus synthetic partition expressions `GOE_PART_*`) from `CanonicalColumn` metadata.
-  - `copy_to_parquet()`: Executes `COPY (<projected_sql>) TO '<staging_uri>' (FORMAT PARQUET, COMPRESSION SNAPPY, ROW_GROUP_SIZE 122880)` and verifies output row counts via `parquet_metadata()`.
+  - `build_cast_projection()`: Generates target-typed SQL `CAST` expressions (`DECIMAL(p, s)`, `BIGINT`, `DOUBLE`, `VARCHAR`, `BLOB`, `DATE`, `TIMESTAMP`, plus synthetic partition expressions `GOE_PART_*`) from `ColumnSpec` metadata.
+  - `copy_to_parquet()`: Executes `COPY (<projected_sql>) TO '<staging_uri>' (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 122880)` and verifies output row counts via `parquet_metadata()`.[^parquet-writer]
 - **`duckdb_constants.py` & `duckdb_availability.py`**:
-  - `is_duckdb_available()` checks `BACKEND_DISTRO_GCP`, `DBTYPE_ORACLE`, `FILE_STORAGE_FORMAT_PARQUET`, `OFFLOAD_FS_SCHEME_GS`, `not use_oracle_wallet`, `duckdb.__version__` prefix `"1.5.5"`, `max_offload_chunk_size <= offload_transport_duckdb_max_bytes` (`100 GiB` default), and unsigned extension opt-in before attempting any network or database connection.
+  - Enforces `MIN_SUPPORTED_DUCKDB_VERSION = "2.0.0"`, `not use_oracle_wallet`, and `max_offload_chunk_size <= offload_transport_duckdb_max_bytes` (`100 GiB` default).
 - **`duckdb_transport.py` (`src/goe/offload/transport/duckdb_transport.py`)**:
-  - `OffloadTransportDuckDB` subclassing `OffloadTransportRdbms` to execute single or parallel (`ThreadPoolExecutor`) batch extractions into `gcss://` Parquet files via `DuckDBEngine`, `attach_oracle`, and `copy_to_parquet`.
-
-## Safety Gates & Selection Rules
-
-1. **Cost-Based `AUTO` Selection & Explicit Mode**: `TransportSelector` (`src/goe/offload/transport/selector.py`) selects `QUERY_IMPORT` for `<= 5 GiB`, `DUCKDB` for `5 GiB < estimated_bytes <= 100 GiB` when `is_duckdb_available()` is true, and Spark transports (`SPARK_BATCHES_GCLOUD`, `SPARK_DATAPROC_GCLOUD`, `SPARK_THRIFT`, `SPARK_SUBMIT`, `SPARK_LIVY`) above `100 GiB` or when `DUCKDB` is unavailable.
-2. **Version Pin & Runtime Check**: `cofin/duckdb-oracle` v0.2.2 targets `duckdb==1.5.5`. Both `uv.lock` and `duckdb.__version__.startswith("1.5.5")` enforce this version.
-3. **Unsigned Extension Policy**:
-   - When `OFFLOAD_TRANSPORT_DUCKDB_ORACLE_EXTENSION_PATH` points to an existing local `.duckdb_extension` binary, DuckDB loads it directly.
-   - When installing `oracle` from `OFFLOAD_TRANSPORT_DUCKDB_ORACLE_REPOSITORY` without a local binary path, `OFFLOAD_TRANSPORT_DUCKDB_ALLOW_UNSIGNED_EXTENSIONS=true` is required.
-4. **Cgroup & Memory Ceiling Guard**: `DuckDBSessionConfig` automatically clamps DuckDB's `memory_limit` to 75% of the active container cgroup v1/v2 memory limit (or host physical RAM) and disables insertion order preservation (`preserve_insertion_order=false`) to prevent OOM kills during parallel Parquet row-group compression.
+  - `OffloadTransportDuckDB` executes single or parallel (`ThreadPoolExecutor`) batch extractions into `gs://`/`s3://`/`abfss://`/local Parquet files via `DuckDBEngine`, `attach_oracle`, and `copy_to_parquet`, with Clientless Thin PyCapsule Arrow fallback (`extract_oracle_to_parquet`) when the native `oracle` extension is unavailable.[^duckdb-transport]
 
 ## Snapshot Invariant & Per-Batch Telemetry
 
-- **Mandatory `AS OF SCN` Verification (`verify_batch_scn_invariant`)**: Because each parallel worker thread opens an independent Oracle session via `ATTACH '<dsn>' AS goe_ora`, `OffloadTransportDuckDB._run_batch()` calls `verify_batch_scn_invariant(query, self._scn)` *before* opening a DuckDB connection, raising `OffloadTransportException` if `AS OF SCN <scn>` is absent from the batch SQL.
+- **Mandatory `AS OF SCN` Verification (`verify_batch_scn_invariant`)**: Because each parallel worker thread opens an independent Oracle session via `ATTACH '<dsn>' AS goe_ora`, `OffloadTransportDuckDB._run_batch()` calls `verify_batch_scn_invariant(query, self._scn)` before opening a DuckDB connection, raising `OffloadTransportException` if `AS OF SCN <scn>` is absent.[^oracle-pushdown]
 - **Parallel Execution & OpenTelemetry Spans**:
-  - Single-batch runs execute inline; multi-batch runs (`degree_of_parallelism > 1`) dispatch `_run_batch` across `ThreadPoolExecutor(max_workers=self._dop)` via `submit_with_context()` (`src/goe/observability/context.py`) so the active OpenTelemetry span context, W3C baggage, and SQLSpec `CorrelationContext` propagate to every worker thread.
-  - Each `_run_batch` is wrapped in `traced_duckdb_batch(batch_index=..., staging_uri=..., scn=...)` (`src/goe/observability/transport.py`), emitting a `SpanKind.CLIENT` span `goe.transport.duckdb.batch` with `db.system="oracle"`, `goe.transport.batch_index`, `goe.transport.staging_uri`, `goe.transport.scn`, and `goe.transport.rows`.
+  - Multi-batch runs (`degree_of_parallelism > 1`) dispatch `_run_batch` across `ThreadPoolExecutor(max_workers=self._dop)` via `submit_with_context()` (`src/goe/observability/context.py`) so active OpenTelemetry spans, W3C baggage, and SQLSpec `CorrelationContext` propagate to every worker thread.
+  - Each `_run_batch` is wrapped in `traced_duckdb_batch()` (`src/goe/observability/transport.py`), emitting a `SpanKind.CLIENT` span `goe.transport.duckdb.batch`.
+
+[^duckdb-engine]: `src/goe/offload/transport/duckdb/engine.py::DuckDBEngine` — DuckDB 2.0 session, cgroup memory clamping, and `TEMPORARY SECRET` configuration.
+[^oracle-pushdown]: `src/goe/offload/transport/duckdb/oracle_pushdown.py::attach_oracle` — Oracle extension attachment and `AS OF SCN` invariant check.
+[^parquet-writer]: `src/goe/offload/transport/duckdb/parquet_writer.py::copy_to_parquet` — Target-typed DuckDB Parquet writer and metadata verifier.
+[^duckdb-transport]: `src/goe/offload/transport/duckdb_transport.py::OffloadTransportDuckDB` — DuckDB offload transport implementation.
