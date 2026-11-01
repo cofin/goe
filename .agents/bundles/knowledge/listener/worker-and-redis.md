@@ -1,7 +1,8 @@
 ---
-type: Reference
+type: concept
 title: Listener Durable Job Queue & Bounded Caching
-description: Oracle-backed SQLSpec durable job queue (GOE_LISTENER_JOBS with SKIP LOCKED and cooperative CANCEL_REQUESTED cancellation), DurableJobWorker, cluster node heartbeats, and bounded LRU + singleflight ListenerCache
+description: Oracle-backed SQLSpec durable job queue (GOE_LISTENER_JOBS with SKIP LOCKED and cooperative CANCEL_REQUESTED cancellation), DurableJobWorker, cluster node heartbeats, and bounded LRU + singleflight ListenerCache.
+status: stable
 tags:
   - reference
   - listener
@@ -10,10 +11,32 @@ tags:
   - jobs
   - oracle
   - sqlspec
-updated_at: "2026-10-29T21:55:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: job-store
+    resource: src/goe/listener/jobs/store.py::OracleJobStore
+    title: Oracle-Backed Durable Job Queue Store
+  - id: job-worker
+    resource: src/goe/listener/jobs/worker.py::DurableJobWorker
+    title: Durable Job Worker and Cooperative Cancellation Sink
+  - id: listener-cache
+    resource: src/goe/listener/cache.py::ListenerCache
+    title: Bounded LRU and Singleflight Listener Cache
 ---
 
 # Listener Durable Job Queue & Bounded Caching
+
+<!-- truth: start -->
+- `OracleJobStore` (`src/goe/listener/jobs/store.py`) persists Listener jobs in `GOE_LISTENER_JOBS` and worker heartbeats in `GOE_LISTENER_ENDPOINTS` via `OracleDatabaseRegistry.for_options(config)`, claiming jobs with `SELECT ... FOR UPDATE SKIP LOCKED` + `cursor.fetchmany(limit)`.[^job-store]
+- `DurableJobWorker` (`src/goe/listener/jobs/worker.py`) executes `OrchestrationRunner` in `asyncio.to_thread` with `_CooperativeCancelSink`, unwinding on `CANCEL_REQUESTED` before `mark_cancelled()` releases `GOE_LISTENER_JOBS_ACTIVE_TBL_UQ`.[^job-worker]
+- `ListenerCache` (`src/goe/listener/cache.py`) provides bounded LRU + TTL + singleflight coalescing (`max_entries=1024`) with event-driven invalidation via `ListenerCacheSink`.[^listener-cache]
+<!-- truth: end -->
 
 The Listener uses an Oracle-backed durable `sqlspec` job queue (`src/goe/listener/jobs/{models,store,worker}.py` and `src/goe/listener/jobs/sql/job_queue.sql`) and a bounded LRU + singleflight in-process cache (`ListenerCache` and `ListenerCacheSink` in `src/goe/listener/cache.py`). Neither `litestar-queues`, SQLite, nor external Redis infrastructure is used.
 
@@ -39,3 +62,7 @@ The Listener uses an Oracle-backed durable `sqlspec` job queue (`src/goe/listene
 
 - **`ListenerCache`**: Thread-safe (`threading.RLock`) bounded LRU (`OrderedDict`, default `max_entries=512`) with monotonic TTL (`time.monotonic()`) and async singleflight stampede coalescing (`get_or_load(key, loader, ttl=...)` sharing an in-flight `asyncio.Task` across concurrent callers for the same cache key).
 - **`ListenerCacheSink`**: Implements `ExecutionSink` (`src/goe/orchestration/sinks.py`) so `on_command_start`, `on_step_start`, `on_step_end`, and `on_command_end` invalidate stale `executions:*`, `schemas:*`, and `tables:*` cache prefixes immediately on state transitions.
+
+[^job-store]: `src/goe/listener/jobs/store.py::OracleJobStore` — Oracle-Backed Durable Job Queue Store.
+[^job-worker]: `src/goe/listener/jobs/worker.py::DurableJobWorker` — Durable Job Worker and Cooperative Cancellation Sink.
+[^listener-cache]: `src/goe/listener/cache.py::ListenerCache` — Bounded LRU and Singleflight Listener Cache.

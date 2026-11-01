@@ -1,7 +1,8 @@
 ---
-type: Architecture
+type: architecture
 title: Orchestration Core Engine
-description: Detailed design of OrchestrationRunner, ExecutionContext, ExecutionSink, staged OffloadPipeline, table concurrency locking, and step state machines
+description: Detailed design of OrchestrationRunner, ExecutionContext, ExecutionSink, staged OffloadPipeline, table concurrency locking, and step state machines.
+status: stable
 tags:
   - architecture
   - orchestration
@@ -10,10 +11,32 @@ tags:
   - locking
   - state-machine
   - opentelemetry
-updated_at: "2026-10-28T21:18:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: ctx
+    resource: src/goe/orchestration/context.py::ExecutionContext
+    title: Per-Execution Context Object
+  - id: sinks
+    resource: src/goe/orchestration/sinks.py::CompositeExecutionSink
+    title: Pluggable Execution Progress Sinks
+  - id: runner
+    resource: src/goe/orchestration/orchestration_runner.py::OrchestrationRunner
+    title: Orchestration Command Controller
 ---
 
 # Orchestration Core Engine
+
+<!-- truth: start -->
+- `ExecutionContext` (`src/goe/orchestration/context.py`) replaces module-level globals (`options`, `log_fh`, `suppress_stdout_override`, `ts`) so concurrent offloads execute safely in one process.[^ctx]
+- `CompositeExecutionSink` (`src/goe/orchestration/sinks.py`) fans out step lifecycle events to `RepositoryStepSink`, `OpenTelemetryStepSink`, and `ListenerCacheSink`.[^sinks]
+- `OrchestrationRunner` (`src/goe/orchestration/orchestration_runner.py`) acquires the table-level `filelock` mutex (`orchestration_lock_for_table`) and delegates offload execution to `OffloadPipeline`.[^runner]
+<!-- truth: end -->
 
 The orchestration engine coordinates data offloading, schema synchronization, and validation workflows across frontend RDBMS and backend cloud platforms using an explicit per-execution context, pluggable telemetry sinks, and a stateless 4-stage pipeline.
 
@@ -59,3 +82,7 @@ The legacy monolithic `OffloadOperation`, `execution.py`, and `OffloadSourceData
 ### 7. Command Step State Machine (`src/goe/orchestration/command_steps.py`, `src/goe/offload/offload_messages.py`)
 Discrete transactional steps executed via `OffloadMessages.offload_step()`, wrapped in `traced_step()` (`goe.step.<step_id>`), emitted to `ExecutionContext.sink`, and tracked in `GOE_REPO.COMMAND_EXECUTION_STEP`:
 - `STEP_MESSAGES`, `STEP_ANALYZE_DATA_TYPES`, `STEP_FIND_OFFLOAD_DATA`, `STEP_CREATE_TABLE`, `STEP_STAGING_SETUP`, `STEP_STAGING_TRANSPORT`, `STEP_VALIDATE_DATA`, `STEP_VALIDATE_CASTS`, `STEP_FINAL_LOAD`, `STEP_STAGING_CLEANUP`, `STEP_SAVE_METADATA`, `STEP_VERIFY_EXPORTED_DATA`.
+
+[^ctx]: `src/goe/orchestration/context.py::ExecutionContext` — Per-Execution Context Object.
+[^sinks]: `src/goe/orchestration/sinks.py::CompositeExecutionSink` — Pluggable Execution Progress Sinks.
+[^runner]: `src/goe/orchestration/orchestration_runner.py::OrchestrationRunner` — Orchestration Command Controller.

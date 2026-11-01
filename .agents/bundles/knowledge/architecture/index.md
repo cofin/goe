@@ -1,12 +1,6 @@
 ---
-type: Architecture
 title: Architecture & Orchestration
 description: Core architecture, lifecycle orchestration, canonical typing, and schema synchronization
-tags:
-  - architecture
-  - orchestration
-  - core
-  - index
 ---
 
 # Architecture & Orchestration

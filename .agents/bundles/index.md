@@ -1,23 +1,20 @@
 ---
 okf_version: "0.2"
-type: Index
-title: GOE Knowledge Bundle
-description: Open Knowledge Format bundle for Next-GOE data orchestration framework
-tags:
-  - index
-  - okf
-  - goe
-updated_at: "2026-10-02T19:33:00Z"
+bundle: "goe"
+title: "GOE Knowledge Bundle"
+description: "OKF v0.2 knowledge bundle, product charter, architectural decisions, and active workflows for the Gluent Offload Engine (GOE)."
 ---
 
 # GOE Knowledge Bundle
 
-Welcome to the **GOE (Gluent Offload Engine)** knowledge bundle. This repository contains the Next-GOE framework for offloading, replicating, and virtualizing data from relational database systems (Oracle, SQL Server, Teradata) to cloud data warehouses (Google BigQuery, Snowflake, Azure Synapse) and distributed data engines (Hadoop, Hive, Impala, Spark).
+This bundle follows the Open Knowledge Format (OKF v0.2) and serves as the single source of truth for the Gluent Offload Engine (GOE) architecture, engineering standards, active feature plans, and verification gates.
 
-## Bundle Organization
+## Navigation Index
 
-- [Product Documentation](product/index.md) - Product definition, guidelines, capabilities, and tech stack.
-- [Knowledge Base](knowledge/index.md) - Architecture, frontend adapters, backend adapters, storage, transport, listener service, operational tooling, and development standards.
-- [Specifications](specs/index.md) - Active, planned, and completed feature specifications and task worksheets.
-- [Research](research/index.md) - Unpromoted research documents, architectural investigations, and feasibility spikes.
-- [Change Log](log.md) - Chronological record of bundle state changes, additions, and lifecycle operations.
+- [Product Charter & Strategy](product/index.md) — Core vision, operational guidelines, and runtime technology stack.
+- [System Knowledge Base](knowledge/index.md) — Domain glossary, ADRs, architecture, frontends, backends, transports, storage, listener, operations, patterns, standards, testing, and gotchas.
+- [Developer Workflow & Commands](knowledge/workflow.md) — Canonical `uv` CLI invocations, test commands, lint/architecture gates, and Flow task lifecycle rules.
+- [Specifications Registry](specs/index.md) — Active feature plans, task worksheets, and archived roadmap history.
+- [Research Registry](research/index.md) — Primary-source technical evaluations and promoted architectural findings.
+- [Change Log](log.md) — Append-only operational and structural log for this knowledge bundle.
+- [Project-Local Skills & Subagents](../skills/index.md) — Stack-specific implementation skills, review checklists, and paired subagents.

@@ -1,12 +1,6 @@
 ---
-type: Guide
 title: Development Standards
 description: Engineering guidelines, coding conventions, type hinting, SQL best practices, and testing strategies
-tags:
-  - guide
-  - standards
-  - quality
-  - index
 ---
 
 # Development Standards

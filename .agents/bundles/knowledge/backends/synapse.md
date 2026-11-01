@@ -1,17 +1,36 @@
 ---
-type: Reference
+type: concept
 title: Azure Synapse Analytics Backend Adapter
-description: SQLSpec MssqlPythonConfig connectivity, SYNAPSE_CAPABILITIES, CachedBackendCatalog, PolyBase/COPY INTO ingestion, clustered columnstore indexing, and distributions
+description: SQLSpec MssqlPythonConfig connectivity, SYNAPSE_CAPABILITIES, CachedBackendCatalog, PolyBase/COPY INTO ingestion, clustered columnstore indexing, and distributions.
+status: stable
 tags:
   - reference
   - backends
   - synapse
   - azure
   - data-warehouse
-updated_at: "2026-10-26T22:40:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: syn-api
+    resource: src/goe/offload/microsoft/synapse_backend_api.py::BackendSynapseApi
+    title: Azure Synapse Backend API Adapter
+  - id: syn-table
+    resource: src/goe/offload/microsoft/synapse_backend_table.py::BackendSynapseTable
+    title: Azure Synapse Backend Table Adapter
 ---
 
 # Azure Synapse Analytics Backend Adapter
+
+<!-- truth: start -->
+- `BackendSynapseApi` (`src/goe/offload/microsoft/synapse_backend_api.py`) connects via `sqlspec.adapters.mssql.MssqlPythonConfig` (`build_synapse_mssql_config`), exposes `SYNAPSE_CAPABILITIES`, and caches metadata via `CachedBackendCatalog`.[^syn-api]
+- `BackendSynapseTable` (`src/goe/offload/microsoft/synapse_backend_table.py`) coordinates PolyBase external tables, `COPY INTO` from `abfss://`, and clustered columnstore / heap index selection.[^syn-table]
+<!-- truth: end -->
 
 The Azure Synapse adapter (`src/goe/offload/microsoft/`) manages Dedicated and Serverless SQL Pools on Microsoft Azure Synapse Analytics.
 
@@ -40,3 +59,6 @@ The Azure Synapse adapter (`src/goe/offload/microsoft/`) manages Dedicated and S
   - `HASH(distribution_column)` (For large joined dimension/fact tables).
   - `REPLICATE` (For small lookup tables).
 - **Staging**: Uses PolyBase external tables or `COPY INTO` from ADLS Gen2 (`abfss://`).
+
+[^syn-api]: `src/goe/offload/microsoft/synapse_backend_api.py::BackendSynapseApi` — Azure Synapse Backend API Adapter.
+[^syn-table]: `src/goe/offload/microsoft/synapse_backend_table.py::BackendSynapseTable` — Azure Synapse Backend Table Adapter.

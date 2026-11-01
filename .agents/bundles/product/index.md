@@ -1,19 +1,14 @@
 ---
-type: Guide
-title: Product Documentation
-description: Product overview, guidelines, and technical stack for the GOE framework
-tags:
-  - guide
-  - product
-  - overview
+title: "Product Overview"
+description: "High-level product goals, operational guidelines, and technology stack for the Gluent Offload Engine (GOE)."
 ---
 
-# Product Documentation
+# Product Overview
 
-This directory defines the core mission, capabilities, architectural guidelines, and technology stack of the **GOE (Gluent Offload Engine)** framework.
+This section defines the product goals, engineering guidelines, and technology stack for the Gluent Offload Engine (GOE).
 
-## Contents
+## Core Documents
 
-- [Product Definition](product.md) - High-level vision, core capabilities, supported architectures, and value proposition.
-- [Product Guidelines](product-guidelines.md) - Invariants, operational boundaries, backward compatibility, and error handling policies.
-- [Tech Stack](tech-stack.md) - RDBMS frontends, cloud data warehouse backends, storage systems, Python runtime, and dependencies.
+- [Product Vision & Capabilities](product.md) — Core mission, capabilities, and supported platform matrix.
+- [Product & Engineering Guidelines](product-guidelines.md) — Structural design principles, security defaults, and operational guardrails.
+- [Technology Stack](tech-stack.md) — Runtime dependencies, database drivers, SQL AST engines, and packaging infrastructure.

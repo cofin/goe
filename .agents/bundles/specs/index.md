@@ -1,11 +1,6 @@
 ---
-type: Reference
 title: Specifications Registry
 description: Active, planned, and completed feature specifications and task worksheets
-tags:
-  - reference
-  - specs
-  - index
 ---
 
 # Specifications Registry

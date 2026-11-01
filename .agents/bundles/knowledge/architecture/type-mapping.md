@@ -1,17 +1,37 @@
 ---
-type: Architecture
+type: architecture
 title: Canonical Type Mapping System
-description: Immutable ColumnSpec value model, table-driven CanonicalTypeRegistry, adaptive sampling algorithms, and type conversion matrices
+description: Immutable ColumnSpec value model, table-driven CanonicalTypeRegistry, adaptive sampling algorithms, and type conversion matrices.
+status: stable
 tags:
   - architecture
   - type-mapping
   - canonical-types
   - sampling
   - schema
-updated_at: "2026-10-26T22:40:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: column-spec
+    resource: src/goe/offload/schema/column_spec.py::ColumnSpec
+    title: Immutable Canonical Column Specification
+  - id: type-registry
+    resource: src/goe/offload/schema/type_registry.py::CanonicalTypeRegistry
+    title: Table-Driven Canonical Type Mapping Registry
 ---
 
 # Canonical Type Mapping System
+
+<!-- truth: start -->
+- `ColumnSpec(FrozenBaseStruct, frozen=True)` (`src/goe/offload/schema/column_spec.py`) represents column metadata across `ColumnDialect` (`CANONICAL`, `ORACLE`, `MSSQL`, `BIGQUERY`, `SNOWFLAKE`, `SYNAPSE`, `HADOOP`, `AVRO`, `PARQUET`).[^column-spec]
+- `TYPE_REGISTRY` (`src/goe/offload/schema/type_registry.py`) drives RDBMS-to-canonical (`to_canonical`) and canonical-to-target (`from_canonical`) type conversions without lossy downcasting.[^type-registry]
+- Unconstrained Oracle `NUMBER` / `FLOAT` columns are sampled via `sample_rdbms_data_types` (`--data-sample-pct`) prior to target table creation.
+<!-- truth: end -->
 
 GOE uses an immutable 3-tier canonical typing system defined in `src/goe/offload/schema/column_spec.py` (`ColumnSpec`, `ColumnDialect`, `ColumnPartitionSpec`) and `src/goe/offload/schema/type_registry.py` (`CanonicalTypeRegistry`, `TYPE_REGISTRY`, `MappingTarget`, `MappingContext`, `TypeMappingLimits`) to ensure lossless conversions between disparate database and staging dialects:
 
@@ -72,3 +92,6 @@ When source columns have unconstrained precision (such as Oracle `NUMBER` or `FL
 For target platforms lacking expression-based partitioning, GOE generates synthetic partition columns during transformation:
 - **Date/Timestamp**: `GOE_PART_Y_<COL>` (Year), `GOE_PART_M_<COL>` (Month), `GOE_PART_D_<COL>` (Day).
 - **Integer Bucketing**: `GOE_PART_<BUCKET>_<COL>` (e.g., `GOE_PART_1000_CUSTOMER_ID`).
+
+[^column-spec]: `src/goe/offload/schema/column_spec.py::ColumnSpec` — Immutable Canonical Column Specification.
+[^type-registry]: `src/goe/offload/schema/type_registry.py::CanonicalTypeRegistry` — Table-Driven Canonical Type Mapping Registry.

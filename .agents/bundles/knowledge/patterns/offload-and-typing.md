@@ -1,27 +1,50 @@
 ---
-type: Reference
+type: pattern
 title: Data Offload, Canonical Typing & Storage Gotchas
-description: Three-tier column mapping, snapshot-consistent extraction, staged ingestion, AST/predicate boundaries, and RDBMS type sampling gotchas
+description: Three-tier column mapping, snapshot-consistent extraction, staged ingestion, AST/predicate boundaries, and RDBMS type sampling gotchas.
+status: stable
 tags:
   - pattern
   - offload
   - type-mapping
   - storage
   - gotchas
-updated_at: "2026-10-29T22:30:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: column-spec
+    resource: src/goe/offload/schema/column_spec.py::ColumnSpec
+    title: Immutable Canonical ColumnSpec
+  - id: backend-cap
+    resource: src/goe/offload/backend_capabilities.py::BackendCapabilities
+    title: Declarative Backend Capability Profiles
+  - id: pipeline
+    resource: src/goe/orchestration/pipeline.py::OffloadPipeline
+    title: Stateless 4-Stage Offload Pipeline
 ---
 
 # Data Offload, Canonical Typing & Storage Gotchas
+
+<!-- truth: start -->
+- All schema translations route through `ColumnSpec` (`src/goe/offload/schema/column_spec.py`) and `TYPE_REGISTRY` (`src/goe/offload/schema/type_registry.py`).[^column-spec]
+- Every backend exposes an immutable `BackendCapabilities` struct (`src/goe/offload/backend_capabilities.py`) and caches catalog metadata in `CachedBackendCatalog` (`src/goe/offload/backend_catalog_cache.py`).[^backend-cap]
+- Every offload executes through `OffloadPipeline` (`src/goe/orchestration/pipeline.py`) with an explicit `ExecutionContext` and table-level `filelock` mutex.[^pipeline]
+<!-- truth: end -->
 
 ## Core Offload Patterns
 
 - **Table-Level Concurrency Mutex**: Every offload, schema sync, and validation operation acquires an exclusive table lock via `OrchestrationRunner` and `OrchestrationLockInterface` (`filelock` in `$OFFLOAD_HOME/run/`).
 - **Snapshot-Consistent Extraction**: RDBMS extraction queries bind to a consistent read snapshot (`FLASHBACK ANY TABLE` / Oracle `SCN`) to prevent phantom reads and avoid locking OLTP tables.
 - **Three-Tier Column Mapping**: All schema translations pass through `ColumnSpec` (`src/goe/offload/schema/column_spec.py`, parameterized by `ColumnDialect`) and the table-driven `CanonicalTypeRegistry` (`TYPE_REGISTRY` in `src/goe/offload/schema/type_registry.py`).
-- **Composable Backend Capabilities, Catalog Cache & Ingest Strategies**: Every backend API exposes an immutable `BackendCapabilities` profile (`src/goe/offload/backend_capabilities.py`), caches table/column/partition/size metadata in `CachedBackendCatalog` (`src/goe/offload/backend_cache.py`) with write-through DDL/load invalidation and batch `warm_schema(db_name)` pre-warming, and delegates staged cast validation and final merges to `StagingLoadService` and `FinalTableMerger` (`src/goe/offload/backend_load.py`) or BigQuery's `BigQueryIngestStrategy` (`src/goe/offload/bigquery/ingest_strategy.py`).
+- **Composable Backend Capabilities, Catalog Cache & Ingest Strategies**: Every backend API exposes an immutable `BackendCapabilities` profile (`src/goe/offload/backend_capabilities.py`), caches table/column/partition/size metadata in `CachedBackendCatalog` (`src/goe/offload/backend_catalog_cache.py`) with write-through DDL/load invalidation and batch `warm_schema(db_name)` pre-warming, and delegates staged cast validation and final merges to `StagingLoadService` and `FinalTableMerger` (`src/goe/offload/backend_services.py`) or BigQuery's `BigQueryIngestStrategy` (`src/goe/offload/bigquery/ingest_strategy.py`).
 - **Two-Phase Staged Ingestion**: Parallel extraction writes Avro or Snappy-compressed Parquet files to cloud staging storage (`gs://`, `s3a://`, `abfss://`, `hdfs://`), followed by an atomic target load (`LOAD DATA` / `COPY INTO` / `INSERT ... SELECT`) and automatic staging cleanup.
-- **Strict SQL AST & Predicate IR Boundary**: All SQL DDL/DML, Oracle `PARTITION` / `SUBPARTITION` / `AS OF SCN :scn` extraction queries, batched 64-aggregate cross-DB validation queries (`src/goe/offload/validation/`), and `SchemaSyncService` `ALTER TABLE` statements (`src/goe/sync/differ.py`) are built through `DialectSqlEngine` (`src/goe/offload/sql_ast/`) and `PredicateCompiler` (`src/goe/offload/predicates/`), keeping `sqlglot` imports out of orchestration and adapter modules (`[sqlglot-boundary] files = []` in `tools/architecture_baseline.toml`).
-- **Zero-Python-Row Columnar Transport & Unified Cloud Storage**: Local extractions use either `OffloadTransportDuckDB` (`src/goe/offload/transport/duckdb/` over `sqlspec.adapters.duckdb.DuckDBConfig` with cgroup v1/v2 75% memory clamping) or `OffloadTransportQueryImport` (`src/goe/offload/staging/parquet/parquet_file.py` streaming Arrow `RecordBatch`es to Snappy Parquet with differential schema/row/value parity), and stage objects via `StagingStorageService` (`src/goe/filesystem/storage_service.py` over `sqlspec.storage` with bounded `max_results=2` directory prefix checks and 1,000-key batch deletes).
+- **Strict SQL AST & Predicate IR Boundary**: All SQL DDL/DML, Oracle `PARTITION` / `SUBPARTITION` / `AS OF SCN :scn` extraction queries, batched 64-aggregate cross-DB validation queries (`src/goe/validate/`), and `SchemaSyncService` `ALTER TABLE` statements (`src/goe/sync/differ.py`) are built through `DialectSqlEngine` (`src/goe/offload/sql_ast/`) and `PredicateCompiler` (`src/goe/offload/predicates/`), keeping `sqlglot` imports out of orchestration and adapter modules (`[sqlglot-boundary] files = []` in `tools/architecture_baseline.toml`).
+- **Zero-Python-Row Columnar Transport & Unified Cloud Storage**: Local extractions use either `OffloadTransportDuckDB` (`src/goe/offload/transport/duckdb/` over `sqlspec.adapters.duckdb.DuckDBConfig` with cgroup v1/v2 75% memory clamping) or `OffloadTransportQueryImport` (`src/goe/offload/transport/query_import.py` and `src/goe/offload/staging/arrow_writers.py` streaming Arrow `RecordBatch`es to Snappy Parquet with differential schema/row/value parity), and stage objects via `StagingStorageService` (`src/goe/filesystem/storage_service.py` over `sqlspec.storage` with bounded `max_results=2` directory prefix checks and 1,000-key batch deletes).
 - **Stateless 4-Stage Pipeline & Per-Execution Context**: Every offload runs with an isolated `ExecutionContext` (`src/goe/orchestration/context.py`) and `ExecutionSink` (`src/goe/orchestration/sinks.py`) through `OffloadPipeline` (`DiscoveryStage` $\to$ `BoundaryStage` $\to$ `PlanResolutionStage` $\to$ `OffloadPlanExecutor` in `src/goe/orchestration/stages/`), passing immutable `DiscoveryResult`, `BoundaryResult`, and `OffloadPlan` structs without mutating module-level globals (`options`, `log_fh`, `suppress_stdout_override`, `ts`).
 - **Durable Listener Job Queue, Bounded Cache & Vertebra Runtime**: The Listener persists offload jobs in `GOE_LISTENER_JOBS` and worker heartbeats in `GOE_LISTENER_ENDPOINTS` via `OracleJobStore` (`FOR UPDATE SKIP LOCKED` + `cursor.fetchmany(limit)` + cooperative `CANCEL_REQUESTED` cancellation via `_CooperativeCancelSink`) backed by `OracleDatabaseRegistry.for_options(config)` in `src/goe/listener/jobs/store.py`, executes jobs via `DurableJobWorker` (`src/goe/listener/jobs/worker.py`), coalesces concurrent catalog/execution reads via bounded LRU + singleflight `ListenerCache` (`src/goe/listener/cache.py`), enforces handler-level `MCPInputRequiredResult` MRTR + HMAC-SHA256 `ConfirmationGate` tokens on mutating MCP `execute_offload` and `apply_schema_sync` calls (`src/goe/listener/mcp.py`), exposes `goe://` resources (`GOEResourcesController`), prompts (`GOEPromptController`), operational skills (`MCPSkillsConfig`), and `goe listener mcp {stdio,bridge,inspect}` CLI commands, and validates the Vertebra ASGI runtime (`verify_vertebra_runtime_gate` in `src/goe/listener/vertebra_gate.py`) before launching `vertebra run goe.listener.asgi:app`.
 
@@ -33,3 +56,7 @@ updated_at: "2026-10-29T22:30:00Z"
 - **Oracle 9-Digit Nanosecond Timestamp Formatting**: Format `numpy.datetime64` `TIMESTAMP(9)` values directly in `PredicateCompiler` (`TIMESTAMP 'YYYY-MM-DD HH:MM:SS.fffffffff'` and `TO_TIMESTAMP(:bind, 'YYYY-MM-DD HH24:MI:SS.FF9')`) without re-parsing through `sqlglot.parse_one`, which would truncate nanosecond digits.
 - **Single-Line `msgspec` JSON Formatting for Golden Reports**: `msgspec.json.encode(data)` emits compact JSON without spaces after `:` and `,`, whereas `format_json(encode_json(data), indent=0)` (`goe.serializers`) produces single-line JSON with standard `": "` and `", "` separators matching `json.dumps(data)` byte-for-byte.
 - **Cloud Storage Eventual Consistency**: Verify staged object visibility on object stores before issuing backend load queries.
+
+[^column-spec]: `src/goe/offload/schema/column_spec.py::ColumnSpec` — Immutable Canonical ColumnSpec.
+[^backend-cap]: `src/goe/offload/backend_capabilities.py::BackendCapabilities` — Declarative Backend Capability Profiles.
+[^pipeline]: `src/goe/orchestration/pipeline.py::OffloadPipeline` — Stateless 4-Stage Offload Pipeline.

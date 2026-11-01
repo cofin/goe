@@ -1,16 +1,39 @@
 ---
-type: Architecture
+type: architecture
 title: Offload Execution Lifecycle
-description: Detailed operational phases of the data offloading algorithm from pre-flight checks to verification
+description: Detailed operational phases of the data offloading algorithm from pre-flight checks to verification.
+status: stable
 tags:
   - architecture
   - offload
   - lifecycle
   - phases
-  - data-flow
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: pipeline
+    resource: src/goe/orchestration/pipeline.py::OffloadPipeline
+    title: Staged Offload Pipeline Orchestrator
+  - id: boundary
+    resource: src/goe/orchestration/stages/boundary.py::BoundaryStage
+    title: Partition and Predicate Boundary Stage
+  - id: executor
+    resource: src/goe/orchestration/stages/executor.py::OffloadPlanExecutor
+    title: Stateless Offload Plan Executor
 ---
 
 # Offload Execution Lifecycle
+
+<!-- truth: start -->
+- Every offload executes through the 4-stage `OffloadPipeline`: `DiscoveryStage -> BoundaryStage -> PlanResolutionStage -> OffloadPlanExecutor`.[^pipeline]
+- `BoundaryStage` (`src/goe/orchestration/stages/boundary.py`) resolves IPA `RANGE`/`LIST`, `PBO`, and `RBO` (`100:0`/`90:10`) rules into an immutable `BoundaryResult`.[^boundary]
+- `OffloadPlanExecutor` (`src/goe/orchestration/stages/executor.py`) captures an Oracle `AS OF SCN` snapshot, executes staging transport, runs cast/row validation, loads the target table, saves `OffloadMetadata`, and runs `CrossDbValidator`.[^executor]
+<!-- truth: end -->
 
 Data offloading in GOE executes through a stateless 4-stage pipeline (`OffloadPipeline` in `src/goe/orchestration/pipeline.py` and `src/goe/orchestration/stages/{discovery,boundary,plan_resolution,executor}.py`).
 
@@ -67,3 +90,7 @@ Implemented in `src/goe/orchestration/stages/boundary.py`:
 2. **Verification (`STEP_VERIFY_EXPORTED_DATA`)**:
    - `minus` mode: Compares source vs target row counts for the offloaded slice.
    - `aggregate` mode: Executes deep aggregation checksums (`COUNT`, `SUM`, `MIN`, `MAX`) across source and target columns.
+
+[^pipeline]: `src/goe/orchestration/pipeline.py::OffloadPipeline` — Staged Offload Pipeline Orchestrator.
+[^boundary]: `src/goe/orchestration/stages/boundary.py::BoundaryStage` — Partition and Predicate Boundary Stage.
+[^executor]: `src/goe/orchestration/stages/executor.py::OffloadPlanExecutor` — Stateless Offload Plan Executor.

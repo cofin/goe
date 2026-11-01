@@ -1,7 +1,8 @@
 ---
-type: Reference
+type: concept
 title: OpenTelemetry Observability, Step Spans, Metrics & Log Correlation
-description: Zero-cost-by-default OpenTelemetry architecture, ObservabilitySettings, ExecutionId-to-W3C context bridge, OTLP/GCP Telemetry API exporters, and structured log correlation
+description: Zero-cost-by-default OpenTelemetry architecture, ObservabilitySettings, ExecutionId-to-W3C context bridge, OTLP/GCP Telemetry API exporters, and structured log correlation.
+status: stable
 tags:
   - reference
   - operations
@@ -9,10 +10,32 @@ tags:
   - opentelemetry
   - tracing
   - metrics
-  - logging
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: otel-runtime
+    resource: src/goe/observability/runtime.py::ObservabilityRuntime
+    title: Zero-Overhead Default OpenTelemetry Runtime
+  - id: otel-ctx
+    resource: src/goe/observability/context.py::bind_execution_context
+    title: ExecutionId to W3C Traceparent and Baggage Bridge
+  - id: otel-spans
+    resource: src/goe/observability/spans.py::traced_step
+    title: Orchestration Command and Step Span Decorators
 ---
 
 # OpenTelemetry Observability, Step Spans, Metrics & Log Correlation
+
+<!-- truth: start -->
+- `ObservabilityRuntime` (`src/goe/observability/runtime.py`) defaults to a zero-SDK-import no-op when `GOE_OTEL_ENABLED=false` and lazily loads `opentelemetry-sdk` exporters (`otlp`, `gcp`, `jsonl`, `console`, `memory`) when enabled.[^otel-runtime]
+- `bind_execution_context` (`src/goe/observability/context.py`) bridges `ExecutionId` into W3C `baggage` (`goe.execution.id`) and SQLSpec `CorrelationContext`.[^otel-ctx]
+- `traced_command` and `traced_step` (`src/goe/observability/spans.py`) record `_trace_id` and `_span_id` into `GOE_REPO` JSON metadata and JSONL log sidecars.[^otel-spans]
+<!-- truth: end -->
 
 GOE provides an opt-in, zero-cost-by-default OpenTelemetry observability layer (`src/goe/observability/` and `src/goe/listener/telemetry.py`) covering CLI commands, orchestration steps, Listener HTTP/MCP/queue workers, `OracleGateway` SQLSpec queries, offload transports (Spark, Dataproc, Query Import, DuckDB), Google Cloud Storage (`GOEGcs`), and Google BigQuery.
 
@@ -91,3 +114,7 @@ goe.command.offload (INTERNAL, OrchestrationRunner.offload)
   - Lazily binds `OpenTelemetryConfig` / `OpenTelemetryPlugin` from `litestar.plugins.opentelemetry` when `GOE_OTEL_ENABLED=true`.
   - Configures `litestar-queues` `QueueConfig(observability=ObservabilityConfig(enable_otel=True))` and propagates `_trace_carrier` inside `OrchestrationController.offload` -> `run_offload_job`.
   - Wraps `LitestarMCP` tool invocations via `MCPConfig(before_tool_call=..., after_tool_call=...)` in `goe.mcp.tool.<tool_name>` spans.
+
+[^otel-runtime]: `src/goe/observability/runtime.py::ObservabilityRuntime` — Zero-Overhead Default OpenTelemetry Runtime.
+[^otel-ctx]: `src/goe/observability/context.py::bind_execution_context` — ExecutionId to W3C Traceparent and Baggage Bridge.
+[^otel-spans]: `src/goe/observability/spans.py::traced_step` — Orchestration Command and Step Span Decorators.

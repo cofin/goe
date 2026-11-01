@@ -1,16 +1,35 @@
 ---
-type: Reference
+type: concept
 title: Snowflake Backend Adapter
-description: Snowflake connector lifecycle, SNOWFLAKE_CAPABILITIES, CachedBackendCatalog, DialectSqlEngine, stages, storage integrations, and COPY INTO ingestion
+description: Snowflake connector lifecycle, SNOWFLAKE_CAPABILITIES, CachedBackendCatalog, DialectSqlEngine, stages, storage integrations, and COPY INTO ingestion.
+status: stable
 tags:
   - reference
   - backends
   - snowflake
   - data-warehouse
-updated_at: "2026-10-26T22:40:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: sf-api
+    resource: src/goe/offload/snowflake/snowflake_backend_api.py::BackendSnowflakeApi
+    title: Snowflake Backend API Adapter
+  - id: sf-table
+    resource: src/goe/offload/snowflake/snowflake_backend_table.py::BackendSnowflakeTable
+    title: Snowflake Backend Table Adapter
 ---
 
 # Snowflake Backend Adapter
+
+<!-- truth: start -->
+- `BackendSnowflakeApi` (`src/goe/offload/snowflake/snowflake_backend_api.py`) exposes `SNOWFLAKE_CAPABILITIES`, caches catalog snapshots via `CachedBackendCatalog` (`warm_schema`), and renders SQL via `DialectSqlEngine('snowflake')`.[^sf-api]
+- `BackendSnowflakeTable` (`src/goe/offload/snowflake/snowflake_backend_table.py`) manages external stages, Parquet file formats, and `COPY INTO` projection loads.[^sf-table]
+<!-- truth: end -->
 
 The Snowflake backend adapter (`src/goe/offload/snowflake/`) manages target databases, schemas, stages, clustering keys, cached metadata snapshots, and `COPY INTO` data loading.
 
@@ -58,3 +77,6 @@ The Snowflake backend adapter (`src/goe/offload/snowflake/`) manages target data
 ## Clustering & Telemetry
 - **Clustering**: `CLUSTER BY (col1, col2)`.
 - **Query Profiling**: Interrogates `TABLE(information_schema.query_history_by_session())` using cursor query ID `sfqid`.
+
+[^sf-api]: `src/goe/offload/snowflake/snowflake_backend_api.py::BackendSnowflakeApi` — Snowflake Backend API Adapter.
+[^sf-table]: `src/goe/offload/snowflake/snowflake_backend_table.py::BackendSnowflakeTable` — Snowflake Backend Table Adapter.

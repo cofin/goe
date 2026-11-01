@@ -1,33 +1,16 @@
 ---
-type: Reference
-title: Research Registry
-description: Unpromoted investigations, technical research spikes, and feasibility evaluations
-tags:
-  - reference
-  - research
-  - index
+title: "Research Registry"
+description: "Index of technical research and architectural evaluations conducted for the Gluent Offload Engine."
 ---
 
 # Research Registry
 
-This directory contains unpromoted research documents and investigative spikes.
+This directory holds active primary-source research notes before they are promoted into permanent [System Knowledge](../knowledge/index.md) and [Architectural Decision Records](../knowledge/decisions/index.md).
 
-## Open Research
+## Active Research
 
 None.
 
-## Promoted Research
+## Promoted & Contracted Research
 
-All past research investigations have been promoted to specifications, implemented, and synthesized into [Knowledge](../knowledge/index.md) and [Change Log](../log.md):
-- **Native Litestar-MCP GOE Listener Overhaul (`litestar_mcp_listener_overhaul_20261029`)**: Promoted into `litestar_mcp_listener_overhaul_20261029` — [GOE Listener & Domain Services Baseline Audit](goe-listener-audit.md) and [Litestar-MCP 0.16.0 Stateless Protocol & Native Integration Reference](litestar-mcp-capabilities.md), and synthesized into [GOE Listener REST Service](../knowledge/listener/index.md), [Listener REST API Architecture](../knowledge/listener/rest-api.md), [Listener Durable Job Queue & Bounded Caching](../knowledge/listener/worker-and-redis.md), and [CLI Tools](../knowledge/operations/cli-tools.md).
-- **GOE Architecture Redesign (`goe-architecture-redesign`)**: Promoted into Master PRDs 5–10 — [redesign dossier](goe-architecture-redesign.md), [module blueprint](module-by-module-redesign.md), [SQLSpec, SQLGlot, and caching](sqlspec-sqlglot-and-caching-architecture.md), [DuckDB 2.0 data plane](duckdb2-arrow-and-storage-dataplane.md), and [Vertebra runtime evaluation](vertebra-and-runtime-evaluation.md) (Master PRD 10).
-- **End-to-End OpenTelemetry Observability Architecture for GOE (`opentelemetry_end_to_end_observability`)**: Synthesized into [OpenTelemetry Observability](../knowledge/operations/observability.md), [Oracle Adapter](../knowledge/frontends/oracle.md), [Google BigQuery](../knowledge/backends/bigquery.md), and [Google Cloud Storage](../knowledge/storage/gcs.md).
-- **SQLSpec Oracle Data Layer & Gateway Architecture (`sqlspec_oracle_gateway`)**: Synthesized into [Oracle Adapter](../knowledge/frontends/oracle.md) and [Database & SQL Standards](../knowledge/standards/database-and-sql.md).
-- **SQL Generation & Dialect Management (`sqlglot`, `polyglot-sql`) for GOE (`sql_generation_and_dialects`)**: Synthesized into [Database & SQL Standards](../knowledge/standards/database-and-sql.md) and [Oracle Adapter](../knowledge/frontends/oracle.md).
-- **BigQuery-First Backend Path & Integration Test Harness Audit (`bigquery_first_and_test_harness`)**: Synthesized into [Google BigQuery](../knowledge/backends/bigquery.md), [Google Cloud Storage](../knowledge/storage/gcs.md), and [Testing Standards](../knowledge/standards/testing.md).
-- **DuckDB & `cofin/duckdb-oracle` + Community `gcs` Extension Feasibility for GOE (`duckdb_integration`)**: Synthesized into [DuckDB Offload Transport](../knowledge/transport/duckdb.md).
-- **ADC Credential Unification Audit (`adc_credential_unification`)**: Synthesized into [Google Cloud Storage](../knowledge/storage/gcs.md), [Google BigQuery](../knowledge/backends/bigquery.md), and [Dataproc & Spark Engines](../knowledge/transport/spark-dataproc.md).
-- **GOE CLI Import Performance & Startup Latency Optimization (`cli_import_performance`)**: Synthesized into [CLI Architecture](../knowledge/patterns/cli-architecture.md).
-- **GOE v2 Modernization vs. Main Baseline Alignment Audit (`v2_main_alignment_audit`)**: Synthesized into [CLI Architecture](../knowledge/patterns/cli-architecture.md), [Serialization & Utils](../knowledge/patterns/serialization-and-utils.md), and [Listener REST API](../knowledge/listener/rest-api.md).
-- **GOE Installation Lifecycle & python-dotenv Auto-loading Feasibility (`python_dotenv_autoload_install_lifecycle`)**: Synthesized into [Configuration & Environment Variables](../knowledge/operations/configuration-and-env.md).
-- **GOE Modernization & Architectural Overhaul (`modernization_overhaul_20260822`)**: Synthesized into [Patterns](../knowledge/patterns/index.md), [Workflow](../knowledge/workflow.md), and [Listener](../knowledge/listener/index.md).
+All foundational research dossiers (`goe-architecture-redesign`, `module-by-module-redesign`, `sqlspec-sqlglot-and-caching-architecture`, `duckdb2-arrow-and-storage-dataplane`, `vertebra-and-runtime-evaluation`, `goe-listener-audit`, and `litestar-mcp-capabilities`) have been promoted into durable [System Knowledge](../knowledge/index.md), [Architectural Decision Records](../knowledge/decisions/index.md), and [Project-Local Skills](../../skills/index.md) and contracted from this directory.

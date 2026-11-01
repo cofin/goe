@@ -1,30 +1,28 @@
 {
+  "bundle_root": ".agents/bundles",
+  "detected_tooling": {
+    "languages": [
+      "python",
+      "scala"
+    ],
+    "lint_command": "make lint",
+    "package_manager": "uv",
+    "test_command": "GOOGLE_API_USE_CLIENT_CERTIFICATE=false uv run pytest tests/unit",
+    "typecheck_command": "uv run mypy src/goe"
+  },
+  "last_setup_at": "2026-11-01T15:25:00Z",
+  "okf_version": "0.2",
+  "project_domains": [
+    "core-orchestration",
+    "sqlspec-and-sql-ast",
+    "offload-backends-and-dataplane",
+    "listener-and-observability"
+  ],
+  "root_directory": ".agents",
   "setup_status": "complete",
-  "last_successful_step": "complete",
-  "resume_operation": null,
-  "migration_report": null,
-  "migration_approved_at": null,
-  "project_type": "brownfield",
-  "workflow_revision": "flow-template-v2",
   "workflow_preferences": {
+    "execution_mode": "autonomous",
     "ignore_policy": "shared",
-    "commit_format": "conventional",
-    "canonical_commands": {
-      "install": "make install",
-      "test_unit": "make test-unit",
-      "test_integration": "make test-integration",
-      "format": "make format",
-      "lint": "make lint",
-      "build": "make target",
-      "package": "make package",
-      "validate": "goe connect"
-    }
-  },
-  "project_install": {
-    "mode": "skip",
-    "active_host": "antigravity",
-    "canonical_contract_hash": null,
-    "managed_files": []
-  },
-  "timestamp": "2026-10-02T19:30:00Z"
+    "review_gates": "strict"
+  }
 }

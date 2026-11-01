@@ -1,17 +1,40 @@
 ---
-type: Reference
+type: pattern
 title: Serialization & Utility Re-Export Patterns
-description: High-performance msgspec.Struct serialization and sqlspec.utils re-export conventions across src/goe/util/
+description: High-performance msgspec.Struct serialization and sqlspec.utils re-export conventions across src/goe/util/.
+status: stable
 tags:
   - pattern
   - serialization
   - msgspec
   - sqlspec
   - utilities
-updated_at: "2026-10-25T15:50:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: goe-typing
+    resource: src/goe/typing.py::FrozenBaseStruct
+    title: Canonical GC-Free msgspec Struct Bases
+  - id: serializers
+    resource: src/goe/serializers.py::encode_json
+    title: Centralized msgspec JSON Serializer Utilities
+  - id: options
+    resource: src/goe/config/options.py::OffloadOperationOptions
+    title: Typed Command Option Structs
 ---
 
 # Serialization & Utility Re-Export Patterns
+
+<!-- truth: start -->
+- All value objects, configs, and wire DTOs inherit from `FrozenBaseStruct(..., frozen=True)` or `BaseStruct` (`src/goe/typing.py`, `gc=False`).[^goe-typing]
+- All JSON encoding/decoding routes through `src/goe/serializers.py` (`encode_json`, `encode_json_bytes`, `encode_json_into`, `format_json`, `decode_json`), enforced by `[raw-json]` in `tools/verify_architecture.py`.[^serializers]
+- `EXPECTED_OFFLOAD_ARGS` and the 7 command option structs in `src/goe/config/options.py` are derived from `OPTION_REGISTRY` (`src/goe/config/option_registry.py`).[^options]
+<!-- truth: end -->
 
 ## Core Typing, Serializers, and Platform Primitives (`src/goe/typing.py`, `src/goe/serializers.py`, `src/goe/util/`, `src/goe/platform/`)
 
@@ -47,7 +70,7 @@ updated_at: "2026-10-25T15:50:00Z"
 
 - Define repository metadata, telemetry payloads, and REST request/response DTOs as `msgspec.Struct` models (`StepDetailSchema`, `CommandExecutionSchema`, `OffloadMetadataSchema`, `LogEventSchema`, `PartitionMetadataSchema`, `ColumnDetail` with `data_precision` and `data_scale`, `PartitionDetail`, and `SubPartitionDetail` with `partition_name` and `partition_position`).
 - In `src/goe/listener/schemas.py`, `OffloadOptions` preserves REST wire defaults (`execute: bool = True` and `None` unset sentinels) so `to_params_dict()` records only caller-supplied parameters in `COMMAND_EXECUTION.COMMAND_INPUT`, while `to_operation_options() -> OffloadOperationOptions` hydrates omitted fields from the canonical `OffloadOperationOptions` defaults (`test_offload_options_fields_track_expected_offload_args` enforces 100% field parity).
-- Use `msgspec` encoders/decoders across `src/goe/persistence/orchestration_repo_client.py`, `src/goe/offload/offload_messages.py`, and Listener controllers; never introduce `orjson` or Pydantic v1 models.
+- Use `msgspec` encoders/decoders across `src/goe/persistence/oracle/repository.py`, `src/goe/offload/offload_messages.py`, and Listener controllers; never introduce `orjson` or Pydantic v1 models.
 
 ## Idiomatic Patterns & Gotchas
 
@@ -68,4 +91,6 @@ Standard JSON serializers fail on `ExecutionId` instances and `.dsl` expression 
 - `Decimal`, `datetime`, `date`: Serialized to ISO strings / numeric primitives.
 - `numpy.ndarray`, `numpy.generic`: Serialized via `.tolist()`.
 
-
+[^goe-typing]: `src/goe/typing.py::FrozenBaseStruct` — Canonical GC-Free msgspec Struct Bases.
+[^serializers]: `src/goe/serializers.py::encode_json` — Centralized msgspec JSON Serializer Utilities.
+[^options]: `src/goe/config/options.py::OffloadOperationOptions` — Typed Command Option Structs.

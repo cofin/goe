@@ -1,17 +1,40 @@
 ---
-type: Reference
+type: concept
 title: CLI Utilities Reference
-description: Command-line reference for offload, connect, validate, sync, report, logmgr, and listener (Vertebra ASGI, durable worker, and MCP stdio/bridge/inspect) tools
+description: Command-line reference for offload, connect, validate, sync, report, logmgr, and listener (Vertebra ASGI, durable worker, and MCP stdio/bridge/inspect) tools.
+status: stable
 tags:
   - reference
   - operations
   - cli
   - mcp
   - tools
-updated_at: "2026-10-29T21:55:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: cli-main
+    resource: src/goe/cli/main.py::cli
+    title: Root GOE Rich-Click Command Group
+  - id: connect-runner
+    resource: src/goe/connect/runner.py::ConnectRunner
+    title: Concurrent Pre-Flight Connectivity Runner
+  - id: report-svc
+    resource: src/goe/report/collector.py::StatusReportService
+    title: DuckDB Rollup Offload Status Report Service
 ---
 
 # CLI Utilities Reference
+
+<!-- truth: start -->
+- The `goe` CLI (`src/goe/cli/main.py`) is the single unified entrypoint exposing `offload`, `connect`, `validate`, `sync`, `report`, `listener` (`start`, `status`, `mcp {stdio,bridge,inspect}`), `logmgr`, and `version` (legacy `bin/*` wrappers are removed).[^cli-main]
+- `ConnectRunner` (`src/goe/connect/runner.py`) executes frontend, backend, storage, and transport connectivity checks concurrently via `run_bounded`.[^connect-runner]
+- `StatusReportService` (`src/goe/report/collector.py`) fetches Oracle catalog and repository state in 2 queries and aggregates multi-dimensional rollups via DuckDB `GROUP BY ROLLUP`.[^report-svc]
+<!-- truth: end -->
 
 The GOE framework provides a unified `rich-click` CLI registered as `goe` (`src/goe/cli/main.py`):
 
@@ -84,3 +107,7 @@ Vertebra ASGI server, durable background job worker, and Model Context Protocol 
 - `goe listener mcp stdio`: Runs the GOE Listener MCP server in-process over newline-delimited JSON-RPC `stdin`/`stdout` via `litestar_mcp.mcp.stdio.run_stdio` (`ASGIStreamingTransport`), redirecting root `stdout` log handlers to `sys.stderr` and forwarding `x-goe-console-key` when `shared_token` is configured (`--client-id`, `--owner-id`, `--enable-worker / --no-worker`).
 - `goe listener mcp bridge`: Bridges local `stdin`/`stdout` JSON-RPC to a remote Streamable HTTP `POST <endpoint>` (`default: f"{settings.base_url}/mcp"`) via `litestar_mcp.mcp.bridge.run_stdio_streamable_http_bridge` (`--endpoint`, `--token`, `--timeout`, `--sse-read-timeout`).
 - `goe listener mcp inspect`: Prints a structured JSON (`--json`) or Rich table summary of all discovered MCP tools, static resources, RFC 6570 resource templates, prompts, and packaged skills.
+
+[^cli-main]: `src/goe/cli/main.py::cli` — Root GOE Rich-Click Command Group.
+[^connect-runner]: `src/goe/connect/runner.py::ConnectRunner` — Concurrent Pre-Flight Connectivity Runner.
+[^report-svc]: `src/goe/report/collector.py::StatusReportService` — DuckDB Rollup Offload Status Report Service.

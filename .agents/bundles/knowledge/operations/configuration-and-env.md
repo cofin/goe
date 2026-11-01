@@ -1,19 +1,39 @@
 ---
-type: Reference
+type: concept
 title: Configuration & Environment Variables
-description: Comprehensive inventory of GOE configuration parameters, defaults, and validation rules
+description: Comprehensive inventory of GOE configuration parameters, defaults, and validation rules.
+status: stable
 tags:
   - reference
   - operations
   - configuration
-  - env
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: settings
+    resource: src/goe/config/settings.py::GOESettings
+    title: Declarative GOESettings and 4-Tier dotenv Loader
+  - id: listener-settings
+    resource: src/goe/listener/config/application.py::ListenerSettings
+    title: Listener Application Settings
 ---
 
 # Configuration & Environment Variables
 
-GOE loads environment variables using a 4-tier discovery architecture via `python-dotenv` (`src/goe/config/config_file.py`), merged and validated by `OrchestrationConfig`.
+<!-- truth: start -->
+- `load_env()` and `GOESettings.from_env()` (`src/goe/config/settings.py`) resolve `offload.env` across 4 tiers (`GOE_CONFIG_FILE`/`OFFLOAD_ENV_FILE`, `$OFFLOAD_HOME/conf/offload.env`, upward `find_dotenv`, and `/opt/goe/offload/conf/offload.env` / `/u01/app/goe/offload/conf/offload.env`) with `interpolate=True, override=False`.[^settings]
+- Automatic dotenv discovery is skipped when `PYTEST_CURRENT_TEST` or `GOE_NO_AUTOLOAD_ENV` is set so unit tests remain isolated from host environment files.[^settings]
+- `ListenerSettings` (`src/goe/listener/config/application.py`) normalizes wildcard bind hosts (`0.0.0.0`, `::`) to `127.0.0.1` on `client_host`/`base_url` and projects Vertebra runtime env vars via `to_vertebra_env()`.[^listener-settings]
+<!-- truth: end -->
 
-## Multi-Tier Configuration Discovery (`src/goe/config/config_file.py`)
+GOE loads environment variables using a 4-tier discovery architecture via `python-dotenv` (`src/goe/config/settings.py`), merged and validated by `GOESettings` and `OrchestrationConfig`.
+
+## Multi-Tier Configuration Discovery (`src/goe/config/settings.py`)
 
 1. **Tier 1 (Explicit Environment Override)**: Paths specified in `GOE_CONFIG_FILE` or `OFFLOAD_ENV_FILE`.
 2. **Tier 2 (Configured Installation Root)**: `$OFFLOAD_HOME/conf/offload.env`.
@@ -79,3 +99,6 @@ GOE loads environment variables using a 4-tier discovery architecture via `pytho
 - `OFFLOAD_LISTENER_THREADS`: Blocking worker threads per Vertebra worker process (default `1`).
 - `OFFLOAD_LISTENER_DRAIN_TIMEOUT`: Graceful lame-duck drain timeout in seconds on `SIGTERM`/`SIGINT` (default `30`).
 - `ListenerSettings.to_vertebra_env()` (`src/goe/listener/config/application.py`): Projects `VERTEBRA_HOST`, `VERTEBRA_PORT`, `VERTEBRA_WORKERS`, `VERTEBRA_THREADS`, `VERTEBRA_TOPOLOGY`, and `VERTEBRA_DRAIN_TIMEOUT` into the child process environment.
+
+[^settings]: `src/goe/config/settings.py::GOESettings` — Declarative GOESettings and 4-Tier dotenv Loader.
+[^listener-settings]: `src/goe/listener/config/application.py::ListenerSettings` — Listener Application Settings.

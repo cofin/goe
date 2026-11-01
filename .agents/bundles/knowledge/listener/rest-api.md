@@ -1,7 +1,8 @@
 ---
-type: Reference
+type: concept
 title: Listener REST API & MCP Architecture
-description: Litestar application factory, Vertebra ASGI runtime, litestar-security authentication, native litestar-mcp 0.16.0 tools/resources/prompts/skills, ConfirmationGate MRTR + HMAC gating, OpenTelemetry instrumentation, and endpoint catalog
+description: Litestar application factory, Vertebra ASGI runtime, litestar-security authentication, native litestar-mcp 0.16.0 tools/resources/prompts/skills, ConfirmationGate MRTR + HMAC gating, OpenTelemetry instrumentation, and endpoint catalog.
+status: stable
 tags:
   - reference
   - listener
@@ -11,10 +12,33 @@ tags:
   - vertebra
   - security
   - opentelemetry
-updated_at: "2026-10-29T21:55:00Z"
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: listener-app
+    resource: src/goe/listener/app.py::create_app
+    title: Litestar Listener Application Factory
+  - id: listener-mcp
+    resource: src/goe/listener/mcp.py::build_mcp_config
+    title: Litestar-MCP Configuration and ConfirmationGate
+  - id: vertebra-gate
+    resource: src/goe/listener/vertebra_gate.py::verify_vertebra_runtime_gate
+    title: Vertebra ASGI Runtime Verification Gate
 ---
 
 # Listener REST API & MCP Architecture
+
+<!-- truth: start -->
+- `create_app` (`src/goe/listener/app.py`) wires Litestar REST controllers (`SystemController`, `SchemasController`, `TablesController`, `OrchestrationController`), `GOEResourcesController` (`goe://`), `GOEPromptController`, and `LitestarMCP` (`build_mcp_config` in `src/goe/listener/mcp.py`).[^listener-app][^listener-mcp]
+- Authentication (`src/goe/listener/security.py`) enforces `x-goe-console-key` via `secrets.compare_digest` across `/api/*` and `POST /mcp` when `OFFLOAD_LISTENER_SHARED_TOKEN` is set, while `/api/system/status/`, `/docs`, and `/schema` remain public.
+- Mutating MCP tools (`execute_offload`, `reset_offload_metadata`, `apply_schema_sync`, `cancel_offload_job`) enforce handler-level `require_mcp_confirmation` (`MCPInputRequiredResult` + HMAC-SHA256 `confirmation_token`), while direct HTTP REST `POST` endpoints remain un-gated.[^listener-mcp]
+- The Listener runs on Vertebra (`vertebra run goe.listener.asgi:app`) after `verify_vertebra_runtime_gate()` (`src/goe/listener/vertebra_gate.py`).[^vertebra-gate]
+<!-- truth: end -->
 
 The GOE Listener (`src/goe/listener/`) exposes database catalog discovery, dry-run offload planning, schema drift reconciliation, cross-database validation, durable job execution, and native Model Context Protocol (`2026-07-28`) capabilities via a Litestar application running on the Vertebra Rust/PyO3 HTTP runtime.
 
@@ -75,3 +99,7 @@ The GOE Listener (`src/goe/listener/`) exposes database catalog discovery, dry-r
   - Guided DBA workflow prompts: `plan_table_offload`, `diagnose_failed_execution`, `reconcile_schema_drift`, `audit_schema_readiness`.
 - **Packaged MCP Skills (`src/goe/listener/skills/<name>/SKILL.md`)**:
   - Exposed via `skills/list`, `skills/get`, `resources/directory/read`, and `resources/read` (`skill://goe-offload-operations/SKILL.md`, `skill://goe-diagnostics-and-recovery/SKILL.md`, `skill://goe-schema-drift-and-validation/SKILL.md`).
+
+[^listener-app]: `src/goe/listener/app.py::create_app` — Litestar Listener Application Factory.
+[^listener-mcp]: `src/goe/listener/mcp.py::build_mcp_config` — Litestar-MCP Configuration and ConfirmationGate.
+[^vertebra-gate]: `src/goe/listener/vertebra_gate.py::verify_vertebra_runtime_gate` — Vertebra ASGI Runtime Verification Gate.

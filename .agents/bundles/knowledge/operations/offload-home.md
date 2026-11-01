@@ -1,16 +1,35 @@
 ---
-type: Reference
+type: concept
 title: Offload Home Runtime & Packaging
-description: OFFLOAD_HOME directory layout, build targets, Makefile automation, and virtualenv management
+description: OFFLOAD_HOME directory layout, build targets, Makefile automation, and virtualenv management.
+status: stable
 tags:
   - reference
   - operations
   - packaging
   - makefile
-  - deployment
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: settings
+    resource: src/goe/config/settings.py::find_environment_file
+    title: OFFLOAD_HOME and Environment File Discovery
+  - id: locking
+    resource: src/goe/platform/locking.py::orchestration_lock_for_table
+    title: Run Directory Table Lock
 ---
 
 # Offload Home Runtime & Packaging
+
+<!-- truth: start -->
+- `$OFFLOAD_HOME` roots runtime configuration (`conf/offload.env`), execution logs (`log/`), and table lock files (`run/orchestration_<owner>_<table>.lock`).[^settings][^locking]
+- Packaged Oracle DDL (`src/goe/persistence/oracle/ddl/`) and HTML report templates (`src/goe/report/templates/`) ship inside the `goe` Python wheel.
+<!-- truth: end -->
 
 GOE separates development source trees from the operational runtime environment identified by `$OFFLOAD_HOME`.
 
@@ -42,3 +61,6 @@ $OFFLOAD_HOME/
   - Sets strict directory permissions (`775` on `run/` and `log/`, `640` on `conf/*`).
 - **`make package`**: Compiles `target/offload/` into deployment tarball `goe_<version>.tar.gz`.
 - **`make install`**: Unpacks `goe_<version>.tar.gz` into `$OFFLOAD_HOME`, creates virtual environment in `$OFFLOAD_HOME/.venv`, and installs the wheel.
+
+[^settings]: `src/goe/config/settings.py::find_environment_file` — OFFLOAD_HOME and Environment File Discovery.
+[^locking]: `src/goe/platform/locking.py::orchestration_lock_for_table` — Run Directory Table Lock.

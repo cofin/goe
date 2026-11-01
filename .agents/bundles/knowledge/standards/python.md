@@ -1,15 +1,35 @@
 ---
-type: Guide
+type: concept
 title: Python Development Standards
-description: Coding standards, formatting, docstrings, typing rules, and exception handling for Python in GOE
+description: Coding standards, formatting, docstrings, typing rules, and exception handling for Python in GOE.
+status: stable
 tags:
   - guide
   - standards
   - python
-  - coding-conventions
+generated:
+  by: flow/0.26.0
+  at: "2026-11-01T15:25:00Z"
+verified:
+  - by: agent:flow-setup
+    at: "2026-11-01T15:25:00Z"
+    commit: 02b9409
+sources:
+  - id: verify-arch
+    resource: tools/verify_architecture.py::verify_architecture
+    title: AST and Token Architecture Gate
+  - id: goe-typing
+    resource: src/goe/typing.py::FrozenBaseStruct
+    title: Canonical msgspec Struct Base Classes
 ---
 
 # Python Development Standards
+
+<!-- truth: start -->
+- Target Python >= 3.12 with PEP 585 (`list`, `dict`) and PEP 604 (`X | None`) annotations, strict `mypy src/goe`, and Ruff formatting (`line-length = 120`, 2-line SPDX header `CPY001`).[^verify-arch]
+- `tools/verify_architecture.py` enforces 6 zero-baseline rules across `src/goe/`: `raw-json`, `sqlglot-boundary`, `oracledb-boundary`, `nested-import`, `member-ordering` (public/dunder before `_` private), and `inline-comment` (zero `#` comments inside function/method bodies).[^verify-arch]
+- Use `FrozenBaseStruct(..., frozen=True)` / `BaseStruct` (`src/goe/typing.py`) instead of `@dataclass`.[^goe-typing]
+<!-- truth: end -->
 
 ## Core Principles
 
@@ -47,3 +67,5 @@ tags:
 - Always clean up external resources (database cursors, files, locks) using `try...finally` blocks or context managers.
 - Run `tools/verify_architecture.py` (wired into `make lint` and baselined via `tools/architecture_baseline.toml`) to enforce `raw-json`, `sqlglot-boundary`, `oracledb-boundary`, `nested-import`, `member-ordering`, `inline-comment`, and `stale-baseline` rules.
 
+[^verify-arch]: `tools/verify_architecture.py::verify_architecture` — AST and Token Architecture Gate.
+[^goe-typing]: `src/goe/typing.py::FrozenBaseStruct` — Canonical msgspec Struct Base Classes.

@@ -1,16 +1,19 @@
 ---
-type: Reference
+title: Change Log
 description: Append-only operational and structural change log for the GOE OKF knowledge bundle.
-tags:
-  - changelog
-  - okf
-  - flow
-updated_at: "2026-10-29T22:30:00Z"
+updated_at: "2026-11-01T15:25:00Z"
 ---
 
 # Change Log
 
 This file records significant lifecycle operations, structural additions, and major evolutions to the GOE knowledge bundle.
+
+## 2026-11-01
+
+- **Flow v0.26.0 Setup Alignment, OKF v0.2 Provenance True-Up, & Project-Local Skill/Subagent Synthesis (`chore/flow-setup`)**:
+  - **Phase 0 Brownfield Alignment**: Removed legacy `.agents/transactions/` journals, `.agents/config.json`, `.agents/skills/flow-memory-keeper/`, and 7 promoted research files in `.agents/bundles/research/` (`duckdb2-arrow-and-storage-dataplane.md`, `goe-architecture-redesign.md`, `goe-listener-audit.md`, `litestar-mcp-capabilities.md`, `module-by-module-redesign.md`, `sqlspec-sqlglot-and-caching-architecture.md`, `vertebra-and-runtime-evaluation.md`).
+  - **OKF v0.2 Bundle Compliance**: Added `okf_version: "0.2"` and `bundle: "goe"` to `.agents/bundles/index.md`, stripped reserved-file `type:` frontmatter from all `index.md` and `log.md` files, added `sources:`, `verified:`, `generated:`, `status: stable`, bounded `<= 40`-line `<!-- truth: start -->` blocks, and `[^id]` footnotes across all `.agents/bundles/product/*.md` and `.agents/bundles/knowledge/**/*.md` chapters, and created `knowledge/domains/`, `knowledge/decisions/`, `knowledge/testing/`, and `knowledge/gotchas/` chapters.
+  - **Project-Local Skills & Subagents**: Generated 4 domain implementation skills (`.agents/skills/{core-orchestration,sqlspec-and-sql-ast,offload-backends-and-dataplane,listener-and-observability}/`), 4 paired review skills (`.agents/skills/review-{core-orchestration,sqlspec-and-sql-ast,offload-backends-and-dataplane,listener-and-observability}/` with `ORCH`/`SQL`/`DPL`/`LST` checklists and false-positive suppressions), `.agents/skills/index.md`, and 8 paired subagents in `.agents/agents/` and `.codex/agents/`.
 
 ## 2026-10-29
 
